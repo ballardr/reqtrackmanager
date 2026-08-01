@@ -124,6 +124,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv*
 env/
 venv/
 ENV/
@@ -164,5 +165,29 @@ cython_debug/
 # Graphify
 graphify-out/
 
-# AI    
+# AI
 .claude/settings.json
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.env
+
+# Playwright / e2e
+tests/playwright/node_modules/
+tests/playwright/test-results/
+tests/playwright/playwright-report/
+tests/playwright/blob-report/
+tests/playwright/.env
+tests/playwright/.cache/
+
+# Local file storage backend data (STORAGE_BACKEND=local) — dev/test uploads,
+# never real product data
+backend/data/
+
+# Storybook
+frontend/storybook-static/
+
+# Backups
+/backups/
+*storybook.log

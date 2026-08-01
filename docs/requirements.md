@@ -23,13 +23,13 @@ So what is a Formal Engineering Requirements Management System?
 
 Requirements projects are organised by project component and category and also split by project version. Projects sit within an organisation.
 
-![](../figures/architecture/Requirements_structure.svg)
+![](./figures/architecture/Requirements_structure.svg)
 
 This allows ease of management of the project's lifecycle while similtaniously accommodating the complexity of requiements and their sequential nature.
 
 For each project version, there is a requirements scoping stage, then these get reviewed and refined and finally approved to form the actual project requirements.
 
-![](../figures/architecture/Requirement_Capture.svg)
+![](./figures/architecture/Requirement_Capture.svg)
 
 During the scoping stage of the project, requirements can be added without change requests, and by any user that is authorised to add requirements. By default, this is limited to project managers, project administators and project stakeholders.
 
@@ -39,7 +39,7 @@ The change management process consists of sumbitting a change request, having th
 
 The submission must include what is being requested (a new requirement or a change to an existing requirement), and all required attributes. There must also be a reason for why this submission is being made, and wasn't identified in the original scope or previous project requirements.
 
-![](../figures/architecture/Requirement_Change.svg)
+![](./figures/architecture/Requirement_Change.svg)
 
 ## Background
 

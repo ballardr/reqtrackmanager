@@ -1,0 +1,112 @@
+version: "3.9"
+
+# Local development / test stack: db + minio + mailhog + backend + frontend.
+# This is the stack used to develop locally, to run the backend pytest suite,
+# and to run the Playwright end-to-end suite — it is NOT the production
+# stack (see the root docker-compose.yml for that). Keeping this stack
+# entirely separate, in its own Compose project (directory-derived project
+# name "container", distinct from the root project), means:
+#   - its Postgres database is always `reqtrack_test`, never the real `reqtrack`
+#     database a production/root-stack deployment would use, so running
+#     tests here can never collide with or destroy real data (see
+#     docs/decisions.md, "Database: the test suite was wiping the live
+#     database").
+#   - it can be brought up/down/rebuilt independently of any root stack
+#     running on the same machine, since Compose scopes volumes and networks
+#     per project.
+#
+# Usage:
+#   cd tests/container && docker compose up --build -d
+#   docker compose exec backend pytest -q
+#   cd ../../tests/playwright && npx playwright test
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reqtrack_test
+      POSTGRES_USER: reqtrack
+      POSTGRES_PASSWORD: reqtrack
+    volumes:
+      - reqtrack_test_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reqtrack -d reqtrack_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - reqtrack_test_minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  backend:
+    build:
+      context: ../../backend
+    environment:
+      DATABASE_URL: postgresql://reqtrack:reqtrack@db:5432/reqtrack_test
+      JWT_SECRET: test-secret-not-for-production
+      SERVER_ADMIN_ENABLED: "true"
+      SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
+      SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:-ChangeMe123!}
+      SERVER_ADMIN_CREATE_ORG: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://minio:9000}
+      STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ../../frontend
+    environment:
+      VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  reqtrack_test_db_data:
+  reqtrack_test_minio_data:

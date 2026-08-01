@@ -1,31 +1,88 @@
 version: "3.9"
+
+# Production-oriented stack: db + minio + backend + frontend, plus an
+# optional observability profile. This is what a real deployment runs (see
+# docs/deployment.md) — it intentionally does NOT include MailHog (a
+# dev/test-only SMTP catcher) or a test database. Local development and all
+# automated testing (backend pytest, Playwright) use the separate stack at
+# tests/container/docker-compose.yml instead, which is deliberately isolated
+# from this one (see docs/decisions.md, "Database: the test suite was
+# wiping the live database").
+#
+# Before running this in production, override at minimum JWT_SECRET,
+# SERVER_ADMIN_PASSWORD, MINIO_ROOT_PASSWORD, CORS_ORIGINS, and the SMTP_*
+# variables via a `.env` file — see docs/deployment.md.
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: reqtrack
       POSTGRES_USER: reqtrack
-      POSTGRES_PASSWORD: reqtrack
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reqtrack}
+    volumes:
+      - reqtrack_db_data:/var/lib/postgresql/data
+    # No host port published: nothing outside the Compose network needs
+    # direct Postgres access in production. `scripts/backup.sh`/`restore.sh`
+    # and manual psql access all go through `docker compose exec db ...`.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reqtrack -d reqtrack"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in production}
+    volumes:
+      - reqtrack_minio_data:/data
+    # Only the admin console is published; the S3 API port (9000) doesn't
+    # need to be reachable from outside the Compose network since only the
+    # backend talks to it. Put the console behind the same reverse
+    # proxy/VPN as the rest of the stack rather than relying on this port
+    # alone (see docs/deployment.md).
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql://reqtrack:reqtrack@db:5432/reqtrack
+      DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:-reqtrack}@db:5432/reqtrack
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in production}
+      SERVER_ADMIN_ENABLED: "true"
+      SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
+      SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:?Set SERVER_ADMIN_PASSWORD in production}
+      SERVER_ADMIN_CREATE_ORG: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://minio:9000}
+      STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in production}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST to a real SMTP provider in production}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-noreply@example.com}
+      DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
     depends_on:
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,7 +90,72 @@ services:
   frontend:
     build:
       context: ./frontend
+    environment:
+      VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Observability stack (optional): docker compose --profile observability up ---
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["observability"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:3.1.1
+    profiles: ["observability"]
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    profiles: ["observability"]
+    command: -config.file=/etc/tempo/tempo.yaml
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+
+  alloy:
+    image: grafana/alloy:v1.4.3
+    profiles: ["observability"]
+    volumes:
+      - ./observability/alloy.river:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
     depends_on:
-      - backend
+      - loki
+      - tempo
+      - prometheus
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3300:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+volumes:
+  reqtrack_db_data:
+  reqtrack_minio_data:

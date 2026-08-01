@@ -110,6 +110,8 @@ The database layer should include:
 ### File Storage Layer
 Files such as supporting documents and uploaded attachments are stored in a configurable backend. The initial deployment can use local filesystem storage, while the design should allow later migration to object storage such as S3 or MinIO.
 
+**Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against MinIO or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs MinIO and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract. See [decisions.md](decisions.md).
+
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:
 - Prometheus for metrics collection
@@ -177,6 +179,8 @@ The architecture should support future scaling by allowing services to be separa
 - separate read/write database patterns if required
 - additional services for search, caching, or queue processing
 
+**Implementation note (Pelion v2):** notification email delivery, the daily digest batching job, and the local-storage disk-usage monitor all run as in-process `asyncio` background tasks started from the FastAPI lifespan handler (`backend/app/services/notifications.py`, `backend/app/services/disk_monitor.py`), consistent with the existing single-instance WebSocket pub/sub pattern, rather than as separate worker services — that split remains a valid future step once a single backend replica is no longer sufficient. Email is delivered via SMTP (`aiosmtplib`); the default Compose stack runs MailHog as a local/dev/test SMTP catcher so sent mail is inspectable at http://localhost:8025 without a real mail provider.
+
 ## Security Architecture
 
 The platform should include the following security controls:
@@ -206,6 +210,8 @@ The database should be temporal. Rather than only storing the latest state of a 
 - point-in-time queries for audit, reporting, and compliance review
 
 A practical implementation in PostgreSQL is to use a versioned schema with fields such as `valid_from`, `valid_to`, `version_number`, `created_at`, `updated_at`, and `updated_by` on key entities. This supports temporal reporting without losing the simplicity of a relational model.
+
+**Implementation note (Ossa v1):** rather than placing `valid_from`/`valid_to` directly on the `requirements`/`change_requests` tables, those tables hold only stable identity fields, and a companion `*_versions` table (one row per historical state, `valid_to IS NULL` for the current row) carries every mutable attribute plus the temporal columns. This keeps identity permanently stable while giving the same point-in-time query capability. See [decisions.md](decisions.md) for the reasoning.
 
 ### Entity diagram
 

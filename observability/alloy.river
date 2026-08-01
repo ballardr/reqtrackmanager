@@ -1,0 +1,43 @@
+// Grafana Alloy config: ships container logs to Loki. Metrics are scraped
+// directly by Prometheus (see observability/prometheus.yml) since the
+// backend already exposes a Prometheus-compatible /metrics endpoint.
+//
+// An OTLP receiver is included so the backend can start exporting traces to
+// Tempo the moment OpenTelemetry instrumentation is added to the FastAPI
+// app (see docs/decisions.md — not implemented in Ossa v1, this is the
+// forwarding path ready to receive them).
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.containers.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}

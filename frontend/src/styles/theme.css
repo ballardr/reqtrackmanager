@@ -1,0 +1,199 @@
+/*
+  UI colour scheme uses CSS variables (U-C-01) so theming (including a
+  hosting provider's brand colours) only requires overriding this file.
+  Light and dark themes are both first-class (U-U-01); the active theme is
+  selected by a `data-theme` attribute on <html>, set from ThemeContext.
+*/
+
+:root[data-theme="light"] {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-alt: #eef0f3;
+  --color-border: #d8dce1;
+  --color-text: #1a202c;
+  --color-text-muted: #5a6472;
+  --color-primary: #2b6cb0;
+  --color-primary-contrast: #ffffff;
+  --color-accent: #2f855a;
+  --color-danger: #c53030;
+  --color-warning: #b7791f;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #14181f;
+  --color-surface: #1c222c;
+  --color-surface-alt: #242b37;
+  --color-border: #333c4a;
+  --color-text: #e6e9ef;
+  --color-text-muted: #9aa4b2;
+  --color-primary: #63b3ed;
+  --color-primary-contrast: #0b1220;
+  --color-accent: #68d391;
+  --color-danger: #fc8181;
+  --color-warning: #f6c667;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-primary);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  width: 100%;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--color-surface-alt);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
+.btn-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.input,
+select.input,
+textarea.input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.grid-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Responsive layout: single column below 720px (U-P-02). */
+@media (max-width: 720px) {
+  .grid-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  table,
+  thead,
+  tbody,
+  th,
+  td,
+  tr {
+    display: block;
+  }
+  thead tr {
+    display: none;
+  }
+  td {
+    border-bottom: none;
+    padding: 0.15rem 0.6rem;
+  }
+  tr {
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.5rem 0;
+  }
+}
