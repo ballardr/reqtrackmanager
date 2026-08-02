@@ -140,6 +140,24 @@ def generate_pdf_report(
     return buffer.getvalue()
 
 
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str) -> str:
+    """Neutralizes CSV formula/DDE injection (OWASP CSV injection).
+
+    A cell starting with `=`, `+`, `-`, `@`, tab, or CR is interpreted as a
+    formula by Excel/LibreOffice/Sheets when the file is opened — since
+    these values come straight from user-editable requirement fields and
+    this export exists specifically for spreadsheet review (R-F-02), a
+    prefixed `'` (which spreadsheet apps strip from display but never
+    execute) neutralizes it without altering how the value reads.
+    """
+    if value and value[0] in _FORMULA_TRIGGER_CHARS:
+        return "'" + value
+    return value
+
+
 def generate_csv_report(rows: list[ReportRequirementRow]) -> bytes:
     """Builds a CSV export of requirement rows (R-F-02).
 
@@ -154,7 +172,8 @@ def generate_csv_report(rows: list[ReportRequirementRow]) -> bytes:
     writer.writerow(["ID", "Name", "Component", "Category", "Status", "Reasoning", "Clarification"])
     for row in rows:
         writer.writerow([
-            row.unique_code, row.name, row.component_name, row.category_name, row.status,
-            row.reasoning, row.clarification,
+            _csv_safe(row.unique_code), _csv_safe(row.name), _csv_safe(row.component_name),
+            _csv_safe(row.category_name), _csv_safe(row.status), _csv_safe(row.reasoning),
+            _csv_safe(row.clarification),
         ])
     return buffer.getvalue().encode("utf-8")

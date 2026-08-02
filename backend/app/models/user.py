@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +55,18 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             once `is_2fa_enabled` is True; never returned via the API.
         email_digest_mode: Whether email notifications are sent instantly,
             batched into a daily digest, or not at all (C-N-05).
+        token_version: Access tokens are stateless JWTs with no revocation
+            list, so without this, a token issued before a password change
+            or 2FA disable would keep working until its own natural expiry
+            even after the user "locks out" a compromised session by
+            changing credentials. Embedded in every issued token as `tv`;
+            incremented on password change and 2FA disable, immediately
+            invalidating every token issued before the increment — including
+            the very token used to make that change, deterministically,
+            with no clock-precision ambiguity (a wall-clock timestamp
+            comparison was tried first and rejected: JWT `iat` is only
+            second-precision, so a token issued in the same second as its
+            own revocation would otherwise compare as still-valid).
     """
 
     __tablename__ = "users"
@@ -86,5 +98,6 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     email_digest_mode: Mapped[DigestMode] = mapped_column(str_enum(DigestMode, 20), default=DigestMode.INSTANT)
 
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
 
     org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")  # noqa: F821

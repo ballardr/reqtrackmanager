@@ -1,6 +1,6 @@
-import { Lock, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Lock, LogOut, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { FileAsset, OrgAdvancedSettings, OrgGroup, OrgRole, OrgUser, Organization, ProjectListItem } from "../api/types";
@@ -16,7 +16,9 @@ const strings = t();
  */
 export function OrgAdminPage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();
   const [org, setOrg] = useState<Organization | null>(null);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [resources, setResources] = useState<FileAsset[]>([]);
@@ -158,16 +160,32 @@ export function OrgAdminPage() {
     reload();
   }
 
+  async function leaveOrg() {
+    setLeaveError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/membership`);
+      navigate("/orgs");
+    } catch (err) {
+      setLeaveError(err instanceof ApiError ? err.message : "Something went wrong.");
+    }
+  }
+
   if (!org) return <Spinner />;
 
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{org.name}</h1>
-        {org.logo_file_id && (
-          <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
-        )}
+        <div className="row">
+          {org.logo_file_id && (
+            <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
+          )}
+          <button className="btn btn-danger" onClick={leaveOrg} title="Remove your own membership in this organisation">
+            <LogOut size={14} /> Leave organisation
+          </button>
+        </div>
       </div>
+      {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.logo}</h2>

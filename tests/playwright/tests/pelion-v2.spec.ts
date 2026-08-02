@@ -90,9 +90,14 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   });
 
   await test.step("change password triggers an in-app notification, then revert it", async () => {
-    // Wrapped in try/finally: golden-path.spec.ts's login step depends on
-    // ADMIN_PASSWORD staying valid across runs, so the revert must happen
-    // even if the notification assertion below fails.
+    // Changing the password bumps User.token_version, which deliberately
+    // invalidates the session's own current token (a stolen token must not
+    // keep working after the legitimate user "locks out" that session by
+    // changing credentials) — the frontend responds by logging the user out
+    // and redirecting to /login. Wrapped in try/finally: golden-path.spec.ts's
+    // login step depends on ADMIN_PASSWORD staying valid across runs, so the
+    // revert (and re-login as ADMIN_PASSWORD) must happen even if the
+    // notification assertion below fails.
     await page.getByTitle("Preferences").click();
     await page.getByPlaceholder("Current password").fill(ADMIN_PASSWORD);
     await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
@@ -102,27 +107,38 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByRole("button", { name: "Change password", exact: true }).click();
     const changeResponse = await changeResponsePromise;
     expect(changeResponse.ok()).toBe(true);
+    await page.waitForURL(/\/login$/);
 
     try {
-      // The notification bell only polls periodically (every 30s), so
-      // reload to pick up the new notification immediately. Waiting for
-      // the change-password response above (rather than reloading right
-      // after the click) avoids aborting that still in-flight request.
-      await page.reload();
+      // Log back in with the new password to pick up a fresh session and
+      // confirm the change-password notification was created.
+      await page.getByLabel("Email").fill(ADMIN_EMAIL);
+      await page.getByLabel("Password").fill(TEMP_PASSWORD);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await page.waitForURL(/\/projects(\/|$)/);
       await page.getByTitle("Notifications").click();
       await expect(page.getByText("Your password was changed").first()).toBeVisible();
       await page.getByTitle("Notifications").click();
     } finally {
-      // Revert via a direct API call rather than a second UI round-trip:
-      // this is the one action in the test that must not flake, since a
-      // failure here leaves the shared admin account unusable for every
-      // other spec that logs in with ADMIN_PASSWORD.
-      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const revertResponse = await page.request.post(`${apiBaseUrl}/api/v1/auth/change-password`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { current_password: TEMP_PASSWORD, new_password: ADMIN_PASSWORD },
-      });
+      // Revert through the UI, same as the forward change above. This also
+      // invalidates the TEMP_PASSWORD session, so log back in as
+      // ADMIN_PASSWORD afterwards to leave the shared admin account usable
+      // for the rest of this spec and every other spec that logs in with it.
+      await page.getByTitle("Preferences").click();
+      await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
+      await page.getByPlaceholder("New password").fill(ADMIN_PASSWORD);
+      const revertResponsePromise = page.waitForResponse(
+        (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "Change password", exact: true }).click();
+      const revertResponse = await revertResponsePromise;
       expect(revertResponse.ok()).toBe(true);
+      await page.waitForURL(/\/login$/);
+
+      await page.getByLabel("Email").fill(ADMIN_EMAIL);
+      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await page.waitForURL(/\/projects(\/|$)/);
     }
   });
 
@@ -141,7 +157,11 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       }
     }
 
-    await page.getByText("Projects", { exact: true }).click();
+    // A role-scoped locator, not getByText: after the password-change step's
+    // re-login, the admin may already land on the /projects overview (whose
+    // <h1> also reads "Projects"), which would make a plain text match
+    // ambiguous between that heading and this nav link.
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await expect(page).toHaveURL(/\/projects$/);
 
     const card = page.locator("main .card", { hasText: templateProjectName });

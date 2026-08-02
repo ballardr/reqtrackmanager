@@ -51,6 +51,11 @@ def _resolve_user_from_token(token: str | None, db: Session) -> User:
     user = db.get(User, UUID(claims["sub"]))
     if user is None or not user.is_active or user.is_archived:
         raise unauthorized
+    if claims.get("tv", 0) != user.token_version:
+        # Token was issued before the user's most recent password change /
+        # 2FA disable (see User.token_version) — reject even though the
+        # signature/expiry are otherwise valid.
+        raise unauthorized
     return user
 
 

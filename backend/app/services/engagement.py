@@ -13,9 +13,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.change_request import ReviewComment
+from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.engagement import CommentReaction, Subscription
 from app.models.enums import ReviewTargetType
+from app.models.project import FavoriteProject
+from app.models.requirement import Requirement
 from app.models.user import User
 from app.schemas.requirement import CommentOut
 
@@ -108,6 +110,37 @@ def unsubscribe(db: Session, user_id: UUID, entity_type: str, entity_id: UUID) -
     if existing is not None:
         db.delete(existing)
         db.commit()
+
+
+def remove_subscriptions_and_favorites_for_projects(db: Session, user_id: UUID, project_ids: list[UUID]) -> None:
+    """Deletes a user's `Subscription` rows for any requirement/change
+    request under the given projects, and their `FavoriteProject` rows for
+    those projects.
+
+    Call this whenever a user loses access to a project or organisation
+    (leaving, having a role revoked, being deactivated) — otherwise a stale
+    subscription keeps triggering notifications containing real project
+    content (a comment excerpt, a change-request title) for an entity the
+    user can no longer view at all, since `get_subscriber_ids` has no access
+    check of its own and `Notification` rows are visible to their owner
+    regardless of the project's current membership.
+    """
+    if not project_ids:
+        return
+    requirement_ids = db.scalars(select(Requirement.id).where(Requirement.project_id.in_(project_ids))).all()
+    cr_ids = db.scalars(select(ChangeRequest.id).where(ChangeRequest.project_id.in_(project_ids))).all()
+    entity_ids = list(requirement_ids) + list(cr_ids)
+    if entity_ids:
+        db.execute(
+            Subscription.__table__.delete().where(
+                Subscription.user_id == user_id, Subscription.entity_id.in_(entity_ids)
+            )
+        )
+    db.execute(
+        FavoriteProject.__table__.delete().where(
+            FavoriteProject.user_id == user_id, FavoriteProject.project_id.in_(project_ids)
+        )
+    )
 
 
 def get_subscriber_ids(db: Session, entity_type: str, entity_id: UUID, *, exclude_user_id: UUID) -> list[UUID]:

@@ -1,0 +1,77 @@
+import { expect, test } from "@playwright/test";
+
+import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+
+/**
+ * Job to be done: a stakeholder who spots a problem with an approved
+ * (locked) requirement can propose a fix, but cannot approve their own
+ * proposal — approval is a separate, project-manager-only action performed
+ * by someone else. This is the core separation-of-duties guarantee behind
+ * the whole change-request workflow (C-G-12).
+ *
+ * Personas: StakeholderAlphaOnly (submits, cannot approve) and
+ * OrgAdminAlphaBeta (the project's PM by virtue of having created it —
+ * approves).
+ */
+test("change request submitter cannot approve their own request; the project manager does", async ({ page }) => {
+  const proposedName = `Respond within 30ms (E2E ${Date.now()})`;
+  let crStatusAfterSubmit = "";
+
+  await test.step("stakeholder submits a change request against the locked requirement", async () => {
+    await loginAs(page, PERSONAS.stakeholderAlpha.email);
+    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await page.getByRole("link", { name: "Change Requests", exact: true }).click();
+    await page.getByRole("button", { name: "New change request" }).click();
+    // "Modify requirement" is the default radio and the requirement select
+    // defaults to the first requirement in the project (the seed script
+    // guarantees that's the locked one, HW-FN-001) once the async project
+    // data finishes loading — wait for that before filling the rest, or a
+    // fast click can submit with an empty requirement_id.
+    await expect(page.getByRole("combobox").first()).toContainText("HW-FN-001");
+    await page.getByPlaceholder("Proposed name").fill(proposedName);
+    await page.getByPlaceholder("Proposed reasoning").fill("Tighter latency target after field testing.");
+    await page.getByPlaceholder("Reason for change").fill("Customer escalation on response time.");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByText(proposedName)).toBeVisible();
+  });
+
+  await test.step("stakeholder submits it for review and sees no approve/reject controls", async () => {
+    await page.getByText(proposedName).click();
+    await page.getByRole("button", { name: "Submit" }).click();
+    await expect(page.getByText("submitted", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
+    crStatusAfterSubmit = "submitted";
+  });
+
+  await test.step("a direct API call to decide it is rejected server-side, not just hidden client-side", async () => {
+    const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+    const url = page.url();
+    const match = url.match(/change-requests\/([0-9a-f-]+)/);
+    const crId = match?.[1];
+    const projectMatch = url.match(/projects\/([0-9a-f-]+)/);
+    const projectId = projectMatch?.[1];
+    const resp = await page.request.post(
+      `http://localhost:8000/api/v1/projects/${projectId}/change-requests/${crId}/decide`,
+      { headers: { Authorization: `Bearer ${token}` }, data: { approve: true, note: "self-approval attempt" } }
+    );
+    expect(resp.status()).toBe(403);
+  });
+
+  await test.step("logout, log back in as the project manager, and approve it through the real UI", async () => {
+    await logout(page);
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await page.getByRole("link", { name: "Change Requests", exact: true }).click();
+    await page.getByText(proposedName).click();
+    await expect(page.getByText(crStatusAfterSubmit, { exact: true })).toBeVisible();
+    await page.getByPlaceholder("Decision note").fill("Approved — matches the new latency budget.");
+    await page.getByRole("button", { name: "Approve" }).click();
+    await expect(page.getByText("approved", { exact: true })).toBeVisible();
+  });
+
+  await test.step("the requirement now reflects the approved change", async () => {
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    await expect(page.getByText(proposedName)).toBeVisible();
+  });
+});

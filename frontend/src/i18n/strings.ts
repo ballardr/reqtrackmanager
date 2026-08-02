@@ -38,6 +38,7 @@ const en = {
     password: "Password",
     submit: "Sign in",
     error: "Invalid email or password.",
+    reauthRequired: "For your security, you've been signed out. Please sign in again.",
     twoFactorTitle: "Two-factor verification",
     twoFactorPrompt: "Enter the code from your authenticator app.",
     twoFactorCode: "Authentication code",

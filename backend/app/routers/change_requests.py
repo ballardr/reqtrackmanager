@@ -285,7 +285,17 @@ def decide_change_request(
     if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can decide change requests.")
 
-    cr = db.get(ChangeRequest, cr_id)
+    # Row-locked (not a plain db.get): two concurrent /decide calls on the
+    # same CR (e.g. one approve, one reject) would otherwise both read
+    # status == SUBMITTED before either commits, both pass the status
+    # check, and both apply their side effects — whichever commits last
+    # silently overwrites the other's decision, leaving cr.status
+    # mismatched with whatever side effects actually landed (e.g. a
+    # requirement gets modified/created by the "approve" transaction while
+    # the CR itself ends up recorded as REJECTED). The lock serializes the
+    # two calls so the second one's status check runs against the first
+    # one's already-committed result.
+    cr = db.scalar(select(ChangeRequest).where(ChangeRequest.id == cr_id).with_for_update())
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
     if cr.status not in (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW):

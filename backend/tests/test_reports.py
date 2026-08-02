@@ -27,6 +27,33 @@ def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
     assert len(resp.content) > 500
 
 
+def test_csv_report_neutralizes_formula_injection(client, admin_token, org_id):
+    """Security regression: a requirement name/reasoning starting with =/+/-/@
+    would be interpreted as a formula by Excel/LibreOffice on open (classic
+    CSV/DDE injection) — this export exists specifically for spreadsheet
+    review (R-F-02), so user-controlled fields must be neutralized."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={
+            "name": '=HYPERLINK("https://evil.example","x")', "reasoning": "+cmd|' /C calc'!A1",
+            "component_id": component_id, "category_id": category_id,
+        },
+        headers=auth_headers(admin_token),
+    )
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports/csv", json={}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    text = resp.content.decode("utf-8")
+    # CSV-quoted (the values contain commas/quotes), so check the
+    # neutralizing prefix survives rather than matching a raw substring.
+    assert "'=HYPERLINK(" in text
+    assert "'+cmd|" in text
+    # And the formula characters are never the first character of a cell.
+    assert '"=HYPERLINK(' not in text
+    assert ",+cmd|" not in text
+
+
 def test_csv_report_contains_requirement_row(client, admin_token, org_id):
     project = _seed_requirement(client, admin_token, org_id)
     resp = client.post(

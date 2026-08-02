@@ -63,7 +63,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("post a comment and react to it", async () => {
     await page.getByPlaceholder("Add comment").fill("This looks ready for review.");
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
-    await expect(page.getByText("Server Administrator")).toBeVisible();
+    await expect(page.getByText("Server Administrator", { exact: true })).toBeVisible();
     await expect(page.getByText("This looks ready for review.")).toBeVisible();
 
     await page.getByRole("button", { name: "Like this comment" }).click();
@@ -73,6 +73,9 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("raise a change request, subscribe, and comment on it", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
+    // The requirement select defaults asynchronously once project data
+    // loads — wait so Create doesn't submit with an empty requirement_id.
+    await expect(page.getByRole("combobox").first()).toContainText("Users can export their data");
     await page.getByPlaceholder("Proposed name").fill("Export as CSV or JSON");
     await page.getByPlaceholder("Proposed reasoning").fill("Stakeholders want a choice of format");
     await page.getByPlaceholder("Reason for change").fill("Clarifying the export format options");

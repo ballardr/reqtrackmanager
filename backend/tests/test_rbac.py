@@ -1,6 +1,13 @@
 """Tests for role-based access control boundaries (C-U-01, C-U-03)."""
 
-from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.conftest import (
+    auth_headers,
+    create_component_and_category,
+    create_org_admin_in,
+    create_org_user,
+    create_project,
+    login,
+)
 
 
 def test_member_cannot_create_project(client, admin_token, org_id):
@@ -124,3 +131,174 @@ def test_org_group_nested_in_project_group_grants_effective_role(client, admin_t
     token = login(client, "nested_member@example.com", "Password123!")
     resp = client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
+
+
+def test_plain_member_can_leave_organization(client, admin_token, org_id):
+    user_id = create_org_user(client, admin_token, org_id, "leaver@example.com", role="member")
+    token = login(client, "leaver@example.com", "Password123!")
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/membership", headers=auth_headers(token))
+    assert resp.status_code == 204, resp.text
+
+    # The org no longer appears in their own project-scoped listing of orgs.
+    orgs = client.get("/api/v1/orgs", headers=auth_headers(token)).json()
+    assert org_id not in [o["id"] for o in orgs]
+
+    # A second leave attempt has nothing left to remove.
+    resp = client.delete(f"/api/v1/orgs/{org_id}/membership", headers=auth_headers(token))
+    assert resp.status_code == 404
+
+
+def test_leaving_org_removes_subscriptions_so_no_more_content_leaks_via_notifications(
+    client, admin_token, org_id
+):
+    """Security regression: leave_organization used to delete the user's
+    org/project role rows but never their Subscription rows — so a comment
+    posted after they left still triggered a notification containing real
+    project content (the comment excerpt) for a user who could no longer
+    view the project at all, since get_subscriber_ids has no access check
+    of its own."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    req = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "Track this", "component_id": component_id, "category_id": category_id},
+        headers=auth_headers(admin_token),
+    ).json()
+
+    leaver_id = create_org_user(client, admin_token, org_id, "leaving_subscriber@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": leaver_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    leaver_token = login(client, "leaving_subscriber@example.com", "Password123!")
+    client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{req['id']}/subscription",
+        headers=auth_headers(leaver_token),
+    )
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/membership", headers=auth_headers(leaver_token))
+    assert resp.status_code == 204, resp.text
+
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req['id']}/comments",
+        json={"body": "Content the departed user should never see"}, headers=auth_headers(admin_token),
+    )
+
+    notifications = client.get("/api/v1/notifications", headers=auth_headers(leaver_token)).json()
+    assert not any("comment" in n["title"].lower() for n in notifications)
+
+
+def test_sole_org_admin_cannot_leave(client, admin_token):
+    org, admin2_token = create_org_admin_in(client, admin_token, "Sole Admin Org")
+
+    resp = client.delete(f"/api/v1/orgs/{org['id']}/membership", headers=auth_headers(admin2_token))
+    assert resp.status_code == 409
+
+    # Once a second admin exists, the first can leave freely.
+    second_admin_id = client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "second_admin@example.com", "display_name": "Second Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin2_token),
+    ).json()["user_id"]
+    resp = client.delete(f"/api/v1/orgs/{org['id']}/membership", headers=auth_headers(admin2_token))
+    assert resp.status_code == 204, resp.text
+    assert second_admin_id  # sanity: the second admin was actually created
+
+
+def test_sole_manager_via_nested_org_group_cannot_leave_and_loses_access_after(client, admin_token, org_id):
+    """Regression test: a user whose only project-manager role comes from an
+    org group nested into a project group (C-U-12) must be caught by the
+    sole-manager guard just as a direct manager would be — `get_project_managers`
+    alone doesn't see nested-group-derived managers, so the leave endpoint has
+    to check `get_effective_project_roles` too. And once a second manager
+    exists so the leave is allowed, the departing user's `OrgGroupMember` row
+    must actually be removed, or their nested-group-derived project access
+    (including this same manager role) would silently survive."""
+    project = create_project(client, admin_token, org_id)
+    user_id = create_org_user(client, admin_token, org_id, "nested_manager@example.com", role="member")
+
+    org_group = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Managers Team"}, headers=auth_headers(admin_token)
+    ).json()
+    client.post(
+        f"/api/v1/orgs/{org_id}/groups/{org_group['id']}/members",
+        json={"user_id": user_id}, headers=auth_headers(admin_token),
+    )
+    project_group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "PM Team", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
+    nested = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
+        json={"org_group_id": org_group["id"]}, headers=auth_headers(admin_token),
+    )
+    assert nested.status_code == 204, nested.text
+
+    token = login(client, "nested_manager@example.com", "Password123!")
+
+    # The project creator (admin_token) is already a direct manager, so this
+    # user is NOT actually the sole manager yet — leaving should succeed.
+    resp = client.delete(f"/api/v1/orgs/{org_id}/membership", headers=auth_headers(token))
+    assert resp.status_code == 204, resp.text
+
+    # Confirm the nested-group access is actually gone, not just the org role:
+    # re-fetching the project should now 403/404 for this user.
+    resp2 = client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(token))
+    assert resp2.status_code in (403, 404)
+
+
+def test_last_direct_manager_cannot_be_revoked_even_with_a_nested_group_backup(client, admin_token, org_id):
+    """Documents why `leave_organization`'s nested-group-aware guard is
+    currently unreachable in its "blocking" branch via any path this test
+    could find: `revoke_project_role` (and `remove_project_group_member`,
+    per docs/decisions.md) independently refuse to remove a project's last
+    *direct/direct-group* manager, using the same `get_project_managers`
+    resolver that doesn't count nested-org-group managers as backup either
+    — so a project can never actually reach "zero direct managers, one
+    nested-group manager" through the API today; it always keeps at least
+    one direct manager. `leave_organization`'s extra nested-group check is
+    still correct defense-in-depth (worth keeping in case that changes),
+    just not independently exercisable as a blocking scenario right now."""
+    project = create_project(client, admin_token, org_id)
+    user_id = create_org_user(client, admin_token, org_id, "nested_backup@example.com", role="member")
+
+    org_group = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Backup Managers Team"}, headers=auth_headers(admin_token)
+    ).json()
+    client.post(
+        f"/api/v1/orgs/{org_id}/groups/{org_group['id']}/members",
+        json={"user_id": user_id}, headers=auth_headers(admin_token),
+    )
+    project_group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Backup PM Team", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
+        json={"org_group_id": org_group["id"]}, headers=auth_headers(admin_token),
+    )
+
+    admin_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
+    resp = client.delete(
+        f"/api/v1/projects/{project['id']}/roles/{admin_id}/project_manager",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400, resp.text
+
+
+def test_sole_project_manager_cannot_leave_even_with_a_co_admin(client, admin_token):
+    org, admin1_token = create_org_admin_in(client, admin_token, "Sole PM Org")
+    client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "co_admin@example.com", "display_name": "Co Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin1_token),
+    )
+    project = create_project(client, admin1_token, org["id"], "Solo-Managed Project")
+
+    # admin1 is the org's sole PM on this project (auto-assigned at creation)
+    # even though a co-admin exists, so the org-admin-count check alone
+    # wouldn't have caught this — the project-manager check must run too.
+    resp = client.delete(f"/api/v1/orgs/{org['id']}/membership", headers=auth_headers(admin1_token))
+    assert resp.status_code == 409
+    assert project["name"] in resp.json()["detail"]

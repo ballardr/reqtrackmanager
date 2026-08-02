@@ -1,0 +1,256 @@
+"""
+Module: scripts.seed_e2e_dataset
+
+Seeds a fixed, multi-org, multi-persona dataset used by the Playwright suite
+under tests/playwright/tests/e2e-workflows/ (see docs/e2e-workflows.md for
+the full persona/workflow catalogue this backs).
+
+Design notes:
+- Every org/user/project/requirement/change-request is created through the
+  real HTTP API (not direct DB writes), including the zero-org server-admin
+  persona's org departure — it calls DELETE /orgs/{id}/membership on itself,
+  the same self-service "leave organisation" endpoint added specifically to
+  close this gap (see docs/e2e-workflows.md).
+- RBAC constraint that shapes the script's odd-looking ordering: creating a
+  brand-new organisation grants the creator (a server admin) no role in it,
+  and only `create_org_user` (creating a brand-new *user*) has a
+  server-admin carve-out — `assign_org_role` always requires the caller to
+  already be an org_admin of that specific org. So a persona who needs
+  org_admin (or member) status in a *second* org can't get it directly from
+  the server admin; a throwaway "bootstrap helper" user is created as that
+  second org's first org_admin (via the create-user carve-out) purely so it
+  can then grant the real persona a role there, exactly as a human admin
+  handing off access would.
+
+Run via (from tests/container):
+    docker compose exec backend python scripts/seed_e2e_dataset.py
+
+Idempotent: exits without changes if "E2E Alpha Robotics" already exists.
+Intended primary usage is against a freshly migrated database.
+"""
+
+from __future__ import annotations
+
+import sys
+
+import httpx
+
+BASE = "http://localhost:8000/api/v1"
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "ChangeMe123!"
+PASSWORD = "E2ePass123!"
+
+REQUIREMENT_NAMES = [
+    "Must respond to input within 50ms",
+    "Must support configuration via file",
+    "Must log all state transitions",
+    "Must recover automatically after a fault",
+    "Must expose a health-check endpoint",
+    "Must support role-based access control",
+    "Must validate all external input",
+    "Must run on the target hardware profile",
+]
+
+
+def login(email: str, password: str) -> str:
+    r = httpx.post(f"{BASE}/auth/login", json={"email": email, "password": password}, timeout=30)
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+def h(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def create_org(admin_headers: dict, name: str) -> dict:
+    r = httpx.post(f"{BASE}/orgs", json={"name": name}, headers=admin_headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_org_user(admin_headers: dict, org_id: str, email: str, display_name: str, role: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/users",
+        json={"email": email, "display_name": display_name, "password": PASSWORD, "role": role},
+        headers=admin_headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def assign_org_role(org_admin_headers: dict, org_id: str, user_id: str, role: str) -> None:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/users/{user_id}/roles", json={"user_id": user_id, "role": role},
+        headers=org_admin_headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_project(headers: dict, org_id: str, name: str, summary: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects", json={"organization_id": org_id, "name": name, "summary": summary},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def assign_project_role(headers: dict, project_id: str, user_id: str, role: str) -> None:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/roles", json={"user_id": user_id, "role": role},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
+    r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_category(headers: dict, project_id: str, name: str, prefix: str) -> dict:
+    r = httpx.post(f"{BASE}/projects/{project_id}/categories", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_requirement(headers: dict, project_id: str, name: str, reasoning: str, component_id: str, category_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements",
+        json={"name": name, "reasoning": reasoning, "component_id": component_id, "category_id": category_id, "keywords": []},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
+    """Adds two components, two categories, and `req_count` requirements to a project."""
+    hw = create_component(headers, project["id"], "Hardware", "HW")
+    sw = create_component(headers, project["id"], "Software", "SW")
+    fn = create_category(headers, project["id"], "Functional", "FN")
+    perf = create_category(headers, project["id"], "Performance", "PERF")
+    reqs = []
+    for i in range(req_count):
+        name = REQUIREMENT_NAMES[i % len(REQUIREMENT_NAMES)]
+        if i >= len(REQUIREMENT_NAMES):
+            name = f"{name} (variant {i // len(REQUIREMENT_NAMES) + 1})"
+        component = hw if i % 2 == 0 else sw
+        category = fn if i % 2 == 0 else perf
+        reqs.append(create_requirement(headers, project["id"], name, f"Reasoning: {name.lower()}.", component["id"], category["id"]))
+    return reqs
+
+
+def main() -> None:
+    admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
+    h_admin = h(admin_token)
+
+    existing_orgs = httpx.get(f"{BASE}/orgs", headers=h_admin, timeout=30).json()
+    if any(o["name"] == "E2E Alpha Robotics" for o in existing_orgs):
+        print("E2E dataset already seeded (found 'E2E Alpha Robotics'). Exiting without changes.")
+        return
+
+    print("Creating organisations...")
+    alpha = create_org(h_admin, "E2E Alpha Robotics")
+    beta = create_org(h_admin, "E2E Beta Software")
+    gamma = create_org(h_admin, "E2E Gamma Labs")
+
+    print("Creating persona users...")
+    serveradmin = create_org_user(h_admin, alpha["id"], "e2e-serveradmin@example.com", "E2E Server Admin Only", "member")
+    orgadmin_ab = create_org_user(h_admin, alpha["id"], "e2e-orgadmin-ab@example.com", "E2E OrgAdmin AlphaBeta", "org_admin")
+    orgadmin_g = create_org_user(h_admin, gamma["id"], "e2e-orgadmin-g@example.com", "E2E OrgAdmin Gamma", "org_admin")
+    stakeholder_a = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a@example.com", "E2E Stakeholder AlphaOnly", "member")
+    member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
+
+    # Bootstrap helper: no product endpoint lets a server admin grant a role
+    # in an org they don't already belong to (assign_org_role requires a
+    # genuine org_admin caller) — only creating a brand-new user has that
+    # carve-out. So a throwaway user becomes Beta's first org_admin purely
+    # to hand orgadmin_ab and member_ab their second-org roles, mirroring
+    # how a real admin handoff would work. Not one of the documented
+    # personas; never logged into by the Playwright suite.
+    beta_bootstrap = create_org_user(h_admin, beta["id"], "e2e-bootstrap-beta@example.com", "E2E Bootstrap Helper (Beta)", "org_admin")
+    h_beta_bootstrap = h(login("e2e-bootstrap-beta@example.com", PASSWORD))
+    assign_org_role(h_beta_bootstrap, beta["id"], orgadmin_ab["user_id"], "org_admin")
+    assign_org_role(h_beta_bootstrap, beta["id"], member_ab["user_id"], "member")
+
+    print("Granting server-admin to the zero-org persona...")
+    r = httpx.put(
+        f"{BASE}/system/users/{serveradmin['user_id']}/server-admin", json={"is_server_admin": True},
+        headers=h_admin, timeout=30,
+    )
+    r.raise_for_status()
+
+    print("Zero-org persona leaves Alpha through the self-service endpoint...")
+    h_serveradmin = h(login("e2e-serveradmin@example.com", PASSWORD))
+    r = httpx.delete(f"{BASE}/orgs/{alpha['id']}/membership", headers=h_serveradmin, timeout=30)
+    r.raise_for_status()
+
+    h_ab = h(login("e2e-orgadmin-ab@example.com", PASSWORD))
+    h_g = h(login("e2e-orgadmin-g@example.com", PASSWORD))
+
+    print("Creating projects (2 per org)...")
+    alpha1 = create_project(h_ab, alpha["id"], "Alpha-1 Robotic Arm Controller", "E2E seed project.")
+    alpha2 = create_project(h_ab, alpha["id"], "Alpha-2 Sensor Fusion Platform", "E2E seed project.")
+    beta1 = create_project(h_ab, beta["id"], "Beta-1 Billing Engine", "E2E seed project.")
+    beta2 = create_project(h_ab, beta["id"], "Beta-2 Customer Portal", "E2E seed project.")
+    gamma1 = create_project(h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.")
+    gamma2 = create_project(h_g, gamma["id"], "Gamma-2 Data Pipeline", "E2E seed project.")
+
+    print("Assigning project-scoped roles...")
+    assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
+    assign_project_role(h_ab, alpha1["id"], member_ab["user_id"], "member")
+    assign_project_role(h_ab, beta1["id"], member_ab["user_id"], "member")
+
+    print("Seeding requirements (6-8 per project)...")
+    alpha1_reqs = seed_project_content(h_ab, alpha1, 8)
+    seed_project_content(h_ab, alpha2, 6)
+    beta1_reqs = seed_project_content(h_ab, beta1, 7)
+    seed_project_content(h_ab, beta2, 6)
+    gamma1_reqs = seed_project_content(h_g, gamma1, 7)
+    seed_project_content(h_g, gamma2, 6)
+
+    print("Locking one Alpha-1 requirement (approves it directly) for the CR-approval and bypass-attempt workflows...")
+    locked_req = alpha1_reqs[0]
+    r = httpx.put(
+        f"{BASE}/projects/{alpha1['id']}/requirements/{locked_req['id']}",
+        json={
+            "name": locked_req["name"], "reasoning": locked_req["reasoning"], "clarification": "",
+            "component_id": locked_req["component_id"], "category_id": locked_req["category_id"],
+            "owner_id": locked_req["owner_id"], "status": "approved", "keywords": [],
+            "change_note": "E2E seed: locking for change-request workflow testing.",
+        },
+        headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+
+    print("Seeding a couple of pre-existing change requests for volume...")
+    for headers, project, reqs in [(h_ab, beta1, beta1_reqs), (h_g, gamma1, gamma1_reqs)]:
+        target = reqs[1]
+        r = httpx.post(
+            f"{BASE}/projects/{project['id']}/change-requests",
+            json={
+                "kind": "modify_requirement", "requirement_id": target["id"],
+                "proposed_name": target["name"], "proposed_reasoning": target["reasoning"],
+                "reason": "E2E seed: pre-existing change request for volume.",
+            },
+            headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+
+    print("\nDone. Personas (all password: E2ePass123!):")
+    print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
+    print("  e2e-orgadmin-ab@example.com   - org_admin of Alpha + Beta; PM on all 4 of those projects")
+    print("  e2e-orgadmin-g@example.com    - org_admin of Gamma only; PM on both Gamma projects")
+    print("  e2e-stakeholder-a@example.com - stakeholder on Alpha-1 only")
+    print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
+    print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except httpx.HTTPStatusError as exc:
+        print(f"Seed failed: {exc.request.method} {exc.request.url} -> {exc.response.status_code} {exc.response.text}", file=sys.stderr)
+        raise

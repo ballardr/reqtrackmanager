@@ -23,13 +23,13 @@ So what is a Formal Engineering Requirements Management System?
 
 Requirements projects are organised by project component and category and also split by project version. Projects sit within an organisation.
 
-![](./figures/architecture/Requirements_structure.svg)
+![](../figures/architecture/Requirements_structure.svg)
 
 This allows ease of management of the project's lifecycle while similtaniously accommodating the complexity of requiements and their sequential nature.
 
 For each project version, there is a requirements scoping stage, then these get reviewed and refined and finally approved to form the actual project requirements.
 
-![](./figures/architecture/Requirement_Capture.svg)
+![](../figures/architecture/Requirement_Capture.svg)
 
 During the scoping stage of the project, requirements can be added without change requests, and by any user that is authorised to add requirements. By default, this is limited to project managers, project administators and project stakeholders.
 
@@ -39,7 +39,7 @@ The change management process consists of sumbitting a change request, having th
 
 The submission must include what is being requested (a new requirement or a change to an existing requirement), and all required attributes. There must also be a reason for why this submission is being made, and wasn't identified in the original scope or previous project requirements.
 
-![](./figures/architecture/Requirement_Change.svg)
+![](../figures/architecture/Requirement_Change.svg)
 
 ## Background
 
@@ -104,6 +104,11 @@ As such, I wanted to develop my own system that I could work on in my spare time
 | C-R-03 | Stakeholders should be able to vote on change request approval.<br>**Reasoning:** ensure that all invested parties have a say in significant project changes, promoting collaborative decision-making. This process helps balance differing interests and perspectives, leading to more informed and accepted decisions. Allowing stakeholder votes also enhances transparency and accountability in the change management process. | Recommended | Massif (v3) |
 | C-R-04 | Tasks should have the ability to have due dates set.<br>**Reasoning:** This ensures that project timelines are effectively managed and deadlines are met, enhancing overall project scheduling and accountability. By setting due dates, the system provides clear expectations and facilitates timely completion of tasks, contributing to the successful execution of projects. | Recommended | Massif (v3) |
 | C-R-05 | Once a project stage has entered review after being scoped, a deadline can be set for stakeholders to provide a resonse review, after which time if they have not provided a response, then it’s assumed they have approved the requirements.<br>**Reasoning:** This feature establishes clear expectations and accountability, encouraging stakeholders to engage and respond within the specified timeframe. Assuming approval if no response is provided streamlines the review process, reducing bottlenecks and enabling smoother transitions between project stages. | Recommended | Massif (v3) |
+| C-R-06 | Requirements must support an optional review date, indicating when the requirement is next due to be reviewed to confirm it is still being met.<br>**Reasoning:** Setting a scheduled review point helps ensure requirements continue to be met over time and that later changes to the product or project don't cause a previously satisfied requirement to regress unnoticed.<br>**Clarification:** The review date can only be set or changed on creation of the requirement, or via a change request; it cannot be altered by a direct edit once the requirement is approved. | Requirement | Massif (v3) |
+| C-R-07 | Once a requirement's review date arrives, users should be able to record the outcome of the review as either met or failed.<br>**Reasoning:** Recording an explicit review outcome provides evidence that verification activities have actually taken place and creates an auditable record confirming whether the requirement is still satisfied.<br>**Clarification:** An optional comments field must be available to capture details when a review outcome is recorded as failed. | Recommended | Massif (v3) |
+| C-R-08 | The system must provide notifications when a requirement's review is due.<br>**Reasoning:** Proactive notification ensures reviews aren't missed or forgotten, supporting the goal of catching requirement regressions before they go unnoticed.<br>**Clarification:** The lead time before the review date at which the notification is sent should be configurable, both at a requirement level and as a project-wide default configuration. | Requirement | Massif (v3) |
+| C-R-09 | There must be a page listing requirements that are due for review or are overdue for review, viewable both on a project basis and a user basis.<br>**Reasoning:** A consolidated review-status view lets project managers and individual users quickly identify outstanding verification work, supporting the ongoing goal of catching requirement regressions. | Requirement | Massif (v3) |
+| C-R-10 | A requirement's review may be assignable to a specific user, making that user accountable for completing the review.<br>**Reasoning:** Assigning an accountable owner for a review ensures someone is clearly responsible for confirming the requirement is still met, rather than review due-dates going unowned and easily overlooked.<br>**Clarification:** This is the assignment that the per-user review page (C-R-09) is filtered against. | Recommended | Massif (v3) |
 
 ## Auditing
 
@@ -121,6 +126,7 @@ As such, I wanted to develop my own system that I could work on in my spare time
 | C-A-10 | The UI should have the ability to see project changes over time.<br>**Reasoning:** This ensures transparency and traceability of modifications. This allows stakeholders to understand the history and rationale behind changes, facilitating better decision-making and accountability. It also helps in auditing and resolving disputes by providing a clear record of who made changes and when.<br>**Clarification:** The UI can have a filter attached to this view, such as to allow a time period to be specified. Display changes in discussion threads should be optional, and determined by filters. | Requirement | Pelion (v2) |
 | C-A-11 | On creation of a requirement, a project managers should be able to assign the creator of the requirement to another user<br>**Reasoning:** This ensures flexibility in accurately reflecting the ownership and responsibility of the requirement. This feature accommodates changes in project roles and tasks, ensuring that the correct user is recognized for the creation and subsequent management of the requirement. | Requirement | Pelion (v2) |
 | C-A-12 | On creation of a change request, a project managers should be able to assign the creator of the change request to another user<br>**Reasoning:** This ensures flexibility in accurately reflecting the ownership and responsibility of the requirement. This feature accommodates changes in project roles and tasks, ensuring that the correct user is recognized for the creation and subsequent management of the requirement. | Requirement | Pelion (v2) |
+| C-A-13 | There must be a user access review page, allowing administrators to identify enabled users who present a potential access risk, such as users who last logged in over 6 months ago.<br>**Reasoning:** This helps identify stale or unused accounts that represent an unnecessary security risk, supporting proactive access hygiene and reducing the system's attack surface.<br>**Clarification:** Server admins must also be able to run a similar review to identify enabled users who are not a member of any organisation and have no project access, as these represent orphaned accounts that should be deactivated. | Requirement | Massif (v3) |
 
 ## Metadata
 

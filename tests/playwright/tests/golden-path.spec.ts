@@ -80,7 +80,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByText("Boot in under 3 seconds").click();
     await page.getByRole("button", { name: "Submit" }).click();
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("approved")).toBeVisible();
+    await expect(page.getByText("approved", { exact: true })).toBeVisible();
 
     await page.getByText("Requirements").click();
     await expect(page.getByText("Boot in under 3 seconds")).toBeVisible();

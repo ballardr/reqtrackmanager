@@ -48,20 +48,25 @@ def verify_password(password: str, password_hash: str) -> bool:
     return _pwd_context.verify(password, password_hash)
 
 
-def create_access_token(subject: str, expires_minutes: int | None = None) -> str:
+def create_access_token(subject: str, token_version: int = 0, expires_minutes: int | None = None) -> str:
     """Creates a signed JWT access token.
 
     Args:
         subject: The value to place in the token's `sub` claim (the user id).
+        token_version: The issuing user's current `User.token_version`,
+            embedded as the `tv` claim. `deps._resolve_user_from_token`
+            rejects any token whose `tv` doesn't match the user's *current*
+            `token_version` — password change / 2FA disable increment it,
+            deterministically invalidating every previously issued token
+            (see `User.token_version`'s docstring for why this is a version
+            counter and not a timestamp comparison).
         expires_minutes: Optional override for token lifetime in minutes.
 
     Returns:
         An encoded JWT string.
     """
-    expire = datetime.now(UTC) + timedelta(
-        minutes=expires_minutes or settings.access_token_expire_minutes
-    )
-    payload = {"sub": subject, "exp": expire, "purpose": "access"}
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)
+    payload = {"sub": subject, "exp": expire, "tv": token_version, "purpose": "access"}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

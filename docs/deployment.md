@@ -12,7 +12,7 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 
 ReqTrackManager ships **two** Compose files with different purposes — using the wrong one for the wrong purpose is the single most important thing to get right:
 
-- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `SERVER_ADMIN_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
+- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
 - **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog, with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest) and `tests/playwright/` run against.
 
 These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
@@ -76,6 +76,28 @@ DEPLOYMENT_NOTIFICATION_EMAIL=ops@your-domain.example
 ```
 
 The full list of backend environment variables, with defaults, is documented in the [README's Configuration section](../README.md#configuration).
+
+### Hardening: scope MinIO credentials
+
+By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (see `docker-compose.yml`), so the backend authenticates to MinIO as its full administrator rather than a credential limited to its own bucket. That's fine to get started, but for a production deployment it's worth narrowing: a backend compromise (or a leaked environment variable) then only grants access to this app's own files, not the ability to manage every MinIO user/bucket/policy. Provision a scoped service account once, then point the backend at it instead of the root credentials:
+
+```bash
+docker compose exec minio mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+docker compose exec minio mc admin user add local reqtrackmanager-app <a-different-strong-password>
+docker compose exec minio mc admin policy create local reqtrackmanager-app-policy - <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+    "Resource": ["arn:aws:s3:::reqtrackmanager", "arn:aws:s3:::reqtrackmanager/*"]
+  }]
+}
+EOF
+docker compose exec minio mc admin policy attach local reqtrackmanager-app-policy --user reqtrackmanager-app
+```
+
+Then set `STORAGE_S3_ACCESS_KEY=reqtrackmanager-app` and `STORAGE_S3_SECRET_KEY=<the password you chose above>` in your `.env`, instead of reusing `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` there. Keep the root credentials only for this one-time setup (and for the admin console at `:9001`).
 
 ### TLS and reverse proxy
 

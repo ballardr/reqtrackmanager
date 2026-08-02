@@ -46,6 +46,41 @@ def test_upload_and_download_requirement_attachment(client, admin_token, org_id)
     assert download.status_code == 404
 
 
+def test_html_attachment_is_forced_to_download_not_rendered_inline(client, admin_token, org_id):
+    """Security regression: an uploaded file's Content-Type is whatever the
+    uploader's client claimed (never validated), so serving it back with
+    Content-Disposition: inline would let a same-origin HTML/SVG payload
+    execute as a page when a more privileged viewer opens the link —
+    including reading this same endpoint's `?token=` query-param auth.
+    Only a small safe-to-render allowlist (images/PDF) gets `inline`;
+    everything else, including an HTML payload, must download instead."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("payload.html", b"<script>alert(document.cookie)</script>", "text/html")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201
+    file_id = resp.json()["id"]
+
+    download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
+    assert download.status_code == 200
+    assert download.headers["content-disposition"].startswith("attachment")
+    assert download.headers["x-content-type-options"] == "nosniff"
+
+    # A genuine image still renders inline (no regression for the normal case).
+    img_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    img_download = client.get(f"/api/v1/files/{img_resp.json()['id']}", headers=auth_headers(admin_token))
+    assert img_download.headers["content-disposition"].startswith("inline")
+
+
 def test_project_metrics_includes_file_count(client, admin_token, org_id):
     """U-P-05: the overview metrics' file_count reflects distinct files
     attached to requirements in the project (attachments and linked shared

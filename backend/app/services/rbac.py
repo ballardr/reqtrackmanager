@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import OrgRole, ProjectRole
-from app.models.organization import OrgGroup, OrgGroupMember, UserOrgRole
+from app.models.organization import OrgGroup, OrgGroupMember, Organization, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 
@@ -148,6 +148,31 @@ def get_project_managers(db: Session, project_id: UUID) -> set[UUID]:
         ).all()
     )
     return manager_ids
+
+
+def lock_project_for_update(db: Session, project_id: UUID) -> None:
+    """Acquires a Postgres row lock on the project for the rest of the
+    current transaction.
+
+    Serializes concurrent "is this the project's last manager?" checks
+    (`revoke_project_role`, `remove_project_group_member`,
+    `leave_organization`, `deactivate_org_user`'s C-U-09 fallback) against
+    each other. Without this, two concurrent removals — e.g. an org admin
+    revoking manager A's role while manager B simultaneously leaves the org
+    — can each independently observe the other as still-present backup and
+    both proceed, leaving the project with zero managers even though each
+    individual check correctly enforced C-U-08 against the state it saw.
+    """
+    db.execute(select(Project.id).where(Project.id == project_id).with_for_update())
+
+
+def lock_organization_for_update(db: Session, organization_id: UUID) -> None:
+    """Acquires a Postgres row lock on the organisation for the rest of the
+    current transaction, serializing concurrent org-membership-count-
+    sensitive operations (currently: `leave_organization`'s sole-admin
+    check) against each other — see `lock_project_for_update` for the same
+    race shape one level up."""
+    db.execute(select(Organization.id).where(Organization.id == organization_id).with_for_update())
 
 
 def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:

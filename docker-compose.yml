@@ -18,7 +18,7 @@ services:
     environment:
       POSTGRES_DB: reqtrack
       POSTGRES_USER: reqtrack
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reqtrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}
     volumes:
       - reqtrack_db_data:/var/lib/postgresql/data
     # No host port published: nothing outside the Compose network needs
@@ -55,7 +55,7 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:-reqtrack}@db:5432/reqtrack
+      DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in production}
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}

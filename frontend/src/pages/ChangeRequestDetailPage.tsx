@@ -7,6 +7,7 @@ import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
+import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -14,6 +15,8 @@ const strings = t();
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01). */
 export function ChangeRequestDetailPage() {
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
+  const myRoles = useMyProjectRoles(projectId);
+  const canDecide = myRoles.includes("project_manager");
   const [cr, setCr] = useState<ChangeRequest | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [decisionNote, setDecisionNote] = useState("");
@@ -123,7 +126,7 @@ export function ChangeRequestDetailPage() {
               {strings.changeRequests.withdraw}
             </button>
           )}
-          {(cr.status === "submitted" || cr.status === "in_review") && (
+          {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
             <>
               <input
                 className="input"

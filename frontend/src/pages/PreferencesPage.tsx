@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -22,7 +23,8 @@ const strings = t();
  * TOTP two-factor enrollment (C-U-14).
  */
 export function PreferencesPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
@@ -37,7 +39,6 @@ export function PreferencesPage() {
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const [enrollment, setEnrollment] = useState<{ secret: string; qrCodePngBase64: string } | null>(null);
@@ -82,15 +83,17 @@ export function PreferencesPage() {
 
   async function changePassword() {
     setPasswordError(null);
-    setPasswordMessage(null);
     try {
       await api.post("/api/v1/auth/change-password", {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      setCurrentPassword("");
-      setNewPassword("");
-      setPasswordMessage(strings.preferences.saved);
+      // A password change invalidates every token issued before it,
+      // including the one this request just used (see User.token_version) —
+      // the current session is already dead, so send the user to log back in
+      // rather than leaving the app running on a token the server now rejects.
+      logout();
+      navigate("/login", { state: { message: strings.login.reauthRequired } });
     } catch (err) {
       setPasswordError(err instanceof ApiError ? err.message : strings.common.error);
     }
@@ -118,8 +121,10 @@ export function PreferencesPage() {
     setTwoFactorError(null);
     try {
       await api.post("/api/v1/auth/2fa/disable", { code: disableCode });
-      setDisableCode("");
-      await refreshUser();
+      // Same rationale as changePassword: disabling 2FA also bumps
+      // token_version, so the current session token is already dead.
+      logout();
+      navigate("/login", { state: { message: strings.login.reauthRequired } });
     } catch (err) {
       setTwoFactorError(err instanceof ApiError ? err.message : strings.common.error);
     }
@@ -233,7 +238,6 @@ export function PreferencesPage() {
             onChange={(e) => setNewPassword(e.target.value)}
           />
           {passwordError && <div style={{ color: "var(--color-danger)" }}>{passwordError}</div>}
-          {passwordMessage && <div style={{ color: "var(--color-accent)" }}>{passwordMessage}</div>}
           <button className="btn" onClick={changePassword} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.changePassword}
           </button>

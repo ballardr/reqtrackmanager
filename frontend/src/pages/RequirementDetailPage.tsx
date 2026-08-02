@@ -18,6 +18,7 @@ import { CommentThread } from "../components/CommentThread";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
+import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -30,6 +31,9 @@ const strings = t();
 export function RequirementDetailPage() {
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
+  const myRoles = useMyProjectRoles(projectId);
+  const canArchive = myRoles.includes("project_manager") || myRoles.includes("project_administrator");
+  const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -158,19 +162,23 @@ export function RequirementDetailPage() {
         </h1>
         <div className="row">
           <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
-          <button className="btn btn-danger" onClick={archive}>
-            {strings.requirements.archive}
-          </button>
+          {canArchive && (
+            <button className="btn btn-danger" onClick={archive}>
+              {strings.requirements.archive}
+            </button>
+          )}
         </div>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
       <div className="stack">
-      {requirement.is_locked ? (
+      {requirement.is_locked || !canEdit ? (
         <div className="card stack">
-          <div className="badge" style={{ alignSelf: "flex-start" }}>
-            {strings.requirements.locked} — {strings.requirements.lockedNotice}
-          </div>
+          {requirement.is_locked && (
+            <div className="badge" style={{ alignSelf: "flex-start" }}>
+              {strings.requirements.locked} — {strings.requirements.lockedNotice}
+            </div>
+          )}
           <div>
             <div className="text-muted">{strings.requirements.description}</div>
             <p style={{ marginTop: "0.25rem" }}>{requirement.reasoning}</p>

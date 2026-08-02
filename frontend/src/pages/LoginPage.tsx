@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ProjectListItem, User } from "../api/types";
@@ -28,6 +28,8 @@ async function resolveLandingPath(user: User): Promise<string> {
 export function LoginPage() {
   const { login, verify2fa } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const reauthMessage = (location.state as { message?: string } | null)?.message ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -98,6 +100,7 @@ export function LoginPage() {
     <div className="container" style={{ maxWidth: 380, marginTop: "4rem" }}>
       <form className="card stack" onSubmit={handleSubmit}>
         <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.login.title}</h1>
+        {reauthMessage && <div className="text-muted">{reauthMessage}</div>}
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.login.email}
           <input

@@ -32,6 +32,22 @@ from app.services.rbac import get_effective_org_roles, get_effective_project_rol
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
+# Content types safe to render inline in a browser tab. Everything else is
+# forced to download as an attachment instead — `content_type` is whatever
+# the uploader's client claimed at upload time (never validated against the
+# actual bytes), so serving an arbitrary claimed type "inline" would let any
+# user with upload rights (a low bar: any project editor, or any user at all
+# for their own avatar) store e.g. `text/html` or `image/svg+xml` content
+# and have it execute as a same-origin page when a more privileged user
+# opens the link — including reading the `?token=` query parameter this
+# same endpoint accepts (see `get_current_user_header_or_query`) and
+# `localStorage`, i.e. a stored-XSS-to-account-takeover path. SVG is
+# deliberately excluded even though it's an image format, since it can
+# embed `<script>`/event-handler payloads the same way HTML can.
+_INLINE_SAFE_CONTENT_TYPES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon", "application/pdf",
+}
+
 
 @router.get("/{file_id}")
 def download_file(
@@ -63,7 +79,11 @@ def download_file(
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
 
     data = read_file(file_asset)
+    disposition = "inline" if file_asset.content_type in _INLINE_SAFE_CONTENT_TYPES else "attachment"
     return Response(
         content=data, media_type=file_asset.content_type,
-        headers={"Content-Disposition": f'inline; filename="{file_asset.filename}"'},
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{file_asset.filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
     )

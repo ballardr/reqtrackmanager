@@ -82,7 +82,7 @@ def login(
     if result.user.is_2fa_enabled:
         return TwoFactorChallengeResponse(challenge_token=create_2fa_challenge_token(str(result.user.id)))
 
-    token = create_access_token(str(result.user.id))
+    token = create_access_token(str(result.user.id), token_version=result.user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(result.user))
 
 
@@ -97,7 +97,7 @@ def verify_2fa(payload: TwoFactorVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     if not totp.verify_code(user.totp_secret, payload.code):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), token_version=user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
@@ -148,6 +148,10 @@ def change_password(
     if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect.")
     current_user.password_hash = hash_password(payload.new_password)
+    # Invalidates every access token issued before this moment, including
+    # the caller's own current one — otherwise a token stolen before the
+    # change keeps working for its full remaining lifetime regardless.
+    current_user.token_version += 1
     notifications.notify(
         db, current_user, notification_type=NotificationType.PASSWORD_CHANGED,
         title="Your password was changed",
@@ -201,6 +205,9 @@ def disable_2fa(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
     current_user.is_2fa_enabled = False
     current_user.totp_secret = None
+    # Same rationale as change_password: a token issued while 2FA was still
+    # on shouldn't silently keep working past this point.
+    current_user.token_version += 1
     db.commit()
 
 

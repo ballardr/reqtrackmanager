@@ -40,6 +40,7 @@ from app.schemas.org import (
     OrgUserOut,
 )
 from app.security import hash_password
+from app.services import engagement
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
@@ -244,6 +245,132 @@ def assign_org_role(
         db.commit()
 
 
+@router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
+def leave_organization(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service: the caller removes their own membership in an organisation.
+
+    Previously there was no way for a user to leave an org at all — see
+    docs/e2e-workflows.md's "product gaps found" section, which this closes.
+
+    Refuses (409) rather than silently reassigning anyone else's roles if
+    leaving would strip the organisation of its last org_admin, or leave any
+    of its projects with zero managers. Unlike `deactivate_org_user`'s C-U-09
+    fallback (which reassigns the *acting admin* as a project's new manager
+    when removing someone else), there is no natural recipient for that
+    reassignment here — the caller is the one leaving — so this endpoint
+    asks the caller to reassign those roles first instead of guessing who
+    should inherit them.
+
+    Also removes the caller's `OrgGroupMember` rows for this organisation's
+    groups, not just their direct project roles/memberships — project access
+    can be granted through an org group nested into a project group (C-U-12),
+    and `get_project_managers` (used for the sole-manager guard below)
+    deliberately only resolves *direct* managers, not nested-group-derived
+    ones (see its own docstring). Leaving that cleanup out would let a user
+    "leave" an org while silently retaining full project access through a
+    still-active session — this endpoint checks both direct and
+    nested-group-derived manager status precisely because of that gap.
+
+    Locks the organisation row for the duration of this transaction
+    (`lock_organization_for_update`) before doing anything else, and each
+    project row in turn before checking its manager count
+    (`lock_project_for_update`) — without this, two concurrent leavers (e.g.
+    an org's last two admins, or a project's last two managers, each leaving
+    at once) could each see the other as still-present backup and both
+    proceed, since neither transaction's check would see the other's
+    not-yet-committed removal.
+    """
+    from app.services.rbac import lock_organization_for_update, lock_project_for_update
+
+    lock_organization_for_update(db, organization_id)
+
+    roles = get_effective_org_roles(db, current_user.id, organization_id)
+    if not roles:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "You are not a member of this organisation.")
+
+    if OrgRole.ORG_ADMIN in roles:
+        other_admins = db.scalars(
+            select(UserOrgRole.user_id).where(
+                UserOrgRole.organization_id == organization_id,
+                UserOrgRole.role == OrgRole.ORG_ADMIN,
+                UserOrgRole.user_id != current_user.id,
+            )
+        ).all()
+        if not other_admins:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "You are this organisation's only admin. Assign another admin before leaving.",
+            )
+
+    from app.models.enums import ProjectRole  # local import matching this module's existing convention
+    from app.models.project import Project, ProjectGroup  # local import to avoid cycle at module load
+
+    from app.services.rbac import get_effective_project_roles
+
+    projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
+    blocking_projects = []
+    for p in projects:
+        lock_project_for_update(db, p.id)
+        concrete_managers = get_project_managers(db, p.id)
+        # Fold in nested-org-group-derived PM status too: get_project_managers
+        # only resolves direct assignments/direct group membership, so a
+        # manager role held solely via a nested org group would otherwise be
+        # invisible here, letting this guard miss a soon-to-be-orphaned
+        # project (its only "manager" isn't a *concrete* manager per
+        # get_project_managers' own definition, but removing this user's
+        # nested-group access below would still leave nobody with the role).
+        i_am_manager = current_user.id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
+            db, current_user.id, p.id
+        )
+        if i_am_manager and not (concrete_managers - {current_user.id}):
+            blocking_projects.append(p.name)
+    if blocking_projects:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "You are the sole manager of: " + ", ".join(blocking_projects) + ". Assign another manager first.",
+        )
+
+    project_ids = [p.id for p in projects]
+    if project_ids:
+        db.execute(
+            UserProjectRole.__table__.delete().where(
+                UserProjectRole.user_id == current_user.id, UserProjectRole.project_id.in_(project_ids)
+            )
+        )
+        db.execute(
+            ProjectGroupMember.__table__.delete().where(
+                ProjectGroupMember.user_id == current_user.id,
+                ProjectGroupMember.project_group_id.in_(
+                    select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
+                ),
+            )
+        )
+    db.execute(
+        OrgGroupMember.__table__.delete().where(
+            OrgGroupMember.user_id == current_user.id,
+            OrgGroupMember.org_group_id.in_(
+                select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
+            ),
+        )
+    )
+    engagement.remove_subscriptions_and_favorites_for_projects(db, current_user.id, project_ids)
+
+    db.execute(
+        UserOrgRole.__table__.delete().where(
+            UserOrgRole.user_id == current_user.id, UserOrgRole.organization_id == organization_id
+        )
+    )
+    log_event(
+        db, entity_type="user_org_role", entity_id=current_user.id, action="left_organization",
+        actor_id=current_user.id, organization_id=organization_id,
+    )
+    db.commit()
+
+
 @router.post("/{organization_id}/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_org_user(
     organization_id: UUID,
@@ -255,8 +382,14 @@ def deactivate_org_user(
 
     Applies the C-U-09 fallback: for any project where this removal leaves
     no remaining project manager, the acting admin is assigned as manager so
-    the project is never left without one (C-U-08).
+    the project is never left without one (C-U-08). Each project is row-
+    locked (`lock_project_for_update`) before its manager count is checked,
+    so this can't race a concurrent removal (another deactivation, a role
+    revocation, or someone leaving the org) on the same project — see
+    `lock_project_for_update`'s docstring for the exact race this closes.
     """
+    from app.services.rbac import lock_project_for_update
+
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
@@ -267,6 +400,7 @@ def deactivate_org_user(
 
     projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
     for project in projects:
+        lock_project_for_update(db, project.id)
         managers_before = get_project_managers(db, project.id)
         if user_id not in managers_before:
             continue

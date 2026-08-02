@@ -56,6 +56,7 @@ from app.schemas.project import (
     UserProjectRoleAssign,
 )
 from app.schemas.report import ProjectReportConfig
+from app.services import engagement
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
@@ -65,6 +66,7 @@ from app.services.rbac import (
     get_effective_project_roles,
     get_project_managers,
     get_project_member_user_ids,
+    lock_project_for_update,
     require_project_manage,
     require_project_view,
 )
@@ -826,8 +828,7 @@ def remove_project_group_member(
     """
     group = _get_group_in_project(db, project.id, group_id)
     if group.role == ProjectRole.PROJECT_MANAGER:
-        from app.services.rbac import get_project_managers
-
+        lock_project_for_update(db, project.id)
         managers = get_project_managers(db, project.id)
         if managers == {member_id}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
@@ -841,6 +842,12 @@ def remove_project_group_member(
         db, entity_type="project_group", entity_id=group_id, action="member_removed", actor_id=current_user.id,
         project_id=project.id, detail={"member_id": str(member_id)},
     )
+    # A group can grant a role alongside other direct/group roles a user
+    # holds on the same project, so only clean up subscriptions/favourites
+    # if this removal actually left them with no remaining access — not on
+    # every membership change.
+    if member_id and not get_effective_project_roles(db, member_id, project.id):
+        engagement.remove_subscriptions_and_favorites_for_projects(db, member_id, [project.id])
     db.commit()
 
 
@@ -885,8 +892,7 @@ def revoke_project_role(
 ):
     """Revokes a direct project role, blocking removal of the last manager (C-U-08)."""
     if role == ProjectRole.PROJECT_MANAGER:
-        from app.services.rbac import get_project_managers
-
+        lock_project_for_update(db, project.id)
         managers = get_project_managers(db, project.id)
         if managers == {user_id}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
@@ -906,4 +912,8 @@ def revoke_project_role(
             db, revoked_user, notification_type=NotificationType.PERMISSION_REVOKED,
             title=f"Your '{role.value}' role on {project.name} was revoked", project_id=project.id,
         )
+    # Only clean up subscriptions/favourites if the user has no other role
+    # (direct or group-derived) left granting them access to this project.
+    if not get_effective_project_roles(db, user_id, project.id):
+        engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, [project.id])
     db.commit()
