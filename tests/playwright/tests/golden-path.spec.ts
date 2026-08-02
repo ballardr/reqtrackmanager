@@ -18,7 +18,13 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByLabel("Email").fill(ADMIN_EMAIL);
     await page.getByLabel("Password").fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/projects$/);
+    // Post-login landing depends on the admin's landing_preference (U-U-03:
+    // "auto" goes straight to the sole accessible project instead of the
+    // overview list once there's exactly one) — navigate explicitly rather
+    // than asserting a specific destination, since that's not what this
+    // spec is testing.
+    await page.waitForURL(/\/projects(\/|$)/);
+    await page.goto("/projects");
   });
 
   await test.step("create project", async () => {
@@ -32,6 +38,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
+    await page.getByRole("button", { name: "Categories" }).click();
     await page.getByPlaceholder("Name").first().fill("Software");
     await page.getByPlaceholder("Prefix").first().fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
@@ -53,6 +60,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
+    await page.getByRole("button", { name: "Project stages" }).click();
     await page.getByRole("button", { name: "Approve stage" }).click();
     await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
 

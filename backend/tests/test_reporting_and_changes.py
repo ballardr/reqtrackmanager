@@ -1,7 +1,7 @@
 """Tests for the project changes-over-time view (C-A-10) and report filters/
 sections (R-G-03, R-G-04)."""
 
-from tests.conftest import auth_headers, create_component_and_category, create_project
+from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
 
 
 def test_project_changes_excludes_comments_by_default(client, admin_token, org_id):
@@ -38,7 +38,7 @@ def test_project_changes_time_filter(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     )
 
-    future = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)).isoformat()
+    future = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)).isoformat()
     changes = client.get(
         f"/api/v1/projects/{project['id']}/changes", params={"since": future}, headers=auth_headers(admin_token)
     ).json()
@@ -97,10 +97,10 @@ def test_report_includes_org_shared_resource_section(client, admin_token, org_id
 
 def test_report_rejects_resource_from_another_organization(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
-    other_org = client.post("/api/v1/orgs", json={"name": "Other Org 2"}, headers=auth_headers(admin_token)).json()
+    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Other Org 2")
     other_resource = client.post(
         f"/api/v1/orgs/{other_org['id']}/resources",
-        files={"file": ("x.txt", b"data", "text/plain")}, headers=auth_headers(admin_token),
+        files={"file": ("x.txt", b"data", "text/plain")}, headers=auth_headers(other_org_admin_token),
     ).json()
 
     resp = client.post(

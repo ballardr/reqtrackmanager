@@ -224,10 +224,17 @@ erDiagram
     REQUIREMENT ||--o{ REQUIREMENT_LINK : relates_to
     REQUIREMENT ||--o{ REQUIREMENT_VERSION : has_history
     CHANGE_REQUEST ||--o{ REVIEW_COMMENT : has
+    REVIEW_COMMENT ||--o{ COMMENT_REACTION : reacted_to
     USER ||--o{ REQUIREMENT : creates
     USER ||--o{ CHANGE_REQUEST : creates
     USER ||--o{ REVIEW_COMMENT : writes
+    USER ||--o{ COMMENT_REACTION : reacts
+    USER ||--o{ SUBSCRIPTION : follows
+    REQUIREMENT ||--o{ SUBSCRIPTION : followed_by
+    CHANGE_REQUEST ||--o{ SUBSCRIPTION : followed_by
 ```
+
+This diagram shows the core domain entities and how they relate: an organization owns projects, a project owns its stages/requirements/change requests, and requirements/change requests each carry their own version history plus a discussion thread. `COMMENT_REACTION` and `SUBSCRIPTION` are per-user engagement state — a user can react to a comment, or follow a requirement or change request to be notified of new discussion on it — layered on top of that core lifecycle data rather than mixed into the versioned rows themselves (see [decisions.md](decisions.md)). It matters because it shows which entities are shared/tenant-scoped (organization, users) versus project-scoped (everything else), and which relationships are "history-of-record" (versions, links) versus "per-user preference" (reactions, subscriptions) — a distinction that drives where new attributes should be added as the schema grows.
 
 ### Permission and identity model
 

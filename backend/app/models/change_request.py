@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import ChangeRequestKind, ChangeRequestStatus, ReviewTargetType
+from app.models.enums import ChangeRequestKind, ChangeRequestStatus, RequirementLevel, ReviewTargetType
 
 
 class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
@@ -48,7 +48,7 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     decision_note: Mapped[str] = mapped_column(Text, default="")
 
-    versions: Mapped[list["ChangeRequestVersion"]] = relationship(
+    versions: Mapped[list[ChangeRequestVersion]] = relationship(
         back_populates="change_request", order_by="ChangeRequestVersion.version_number"
     )
 
@@ -79,6 +79,15 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_categories.id"), nullable=True
     )
+    # Mirrors Requirement/RequirementVersion's target_stage_id/level (mock's
+    # "Target"/"Level" fields) so a change request can propose changing them,
+    # same as it can propose changing name/reasoning/clarification.
+    proposed_target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stages.id"), nullable=True
+    )
+    proposed_level: Mapped[RequirementLevel] = mapped_column(
+        str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT
+    )
     reason: Mapped[str] = mapped_column(Text)
     # Values for this project's custom change-request attribute definitions
     # (C-C-01, C-C-02), keyed by CustomFieldDefinition id.
@@ -87,7 +96,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
-    change_request: Mapped["ChangeRequest"] = relationship(back_populates="versions")
+    change_request: Mapped[ChangeRequest] = relationship(back_populates="versions")
 
 
 class ReviewComment(UUIDPKMixin, TimestampMixin, Base):

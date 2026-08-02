@@ -28,12 +28,26 @@ class ProjectRole(str, enum.Enum):
 
 
 class StageStatus(str, enum.Enum):
-    """Lifecycle states for a project stage (introduction, C-G-08)."""
+    """Lifecycle states for a project stage (introduction, C-G-08).
+
+    ARCHIVED is a terminal state a stage can be moved to manually (e.g. via
+    `transition_stage`); it carries no special gating logic of its own —
+    unlike APPROVED it doesn't write a baseline or require the project
+    manager role, it's purely a display/filtering state.
+    """
 
     SCOPING = "scoping"
     REVIEW = "review"
     APPROVED = "approved"
     COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class RequirementLevel(str, enum.Enum):
+    """Whether a requirement's content is mandatory or advisory."""
+
+    REQUIREMENT = "requirement"
+    RECOMMENDED = "recommended"
 
 
 class RequirementStatus(str, enum.Enum):

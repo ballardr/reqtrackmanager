@@ -1,11 +1,29 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ApiError } from "../api/client";
+import { ApiError, api } from "../api/client";
+import type { ProjectListItem, User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
+
+/**
+ * Resolves where to send the user after login (U-U-03): a specific project,
+ * the project overview list, or "automatic" (the sole accessible project if
+ * there's exactly one, else the overview list).
+ */
+async function resolveLandingPath(user: User): Promise<string> {
+  const preference = user.landing_preference;
+  if (preference && preference !== "auto" && preference !== "overview") {
+    return `/projects/${preference}`;
+  }
+  if (preference === "overview") {
+    return "/projects";
+  }
+  const projects = await api.get<ProjectListItem[]>("/api/v1/projects?archived=false");
+  return projects.length === 1 ? `/projects/${projects[0].id}` : "/projects";
+}
 
 export function LoginPage() {
   const { login, verify2fa } = useAuth();
@@ -26,7 +44,7 @@ export function LoginPage() {
       if (result.requires2fa) {
         setChallengeToken(result.challengeToken);
       } else {
-        navigate("/projects");
+        navigate(await resolveLandingPath(result.user));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
@@ -41,8 +59,8 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await verify2fa(challengeToken, code);
-      navigate("/projects");
+      const user = await verify2fa(challengeToken, code);
+      navigate(await resolveLandingPath(user));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
     } finally {

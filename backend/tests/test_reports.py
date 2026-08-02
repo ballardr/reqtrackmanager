@@ -37,3 +37,33 @@ def test_csv_report_contains_requirement_row(client, admin_token, org_id):
     text = resp.content.decode("utf-8")
     assert "SW-PERF-001" in text
     assert "Boot fast" in text
+
+
+def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, org_id):
+    project = _seed_requirement(client, admin_token, org_id)
+
+    empty = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert empty == {"intro": "", "chapters": [], "appendices": []}
+
+    saved = client.put(
+        f"/api/v1/projects/{project['id']}/report-config",
+        json={
+            "intro": "Welcome to the report.",
+            "chapters": [{"title": "Scope", "body": "What this covers."}],
+            "appendices": [{"title": "Glossary", "body": "Terms used."}],
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert saved.status_code == 200
+    assert saved.json()["intro"] == "Welcome to the report."
+
+    reread = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert reread["chapters"] == [{"title": "Scope", "body": "What this covers."}]
+
+    # Generating without ad-hoc pre/post markdown should fall back to the
+    # persisted config rather than producing a bare report.
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    assert resp.content[:5] == b"%PDF-"

@@ -9,6 +9,7 @@ C-U-12).
 
 from __future__ import annotations
 
+from datetime import UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -20,17 +21,20 @@ from app.deps import get_current_user
 from app.models.enums import OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import OrgGroup, OrgGroupMember, Organization, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import ProjectGroupMember, UserProjectRole
 from app.models.user import User
 from app.schemas.file import FileAssetOut
 from app.schemas.org import (
     DefaultTemplateUpdate,
+    DisplayNameLockUpdate,
+    OrgAdvancedSettingsOut,
+    OrgAdvancedSettingsUpdate,
+    OrganizationCreate,
+    OrganizationOut,
     OrgGroupCreate,
     OrgGroupMemberAdd,
     OrgGroupOut,
-    OrganizationCreate,
-    OrganizationOut,
     OrgRoleAssign,
     OrgUserCreate,
     OrgUserOut,
@@ -42,6 +46,7 @@ from app.services.notifications import notify
 from app.services.rbac import (
     get_effective_org_roles,
     get_project_managers,
+    require_org_admin_or_server_admin,
     require_org_role,
     require_server_admin,
 )
@@ -67,7 +72,15 @@ def create_organization(
 
 @router.get("", response_model=list[OrganizationOut])
 def list_organizations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Lists organisations. Server admins see all; other users see only orgs they belong to."""
+    """Lists organisations. Server admins see all; other users see only orgs they belong to.
+
+    This one server-admin bypass is kept deliberately (unlike every other
+    org-scoped endpoint, see I-M-05 in rbac.py): `OrganizationOut` is thin
+    directory metadata (id/name/logo/created_at), not "data within the
+    organisation", and the server admin needs to see an org exists at all in
+    order to complete the one capability I-M-05 actually grants them —
+    creating that organisation's initial user.
+    """
     if current_user.is_server_admin:
         return db.scalars(select(Organization)).all()
     org_ids = db.scalars(
@@ -96,10 +109,16 @@ def get_organization(
 def create_org_user(
     organization_id: UUID,
     payload: OrgUserCreate,
-    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    current_user: User = Depends(require_org_admin_or_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Creates a new user directly within an organisation (I-M-05 clarification)."""
+    """Creates a new user directly within an organisation (I-M-05 clarification).
+
+    Server admins may call this even with no role of their own in the target
+    organisation — this is the one documented carve-out (creating the
+    initial user of a newly created org). Every other org-scoped endpoint
+    requires a genuine org role.
+    """
     if db.scalar(select(User).where(User.email == payload.email.lower())) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
     user = User(
@@ -157,9 +176,35 @@ def list_org_users(
                 is_active=user.is_active,
                 is_archived=user.is_archived,
                 roles=[],
+                display_name_locked=user.display_name_locked,
             )
         by_user[user.id].roles.append(role)
     return list(by_user.values())
+
+
+@router.put("/{organization_id}/users/{user_id}/display-name-lock", status_code=status.HTTP_204_NO_CONTENT)
+def set_display_name_lock(
+    organization_id: UUID,
+    user_id: UUID,
+    payload: DisplayNameLockUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Locks or unlocks a user's ability to change their own display name (C-U-16)."""
+    user = db.get(User, user_id)
+    if user is None or not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
+    user.display_name_locked = payload.display_name_locked
+    log_event(
+        db,
+        entity_type="user",
+        entity_id=user_id,
+        action="display_name_lock_changed",
+        actor_id=current_user.id,
+        organization_id=organization_id,
+        detail={"display_name_locked": payload.display_name_locked},
+    )
+    db.commit()
 
 
 @router.post("/{organization_id}/users/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
@@ -373,9 +418,10 @@ def remove_org_group_member(
 
 
 def _now():
-    from datetime import datetime, timezone
+    """Returns the current UTC time."""
+    from datetime import datetime
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # --- Shared resources (C-M-03), org logo (U-C-02), default template (C-E-04) ---
@@ -469,3 +515,55 @@ def set_default_template(
     db.commit()
     db.refresh(org)
     return org
+
+
+@router.get("/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut)
+def get_advanced_settings(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Per-organisation SMTP override and SSO group-mapping settings.
+
+    Storage-only: see `Organization` model docstring for why nothing
+    currently reads `smtp_*`/`sso_group_mappings` at runtime. The stored
+    `smtp_password` is never echoed back (write-only), matching how the
+    bootstrap/native-auth password is handled elsewhere.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return OrgAdvancedSettingsOut(
+        smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
+        smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
+    )
+
+
+@router.put("/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut)
+def update_advanced_settings(
+    organization_id: UUID, payload: OrgAdvancedSettingsUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    org.smtp_host = payload.smtp_host
+    org.smtp_port = payload.smtp_port
+    org.smtp_username = payload.smtp_username
+    if payload.smtp_password:
+        # Blank means "leave unchanged" — the field is never returned by GET,
+        # so a client re-submitting the form has no value to send back.
+        org.smtp_password = payload.smtp_password
+    org.smtp_use_tls = payload.smtp_use_tls
+    org.sso_group_mappings = [m.model_dump() for m in payload.sso_group_mappings]
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
+        actor_id=current_user.id, organization_id=organization_id,
+    )
+    db.commit()
+    db.refresh(org)
+    return OrgAdvancedSettingsOut(
+        smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
+        smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
+    )

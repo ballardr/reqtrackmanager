@@ -96,10 +96,17 @@ def test_project_metrics_reflects_requirement_and_change_request_counts(client, 
 
     empty_metrics = client.get(f"/api/v1/projects/{project['id']}/metrics", headers=auth_headers(admin_token))
     assert empty_metrics.status_code == 200
-    assert empty_metrics.json() == {
-        "requirement_count": 0, "requirement_completed_percent": 0.0,
-        "change_requests_proposed": 0, "change_requests_approved": 0, "change_requests_rejected": 0,
-    }
+    body = empty_metrics.json()
+    assert body["requirement_count"] == 0
+    assert body["requirement_completed_percent"] == 0.0
+    assert body["change_requests_proposed"] == 0
+    assert body["change_requests_approved"] == 0
+    assert body["change_requests_rejected"] == 0
+    assert body["requirements_by_status"] == {}
+    # A brand-new project starts with one un-baselined "Scoping" stage.
+    assert len(body["stage_progress"]) == 1
+    assert body["stage_progress"][0]["name"] == "Scoping"
+    assert body["stage_progress"][0]["completed_percent"] == 0.0
 
     _create_requirement(client, admin_token, project["id"], component_id, category_id, "Tracked requirement")
     client.post(

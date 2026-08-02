@@ -10,9 +10,10 @@ organisation, and every project user must also be an organisation user
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,6 +32,18 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             template when creating a new project in this organisation
             (C-E-04). Uses `use_alter` for the same reason (`projects`
             references `organizations`).
+        smtp_*: Per-organisation SMTP override for outgoing notification
+            email. Storage-only: like `AuthBackend` (C-U-06/07), this is a
+            seam for a future per-org mail relay, not itself wired into
+            `services/email.py`, which still sends through the
+            deployment-wide SMTP_HOST configured in `config.py`. Documented
+            in docs/decisions.md rather than silently half-built.
+        sso_group_mappings: Storage-only mapping of external SSO group names
+            to a local org role or project group, for a future SSO backend
+            (C-U-07, E-U-01) to consume. No SSO backend exists yet (native
+            auth only — see `app/auth_backends/`), so nothing currently
+            reads this column; it lets an admin prepare the mapping ahead of
+            that integration shipping.
     """
 
     __tablename__ = "organizations"
@@ -46,6 +59,13 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         ForeignKey("projects.id", use_alter=True, name="fk_organizations_default_template_project_id"),
         nullable=True,
     )
+
+    smtp_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    smtp_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True)
+    sso_group_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
 
 class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
@@ -66,7 +86,7 @@ class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
     )
     role: Mapped[OrgRole] = mapped_column(str_enum(OrgRole))
 
-    user: Mapped["User"] = relationship(back_populates="org_roles")  # noqa: F821
+    user: Mapped[User] = relationship(back_populates="org_roles")  # noqa: F821
 
 
 class OrgGroup(UUIDPKMixin, TimestampMixin, Base):

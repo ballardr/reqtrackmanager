@@ -46,6 +46,28 @@ def test_upload_and_download_requirement_attachment(client, admin_token, org_id)
     assert download.status_code == 404
 
 
+def test_project_metrics_includes_file_count(client, admin_token, org_id):
+    """U-P-05: the overview metrics' file_count reflects distinct files
+    attached to requirements in the project (attachments and linked shared
+    resources), not organisation-wide resources in general."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    req1 = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    req2 = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req1['id']}/files",
+        files={"file": ("a.txt", b"a", "text/plain")}, headers=auth_headers(admin_token),
+    )
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req2['id']}/files",
+        files={"file": ("b.txt", b"b", "text/plain")}, headers=auth_headers(admin_token),
+    )
+
+    metrics = client.get(f"/api/v1/projects/{project['id']}/metrics", headers=auth_headers(admin_token)).json()
+    assert metrics["file_count"] == 2
+
+
 def test_non_member_cannot_download_requirement_attachment(client, admin_token, org_id):
     from tests.conftest import create_org_user, login
 

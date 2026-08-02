@@ -191,3 +191,7 @@ frontend/storybook-static/
 # Backups
 /backups/
 *storybook.log
+
+# Playwright
+.playwright-mcp
+.playwright-mcp/*

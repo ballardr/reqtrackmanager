@@ -35,6 +35,35 @@ class DefaultTemplateUpdate(BaseModel):
     project_id: UUID | None
 
 
+class SsoGroupMapping(BaseModel):
+    """Maps one external SSO group name to a local org role. Storage-only —
+    see `Organization.sso_group_mappings` for why nothing consumes this yet."""
+
+    sso_group: str
+    org_role: OrgRole
+
+
+class OrgAdvancedSettingsOut(BaseModel):
+    """Per-organisation SMTP override and SSO group-mapping settings.
+    Storage-only seams for future integrations — see `Organization` model
+    docstring and docs/decisions.md."""
+
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_use_tls: bool = True
+    sso_group_mappings: list[SsoGroupMapping] = []
+
+
+class OrgAdvancedSettingsUpdate(BaseModel):
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    sso_group_mappings: list[SsoGroupMapping] = []
+
+
 class OrgUserCreate(BaseModel):
     """Creates a brand-new user directly within an organisation."""
 
@@ -51,6 +80,13 @@ class OrgUserOut(BaseModel):
     is_active: bool
     is_archived: bool
     roles: list[OrgRole]
+    display_name_locked: bool = False
+
+
+class DisplayNameLockUpdate(BaseModel):
+    """Locks or unlocks a user's ability to change their own display name (C-U-16)."""
+
+    display_name_locked: bool
 
 
 class OrgRoleAssign(BaseModel):

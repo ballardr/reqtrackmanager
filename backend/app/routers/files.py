@@ -41,23 +41,26 @@ def download_file(
     if file_asset is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
 
-    if not current_user.is_server_admin:
-        is_avatar_or_logo = (
-            db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
-            or db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
-        )
-        if not is_avatar_or_logo:
-            if file_asset.is_org_resource:
-                if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
-            else:
-                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
-                requirement = db.get(Requirement, link.requirement_id) if link else None
-                has_access = requirement is not None and get_effective_project_roles(
-                    db, current_user.id, requirement.project_id
-                )
-                if not has_access:
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
+    # No server-admin bypass (I-M-05): uploaded files are "data within
+    # organisations". Avatars/logos are the one category that's genuinely
+    # open to any authenticated user regardless of org membership, since
+    # they're shown in shared UI chrome.
+    is_avatar_or_logo = (
+        db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
+        or db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
+    )
+    if not is_avatar_or_logo:
+        if file_asset.is_org_resource:
+            if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
+        else:
+            link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
+            requirement = db.get(Requirement, link.requirement_id) if link else None
+            has_access = requirement is not None and get_effective_project_roles(
+                db, current_user.id, requirement.project_id
+            )
+            if not has_access:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
 
     data = read_file(file_asset)
     return Response(

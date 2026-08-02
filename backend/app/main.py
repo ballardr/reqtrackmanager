@@ -35,6 +35,7 @@ from app.routers import (
     projects,
     reports,
     requirements,
+    system,
     ws,
 )
 from app.services import pubsub
@@ -78,6 +79,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # X-Total-Count (U-P-06 pagination) is a custom response header, so it
+    # needs to be explicitly exposed — browsers hide non-safelisted response
+    # headers from JS by default even with allow_headers="*" (that setting
+    # only governs allowed *request* headers).
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -130,4 +136,9 @@ app.include_router(reports.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(notifications.router)
-app.include_router(ws.router)
+app.include_router(system.router)
+if settings.websocket_enabled:
+    # I-A-04: the WebSocket interface is optional — deployments that can't
+    # or don't want persistent socket connections can disable it entirely
+    # via WEBSOCKET_ENABLED=false rather than it always being mounted.
+    app.include_router(ws.router)

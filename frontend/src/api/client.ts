@@ -33,7 +33,7 @@ export function loadStoredToken(): string | null {
   return authToken;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function rawRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
@@ -53,6 +53,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(response.status, message);
   }
+  return response;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await rawRequest(path, options);
   if (response.status === 204) {
     return undefined as T;
   }
@@ -63,8 +68,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.blob()) as unknown as T;
 }
 
+/** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06). */
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+async function requestPage<T>(path: string): Promise<Page<T>> {
+  const response = await rawRequest(path);
+  const items = (await response.json()) as T[];
+  const totalHeader = response.headers.get("x-total-count");
+  return { items, total: totalHeader ? Number(totalHeader) : items.length };
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getPage: <T>(path: string) => requestPage<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>

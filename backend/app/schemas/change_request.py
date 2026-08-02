@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import ChangeRequestKind, ChangeRequestStatus
+from app.models.enums import ChangeRequestKind, ChangeRequestStatus, RequirementLevel
 
 
 class ChangeRequestCreate(BaseModel):
@@ -24,6 +24,8 @@ class ChangeRequestCreate(BaseModel):
     proposed_clarification: str = ""
     proposed_component_id: UUID | None = None
     proposed_category_id: UUID | None = None
+    proposed_target_stage_id: UUID | None = None
+    proposed_level: RequirementLevel = RequirementLevel.REQUIREMENT
     reason: str
     custom_fields: dict[str, Any] = {}
     creator_id: UUID | None = None  # PM-only override (C-A-12)
@@ -39,6 +41,8 @@ class ChangeRequestOut(BaseModel):
     proposed_name: str
     proposed_reasoning: str
     proposed_clarification: str
+    proposed_target_stage_id: UUID | None = None
+    proposed_level: RequirementLevel = RequirementLevel.REQUIREMENT
     reason: str
     custom_fields: dict[str, Any]
     submitted_at: datetime | None
@@ -46,6 +50,10 @@ class ChangeRequestOut(BaseModel):
     decided_by: UUID | None
     decision_note: str
     created_at: datetime
+    is_subscribed: bool = False
+    # Derived list-view indicators (mock's card "badges"), computed at read time.
+    comment_count: int = 0
+    requires_approval: bool = False
 
 
 class ChangeRequestDecision(BaseModel):

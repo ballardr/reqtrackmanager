@@ -99,7 +99,7 @@ def test_template_project_creator_does_not_auto_become_manager_but_fallback_appl
     assert resp.status_code == 201
     new_project = resp.json()
 
-    new_groups = client.get(f"/api/v1/projects/{new_project['id']}/groups", headers=auth_headers(admin_token)).json()
+    new_groups = client.get(f"/api/v1/projects/{new_project['id']}/groups", headers=auth_headers(other_token)).json()
     new_manager_group = next(g for g in new_groups if g["role"] == "project_manager")
     # other_manager was copied over from the template's manager group.
     assert other_manager_id in new_manager_group["member_user_ids"]

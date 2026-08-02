@@ -44,6 +44,8 @@ def disconnect(project_id: UUID, websocket: WebSocket) -> None:
 
 
 async def _broadcast(project_id: UUID, message: dict[str, Any]) -> None:
+    """Sends `message` to every live WebSocket connected to `project_id`,
+    dropping any connection that fails to send (I-A-04)."""
     dead = []
     for ws in _connections[project_id]:
         try:

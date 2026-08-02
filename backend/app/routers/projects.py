@@ -8,10 +8,10 @@ Project CRUD, stages (with approval -> baseline), components/categories
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,8 +19,9 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.change_request import ChangeRequest
 from app.models.enums import ChangeRequestStatus, OrgRole, ProjectRole, RequirementStatus, StageStatus
+from app.models.file import RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import OrgGroup, UserOrgRole
+from app.models.organization import Organization, OrgGroup
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -31,7 +32,7 @@ from app.models.project import (
     ProjectStage,
     UserProjectRole,
 )
-from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.project import (
@@ -50,15 +51,16 @@ from app.schemas.project import (
     ProjectStageCreate,
     ProjectStageOut,
     ProjectUpdate,
+    StageProgressOut,
     TerminologyUpdate,
     UserProjectRoleAssign,
 )
+from app.schemas.report import ProjectReportConfig
 from app.services.audit import log_event
-from app.services.baseline import create_baseline_for_stage, project_is_locked
+from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
 from app.services.notifications import notify
 from app.services.rbac import (
-    can_manage_project_settings,
     get_effective_org_roles,
     get_effective_project_roles,
     get_project_managers,
@@ -95,11 +97,21 @@ def create_project(
     a manager) can never be violated.
     """
     org_roles = get_effective_org_roles(db, current_user.id, payload.organization_id)
-    if not current_user.is_server_admin and not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+    if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
 
-    if payload.template_project_id is not None:
-        template = db.get(Project, payload.template_project_id)
+    template_project_id = payload.template_project_id
+    if template_project_id is None:
+        # C-E-04: fall back to the organisation's configured default template
+        # when the caller didn't specify one. The frontend's "New project"
+        # form pre-selects this same default in its template dropdown so a
+        # user can still explicitly override it before submitting.
+        org = db.get(Organization, payload.organization_id)
+        if org is not None:
+            template_project_id = org.default_template_project_id
+
+    if template_project_id is not None:
+        template = db.get(Project, template_project_id)
         if (
             template is None
             or template.organization_id != payload.organization_id
@@ -133,10 +145,15 @@ def create_project(
         if manager_group is not None:
             db.add(ProjectGroupMember(project_group_id=manager_group.id, user_id=current_user.id))
 
+    if payload.terminology:
+        project.terminology = payload.terminology
+    if payload.is_template:
+        project.is_template = True
+
     log_event(
         db, entity_type="project", entity_id=project.id, action="created", actor_id=current_user.id,
         organization_id=payload.organization_id, project_id=project.id,
-        detail={"template_project_id": str(payload.template_project_id)} if payload.template_project_id else None,
+        detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
     db.commit()
     db.refresh(project)
@@ -145,10 +162,13 @@ def create_project(
 
 @router.get("", response_model=list[ProjectListItemOut])
 def list_projects(
+    response: Response,
     archived: bool = False,
     search: str | None = None,
     role: ProjectRole | None = None,
     stage_status: StageStatus | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -158,28 +178,29 @@ def list_projects(
     the given effective project role) and `stage_status` filter (only
     projects whose current stage is in the given status) for U-E-05.
     Results are sorted with the caller's favourited projects (U-U-03) first,
-    then by name.
+    then by name. `limit`/`offset` (U-P-06) are optional pagination — see
+    `list_requirements` for the same pattern and its rationale.
     """
-    if current_user.is_server_admin:
-        projects = db.scalars(select(Project).where(Project.is_archived == archived)).all()
+    # No server-admin bypass here (I-M-05): project listings are "data within
+    # organisations", so even server admins only see projects they hold a
+    # genuine role in, same as anyone else.
+    project_ids_via_role = set(
+        db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == current_user.id)).all()
+    )
+    project_ids_via_group = set(
+        db.scalars(
+            select(ProjectGroup.project_id)
+            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+            .where(ProjectGroupMember.user_id == current_user.id)
+        ).all()
+    )
+    accessible_ids = project_ids_via_role | project_ids_via_group
+    if not accessible_ids:
+        projects = []
     else:
-        project_ids_via_role = set(
-            db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == current_user.id)).all()
-        )
-        project_ids_via_group = set(
-            db.scalars(
-                select(ProjectGroup.project_id)
-                .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-                .where(ProjectGroupMember.user_id == current_user.id)
-            ).all()
-        )
-        accessible_ids = project_ids_via_role | project_ids_via_group
-        if not accessible_ids:
-            projects = []
-        else:
-            projects = db.scalars(
-                select(Project).where(Project.id.in_(accessible_ids), Project.is_archived == archived)
-            ).all()
+        projects = db.scalars(
+            select(Project).where(Project.id.in_(accessible_ids), Project.is_archived == archived)
+        ).all()
 
     if search:
         needle = search.lower()
@@ -212,6 +233,10 @@ def list_projects(
             )
         )
     out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
+
+    response.headers["X-Total-Count"] = str(len(out))
+    if limit is not None:
+        out = out[offset:offset + limit]
     return out
 
 
@@ -285,16 +310,43 @@ def update_terminology(
     return project
 
 
+@router.get("/{project_id}/report-config", response_model=ProjectReportConfig)
+def get_report_config(
+    project_id: UUID, project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+):
+    """Returns the project's persisted report structure (mock's "Report Setup")."""
+    return ProjectReportConfig(
+        intro=project.report_intro, chapters=project.report_chapters, appendices=project.report_appendices
+    )
+
+
+@router.put("/{project_id}/report-config", response_model=ProjectReportConfig)
+def update_report_config(
+    project_id: UUID, payload: ProjectReportConfig,
+    project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+):
+    """Saves the project's persisted report structure, used as the default
+    report content on generation unless overridden ad hoc."""
+    project.report_intro = payload.intro
+    project.report_chapters = [c.model_dump() for c in payload.chapters]
+    project.report_appendices = [c.model_dump() for c in payload.appendices]
+    db.commit()
+    db.refresh(project)
+    return ProjectReportConfig(
+        intro=project.report_intro, chapters=project.report_chapters, appendices=project.report_appendices
+    )
+
+
 @router.post("/{project_id}/archive", response_model=ProjectOut)
 def archive_project(
     project_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """Archives a project: hidden from the active project list, data preserved (C-P-01)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     project.is_archived = True
-    project.archived_at = datetime.now(timezone.utc)
+    project.archived_at = datetime.now(UTC)
     project.archived_by = current_user.id
     log_event(db, entity_type="project", entity_id=project.id, action="archived",
               actor_id=current_user.id, project_id=project.id)
@@ -378,12 +430,75 @@ def get_project_metrics(
             )
         ).all()
     )
+
+    requirements_by_status: dict[str, int] = {}
+    if requirement_ids:
+        for status_value in db.scalars(
+            select(RequirementVersion.status).where(
+                RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None)
+            )
+        ).all():
+            requirements_by_status[status_value.value] = requirements_by_status.get(status_value.value, 0) + 1
+
+    # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
+    # been baselined (C-G-10) shows completion across the requirements
+    # captured in that baseline; a stage not yet approved has no baseline
+    # yet, so it shows the project's current requirement count at 0%
+    # complete rather than a stage-specific count that doesn't exist yet.
+    stages = db.scalars(
+        select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
+    ).all()
+    stage_progress: list[StageProgressOut] = []
+    for stage in stages:
+        baseline = db.scalar(
+            select(Baseline).where(Baseline.project_id == project_id, Baseline.stage_id == stage.id)
+        )
+        if baseline is not None:
+            item_requirement_ids = db.scalars(
+                select(BaselineItem.requirement_id).where(BaselineItem.baseline_id == baseline.id)
+            ).all()
+            stage_requirement_count = len(item_requirement_ids)
+            stage_completed = 0
+            if item_requirement_ids:
+                stage_completed = len(
+                    db.scalars(
+                        select(RequirementVersion.requirement_id).where(
+                            RequirementVersion.requirement_id.in_(item_requirement_ids),
+                            RequirementVersion.valid_to.is_(None),
+                            RequirementVersion.status == RequirementStatus.COMPLETED,
+                        )
+                    ).all()
+                )
+            stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
+        else:
+            stage_requirement_count = requirement_count
+            stage_percent = 0.0
+        stage_progress.append(
+            StageProgressOut(
+                stage_id=stage.id, name=stage.name, status=stage.status,
+                requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
+            )
+        )
+
+    file_count = 0
+    if requirement_ids:
+        file_count = len(
+            set(
+                db.scalars(
+                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
+                ).all()
+            )
+        )
+
     return ProjectMetricsOut(
         requirement_count=requirement_count,
         requirement_completed_percent=round(percent, 1),
         change_requests_proposed=proposed,
         change_requests_approved=approved,
         change_requests_rejected=rejected,
+        file_count=file_count,
+        requirements_by_status=requirements_by_status,
+        stage_progress=stage_progress,
     )
 
 
@@ -392,15 +507,25 @@ def get_project_metrics(
 
 @router.post("/{project_id}/stages", response_model=ProjectStageOut, status_code=status.HTTP_201_CREATED)
 def create_stage(
-    payload: ProjectStageCreate, project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    payload: ProjectStageCreate,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Adds a new project stage (C-G-08)."""
+    """Adds a new project stage (C-G-08), starting in scoping status.
+
+    Notifies project members that a new stage has entered scoping (C-N-01)
+    — this is never the "brand new project" case the requirement excludes,
+    since a project's very first stage is created directly in
+    `create_project`, not through this endpoint.
+    """
     count = len(db.scalars(select(ProjectStage.id).where(ProjectStage.project_id == project.id)).all())
     stage = ProjectStage(project_id=project.id, name=payload.name, status=StageStatus.SCOPING, sort_order=count)
     db.add(stage)
     db.flush()
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="created",
-              actor_id=None, project_id=project.id)
+              actor_id=current_user.id, project_id=project.id)
+    _notify_stage_transition(db, project, stage)
     db.commit()
     db.refresh(stage)
     return stage
@@ -435,14 +560,12 @@ def transition_stage(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
 
     if new_status == StageStatus.APPROVED:
-        if not current_user.is_server_admin and ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(
-            db, current_user.id, project.id
-        ):
+        if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project.id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a stage.")
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         stage.status = StageStatus.APPROVED
-        stage.approved_at = datetime.now(timezone.utc)
+        stage.approved_at = datetime.now(UTC)
         stage.approved_by = current_user.id
         create_baseline_for_stage(db, project, stage, current_user)
         log_event(db, entity_type="project_stage", entity_id=stage.id, action="approved",
@@ -459,6 +582,7 @@ def transition_stage(
 
 
 _STAGE_NOTIFICATION_TYPES = {
+    StageStatus.SCOPING: NotificationType.STAGE_SCOPING,
     StageStatus.REVIEW: NotificationType.STAGE_REVIEW,
     StageStatus.APPROVED: NotificationType.STAGE_APPROVED,
     StageStatus.COMPLETED: NotificationType.STAGE_COMPLETED,
@@ -466,12 +590,15 @@ _STAGE_NOTIFICATION_TYPES = {
 
 
 def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage) -> None:
-    """Notifies all project members of stage transitions (C-N-01).
+    """Notifies all project members of stage transitions (C-N-01), including
+    a newly created stage entering scoping.
 
-    Scoping transitions are intentionally excluded per the requirement's
-    "unless brand new project" clarification — every project's initial
-    stage starts in scoping, so notifying on that specific transition would
-    just be noise on every project creation.
+    Per the requirement's "unless brand new project" clarification, a brand
+    new *project's* very first stage must not notify — but that stage is
+    created directly in `create_project` (never through this function), so
+    every actual caller of `_notify_stage_transition` (a subsequent stage
+    being created via `create_stage`, or an existing stage transitioning via
+    `transition_stage`) is, by construction, never that excluded case.
     """
     notification_type = _STAGE_NOTIFICATION_TYPES.get(stage.status)
     if notification_type is None:
@@ -547,6 +674,26 @@ def move_category(
 
 
 def _move_ordered(db: Session, model, project_id: UUID, item_id: UUID, direction: str):
+    """Swaps `sort_order` between `item_id` and its neighbour (C-E-01/C-E-02).
+
+    Shared by component and category reordering, since both are plain
+    project-scoped, sort_order-ordered rows. A no-op (not an error) if the
+    item is already at the boundary in the requested direction.
+
+    Args:
+        db: Active database session.
+        model: The SQLAlchemy model class (`ProjectComponent` or
+            `ProjectCategory`).
+        project_id: The owning project, to scope the ordered list.
+        item_id: The row being moved.
+        direction: "up" or "down".
+
+    Returns:
+        The moved row, refreshed with its (possibly unchanged) sort_order.
+
+    Raises:
+        HTTPException: 404 if `item_id` doesn't belong to `project_id`.
+    """
     items = db.scalars(select(model).where(model.project_id == project_id).order_by(model.sort_order)).all()
     idx = next((i for i, it in enumerate(items) if it.id == item_id), None)
     if idx is None:
@@ -562,12 +709,32 @@ def _move_ordered(db: Session, model, project_id: UUID, item_id: UUID, direction
 # --- Project groups & roles (C-U-10, C-U-11) --------------------------------
 
 
+def _require_user_in_org(db: Session, user_id: UUID, organization_id: UUID) -> None:
+    """C-U-02: "All Project users, must be an organisation user." Raises 400
+    if `user_id` holds no role at all in `organization_id`, so a project
+    manager can't grant project-level access to someone outside the
+    organisation.
+    """
+    if not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "The user must be a member of this project's organisation first."
+        )
+
+
 @router.post("/{project_id}/groups", response_model=ProjectGroupOut, status_code=status.HTTP_201_CREATED)
 def create_project_group(
-    payload: ProjectGroupCreate, project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    payload: ProjectGroupCreate,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     group = ProjectGroup(project_id=project.id, name=payload.name, role=payload.role)
     db.add(group)
+    db.flush()
+    log_event(
+        db, entity_type="project_group", entity_id=group.id, action="created", actor_id=current_user.id,
+        project_id=project.id, detail={"name": group.name, "role": group.role.value},
+    )
     db.commit()
     db.refresh(group)
     return ProjectGroupOut(id=group.id, name=group.name, role=group.role, is_default=group.is_default,
@@ -606,11 +773,16 @@ def _get_group_in_project(db: Session, project_id: UUID, group_id: UUID) -> Proj
 @router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
 def add_project_group_member(
     project_id: UUID, group_id: UUID, payload: ProjectGroupMemberAdd,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     if not payload.user_id and not payload.org_group_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or org_group_id.")
     _get_group_in_project(db, project.id, group_id)
+    if payload.user_id is not None:
+        # C-U-02: "All Project users, must be an organisation user."
+        _require_user_in_org(db, payload.user_id, project.organization_id)
     if payload.org_group_id is not None:
         # Nesting an org group from a *different* organisation would let its
         # members inherit this project's role, crossing the tenant boundary
@@ -619,6 +791,12 @@ def add_project_group_member(
         if org_group is None or org_group.organization_id != project.organization_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_group_id must belong to the project's organisation.")
     db.add(ProjectGroupMember(project_group_id=group_id, user_id=payload.user_id, org_group_id=payload.org_group_id))
+    log_event(
+        db, entity_type="project_group", entity_id=group_id, action="member_added", actor_id=current_user.id,
+        project_id=project.id,
+        detail={"user_id": str(payload.user_id) if payload.user_id else None,
+                "org_group_id": str(payload.org_group_id) if payload.org_group_id else None},
+    )
     if payload.user_id is not None:
         added_user = db.get(User, payload.user_id)
         if added_user is not None:
@@ -635,14 +813,33 @@ def add_project_group_member(
 @router.delete("/{project_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_project_group_member(
     project_id: UUID, group_id: UUID, member_id: UUID,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    _get_group_in_project(db, project.id, group_id)
+    """Removes a member (user or nested org group) from a project group.
+
+    Blocks the removal if `group` is the project-manager-role group and
+    `member_id` is currently the project's only manager (C-U-08), mirroring
+    the same guard `revoke_project_role` applies to direct role revocation —
+    a project must always retain at least one manager.
+    """
+    group = _get_group_in_project(db, project.id, group_id)
+    if group.role == ProjectRole.PROJECT_MANAGER:
+        from app.services.rbac import get_project_managers
+
+        managers = get_project_managers(db, project.id)
+        if managers == {member_id}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
     db.execute(
         ProjectGroupMember.__table__.delete().where(
             ProjectGroupMember.project_group_id == group_id,
             (ProjectGroupMember.user_id == member_id) | (ProjectGroupMember.org_group_id == member_id),
         )
+    )
+    log_event(
+        db, entity_type="project_group", entity_id=group_id, action="member_removed", actor_id=current_user.id,
+        project_id=project.id, detail={"member_id": str(member_id)},
     )
     db.commit()
 
@@ -650,9 +847,12 @@ def remove_project_group_member(
 @router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
 def assign_project_role(
     project_id: UUID, payload: UserProjectRoleAssign,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Assigns a direct (non-group) project role to a user."""
+    _require_user_in_org(db, payload.user_id, project.organization_id)  # C-U-02
     existing = db.scalar(
         select(UserProjectRole).where(
             UserProjectRole.user_id == payload.user_id, UserProjectRole.project_id == project.id,
@@ -661,6 +861,10 @@ def assign_project_role(
     )
     if existing is None:
         db.add(UserProjectRole(user_id=payload.user_id, project_id=project.id, role=payload.role))
+        log_event(
+            db, entity_type="user_project_role", entity_id=payload.user_id, action="granted",
+            actor_id=current_user.id, project_id=project.id, detail={"role": payload.role.value},
+        )
         granted_user = db.get(User, payload.user_id)
         if granted_user is not None:
             notify(
@@ -675,7 +879,9 @@ def assign_project_role(
 @router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_project_role(
     project_id: UUID, user_id: UUID, role: ProjectRole,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Revokes a direct project role, blocking removal of the last manager (C-U-08)."""
     if role == ProjectRole.PROJECT_MANAGER:
@@ -689,6 +895,10 @@ def revoke_project_role(
             UserProjectRole.user_id == user_id, UserProjectRole.project_id == project.id,
             UserProjectRole.role == role,
         )
+    )
+    log_event(
+        db, entity_type="user_project_role", entity_id=user_id, action="revoked",
+        actor_id=current_user.id, project_id=project.id, detail={"role": role.value},
     )
     revoked_user = db.get(User, user_id)
     if revoked_user is not None:

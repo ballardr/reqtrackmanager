@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import RequirementLinkType, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementLinkType, RequirementStatus
 
 
 class Requirement(UUIDPKMixin, TimestampMixin, Base):
@@ -55,7 +55,7 @@ class Requirement(UUIDPKMixin, TimestampMixin, Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
-    versions: Mapped[list["RequirementVersion"]] = relationship(
+    versions: Mapped[list[RequirementVersion]] = relationship(
         back_populates="requirement", order_by="RequirementVersion.version_number"
     )
 
@@ -89,6 +89,13 @@ class RequirementVersion(UUIDPKMixin, Base):
     reasoning: Mapped[str] = mapped_column(Text, default="")
     clarification: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[RequirementStatus] = mapped_column(str_enum(RequirementStatus, 20), default=RequirementStatus.DRAFT)
+    # Which project stage/release this content is targeted at, and whether it's
+    # mandatory or advisory (mock's "Target"/"Level" fields) — display/planning
+    # metadata on the version, not gating logic.
+    target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stages.id"), nullable=True
+    )
+    level: Mapped[RequirementLevel] = mapped_column(str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     approval_authority_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -109,7 +116,7 @@ class RequirementVersion(UUIDPKMixin, Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
-    requirement: Mapped["Requirement"] = relationship(back_populates="versions")
+    requirement: Mapped[Requirement] = relationship(back_populates="versions")
 
 
 class RequirementKeyword(UUIDPKMixin, Base):
@@ -144,7 +151,7 @@ class Baseline(UUIDPKMixin, TimestampMixin, Base):
     label: Mapped[str] = mapped_column(String(255))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
-    items: Mapped[list["BaselineItem"]] = relationship(back_populates="baseline")
+    items: Mapped[list[BaselineItem]] = relationship(back_populates="baseline")
 
 
 class BaselineItem(UUIDPKMixin, Base):
@@ -159,4 +166,4 @@ class BaselineItem(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("requirement_versions.id")
     )
 
-    baseline: Mapped["Baseline"] = relationship(back_populates="items")
+    baseline: Mapped[Baseline] = relationship(back_populates="items")

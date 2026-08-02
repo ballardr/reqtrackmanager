@@ -4,19 +4,30 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, Project, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
+import { STAGE_STATUS_LABEL } from "../api/types";
+import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
+import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { t } from "../i18n/strings";
 
 const strings = t();
 
+const PAGE_SIZE = 30;
+
+function stageBadgeText(stageName: string, status: StageStatus | null): string {
+  if (!status || stageName.toLowerCase() === status) return stageName;
+  return `${stageName} · ${STAGE_STATUS_LABEL[status]}`;
+}
+
 /**
  * Project list view (U-E-03): active projects across all organisations the
- * user can access, with an archived filter (U-E-04), search, and project
- * creation (C-G-02).
+ * user can access, with an archived filter (U-E-04), search, project
+ * creation (C-G-02), and incremental "load more" pagination (U-P-06).
  */
 export function ProjectListPage() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<ProjectRole | "">("");
@@ -29,19 +40,29 @@ export function ProjectListPage() {
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
+  const [viewMode, setViewMode] = useViewMode("projects");
 
-  async function reload() {
-    setProjects(null);
-    const params = new URLSearchParams({ archived: String(showArchived) });
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ archived: String(showArchived), limit: String(PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (roleFilter) params.set("role", roleFilter);
     if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
-    const [projectList, orgList, everyProject] = await Promise.all([
-      api.get<ProjectListItem[]>(`/api/v1/projects?${params.toString()}`),
+    return params;
+  }
+
+  async function loadProjects(offset: number, append: boolean) {
+    const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParams(offset).toString()}`);
+    setProjects((prev) => (append && prev ? [...prev, ...page.items] : page.items));
+    setTotal(page.total);
+  }
+
+  async function reload() {
+    setProjects(null);
+    const [orgList, everyProject] = await Promise.all([
       api.get<Organization[]>("/api/v1/orgs"),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+      loadProjects(0, false),
     ]);
-    setProjects(projectList);
     setOrgs(orgList);
     setAllProjects(everyProject);
     if (!newOrgId && orgList[0]) setNewOrgId(orgList[0].id);
@@ -51,6 +72,16 @@ export function ProjectListPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showArchived, search, roleFilter, stageStatusFilter]);
+
+  useEffect(() => {
+    // C-E-04: pre-select the organisation's default template project (if
+    // one is configured) whenever the target org changes, rather than
+    // always starting from "None". The user can still pick a different
+    // template or explicitly choose "None (blank project)" before creating.
+    const org = orgs.find((o) => o.id === newOrgId);
+    setTemplateProjectId(org?.default_template_project_id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newOrgId]);
 
   async function toggleFavorite(project: ProjectListItem) {
     if (project.is_favorite) {
@@ -158,26 +189,62 @@ export function ProjectListPage() {
           onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
         >
           <option value="">{strings.projects.allStages}</option>
-          <option value="scoping">scoping</option>
-          <option value="review">review</option>
-          <option value="approved">approved</option>
-          <option value="completed">completed</option>
+          <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
+          <option value="review">{STAGE_STATUS_LABEL.review}</option>
+          <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
+          <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
+          <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
         </select>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
       {!projects && <Spinner />}
       {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
-      {projects && projects.length > 0 && (
+      {projects && projects.length > 0 && viewMode === "tiles" && (
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+          {projects.map((p) => (
+            <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <Link to={`/projects/${p.id}`} style={{ fontWeight: 600, fontSize: "1.05rem" }}>
+                  {p.name}
+                </Link>
+                <button
+                  className="btn"
+                  onClick={() => toggleFavorite(p)}
+                  title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                  aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                >
+                  <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
+                </button>
+              </div>
+              {p.current_stage_name && (
+                <span className="badge" style={{ alignSelf: "flex-start" }}>
+                  {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                </span>
+              )}
+              <p className="text-muted" style={{ margin: 0, flex: 1 }}>
+                {p.summary || "—"}
+              </p>
+              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                {strings.projects.roles}: {p.my_roles.join(", ") || "—"}
+              </div>
+              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {projects && projects.length > 0 && viewMode === "list" && (
         <div className="card" style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
-                <th></th>
-                <th>{strings.projects.name}</th>
-                <th>{strings.projects.summary}</th>
-                <th>{strings.projects.stage}</th>
-                <th>{strings.projects.updated}</th>
+                <th />
+                <th>Name</th>
+                <th>Stage</th>
                 <th>{strings.projects.roles}</th>
+                <th>{strings.projects.updated}</th>
               </tr>
             </thead>
             <tbody>
@@ -190,29 +257,30 @@ export function ProjectListPage() {
                       title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                       aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                     >
-                      <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
+                      <Star size={14} fill={p.is_favorite ? "currentColor" : "none"} />
                     </button>
                   </td>
                   <td>
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      {p.summary || "—"}
+                    </div>
                   </td>
-                  <td>{p.summary}</td>
                   <td>
-                    {p.current_stage_name ? (
-                      <span className="badge">
-                        {p.current_stage_name} · {p.current_stage_status}
-                      </span>
-                    ) : (
-                      "—"
+                    {p.current_stage_name && (
+                      <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
                     )}
                   </td>
-                  <td>{new Date(p.updated_at).toLocaleString()}</td>
-                  <td>{p.my_roles.join(", ") || "—"}</td>
+                  <td className="text-muted">{p.my_roles.join(", ") || "—"}</td>
+                  <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {projects && (
+        <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
       )}
     </div>
   );

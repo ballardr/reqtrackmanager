@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { ChangeRequest, Comment } from "../api/types";
+import type { ChangeEntry, ChangeRequest, Comment, ProjectStage } from "../api/types";
+import { ActivityPanel } from "../components/ActivityPanel";
+import { CommentThread } from "../components/CommentThread";
 import { Spinner } from "../components/Spinner";
+import { SubscribeButton } from "../components/SubscribeButton";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -13,18 +16,27 @@ export function ChangeRequestDetailPage() {
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const [cr, setCr] = useState<ChangeRequest | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [newComment, setNewComment] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [activity, setActivity] = useState<ChangeEntry[]>([]);
 
   async function reload() {
     if (!projectId || !crId) return;
-    const [crData, commentData] = await Promise.all([
+    const [crData, commentData, stageData, activityData] = await Promise.all([
       api.get<ChangeRequest>(`/api/v1/projects/${projectId}/change-requests/${crId}`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`),
+      api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
+      api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/activity`),
     ]);
     setCr(crData);
     setComments(commentData);
+    setStages(stageData);
+    setActivity(activityData);
+  }
+
+  function stageName(id: string | null) {
+    return stages.find((s) => s.id === id)?.name ?? "—";
   }
 
   useEffect(() => {
@@ -42,10 +54,27 @@ export function ChangeRequestDetailPage() {
     }
   }
 
-  async function postComment() {
-    if (!newComment.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body: newComment });
-    setNewComment("");
+  async function postComment(body: string) {
+    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body });
+    reload();
+  }
+
+  async function toggleReaction(commentId: string, reacted: boolean) {
+    if (reacted) {
+      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
+    } else {
+      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
+    }
+    reload();
+  }
+
+  async function toggleSubscription() {
+    if (!cr) return;
+    if (cr.is_subscribed) {
+      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
+    } else {
+      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
+    }
     reload();
   }
 
@@ -53,13 +82,20 @@ export function ChangeRequestDetailPage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{cr.proposed_name}</h1>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h1 style={{ margin: 0 }}>{cr.proposed_name}</h1>
+        <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
+      </div>
+      <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
+      <div className="stack">
       <div className="card stack">
-        <div>
+        <div className="row">
           <span className="badge">{cr.status}</span>
+          <span className="badge">Target: {stageName(cr.proposed_target_stage_id)}</span>
+          <span className="badge">Level: {cr.proposed_level}</span>
         </div>
         <p>
-          <strong>Reasoning:</strong> {cr.proposed_reasoning}
+          <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}
         </p>
         <p>
           <strong>{strings.changeRequests.reason}:</strong> {cr.reason}
@@ -129,25 +165,11 @@ export function ChangeRequestDetailPage() {
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
-        {comments.map((c) => (
-          <div key={c.id} className="card">
-            <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-              {new Date(c.created_at).toLocaleString()}
-            </div>
-            <div>{c.body}</div>
-          </div>
-        ))}
-        <div className="row">
-          <input
-            className="input"
-            placeholder={strings.requirements.addComment}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-          />
-          <button className="btn" onClick={postComment}>
-            {strings.requirements.addComment}
-          </button>
-        </div>
+        <CommentThread comments={comments} onPost={postComment} onToggleReaction={toggleReaction} />
+      </div>
+      </div>
+
+      <ActivityPanel entries={activity} />
       </div>
     </div>
   );

@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum, utcnow
@@ -53,6 +52,15 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # Keys are restricted to a fixed, documented set (see schemas/project.py);
     # this is not a freeform key-value store.
     terminology: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    # Persisted report structure (mock's "Report Setup": Project Intro / Body
+    # Chapters / Appendices), used as the default when a report is generated
+    # without ad-hoc pre_markdown/post_markdown overrides (see
+    # services/reports.py). Chapters/appendices are each an ordered list of
+    # {"title": str, "body": str} objects.
+    report_intro: Mapped[str] = mapped_column(Text, default="")
+    report_chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    report_appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):

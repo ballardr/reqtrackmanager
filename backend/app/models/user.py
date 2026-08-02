@@ -87,4 +87,4 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    org_roles: Mapped[list["UserOrgRole"]] = relationship(back_populates="user")
+    org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")  # noqa: F821

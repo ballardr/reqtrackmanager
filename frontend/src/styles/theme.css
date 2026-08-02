@@ -35,6 +35,20 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
+/* The left navigation rail is a fixed dark "chrome" in both app themes
+   (matching the product mockups), independent of --color-bg/-surface above —
+   the same pattern as many dark-nav-on-light-canvas products (GitHub,
+   Notion). It is NOT swapped per data-theme. */
+:root {
+  --color-nav-bg: #1a1f2b;
+  --color-nav-text: #e2e5ea;
+  --color-nav-text-muted: #8b93a3;
+  --color-nav-hover-bg: #262d3d;
+  --color-nav-active-bg: #2b6cb0;
+  --color-nav-active-text: #ffffff;
+  --color-nav-border: #2a3040;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -158,6 +172,43 @@ textarea.input {
 
 .text-muted {
   color: var(--color-text-muted);
+}
+
+/* Dark left-navigation rail (see --color-nav-* above). */
+.nav-dark {
+  background: var(--color-nav-bg);
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-nav-text-muted);
+  padding: 0.6rem 0.6rem 0.2rem;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  color: var(--color-nav-text) !important;
+  text-decoration: none !important;
+  font-size: 0.92rem;
+}
+
+.nav-link:hover {
+  background: var(--color-nav-hover-bg);
+}
+
+.nav-link.active {
+  background: var(--color-nav-active-bg);
+  color: var(--color-nav-active-text) !important;
 }
 
 table {

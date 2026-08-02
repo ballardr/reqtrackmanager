@@ -8,7 +8,7 @@ sends them by email immediately or queues them for the daily digest batch.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -22,6 +22,8 @@ DIGEST_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def _get_preference(db: Session, user_id: UUID, notification_type: NotificationType) -> NotificationPreference | None:
+    """Returns a user's stored UI/email preference for one notification
+    type, or None if they've never set one (C-N-04)."""
     return db.scalar(
         select(NotificationPreference).where(
             NotificationPreference.user_id == user_id, NotificationPreference.type == notification_type
@@ -66,7 +68,7 @@ def notify(
         project_id=project_id,
         entity_type=entity_type,
         entity_id=entity_id,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     if not ui_enabled:
         # Still recorded (so read-state / digest bookkeeping stays simple),
@@ -78,7 +80,7 @@ def notify(
     if email_enabled and user.email_digest_mode == DigestMode.INSTANT:
         try:
             send_email(user.email, title, body or title)
-            notification.emailed_at = datetime.now(timezone.utc)
+            notification.emailed_at = datetime.now(UTC)
         except Exception:  # noqa: BLE001 - never let email delivery break the triggering request
             pass
 
@@ -123,7 +125,7 @@ async def send_daily_digests(db: Session) -> None:
             continue
         body = "\n".join(f"- {n.title}: {n.body}" for n in pending)
         await send_email_async(user.email, f"ReqTrackManager: {len(pending)} new notifications", body)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for n in pending:
             n.emailed_at = now
     db.commit()

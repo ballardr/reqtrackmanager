@@ -33,6 +33,7 @@ class S3CompatibleFileStorageBackend:
         self._ensure_bucket()
 
     def _ensure_bucket(self) -> None:
+        """Creates the configured bucket if it doesn't already exist."""
         try:
             self._client.head_bucket(Bucket=self._bucket)
         except ClientError:

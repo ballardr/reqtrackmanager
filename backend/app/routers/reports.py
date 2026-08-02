@@ -82,18 +82,31 @@ def _resource_sections_markdown(db: Session, project: Project, resource_file_ids
     return "\n\n".join(sections)
 
 
+def _chapters_markdown(chapters: list[dict]) -> str:
+    return "\n\n".join(f"# {c['title']}\n\n{c['body']}" for c in chapters if c.get("title"))
+
+
 @router.post("/pdf")
 def generate_pdf(
     project_id: UUID, payload: ReportRequest,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Generates a PDF requirements report (R-F-01)."""
+    """Generates a PDF requirements report (R-F-01). Falls back to the
+    project's persisted report structure (intro/chapters/appendices, mock's
+    "Report Setup") when the request doesn't override it with ad-hoc
+    pre_markdown/post_markdown."""
     project = db.get(Project, project_id)
     rows = _collect_rows(db, project_id, payload)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
-    post_markdown = f"{payload.post_markdown}\n\n{resource_markdown}".strip()
+
+    pre_markdown = payload.pre_markdown or "\n\n".join(
+        s for s in [project.report_intro, _chapters_markdown(project.report_chapters)] if s
+    )
+    post_markdown = payload.post_markdown or _chapters_markdown(project.report_appendices)
+    post_markdown = f"{post_markdown}\n\n{resource_markdown}".strip()
+
     pdf_bytes = generate_pdf_report(
-        project_name=project.name, pre_markdown=payload.pre_markdown, rows=rows, post_markdown=post_markdown
+        project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",

@@ -8,6 +8,7 @@ Alembic autogeneration and for `Base.metadata.create_all()` in tests.
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
 from app.models.custom_field import CustomFieldDefinition
+from app.models.engagement import CommentReaction, Subscription
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
@@ -38,6 +39,8 @@ __all__ = [
     "ChangeRequestVersion",
     "ReviewComment",
     "CustomFieldDefinition",
+    "CommentReaction",
+    "Subscription",
     "FileAsset",
     "RequirementFile",
     "Notification",

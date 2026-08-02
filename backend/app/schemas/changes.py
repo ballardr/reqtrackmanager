@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-
 from pydantic import BaseModel
 
 
@@ -18,4 +17,5 @@ class ChangeEntryOut(BaseModel):
     entity_id: str
     action: str
     actor_id: UUID | None
+    actor_display_name: str | None = None
     detail: dict[str, Any] | None = None

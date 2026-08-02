@@ -8,7 +8,7 @@ per notification type.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,7 +40,7 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
     if notification is None or notification.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
     if notification.read_at is None:
-        notification.read_at = datetime.now(timezone.utc)
+        notification.read_at = datetime.now(UTC)
         db.commit()
         db.refresh(notification)
     return notification
@@ -51,7 +51,7 @@ def mark_all_read(current_user: User = Depends(get_current_user), db: Session = 
     db.execute(
         Notification.__table__.update()
         .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
-        .values(read_at=datetime.now(timezone.utc))
+        .values(read_at=datetime.now(UTC))
     )
     db.commit()
 

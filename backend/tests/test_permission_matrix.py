@@ -136,7 +136,7 @@ def test_stakeholder_cannot_manage_custom_field_definitions(client, admin_token,
 # --- Org-level administration: org_admin only, not project_creator/member ---
 
 def test_project_creator_cannot_create_org_group_or_manage_users(client, admin_token, org_id):
-    user_id = create_org_user(client, admin_token, org_id, "creator_org_admin_test@example.com", role="project_creator")
+    create_org_user(client, admin_token, org_id, "creator_org_admin_test@example.com", role="project_creator")
     token = login(client, "creator_org_admin_test@example.com", "Password123!")
 
     assert client.post(

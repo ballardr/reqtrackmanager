@@ -38,6 +38,7 @@ class NotificationType(str, enum.Enum):
     PASSWORD_CHANGED = "password_changed"
     PERMISSION_GRANTED = "permission_granted"
     PERMISSION_REVOKED = "permission_revoked"
+    COMMENT_ADDED = "comment_added"
 
 
 class DigestMode(str, enum.Enum):

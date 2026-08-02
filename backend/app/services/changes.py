@@ -20,6 +20,7 @@ from app.models.audit import AuditEvent
 from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
 from app.models.enums import ReviewTargetType
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 
 
@@ -115,6 +116,14 @@ def get_project_changes(
                     detail={"body": comment.body},
                 )
             )
+
+    actor_ids = {e.actor_id for e in entries if e.actor_id is not None}
+    display_names = {
+        u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(actor_ids))).all()
+    } if actor_ids else {}
+    for e in entries:
+        if e.actor_id is not None:
+            e.actor_display_name = display_names.get(e.actor_id, "Unknown user")
 
     entries.sort(key=lambda e: e.timestamp, reverse=True)
     return entries

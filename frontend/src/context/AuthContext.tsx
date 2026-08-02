@@ -3,13 +3,13 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, loadStoredToken, setAuthToken } from "../api/client";
 import type { User } from "../api/types";
 
-type LoginResult = { requires2fa: false } | { requires2fa: true; challengeToken: string };
+type LoginResult = { requires2fa: false; user: User } | { requires2fa: true; challengeToken: string };
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
-  verify2fa: (challengeToken: string, code: string) => Promise<void>;
+  verify2fa: (challengeToken: string, code: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -49,16 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAuthToken(result.access_token);
     setUser(result.user);
-    return { requires2fa: false };
+    return { requires2fa: false, user: result.user };
   }, []);
 
-  const verify2fa = useCallback(async (challengeToken: string, code: string) => {
+  const verify2fa = useCallback(async (challengeToken: string, code: string): Promise<User> => {
     const result = await api.post<{ access_token: string; user: User }>("/api/v1/auth/2fa/verify", {
       challenge_token: challengeToken,
       code,
     });
     setAuthToken(result.access_token);
     setUser(result.user);
+    return result.user;
   }, []);
 
   const logout = useCallback(() => {

@@ -7,7 +7,7 @@ table and keeps id/timestamp semantics consistent across the schema.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SqlEnum
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 def utcnow() -> datetime:
     """Returns the current UTC time. Used as a shared column default."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def str_enum(enum_cls, length: int = 30) -> SqlEnum:

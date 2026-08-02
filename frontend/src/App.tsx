@@ -16,6 +16,7 @@ import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
+import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ function ProtectedRoutes() {
           <Route path="/projects" element={<ProjectListPage />} />
           <Route path="/orgs" element={<OrgListPage />} />
           <Route path="/orgs/:orgId/admin" element={<OrgAdminPage />} />
+          <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
           <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
           <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
           <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementDetailPage />} />

@@ -158,3 +158,93 @@ def test_archiving_preserves_history(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/history", headers=auth_headers(admin_token)
     ).json()
     assert len(history) == 1
+
+
+def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
+    stage_name = stages[0]["name"]
+
+    csv_content = (
+        "name,reasoning,component_prefix,category_prefix,level,target_version\n"
+        f"Ship the widget,Because it must,SW,PERF,recommended,{stage_name}\n"
+        ",Missing name,SW,PERF,requirement,\n"
+        "Bad component,Oops,ZZ,PERF,requirement,\n"
+        "Bad category,Oops,SW,ZZ,requirement,\n"
+        "Bad level,Oops,SW,PERF,not_a_level,\n"
+        "Bad stage,Oops,SW,PERF,requirement,Nonexistent Stage\n"
+        "Second valid row,Also fine,SW,PERF,requirement,\n"
+    )
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/import",
+        files={"file": ("import.csv", csv_content, "text/csv")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["created"] == 2
+    assert len(body["errors"]) == 5
+
+    listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    names = {r["name"] for r in listed}
+    assert "Ship the widget" in names
+    assert "Second valid row" in names
+    imported = next(r for r in listed if r["name"] == "Ship the widget")
+    assert imported["level"] == "recommended"
+    assert imported["target_stage_id"] == stages[0]["id"]
+
+
+def test_target_stage_and_level_persist_through_create_update_and_change_request(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
+    stage_id = stages[0]["id"]
+
+    created = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={
+            "name": "Ship the widget", "component_id": component_id, "category_id": category_id,
+            "target_stage_id": stage_id, "level": "recommended",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    assert created["target_stage_id"] == stage_id
+    assert created["level"] == "recommended"
+
+    updated = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{created['id']}",
+        json={
+            "name": created["name"], "component_id": component_id, "category_id": category_id,
+            "owner_id": created["owner_id"], "target_stage_id": None, "level": "requirement",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    assert updated["target_stage_id"] is None
+    assert updated["level"] == "requirement"
+
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": created["id"],
+            "proposed_name": created["name"], "proposed_reasoning": "Refined target",
+            "proposed_target_stage_id": stage_id, "proposed_level": "recommended",
+            "reason": "Rescheduled",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    assert cr["proposed_target_stage_id"] == stage_id
+    assert cr["proposed_level"] == "recommended"
+
+    client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
+    decision = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
+        json={"approve": True, "note": "approved"}, headers=auth_headers(admin_token),
+    )
+    assert decision.status_code == 200
+
+    final = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{created['id']}", headers=auth_headers(admin_token)
+    ).json()
+    assert final["target_stage_id"] == stage_id
+    assert final["level"] == "recommended"

@@ -26,7 +26,13 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByLabel("Email").fill(ADMIN_EMAIL);
     await page.getByLabel("Password").fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/projects$/);
+    // Post-login landing depends on the admin's landing_preference (U-U-03:
+    // "auto" goes straight to the sole accessible project instead of the
+    // overview list once there's exactly one) — navigate explicitly rather
+    // than asserting a specific destination, since that's not what this
+    // spec is testing.
+    await page.waitForURL(/\/projects(\/|$)/);
+    await page.goto("/projects");
   });
 
   await test.step("create the project that will become a template", async () => {
@@ -40,6 +46,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
   await test.step("add component, category, and a custom field, then mark as template", async () => {
     await page.getByText("Project Admin").click();
+
+    await page.getByRole("button", { name: "Categories" }).click();
     await page.getByPlaceholder("Name").first().fill("Software");
     await page.getByPlaceholder("Prefix").first().fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
@@ -50,10 +58,12 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByRole("button", { name: "New category" }).click();
     await expect(page.getByText("Performance").first()).toBeVisible();
 
+    await page.getByRole("button", { name: "Custom fields" }).click();
     await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
 
+    await page.getByRole("button", { name: "Project settings" }).click();
     await page.getByRole("checkbox", { name: "Usable as a project template" }).check();
     await page.getByRole("button", { name: "Save settings" }).click();
   });
@@ -134,10 +144,10 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByText("Projects", { exact: true }).click();
     await expect(page).toHaveURL(/\/projects$/);
 
-    const row = page.locator("tr", { hasText: templateProjectName });
-    await row.getByRole("button").click();
-    await expect(row.getByRole("button", { name: "Remove from favourites" })).toBeVisible();
-    await expect(page.locator("tbody tr").first()).toContainText(templateProjectName);
+    const card = page.locator("main .card", { hasText: templateProjectName });
+    await card.getByRole("button", { name: "Favourite" }).click();
+    await expect(card.getByRole("button", { name: "Remove from favourites" })).toBeVisible();
+    await expect(page.locator("main .card").first()).toContainText(templateProjectName);
   });
 
   await test.step("create a new project from the template and verify configuration was copied", async () => {
@@ -150,7 +160,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 
     await page.getByText("Project Admin").click();
+    await page.getByRole("button", { name: "Categories" }).click();
     await expect(page.getByText("Software").first()).toBeVisible();
+    await page.getByRole("button", { name: "Custom fields" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
   });
 });

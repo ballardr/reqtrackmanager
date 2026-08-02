@@ -11,8 +11,11 @@ import type {
   CustomFieldType,
   Project,
   ProjectGroup,
+  ProjectReportConfig,
   ProjectStage,
+  ReportChapter,
 } from "../api/types";
+import { STAGE_STATUS_LABEL } from "../api/types";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -44,6 +47,10 @@ export function ProjectAdminPage() {
   const [isTemplate, setIsTemplate] = useState(false);
   const [terminology, setTerminology] = useState<Record<string, string>>({});
 
+  const [reportIntro, setReportIntro] = useState("");
+  const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
+  const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
+
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
   const [newFieldName, setNewFieldName] = useState("");
@@ -53,13 +60,14 @@ export function ProjectAdminPage() {
 
   async function reload() {
     if (!projectId) return;
-    const [p, s, c, cat, g, cf] = await Promise.all([
+    const [p, s, c, cat, g, cf, rc] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
+      api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
     ]);
     setProject(p);
     setSettingsName(p.name);
@@ -72,6 +80,24 @@ export function ProjectAdminPage() {
     setCategories(cat);
     setGroups(g);
     setCustomFields(cf);
+    setReportIntro(rc.intro);
+    setReportChapters(rc.chapters);
+    setReportAppendices(rc.appendices);
+  }
+
+  async function saveReportConfig() {
+    await api.put(`/api/v1/projects/${projectId}/report-config`, {
+      intro: reportIntro, chapters: reportChapters, appendices: reportAppendices,
+    });
+    reload();
+  }
+
+  function moveChapter(list: ReportChapter[], setList: (l: ReportChapter[]) => void, index: number, direction: "up" | "down") {
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= list.length) return;
+    const next = [...list];
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+    setList(next);
   }
 
   async function addCustomField() {
@@ -150,12 +176,85 @@ export function ProjectAdminPage() {
     reload();
   }
 
+  const [tab, setTab] = useState<"overview" | "stages" | "categories" | "customFields" | "groups" | "reportSetup">("overview");
+
   if (!stages || !project) return <Spinner />;
+
+  const tabs: { key: typeof tab; label: string }[] = [
+    { key: "overview", label: strings.admin.settings },
+    { key: "stages", label: strings.admin.stages },
+    { key: "categories", label: strings.admin.categories },
+    { key: "customFields", label: strings.admin.customFields },
+    { key: "groups", label: strings.admin.groups },
+    { key: "reportSetup", label: "Report Setup" },
+  ];
+
+  function renderChapterList(label: string, list: ReportChapter[], setList: (l: ReportChapter[]) => void) {
+    return (
+      <div className="stack">
+        <strong>{label}</strong>
+        {list.map((chapter, idx) => (
+          <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <input
+                className="input"
+                placeholder="Chapter title"
+                value={chapter.title}
+                onChange={(e) => {
+                  const next = [...list];
+                  next[idx] = { ...next[idx], title: e.target.value };
+                  setList(next);
+                }}
+              />
+              <div className="row" style={{ gap: "0.25rem" }}>
+                <button className="btn" disabled={idx === 0} onClick={() => moveChapter(list, setList, idx, "up")}>
+                  <ArrowUp size={14} />
+                </button>
+                <button className="btn" disabled={idx === list.length - 1} onClick={() => moveChapter(list, setList, idx, "down")}>
+                  <ArrowDown size={14} />
+                </button>
+                <button className="btn btn-danger" onClick={() => setList(list.filter((_, i) => i !== idx))}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+            <textarea
+              className="input"
+              rows={2}
+              placeholder="Chapter body (Markdown)"
+              value={chapter.body}
+              onChange={(e) => {
+                const next = [...list];
+                next[idx] = { ...next[idx], body: e.target.value };
+                setList(next);
+              }}
+            />
+          </div>
+        ))}
+        <button className="btn" onClick={() => setList([...list, { title: "", body: "" }])} style={{ alignSelf: "flex-start" }}>
+          <Plus size={14} /> Add chapter
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.nav.admin}</h1>
 
+      <div className="row" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+        {tabs.map((tb) => (
+          <button
+            key={tb.key}
+            className={`btn ${tab === tb.key ? "btn-primary" : ""}`}
+            onClick={() => setTab(tb.key)}
+          >
+            {tb.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
@@ -200,13 +299,15 @@ export function ProjectAdminPage() {
           </button>
         </div>
       </div>
+      )}
 
+      {tab === "stages" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.stages}</h2>
         {stages.map((s) => (
           <div key={s.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {s.name} <span className="badge">{s.status}</span>
+              {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
             </span>
             {s.status !== "approved" && s.status !== "completed" && (
               <button className="btn" onClick={() => approveStage(s.id)}>
@@ -216,7 +317,10 @@ export function ProjectAdminPage() {
           </div>
         ))}
       </div>
+      )}
 
+      {tab === "categories" && (
+      <>
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.components}</h2>
         {components.map((c, idx) => (
@@ -235,7 +339,7 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <div className="row">
-          <input className="input" placeholder="Name" value={newComponentName} onChange={(e) => setNewComponentName(e.target.value)} />
+          <input className="input" placeholder={strings.admin.name} value={newComponentName} onChange={(e) => setNewComponentName(e.target.value)} />
           <input
             className="input"
             style={{ maxWidth: 100 }}
@@ -267,7 +371,7 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <div className="row">
-          <input className="input" placeholder="Name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+          <input className="input" placeholder={strings.admin.name} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
           <input
             className="input"
             style={{ maxWidth: 100 }}
@@ -280,14 +384,17 @@ export function ProjectAdminPage() {
           </button>
         </div>
       </div>
+      </>
+      )}
 
+      {tab === "customFields" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.customFields}</h2>
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
               {f.name} <span className="badge">{f.entity_kind}</span> <span className="badge">{f.field_type}</span>
-              {f.required && <span className="badge">required</span>}
+              {f.required && <span className="badge">{strings.admin.required}</span>}
             </span>
             <button className="btn btn-danger" onClick={() => deleteCustomField(f.id)}>
               <Trash2 size={14} />
@@ -296,34 +403,36 @@ export function ProjectAdminPage() {
         ))}
         <div className="row">
           <select className="input" value={newFieldKind} onChange={(e) => setNewFieldKind(e.target.value as CustomFieldEntityKind)}>
-            <option value="requirement">Requirement</option>
-            <option value="change_request">Change request</option>
+            <option value="requirement">{strings.admin.entityKindRequirement}</option>
+            <option value="change_request">{strings.admin.entityKindChangeRequest}</option>
           </select>
-          <input className="input" placeholder="Field name" value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} />
+          <input className="input" placeholder={strings.admin.fieldName} value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} />
           <select className="input" value={newFieldType} onChange={(e) => setNewFieldType(e.target.value as CustomFieldType)}>
-            <option value="short_text">Short text</option>
-            <option value="long_text">Long text</option>
-            <option value="checkbox">Checkbox</option>
-            <option value="list">List</option>
+            <option value="short_text">{strings.admin.fieldTypeShortText}</option>
+            <option value="long_text">{strings.admin.fieldTypeLongText}</option>
+            <option value="checkbox">{strings.admin.fieldTypeCheckbox}</option>
+            <option value="list">{strings.admin.fieldTypeList}</option>
           </select>
           {newFieldType === "list" && (
             <input
               className="input"
-              placeholder="Options (comma separated)"
+              placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
               onChange={(e) => setNewFieldOptions(e.target.value)}
             />
           )}
           <label className="row">
             <input type="checkbox" checked={newFieldRequired} onChange={(e) => setNewFieldRequired(e.target.checked)} />
-            required
+            {strings.admin.required}
           </label>
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus size={14} /> {strings.admin.newCustomField}
           </button>
         </div>
       </div>
+      )}
 
+      {tab === "groups" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
         {groups.map((g) => (
@@ -338,7 +447,7 @@ export function ProjectAdminPage() {
               <input
                 className="input"
                 style={{ maxWidth: 280 }}
-                placeholder="User ID"
+                placeholder={strings.admin.userId}
                 value={memberInputs[g.id] ?? ""}
                 onChange={(e) => setMemberInputs((m) => ({ ...m, [g.id]: e.target.value }))}
               />
@@ -349,6 +458,26 @@ export function ProjectAdminPage() {
           </div>
         ))}
       </div>
+      )}
+
+      {tab === "reportSetup" && (
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Report Setup</h2>
+        <p className="text-muted" style={{ margin: 0 }}>
+          This intro, these chapters, and these appendices are used as the default content when a report is
+          generated for this project, unless overridden at generation time.
+        </p>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          Project intro
+          <textarea className="input" rows={3} value={reportIntro} onChange={(e) => setReportIntro(e.target.value)} />
+        </label>
+        {renderChapterList("Body chapters", reportChapters, setReportChapters)}
+        {renderChapterList("Appendices", reportAppendices, setReportAppendices)}
+        <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
+          {strings.admin.saveSettings}
+        </button>
+      </div>
+      )}
     </div>
   );
 }

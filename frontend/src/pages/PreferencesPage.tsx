@@ -4,7 +4,15 @@ import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { t } from "../i18n/strings";
-import type { DigestMode, NotificationPreference } from "../api/types";
+import type { DigestMode, NotificationPreference, ProjectListItem } from "../api/types";
+
+type LandingMode = "auto" | "overview" | "project";
+
+function landingModeFor(preference: string | undefined): LandingMode {
+  if (!preference || preference === "auto") return "auto";
+  if (preference === "overview") return "overview";
+  return "project";
+}
 
 const strings = t();
 
@@ -16,7 +24,11 @@ const strings = t();
 export function PreferencesPage() {
   const { user, refreshUser } = useAuth();
   const { theme, setTheme } = useTheme();
-  const [landing, setLanding] = useState(user?.landing_preference ?? "auto");
+  const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
+  const [landingProjectId, setLandingProjectId] = useState(
+    landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
+  );
+  const [myProjects, setMyProjects] = useState<ProjectListItem[]>([]);
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [pronouns, setPronouns] = useState(user?.pronouns ?? "");
   const [digestMode, setDigestMode] = useState<DigestMode>(user?.email_digest_mode ?? "instant");
@@ -37,6 +49,7 @@ export function PreferencesPage() {
 
   useEffect(() => {
     api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
+    api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
   }, []);
 
   async function updateNotificationPref(type: string, field: "ui_enabled" | "email_enabled", value: boolean) {
@@ -53,7 +66,7 @@ export function PreferencesPage() {
     setProfileError(null);
     try {
       await api.patch("/api/v1/auth/me/preferences", {
-        landing_preference: landing,
+        landing_preference: landingMode === "project" ? landingProjectId : landingMode,
         theme_preference: theme,
         display_name: displayName,
         pronouns,
@@ -163,11 +176,28 @@ export function PreferencesPage() {
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.landing}
-          <select className="input" value={landing} onChange={(e) => setLanding(e.target.value)}>
+          <select
+            className="input"
+            value={landingMode}
+            onChange={(e) => setLandingMode(e.target.value as LandingMode)}
+          >
             <option value="auto">{strings.preferences.landingAuto}</option>
             <option value="overview">{strings.preferences.landingOverview}</option>
+            <option value="project">{strings.preferences.landingProject}</option>
           </select>
         </label>
+        {landingMode === "project" && (
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.preferences.landingProjectSelect}
+            <select className="input" value={landingProjectId} onChange={(e) => setLandingProjectId(e.target.value)}>
+              {myProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.emailDigest}
           <select className="input" value={digestMode} onChange={(e) => setDigestMode(e.target.value as DigestMode)}>

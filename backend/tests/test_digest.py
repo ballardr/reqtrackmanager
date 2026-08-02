@@ -47,6 +47,7 @@ async def test_daily_digest_batches_notifications_and_marks_emailed(client, admi
 
         db.refresh(user)
         from sqlalchemy import select
+
         from app.models.notification import Notification
 
         pending = db.scalars(

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models.project import UserProjectRole, ProjectGroup, ProjectGroupMember
+from app.models.project import ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 from app.security import decode_access_token
 from app.services import pubsub
@@ -37,9 +37,10 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
     db = SessionLocal()
     try:
         user = db.get(User, UUID(claims["sub"]))
+        # No server-admin bypass (I-M-05): live project updates are "data
+        # within organisations", same boundary as every REST endpoint.
         has_access = user is not None and (
-            user.is_server_admin
-            or db.scalar(
+            db.scalar(
                 select(UserProjectRole).where(
                     UserProjectRole.user_id == user.id, UserProjectRole.project_id == project_id
                 )

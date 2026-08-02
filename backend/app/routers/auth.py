@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -36,27 +36,37 @@ from app.schemas.auth import (
 )
 from app.security import create_2fa_challenge_token, create_access_token, decode_access_token, hash_password, verify_password
 from app.services import notifications, totp
-from app.services.files import upload_file
 from app.services.audit import log_login
+from app.services.files import upload_file
+from app.services.geoip import resolve_and_store_login_location
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
 
 
 @router.post("/login", response_model=TokenResponse | TwoFactorChallengeResponse)
-def login(payload: LoginRequest, request_ip: str = Depends(get_client_ip), db: Session = Depends(get_db)):
+def login(
+    payload: LoginRequest,
+    background_tasks: BackgroundTasks,
+    request_ip: str = Depends(get_client_ip),
+    db: Session = Depends(get_db),
+):
     """Authenticates with native email/password credentials.
 
     If the account has 2FA enabled (C-U-14), returns a `TwoFactorChallengeResponse`
     instead of a token; the client must then call `/auth/2fa/verify` with the
     challenge token and a current TOTP code to receive the real access token.
 
+    IP geolocation (C-A-07), if enabled, is resolved in a background task
+    scheduled *after* this function returns — it never adds latency to the
+    login response itself.
+
     Raises:
         HTTPException: 401 if credentials are invalid or the account is
             deactivated.
     """
     result = _native_backend.authenticate(db, payload.email, payload.password)
-    log_login(
+    login_event = log_login(
         db,
         user_id=result.user.id if result.user else None,
         email_attempted=payload.email,
@@ -65,6 +75,7 @@ def login(payload: LoginRequest, request_ip: str = Depends(get_client_ip), db: S
     )
     login_attempts_total.labels(result="success" if result.success else "failure").inc()
     db.commit()
+    background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
     if not result.success or result.user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, result.error or "Invalid credentials.")
 

@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import RequirementLinkType, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementLinkType, RequirementStatus
 
 
 class RequirementCreate(BaseModel):
@@ -23,6 +23,8 @@ class RequirementCreate(BaseModel):
     component_id: UUID
     category_id: UUID
     owner_id: UUID | None = None
+    target_stage_id: UUID | None = None
+    level: RequirementLevel = RequirementLevel.REQUIREMENT
     keywords: list[str] = []
     custom_fields: dict[str, Any] = {}
     creator_id: UUID | None = None  # PM-only override (C-A-11)
@@ -38,6 +40,8 @@ class RequirementUpdate(BaseModel):
     category_id: UUID
     owner_id: UUID
     status: RequirementStatus | None = None
+    target_stage_id: UUID | None = None
+    level: RequirementLevel = RequirementLevel.REQUIREMENT
     keywords: list[str] = []
     custom_fields: dict[str, Any] = {}
     change_note: str = ""
@@ -54,6 +58,8 @@ class RequirementOut(BaseModel):
     owner_id: UUID
     component_id: UUID
     category_id: UUID
+    target_stage_id: UUID | None = None
+    level: RequirementLevel = RequirementLevel.REQUIREMENT
     sort_order: int
     creator_id: UUID
     is_archived: bool
@@ -62,6 +68,12 @@ class RequirementOut(BaseModel):
     custom_fields: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    is_subscribed: bool = False
+    # Derived list-view indicators (mock's card "badges") — not stored data,
+    # computed at read time from comments/change-requests/status.
+    comment_count: int = 0
+    has_open_change_request: bool = False
+    requires_approval: bool = False
 
 
 class RequirementVersionOut(BaseModel):
@@ -71,6 +83,8 @@ class RequirementVersionOut(BaseModel):
     clarification: str
     status: RequirementStatus
     owner_id: UUID
+    target_stage_id: UUID | None = None
+    level: RequirementLevel = RequirementLevel.REQUIREMENT
     change_note: str
     change_request_id: UUID | None
     custom_fields: dict[str, Any]
@@ -91,6 +105,16 @@ class RequirementLinkOut(BaseModel):
     link_type: RequirementLinkType
 
 
+class RequirementImportError(BaseModel):
+    row: int
+    message: str
+
+
+class RequirementImportResult(BaseModel):
+    created: int
+    errors: list[RequirementImportError] = []
+
+
 class CommentCreate(BaseModel):
     body: str
 
@@ -98,5 +122,8 @@ class CommentCreate(BaseModel):
 class CommentOut(BaseModel):
     id: UUID
     author_id: UUID
+    author_display_name: str
     body: str
     created_at: datetime
+    reaction_count: int = 0
+    reacted_by_me: bool = False

@@ -1,9 +1,9 @@
-import { Plus, Trash2, Upload } from "lucide-react";
+import { Lock, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { api, fileUrl } from "../api/client";
-import type { FileAsset, OrgGroup, OrgUser, Organization, ProjectListItem } from "../api/types";
+import { ApiError, api, fileUrl } from "../api/client";
+import type { FileAsset, OrgAdvancedSettings, OrgGroup, OrgRole, OrgUser, Organization, ProjectListItem } from "../api/types";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -28,6 +28,16 @@ export function OrgAdminPage() {
   const [newGroupName, setNewGroupName] = useState("");
   const [groupMemberInputs, setGroupMemberInputs] = useState<Record<string, string>>({});
 
+  const [advanced, setAdvanced] = useState<OrgAdvancedSettings | null>(null);
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("");
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpUseTls, setSmtpUseTls] = useState(true);
+  const [newMappingGroup, setNewMappingGroup] = useState("");
+  const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
+  const [advancedError, setAdvancedError] = useState<string | null>(null);
+
   const logoInputRef = useRef<HTMLInputElement>(null);
   const resourceInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,6 +55,51 @@ export function OrgAdminPage() {
     setGroups(g);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
+
+    try {
+      const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
+      setAdvanced(a);
+      setSmtpHost(a.smtp_host ?? "");
+      setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
+      setSmtpUsername(a.smtp_username ?? "");
+      setSmtpUseTls(a.smtp_use_tls);
+    } catch (err) {
+      // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
+      if (!(err instanceof ApiError && err.status === 403)) throw err;
+    }
+  }
+
+  async function saveAdvanced() {
+    if (!orgId) return;
+    setAdvancedError(null);
+    try {
+      const saved = await api.put<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`, {
+        smtp_host: smtpHost || null,
+        smtp_port: smtpPort ? Number(smtpPort) : null,
+        smtp_username: smtpUsername || null,
+        smtp_password: smtpPassword || undefined,
+        smtp_use_tls: smtpUseTls,
+        sso_group_mappings: advanced?.sso_group_mappings ?? [],
+      });
+      setAdvanced(saved);
+      setSmtpPassword("");
+    } catch (err) {
+      setAdvancedError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  function addMapping() {
+    if (!newMappingGroup || !advanced) return;
+    setAdvanced({
+      ...advanced,
+      sso_group_mappings: [...advanced.sso_group_mappings, { sso_group: newMappingGroup, org_role: newMappingRole }],
+    });
+    setNewMappingGroup("");
+  }
+
+  function removeMapping(idx: number) {
+    if (!advanced) return;
+    setAdvanced({ ...advanced, sso_group_mappings: advanced.sso_group_mappings.filter((_, i) => i !== idx) });
   }
 
   async function setDefaultTemplate(projectId: string) {
@@ -96,6 +151,13 @@ export function OrgAdminPage() {
     reload();
   }
 
+  async function toggleDisplayNameLock(user: OrgUser) {
+    await api.put(`/api/v1/orgs/${orgId}/users/${user.user_id}/display-name-lock`, {
+      display_name_locked: !user.display_name_locked,
+    });
+    reload();
+  }
+
   if (!org) return <Spinner />;
 
   return (
@@ -144,6 +206,7 @@ export function OrgAdminPage() {
               <th>{strings.orgAdmin.name}</th>
               <th>{strings.orgAdmin.roles}</th>
               <th>{strings.orgAdmin.status}</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -153,6 +216,15 @@ export function OrgAdminPage() {
                 <td>{u.display_name}</td>
                 <td>{u.roles.join(", ")}</td>
                 <td>{u.is_archived ? "archived" : u.is_active ? "active" : "deactivated"}</td>
+                <td>
+                  <button
+                    className="btn"
+                    onClick={() => toggleDisplayNameLock(u)}
+                    title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                  >
+                    {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -179,7 +251,7 @@ export function OrgAdminPage() {
               <input
                 className="input"
                 style={{ maxWidth: 280 }}
-                placeholder="User ID"
+                placeholder={strings.admin.userId}
                 value={groupMemberInputs[g.id] ?? ""}
                 onChange={(e) => setGroupMemberInputs((m) => ({ ...m, [g.id]: e.target.value }))}
               />
@@ -190,7 +262,7 @@ export function OrgAdminPage() {
           </div>
         ))}
         <div className="row">
-          <input className="input" placeholder="Name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+          <input className="input" placeholder={strings.admin.name} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
           <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
             <Plus size={14} /> {strings.orgAdmin.newGroup}
           </button>
@@ -218,6 +290,81 @@ export function OrgAdminPage() {
           <Upload size={14} /> {strings.orgAdmin.resourcesHint}
         </span>
       </div>
+
+      {advanced && (
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.advanced}</h2>
+          <div className="row">
+            <input
+              className="input"
+              placeholder={strings.orgAdmin.smtpHost}
+              value={smtpHost}
+              onChange={(e) => setSmtpHost(e.target.value)}
+            />
+            <input
+              className="input"
+              style={{ maxWidth: 120 }}
+              placeholder={strings.orgAdmin.smtpPort}
+              value={smtpPort}
+              onChange={(e) => setSmtpPort(e.target.value)}
+            />
+          </div>
+          <div className="row">
+            <input
+              className="input"
+              placeholder={strings.orgAdmin.smtpUsername}
+              value={smtpUsername}
+              onChange={(e) => setSmtpUsername(e.target.value)}
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder={strings.orgAdmin.smtpPassword}
+              value={smtpPassword}
+              onChange={(e) => setSmtpPassword(e.target.value)}
+            />
+          </div>
+          <label className="row">
+            <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
+            {strings.orgAdmin.smtpUseTls}
+          </label>
+
+          <div className="stack">
+            <strong>{strings.orgAdmin.ssoMappings}</strong>
+            {advanced.sso_group_mappings.map((m, idx) => (
+              <div key={idx} className="row" style={{ justifyContent: "space-between" }}>
+                <span>
+                  {m.sso_group} <span className="badge">{m.org_role}</span>
+                </span>
+                <button className="btn btn-danger" onClick={() => removeMapping(idx)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            <div className="row">
+              <input
+                className="input"
+                placeholder={strings.orgAdmin.ssoGroup}
+                value={newMappingGroup}
+                onChange={(e) => setNewMappingGroup(e.target.value)}
+              />
+              <select className="input" value={newMappingRole} onChange={(e) => setNewMappingRole(e.target.value as OrgRole)}>
+                <option value="member">member</option>
+                <option value="project_creator">project_creator</option>
+                <option value="org_admin">org_admin</option>
+              </select>
+              <button className="btn" onClick={addMapping} disabled={!newMappingGroup}>
+                <Plus size={14} /> {strings.orgAdmin.addMapping}
+              </button>
+            </div>
+          </div>
+
+          {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
+          <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
+            {strings.orgAdmin.saveAdvanced}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,6 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,6 +21,20 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=Fa
 
 
 def _resolve_user_from_token(token: str | None, db: Session) -> User:
+    """Decodes and validates a bearer token, returning the active user it names.
+
+    Args:
+        token: The raw bearer token, or None if the request had none.
+        db: Active database session.
+
+    Returns:
+        The authenticated, active, non-archived user.
+
+    Raises:
+        HTTPException: 401 if the token is missing, invalid, not an access
+            token (e.g. a 2FA challenge token), or names a user who is
+            inactive/archived.
+    """
     unauthorized = HTTPException(
         status.HTTP_401_UNAUTHORIZED,
         "Could not validate credentials.",

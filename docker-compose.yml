@@ -74,6 +74,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-noreply@example.com}
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
+    volumes:
+      # Only used if STORAGE_BACKEND=local is set (default is s3/MinIO
+      # above). Named so it survives container recreation and so
+      # scripts/backup.sh (I-M-04) can archive it alongside the database.
+      - reqtrack_local_files:/app/data/files
     depends_on:
       db:
         condition: service_healthy
@@ -159,3 +164,4 @@ services:
 volumes:
   reqtrack_db_data:
   reqtrack_minio_data:
+  reqtrack_local_files:

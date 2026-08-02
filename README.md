@@ -74,6 +74,9 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space (I-M-09, I-M-11) |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend (I-M-11) |
+| `WEBSOCKET_ENABLED` | `true` | — | Whether the optional live-update WebSocket interface is mounted at all (I-A-04) |
+| `GEOIP_LOOKUP_ENABLED` | `false` | — | Whether login events resolve an approximate location for the client IP via a third-party lookup (C-A-07). Off by default since it's an external network dependency; login is never blocked by it regardless |
+| `GEOIP_LOOKUP_EXCLUDE_CIDRS` | private/loopback ranges | — | Comma-separated CIDR ranges never sent to the geolocation lookup, even when enabled |
 
 Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild.
 
@@ -110,6 +113,8 @@ cd tests/container && docker compose exec backend pytest -q
 
 Note: every test truncates all tables, including the bootstrap admin user, so after a pytest run the dev/test stack's own backend/frontend will have no data left to browse — `docker compose restart backend` re-runs migrations and re-creates the bootstrap admin if you also want to use the UI or run Playwright afterward (Playwright itself doesn't need this if you haven't run pytest since the stack last started).
 
+**Linting** (N-E-04): `ruff` is configured in `backend/pyproject.toml` — `ruff check app` (or `tests`) from `backend/`. `B008` (function calls in argument defaults) is deliberately disabled since FastAPI's `Depends(...)` dependency-injection idiom is exactly that pattern.
+
 ### Frontend
 
 ```bash
@@ -117,6 +122,7 @@ cd frontend
 npm install
 npm run dev      # http://localhost:3000, proxies to VITE_API_BASE_URL (default http://localhost:8000)
 npm run build    # type-checks with tsc, then builds
+npm run lint     # ESLint (N-E-07): TypeScript + React Hooks + Fast Refresh rules
 npm run storybook       # component explorer at http://localhost:6006, with a light/dark theme toggle
 npm run build-storybook # static Storybook build
 npm run test-storybook  # runs every story as an automated test (real Chromium via Playwright), both themes included

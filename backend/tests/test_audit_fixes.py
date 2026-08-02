@@ -1,0 +1,202 @@
+"""Regression tests for gaps found by the Ossa (v1) / Pelion (v2) requirements
+compliance audit (see docs/decisions.md "Requirements audit fixes" section):
+
+- I-M-05: server admins no longer bypass organisation/project data access.
+- I-M-06: an existing server admin can grant/revoke the role on another user.
+- C-U-02: project roles/groups can't be granted to a user outside the org.
+- C-A-05: project-group creation/membership/role changes are audit-logged.
+- C-U-08: the last-manager guard also applies to group-based removal.
+- C-N-01: a new stage entering scoping notifies project members.
+- C-E-04: project creation falls back to the org's default template.
+- C-U-16: an org admin can lock/unlock a user's display name via the API.
+"""
+
+from tests.conftest import (
+    auth_headers,
+    create_component_and_category,
+    create_org_admin_in,
+    create_org_user,
+    create_project,
+    login,
+)
+
+
+def test_server_admin_cannot_access_org_or_project_data_without_a_role(client, admin_token):
+    """I-M-05: the bootstrap server admin has no role in a freshly created
+    organisation, so it must not be able to read/write data within it."""
+    org = client.post("/api/v1/orgs", json={"name": "No Access Org"}, headers=auth_headers(admin_token)).json()
+
+    assert client.get(f"/api/v1/orgs/{org['id']}/users", headers=auth_headers(admin_token)).status_code == 403
+    assert client.post(
+        f"/api/v1/orgs/{org['id']}/groups", json={"name": "Team"}, headers=auth_headers(admin_token)
+    ).status_code == 403
+    assert client.post(
+        "/api/v1/projects", json={"organization_id": org["id"], "name": "X", "summary": ""},
+        headers=auth_headers(admin_token),
+    ).status_code == 403
+
+
+def test_server_admin_can_still_create_org_and_its_initial_user(client, admin_token):
+    """I-M-05's one documented carve-out: creating an org and its initial
+    user works with no prior role, even though nothing else does."""
+    org = client.post("/api/v1/orgs", json={"name": "Bootstrap Carve-out Org"}, headers=auth_headers(admin_token)).json()
+    resp = client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "first_admin@example.com", "display_name": "First Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_grant_and_revoke_server_admin_role(client, admin_token, org_id):
+    """I-M-06: an existing server admin can promote/demote another user."""
+    user_id = create_org_user(client, admin_token, org_id, "future_admin@example.com", role="member")
+
+    granted = client.put(
+        f"/api/v1/system/users/{user_id}/server-admin", json={"is_server_admin": True},
+        headers=auth_headers(admin_token),
+    )
+    assert granted.status_code == 204, granted.text
+
+    new_admin_token = login(client, "future_admin@example.com", "Password123!")
+    # Prove the grant actually took effect: they can now do a server-admin-only action.
+    created_org = client.post(
+        "/api/v1/orgs", json={"name": "Created By New Admin"}, headers=auth_headers(new_admin_token)
+    )
+    assert created_org.status_code == 201, created_org.text
+
+    revoked = client.put(
+        f"/api/v1/system/users/{user_id}/server-admin", json={"is_server_admin": False},
+        headers=auth_headers(admin_token),
+    )
+    assert revoked.status_code == 204
+    demoted_token = login(client, "future_admin@example.com", "Password123!")
+    assert client.post(
+        "/api/v1/orgs", json={"name": "Should Fail Now"}, headers=auth_headers(demoted_token)
+    ).status_code == 403
+
+
+def test_non_server_admin_cannot_grant_server_admin_role(client, admin_token, org_id):
+    member_id = create_org_user(client, admin_token, org_id, "plain_member@example.com", role="member")
+    token = login(client, "plain_member@example.com", "Password123!")
+    resp = client.put(
+        f"/api/v1/system/users/{member_id}/server-admin", json={"is_server_admin": True}, headers=auth_headers(token)
+    )
+    assert resp.status_code == 403
+
+
+def test_cannot_grant_project_role_to_user_outside_the_organisation(client, admin_token, org_id):
+    """C-U-02: "All Project users, must be an organisation user." """
+    project = create_project(client, admin_token, org_id)
+    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Outsider Org")
+    outsider_id = create_org_user(client, other_org_admin_token, other_org["id"], "outsider@example.com", role="member")
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": outsider_id, "role": "member"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_project_group_changes_are_audit_logged(client, admin_token, org_id):
+    """C-A-05: project-group creation and membership changes appear in the
+    project changes-over-time view, matching org-group changes."""
+    project = create_project(client, admin_token, org_id)
+    member_id = create_org_user(client, admin_token, org_id, "group_member@example.com", role="member")
+
+    group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Reviewers", "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/members",
+        json={"user_id": member_id}, headers=auth_headers(admin_token),
+    )
+    client.delete(
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/members/{member_id}",
+        headers=auth_headers(admin_token),
+    )
+
+    changes = client.get(f"/api/v1/projects/{project['id']}/changes", headers=auth_headers(admin_token)).json()
+    actions = {c["action"] for c in changes if c["entity_type"] == "project_group"}
+    assert {"created", "member_added", "member_removed"} <= actions
+
+
+def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, org_id):
+    """C-U-08: removing a project's only manager via group membership must
+    be blocked, the same as direct role revocation already is."""
+    project = create_project(client, admin_token, org_id)
+    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
+    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
+    manager_group = next(g for g in groups if g["role"] == "project_manager")
+
+    resp = client.delete(
+        f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}/members/{me['id']}",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_new_stage_entering_scoping_notifies_members(client, admin_token, org_id):
+    """C-N-01: a newly created (non-initial) stage entering scoping notifies
+    project members — this is never the "brand new project" excluded case."""
+    project = create_project(client, admin_token, org_id)
+    client.post(
+        f"/api/v1/projects/{project['id']}/stages", json={"name": "Build"}, headers=auth_headers(admin_token)
+    )
+    notifications = client.get("/api/v1/notifications", headers=auth_headers(admin_token)).json()
+    assert any(n["type"] == "stage_scoping" for n in notifications)
+
+
+def test_project_creation_falls_back_to_org_default_template(client, admin_token, org_id):
+    """C-E-04: omitting template_project_id uses the org's configured default."""
+    template = create_project(client, admin_token, org_id, "Default Template Source")
+    client.patch(f"/api/v1/projects/{template['id']}", json={"is_template": True}, headers=auth_headers(admin_token))
+    client.put(
+        f"/api/v1/orgs/{org_id}/default-template", json={"project_id": template["id"]}, headers=auth_headers(admin_token)
+    )
+    component_id, category_id = create_component_and_category(client, admin_token, template["id"])
+
+    created = client.post(
+        "/api/v1/projects", json={"organization_id": org_id, "name": "No Template Specified", "summary": ""},
+        headers=auth_headers(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    new_project = created.json()
+
+    components = client.get(
+        f"/api/v1/projects/{new_project['id']}/components", headers=auth_headers(admin_token)
+    ).json()
+    assert any(c["id"] == component_id or c["prefix"] == "SW" for c in components)
+
+
+def test_org_admin_can_lock_and_unlock_display_name(client, admin_token, org_id):
+    """C-U-16: an org admin can lock/unlock a user's display name, and the
+    user is rejected when they try to change it while locked."""
+    user_id = create_org_user(client, admin_token, org_id, "lockable@example.com", role="member")
+    token = login(client, "lockable@example.com", "Password123!")
+
+    locked = client.put(
+        f"/api/v1/orgs/{org_id}/users/{user_id}/display-name-lock",
+        json={"display_name_locked": True}, headers=auth_headers(admin_token),
+    )
+    assert locked.status_code == 204
+
+    rejected = client.patch(
+        "/api/v1/auth/me/preferences", json={"display_name": "New Name"}, headers=auth_headers(token)
+    )
+    assert rejected.status_code == 403
+
+    users = client.get(f"/api/v1/orgs/{org_id}/users", headers=auth_headers(admin_token)).json()
+    assert next(u for u in users if u["user_id"] == user_id)["display_name_locked"] is True
+
+    unlocked = client.put(
+        f"/api/v1/orgs/{org_id}/users/{user_id}/display-name-lock",
+        json={"display_name_locked": False}, headers=auth_headers(admin_token),
+    )
+    assert unlocked.status_code == 204
+    allowed = client.patch(
+        "/api/v1/auth/me/preferences", json={"display_name": "New Name"}, headers=auth_headers(token)
+    )
+    assert allowed.status_code == 200

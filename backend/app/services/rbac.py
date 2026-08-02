@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import OrgRole, ProjectRole
-from app.models.organization import OrgGroupMember, UserOrgRole
+from app.models.organization import OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 
@@ -214,7 +214,13 @@ def require_server_admin(current_user: User = Depends(get_current_user)) -> User
 def require_org_role(*allowed: OrgRole):
     """FastAPI dependency factory requiring one of the given org roles.
 
-    Expects an `organization_id` path parameter. Server admins always pass.
+    Expects an `organization_id` path parameter.
+
+    Server admins do NOT bypass this check. I-M-05 is explicit that the
+    server admin role "does not give access to data within organisations" —
+    the only documented carve-out is creating the *initial* user in a new
+    organisation, which uses `require_org_admin_or_server_admin` below
+    instead of this factory.
     """
 
     def _dependency(
@@ -222,8 +228,7 @@ def require_org_role(*allowed: OrgRole):
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if current_user.is_server_admin:
-            return current_user
+        """See the enclosing `require_org_role` factory's docstring."""
         roles = get_effective_org_roles(db, current_user.id, organization_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
@@ -232,10 +237,30 @@ def require_org_role(*allowed: OrgRole):
     return _dependency
 
 
+def require_org_admin_or_server_admin(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Dependency for the one documented server-admin carve-out (I-M-05
+    clarification): "This permission needs to be able to create users in
+    organisations, such that they can create the initial organisation user."
+    Used only by the create-org-user endpoint — every other org-scoped
+    endpoint requires a genuine org role via `require_org_role`.
+    """
+    if current_user.is_server_admin:
+        return current_user
+    roles = get_effective_org_roles(db, current_user.id, organization_id)
+    if OrgRole.ORG_ADMIN not in roles:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
+    return current_user
+
+
 def require_project_role(*allowed: ProjectRole):
     """FastAPI dependency factory requiring one of the given project roles.
 
-    Expects a `project_id` path parameter. Server admins always pass.
+    Expects a `project_id` path parameter. Server admins do NOT bypass this
+    check (I-M-05) — project content is "data within organisations".
     """
 
     def _dependency(
@@ -243,8 +268,7 @@ def require_project_role(*allowed: ProjectRole):
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if current_user.is_server_admin:
-            return current_user
+        """See the enclosing `require_project_role` factory's docstring."""
         roles = get_effective_project_roles(db, current_user.id, project_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
@@ -262,10 +286,9 @@ def require_project_view(
 
     Org admins are not automatically included here: per C-U-01 clarification,
     org admin only guarantees the ability to manage project settings, not
-    general content access (see `require_project_manage`).
+    general content access (see `require_project_manage`). Server admins do
+    not bypass this either (I-M-05).
     """
-    if current_user.is_server_admin:
-        return current_user
     if not get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
     return current_user
@@ -280,14 +303,12 @@ def require_project_manage(
 
     Grants access to project managers, project administrators, and
     organisation admins of the project's organisation (C-U-01 clarification,
-    C-U-03 clarification). Returns the Project so callers avoid a second
-    lookup.
+    C-U-03 clarification). Server admins do not bypass this (I-M-05).
+    Returns the Project so callers avoid a second lookup.
     """
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    if current_user.is_server_admin:
-        return project
     if not can_manage_project_settings(db, current_user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     return project

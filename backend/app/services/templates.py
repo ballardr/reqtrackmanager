@@ -12,7 +12,7 @@ source project's current lifecycle state.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -122,7 +122,7 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
         remapped_custom_fields = {
             field_id_map[k]: v for k, v in current_version.custom_fields.items() if k in field_id_map
         }
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         db.add(
             RequirementVersion(
                 requirement_id=new_requirement.id, version_number=1, valid_from=now, valid_to=None,

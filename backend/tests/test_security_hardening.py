@@ -13,7 +13,14 @@ hardening pass (see docs/decisions.md "Security hardening" section):
   reportlab.platypus.Paragraph().
 """
 
-from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.conftest import (
+    auth_headers,
+    create_component_and_category,
+    create_org_admin_in,
+    create_org_user,
+    create_project,
+    login,
+)
 
 
 def _create_requirement(client, token, project_id, component_id, category_id, name="Req"):
@@ -129,12 +136,10 @@ def test_cannot_join_project_group_belonging_to_another_project(client, admin_to
 
 def test_cannot_nest_org_group_from_another_organization(client, admin_token, org_id):
     """An org group from organisation X must not be nestable into a project group in organisation Y."""
-    other_org = client.post(
-        "/api/v1/orgs", json={"name": "Other Org"}, headers=auth_headers(admin_token)
-    ).json()
+    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Other Org")
     other_group = client.post(
         f"/api/v1/orgs/{other_org['id']}/groups", json={"name": "Other Org Team"},
-        headers=auth_headers(admin_token),
+        headers=auth_headers(other_org_admin_token),
     ).json()
 
     project = create_project(client, admin_token, org_id, "My Project")

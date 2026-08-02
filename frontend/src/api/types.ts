@@ -7,8 +7,19 @@
 
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
-export type StageStatus = "scoping" | "review" | "approved" | "completed";
+export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
+
+// Display-only wording (matches the design mocks); the underlying API value
+// stays unchanged since it gates real approval/locking logic server-side.
+export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
+  scoping: "Scoping",
+  review: "In review",
+  approved: "Ready for use",
+  completed: "Implemented",
+  archived: "Archived",
+};
 export type RequirementStatus = "draft" | "reviewed" | "approved" | "completed" | "archived";
+export type RequirementLevel = "requirement" | "recommended";
 export type ChangeRequestKind = "new_requirement" | "modify_requirement";
 export type ChangeRequestStatus = "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn";
 export type LinkType = "relates_to" | "depends_on" | "derived_from";
@@ -26,7 +37,8 @@ export type NotificationType =
   | "requirements_updated"
   | "password_changed"
   | "permission_granted"
-  | "permission_revoked";
+  | "permission_revoked"
+  | "comment_added";
 
 export interface Notification {
   id: string;
@@ -92,6 +104,7 @@ export interface OrgUser {
   is_active: boolean;
   is_archived: boolean;
   roles: OrgRole[];
+  display_name_locked: boolean;
 }
 
 export interface OrgGroup {
@@ -169,12 +182,23 @@ export interface ProjectGroup {
   member_org_group_ids: string[];
 }
 
+export interface StageProgress {
+  stage_id: string;
+  name: string;
+  status: StageStatus;
+  requirement_count: number;
+  completed_percent: number;
+}
+
 export interface ProjectMetrics {
   requirement_count: number;
   requirement_completed_percent: number;
   change_requests_proposed: number;
   change_requests_approved: number;
   change_requests_rejected: number;
+  file_count: number;
+  requirements_by_status: Record<string, number>;
+  stage_progress: StageProgress[];
 }
 
 export interface Requirement {
@@ -188,6 +212,8 @@ export interface Requirement {
   owner_id: string;
   component_id: string;
   category_id: string;
+  target_stage_id: string | null;
+  level: RequirementLevel;
   sort_order: number;
   creator_id: string;
   is_archived: boolean;
@@ -196,6 +222,10 @@ export interface Requirement {
   custom_fields: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  is_subscribed: boolean;
+  comment_count: number;
+  has_open_change_request: boolean;
+  requires_approval: boolean;
 }
 
 export interface RequirementVersionEntry {
@@ -205,6 +235,8 @@ export interface RequirementVersionEntry {
   clarification: string;
   status: RequirementStatus;
   owner_id: string;
+  target_stage_id: string | null;
+  level: RequirementLevel;
   change_note: string;
   change_request_id: string | null;
   created_by: string;
@@ -222,8 +254,11 @@ export interface RequirementLink {
 export interface Comment {
   id: string;
   author_id: string;
+  author_display_name: string;
   body: string;
   created_at: string;
+  reaction_count: number;
+  reacted_by_me: boolean;
 }
 
 export interface ChangeRequest {
@@ -236,6 +271,8 @@ export interface ChangeRequest {
   proposed_name: string;
   proposed_reasoning: string;
   proposed_clarification: string;
+  proposed_target_stage_id: string | null;
+  proposed_level: RequirementLevel;
   reason: string;
   custom_fields: Record<string, unknown>;
   submitted_at: string | null;
@@ -243,4 +280,46 @@ export interface ChangeRequest {
   decided_by: string | null;
   decision_note: string;
   created_at: string;
+  is_subscribed: boolean;
+  comment_count: number;
+  requires_approval: boolean;
+}
+
+export interface ChangeEntry {
+  timestamp: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  actor_display_name: string | null;
+  detail: Record<string, unknown> | null;
+}
+
+export interface RequirementImportResult {
+  created: number;
+  errors: { row: number; message: string }[];
+}
+
+export interface ReportChapter {
+  title: string;
+  body: string;
+}
+
+export interface ProjectReportConfig {
+  intro: string;
+  chapters: ReportChapter[];
+  appendices: ReportChapter[];
+}
+
+export interface SsoGroupMapping {
+  sso_group: string;
+  org_role: OrgRole;
+}
+
+export interface OrgAdvancedSettings {
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_use_tls: boolean;
+  sso_group_mappings: SsoGroupMapping[];
 }

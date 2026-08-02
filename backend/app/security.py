@@ -10,7 +10,7 @@ elsewhere.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import JWTError, jwt
@@ -58,7 +58,7 @@ def create_access_token(subject: str, expires_minutes: int | None = None) -> str
     Returns:
         An encoded JWT string.
     """
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = datetime.now(UTC) + timedelta(
         minutes=expires_minutes or settings.access_token_expire_minutes
     )
     payload = {"sub": subject, "exp": expire, "purpose": "access"}
@@ -74,7 +74,7 @@ def create_2fa_challenge_token(subject: str) -> str:
     proves the holder passed the first login step and may attempt the TOTP
     code exchange.
     """
-    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    expire = datetime.now(UTC) + timedelta(minutes=5)
     payload = {"sub": subject, "exp": expire, "purpose": "2fa_challenge"}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 

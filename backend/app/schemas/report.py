@@ -39,3 +39,18 @@ class ReportRequest(BaseModel):
     status: RequirementStatus | None = None
     keyword: str | None = None
     resource_file_ids: list[UUID] = []
+
+
+class ReportChapter(BaseModel):
+    title: str
+    body: str = ""
+
+
+class ProjectReportConfig(BaseModel):
+    """Persisted report structure (mock's "Report Setup"), used as the
+    default report content when a generation request doesn't override it
+    with ad-hoc pre_markdown/post_markdown."""
+
+    intro: str = ""
+    chapters: list[ReportChapter] = []
+    appendices: list[ReportChapter] = []

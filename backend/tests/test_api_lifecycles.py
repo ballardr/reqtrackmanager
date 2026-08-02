@@ -12,7 +12,6 @@ from tests.conftest import (
     create_component_and_category,
     create_org_user,
     create_project,
-    login,
 )
 
 

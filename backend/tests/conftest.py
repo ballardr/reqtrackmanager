@@ -38,7 +38,8 @@ from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (populates Base.metadata)
 from app.config import get_settings
-from app.database import Base, engine as app_engine
+from app.database import Base
+from app.database import engine as app_engine
 from app.migrations import run_migrations
 
 _settings_for_guard = get_settings()
@@ -156,6 +157,29 @@ def create_project(client, admin_token, org_id, name="Demo Project") -> dict:
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:
+    """Creates a new organisation, then a genuine org_admin user within it.
+
+    Since I-M-05 removed the server-admin bypass from `require_org_role`,
+    the bootstrap server admin can no longer act directly on an org it
+    creates (only the documented carve-out of creating that org's *initial*
+    user still works, matching real deployments). Tests that need to act
+    within a second organisation should log in as this returned user
+    instead of continuing to use `admin_token`.
+
+    Returns:
+        A tuple of (organization dict, bearer token for the new org_admin).
+    """
+    org = client.post("/api/v1/orgs", json={"name": org_name}, headers=auth_headers(admin_token)).json()
+    email = f"{org_name.lower().replace(' ', '_')}_admin@example.com"
+    client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": email, "display_name": "Org Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin_token),
+    )
+    return org, login(client, email, "Password123!")
 
 
 def create_component_and_category(client, admin_token, project_id) -> tuple[str, str]:

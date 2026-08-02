@@ -9,7 +9,7 @@ management (C-M-01, C-G-09).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +17,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import RequirementStatus
+from app.models.enums import RequirementLevel, RequirementStatus
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
@@ -43,6 +43,9 @@ def is_locked(version: RequirementVersion) -> bool:
 
 
 def _next_sequence(db: Session, project: Project) -> int:
+    """Returns the next requirement sequence number for `project`, advancing
+    the counter so it is never reused (C-G-06), including for archived
+    requirements."""
     seq = project.next_requirement_seq
     project.next_requirement_seq = seq + 1
     return seq
@@ -67,6 +70,8 @@ def create_requirement(
     owner_id: UUID | None,
     keywords: list[str],
     sort_order: int,
+    target_stage_id: UUID | None = None,
+    level: RequirementLevel = RequirementLevel.REQUIREMENT,
     custom_fields: dict[str, Any] | None = None,
     creator_override_id: UUID | None = None,
 ) -> Requirement:
@@ -89,11 +94,12 @@ def create_requirement(
     db.add(requirement)
     db.flush()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     version = RequirementVersion(
         requirement_id=requirement.id, version_number=1, valid_from=now, valid_to=None,
         name=name, reasoning=reasoning, clarification=clarification, status=RequirementStatus.DRAFT,
-        owner_id=owner_id or creator.id, sort_order=sort_order, created_by=creator.id, created_at=now,
+        owner_id=owner_id or creator.id, target_stage_id=target_stage_id, level=level,
+        sort_order=sort_order, created_by=creator.id, created_at=now,
         change_note="Initial creation.", custom_fields=custom_fields or {},
     )
     db.add(version)
@@ -115,6 +121,9 @@ def apply_new_version(
     clarification: str | None = None,
     status_value: RequirementStatus | None = None,
     owner_id: UUID | None = None,
+    target_stage_id: UUID | None = None,
+    target_stage_explicitly_set: bool = False,
+    level: RequirementLevel | None = None,
     change_note: str = "",
     change_request_id: UUID | None = None,
     custom_fields: dict[str, Any] | None = None,
@@ -123,8 +132,11 @@ def apply_new_version(
 
     Any field left as None carries over the current version's value
     unchanged, so callers only need to specify what is actually changing.
+    `target_stage_id` is nullable in the schema, so `target_stage_explicitly_set`
+    disambiguates "clear the target stage" (pass `target_stage_id=None,
+    target_stage_explicitly_set=True`) from "leave it unchanged".
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     current_version.valid_to = now
 
     new_version = RequirementVersion(
@@ -137,6 +149,8 @@ def apply_new_version(
         clarification=clarification if clarification is not None else current_version.clarification,
         status=status_value if status_value is not None else current_version.status,
         owner_id=owner_id if owner_id is not None else current_version.owner_id,
+        target_stage_id=target_stage_id if target_stage_explicitly_set else current_version.target_stage_id,
+        level=level if level is not None else current_version.level,
         approval_authority_id=actor.id if status_value == RequirementStatus.APPROVED else current_version.approval_authority_id,
         sort_order=current_version.sort_order,
         change_request_id=change_request_id,
@@ -152,7 +166,7 @@ def apply_new_version(
 def archive_requirement(db: Session, requirement: Requirement, actor: User) -> None:
     """Soft-archives a requirement, preserving its full version history (C-A-06)."""
     requirement.is_archived = True
-    requirement.archived_at = datetime.now(timezone.utc)
+    requirement.archived_at = datetime.now(UTC)
     requirement.archived_by = actor.id
 
 

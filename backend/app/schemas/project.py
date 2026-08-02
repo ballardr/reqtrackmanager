@@ -9,7 +9,6 @@ C-U-03, C-U-11).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
@@ -26,6 +25,17 @@ class ProjectCreate(BaseModel):
     name: str
     summary: str = ""
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
+    terminology: dict[str, str] = {}
+    is_template: bool = False
+
+    @field_validator("terminology")
+    @classmethod
+    def _validate_terminology_keys(cls, value: dict[str, str]) -> dict[str, str]:
+        """Rejects any terminology key outside the fixed `TERMINOLOGY_KEYS` set (C-C-03)."""
+        unknown = set(value) - TERMINOLOGY_KEYS
+        if unknown:
+            raise ValueError(f"Unknown terminology keys: {sorted(unknown)}. Allowed: {sorted(TERMINOLOGY_KEYS)}")
+        return value
 
 
 class ProjectOut(BaseModel):
@@ -60,6 +70,7 @@ class TerminologyUpdate(BaseModel):
     @field_validator("terminology")
     @classmethod
     def _validate_keys(cls, value: dict[str, str]) -> dict[str, str]:
+        """Rejects any terminology key outside the fixed `TERMINOLOGY_KEYS` set (C-C-03)."""
         unknown = set(value) - TERMINOLOGY_KEYS
         if unknown:
             raise ValueError(f"Unknown terminology keys: {sorted(unknown)}. Allowed: {sorted(TERMINOLOGY_KEYS)}")
@@ -149,11 +160,38 @@ class UserProjectRoleAssign(BaseModel):
     role: ProjectRole
 
 
+class StageProgressOut(BaseModel):
+    """A single project stage's requirement-completion progress, for the
+    dashboard's per-stage progress bars."""
+
+    stage_id: UUID
+    name: str
+    status: StageStatus
+    requirement_count: int
+    completed_percent: float
+
+
 class ProjectMetricsOut(BaseModel):
-    """Project overview dashboard metrics (U-P-05)."""
+    """Project overview dashboard metrics (U-P-05).
+
+    `requirements_by_status`/`stage_progress` back the dashboard's chart
+    views; they group by the project's actual status/stage model rather
+    than a separate "release version" concept, since ReqTrackManager tracks
+    requirement lifecycle status and project stages, not independent
+    parallel release versions (see docs/decisions.md).
+
+    `file_count` is the requirement's explicitly-listed metric ("number of
+    files in project, if files are implemented") — counts distinct
+    `FileAsset` rows attached to a requirement in this project, i.e.
+    requirement attachments, not organisation-wide shared resources (which
+    aren't scoped to a single project).
+    """
 
     requirement_count: int
     requirement_completed_percent: float
     change_requests_proposed: int
     change_requests_approved: int
     change_requests_rejected: int
+    file_count: int = 0
+    requirements_by_status: dict[str, int] = {}
+    stage_progress: list[StageProgressOut] = []

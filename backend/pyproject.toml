@@ -1,0 +1,25 @@
+[tool.ruff]
+# The codebase's existing lines run up to 146 chars; 150 is set as the
+# enforced ceiling so this gate catches genuinely new drift without
+# requiring a disruptive one-off reformat of already-written code to the
+# stricter 80-char Google guideline.
+line-length = 150
+target-version = "py312"
+
+[tool.ruff.lint]
+# N-E-04: a mechanical style gate, not exhaustive Google Python Style Guide
+# enforcement. E/W (pycodestyle), F (pyflakes), I (import sorting), UP
+# (modernise syntax), B (common bug patterns) catch real drift; full
+# docstring coverage (the "D" rules) is intentionally not enforced here —
+# see N-E-05 in docs/decisions.md for why that's a separate, narrower pass
+# rather than a repo-wide mechanical gate.
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    # FastAPI's dependency-injection idiom is exactly `Depends(...)` as an
+    # argument default — this rule exists to catch a general Python
+    # anti-pattern (mutable default arguments) that doesn't apply here.
+    "B008",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

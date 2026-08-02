@@ -9,7 +9,7 @@ being reimplemented ad hoc per endpoint.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -53,7 +53,7 @@ def log_event(
         organization_id=organization_id,
         project_id=project_id,
         detail=detail,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(event)
     return event
@@ -85,7 +85,7 @@ def log_login(
         ip_address=ip_address,
         location=None,
         success=success,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(event)
     return event

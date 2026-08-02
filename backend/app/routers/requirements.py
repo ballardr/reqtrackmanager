@@ -8,9 +8,12 @@ stage-only ordering (C-E-03).
 
 from __future__ import annotations
 
+import csv
+import io
+from datetime import UTC
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,29 +23,41 @@ from app.metrics import (
     requirements_created_total,
     requirements_updated_total,
 )
+from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.custom_field import CustomFieldEntityKind
-from app.models.enums import ProjectRole, ReviewTargetType, StageStatus
+from app.models.enums import (
+    ChangeRequestStatus,
+    ProjectRole,
+    RequirementLevel,
+    RequirementStatus,
+    ReviewTargetType,
+    StageStatus,
+)
 from app.models.file import FileAsset, RequirementFile
+from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementLink, RequirementVersion
-from app.models.change_request import ReviewComment
 from app.models.user import User
+from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
+from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
     CommentCreate,
     CommentOut,
     RequirementCreate,
+    RequirementImportError,
+    RequirementImportResult,
     RequirementLinkCreate,
     RequirementLinkOut,
     RequirementOut,
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.schemas.project import MoveDirection
-from app.services import pubsub
+from app.services import engagement, notifications, pubsub
 from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
 from app.services.files import delete_file, upload_file
+from app.services.changes import get_project_changes
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirements import (
     apply_new_version,
@@ -60,21 +75,47 @@ CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR
 
 
 def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
-    if user.is_server_admin:
-        return
+    """Raises 403 unless `user` holds a requirement-editing role on the project.
+
+    No server-admin bypass (I-M-05): requirement content is "data within
+    organisations".
+    """
     if not get_effective_project_roles(db, user.id, project_id) & set(CAN_EDIT_ROLES):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only stakeholders, administrators, or managers may do this.")
 
 
-def _to_out(db: Session, requirement: Requirement, version: RequirementVersion) -> RequirementOut:
+REQUIRES_APPROVAL_STATUSES = {RequirementStatus.DRAFT, RequirementStatus.REVIEWED}
+OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
+
+
+def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
+    return (
+        db.scalar(
+            select(ChangeRequest.id).where(
+                ChangeRequest.requirement_id == requirement_id, ChangeRequest.status.in_(OPEN_CR_STATUSES)
+            )
+        )
+        is not None
+    )
+
+
+def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, current_user_id: UUID) -> RequirementOut:
+    """Builds the API response shape for a requirement from its identity row
+    plus one version snapshot, including `current_user_id`'s subscription
+    state (C-N-01) and derived list-view badge indicators."""
     return RequirementOut(
         id=requirement.id, project_id=requirement.project_id, unique_code=requirement.unique_code,
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
         status=version.status, owner_id=version.owner_id, component_id=requirement.component_id,
-        category_id=requirement.category_id, sort_order=version.sort_order, creator_id=requirement.creator_id,
+        category_id=requirement.category_id, target_stage_id=version.target_stage_id, level=version.level,
+        sort_order=version.sort_order, creator_id=requirement.creator_id,
         is_archived=requirement.is_archived, is_locked=is_locked(version),
         keywords=get_keywords(db, requirement.id), custom_fields=version.custom_fields,
         created_at=requirement.created_at, updated_at=version.created_at,
+        is_subscribed=engagement.is_subscribed(db, current_user_id, "requirement", requirement.id),
+        comment_count=engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id),
+        has_open_change_request=_has_open_change_request(db, requirement.id),
+        requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
     )
 
 
@@ -98,9 +139,7 @@ def create_requirement_endpoint(
     creator_override_id = None
     if payload.creator_id is not None:
         # PM re-attributing authorship at creation time (C-A-11).
-        if not current_user.is_server_admin and ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(
-            db, current_user.id, project_id
-        ):
+        if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can assign the creator.")
         creator_override_id = payload.creator_id
 
@@ -109,6 +148,7 @@ def create_requirement_endpoint(
         db, project, component, category, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         owner_id=payload.owner_id, keywords=payload.keywords, sort_order=count,
+        target_stage_id=payload.target_stage_id, level=payload.level,
         custom_fields=custom_fields, creator_override_id=creator_override_id,
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="created",
@@ -118,20 +158,36 @@ def create_requirement_endpoint(
     db.refresh(requirement)
     version = get_current_version(db, requirement.id)
     pubsub.notify(project_id, {"type": "requirement", "action": "created", "id": str(requirement.id)})
-    return _to_out(db, requirement, version)
+    return _to_out(db, requirement, version, current_user.id)
 
 
 @router.get("", response_model=list[RequirementOut])
 def list_requirements(
     project_id: UUID,
+    response: Response,
     component_id: UUID | None = None,
     category_id: UUID | None = None,
     keyword: str | None = None,
     search: str | None = None,
+    status_filter: RequirementStatus | None = Query(None, alias="status"),
+    target_stage_id: UUID | None = None,
+    has_comments: bool | None = None,
+    only_watched: bool | None = None,
     include_archived: bool = False,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)."""
+    """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
+    and filter-panel query params (status/target version/comments/watched).
+
+    `limit`/`offset` (U-P-06) are optional: omitting both returns every
+    matching requirement, unchanged from before pagination existed (C-G-05:
+    no artificial limit is ever imposed unless the caller asks for a page).
+    When `limit` is given, the total match count (before slicing) is
+    returned in the `X-Total-Count` response header so a client can tell
+    whether more pages remain.
+    """
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not include_archived:
         query = query.where(Requirement.is_archived.is_(False))
@@ -151,14 +207,114 @@ def list_requirements(
             needle = search.lower()
             if needle not in version.name.lower() and needle not in req.unique_code.lower():
                 continue
-        out.append(_to_out(db, req, version))
+        if status_filter and version.status != status_filter:
+            continue
+        if target_stage_id and version.target_stage_id != target_stage_id:
+            continue
+        item = _to_out(db, req, version, current_user.id)
+        if has_comments and item.comment_count == 0:
+            continue
+        if only_watched and not item.is_subscribed:
+            continue
+        out.append(item)
 
     comp_order = {c.id: c.sort_order for c in db.scalars(
         select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
     cat_order = {c.id: c.sort_order for c in db.scalars(
         select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
     out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
+
+    response.headers["X-Total-Count"] = str(len(out))
+    if limit is not None:
+        out = out[offset:offset + limit]
     return out
+
+
+@router.post("/import", response_model=RequirementImportResult, status_code=status.HTTP_201_CREATED)
+async def import_requirements(
+    project_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Bulk-creates requirements from an uploaded CSV.
+
+    Expected columns: `name` (required), `reasoning`, `component_prefix`
+    (required, must match an existing `ProjectComponent.prefix`),
+    `category_prefix` (required, must match an existing
+    `ProjectCategory.prefix`), `level` ("requirement"/"recommended",
+    optional), `target_version` (optional, must match an existing
+    `ProjectStage.name`).
+
+    Unknown prefixes/stage names are reported as row errors rather than
+    silently creating new components/categories/stages. Registered before
+    `GET /{requirement_id}` so the static "/import" path isn't swallowed by
+    that dynamic route.
+
+    Every valid row is created in a single transaction — nothing commits
+    until the whole file has been processed, so a mid-file server error
+    can't leave a half-imported batch; per-row validation errors, by
+    contrast, are expected and simply skip that row while the rest import
+    normally.
+    """
+    _require_edit_role(db, current_user, project_id)
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+
+    components = {c.prefix: c for c in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
+    categories = {c.prefix: c for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
+    stages = {s.name: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()}
+
+    raw = await file.read()
+    reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
+
+    count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
+    errors: list[RequirementImportError] = []
+    created = 0
+
+    for row_num, row in enumerate(reader, start=2):  # header is row 1
+        name = (row.get("name") or "").strip()
+        component_prefix = (row.get("component_prefix") or "").strip()
+        category_prefix = (row.get("category_prefix") or "").strip()
+        level_raw = (row.get("level") or "requirement").strip().lower()
+        target_version = (row.get("target_version") or "").strip()
+
+        if not name:
+            errors.append(RequirementImportError(row=row_num, message="Missing required 'name'."))
+            continue
+        component = components.get(component_prefix)
+        if component is None:
+            errors.append(RequirementImportError(row=row_num, message=f"Unknown component_prefix '{component_prefix}'."))
+            continue
+        category = categories.get(category_prefix)
+        if category is None:
+            errors.append(RequirementImportError(row=row_num, message=f"Unknown category_prefix '{category_prefix}'."))
+            continue
+        try:
+            level = RequirementLevel(level_raw)
+        except ValueError:
+            errors.append(RequirementImportError(row=row_num, message=f"Invalid level '{level_raw}'."))
+            continue
+        target_stage_id = None
+        if target_version:
+            stage = stages.get(target_version)
+            if stage is None:
+                errors.append(RequirementImportError(row=row_num, message=f"Unknown target_version '{target_version}'."))
+                continue
+            target_stage_id = stage.id
+
+        create_requirement(
+            db, project, component, category, current_user,
+            name=name, reasoning=(row.get("reasoning") or "").strip(), clarification="",
+            owner_id=None, keywords=[], sort_order=count, target_stage_id=target_stage_id, level=level,
+        )
+        count += 1
+        created += 1
+
+    if created:
+        log_event(db, entity_type="project", entity_id=project_id, action="requirements_imported",
+                   actor_id=current_user.id, project_id=project_id, detail={"created": created, "errors": len(errors)})
+        db.commit()
+    return RequirementImportResult(created=created, errors=errors)
 
 
 @router.get("/{requirement_id}", response_model=RequirementOut)
@@ -170,7 +326,7 @@ def get_requirement(
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     version = get_current_version(db, requirement.id)
-    return _to_out(db, requirement, version)
+    return _to_out(db, requirement, version, current_user.id)
 
 
 @router.put("/{requirement_id}", response_model=RequirementOut)
@@ -195,6 +351,7 @@ def update_requirement(
         db, requirement, current_version, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         status_value=payload.status, owner_id=payload.owner_id,
+        target_stage_id=payload.target_stage_id, target_stage_explicitly_set=True, level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
         custom_fields=custom_fields,
     )
@@ -212,7 +369,7 @@ def update_requirement(
     db.commit()
     db.refresh(requirement)
     pubsub.notify(project_id, {"type": "requirement", "action": "updated", "id": str(requirement.id)})
-    return _to_out(db, requirement, new_version)
+    return _to_out(db, requirement, new_version, current_user.id)
 
 
 @router.delete("/{requirement_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,7 +378,7 @@ def delete_requirement(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Archives (soft-deletes) a requirement, preserving its history (C-A-06)."""
-    if not current_user.is_server_admin and not get_effective_project_roles(db, current_user.id, project_id) & {
+    if not get_effective_project_roles(db, current_user.id, project_id) & {
         ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR,
     }:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators or managers may archive requirements.")
@@ -254,12 +411,29 @@ def requirement_history(
         RequirementVersionOut(
             version_number=v.version_number, name=v.name, reasoning=v.reasoning,
             clarification=v.clarification, status=v.status, owner_id=v.owner_id,
+            target_stage_id=v.target_stage_id, level=v.level,
             change_note=v.change_note, change_request_id=v.change_request_id,
             custom_fields=v.custom_fields,
             created_by=v.created_by, created_at=v.created_at, valid_to=v.valid_to,
         )
         for v in versions
     ]
+
+
+@router.get("/{requirement_id}/activity", response_model=list[ChangeEntryOut])
+def requirement_activity(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Per-entity activity timeline for the requirement detail view's side
+    panel (mock's "Subscribed" activity log): audit events plus version
+    history, filtered to this requirement. Excludes discussion comments,
+    which are shown separately (C-A-09 clarification)."""
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    entries = get_project_changes(db, project_id, since=None, until=None, include_comments=False)
+    return [e for e in entries if e.entity_type == "requirement" and e.entity_id == str(requirement_id)]
 
 
 @router.post("/{requirement_id}/move", response_model=RequirementOut)
@@ -294,7 +468,7 @@ def move_requirement(
         versions[a.id].sort_order, versions[b.id].sort_order = versions[b.id].sort_order, versions[a.id].sort_order
         db.commit()
     version = get_current_version(db, requirement.id)
-    return _to_out(db, requirement, version)
+    return _to_out(db, requirement, version, current_user.id)
 
 
 def _get_requirement_in_project(db: Session, project_id: UUID, requirement_id: UUID) -> Requirement:
@@ -351,16 +525,29 @@ def add_comment(
     project_id: UUID, requirement_id: UUID, payload: CommentCreate,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Adds a discussion thread comment (C-R-01)."""
+    """Adds a discussion thread comment (C-R-01), notifying subscribers."""
     _get_requirement_in_project(db, project_id, requirement_id)
     comment = ReviewComment(
         target_type=ReviewTargetType.REQUIREMENT, target_id=requirement_id,
         author_id=current_user.id, body=payload.body,
     )
     db.add(comment)
+    db.flush()
+
+    for subscriber_id in engagement.get_subscriber_ids(
+        db, "requirement", requirement_id, exclude_user_id=current_user.id
+    ):
+        subscriber = db.get(User, subscriber_id)
+        if subscriber is not None:
+            notifications.notify(
+                db, subscriber, notification_type=NotificationType.COMMENT_ADDED,
+                title="New comment on a requirement you follow",
+                body=payload.body[:200],
+                project_id=project_id, entity_type="requirement", entity_id=str(requirement_id),
+            )
     db.commit()
     db.refresh(comment)
-    return comment
+    return engagement.comment_to_out(db, comment, current_user.id)
 
 
 @router.get("/{requirement_id}/comments", response_model=list[CommentOut])
@@ -369,11 +556,58 @@ def list_comments(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     _get_requirement_in_project(db, project_id, requirement_id)
-    return db.scalars(
+    comments = db.scalars(
         select(ReviewComment)
         .where(ReviewComment.target_type == ReviewTargetType.REQUIREMENT, ReviewComment.target_id == requirement_id)
         .order_by(ReviewComment.created_at)
     ).all()
+    return [engagement.comment_to_out(db, c, current_user.id) for c in comments]
+
+
+@router.put("/{requirement_id}/comments/{comment_id}/reaction", status_code=status.HTTP_204_NO_CONTENT)
+def react_to_comment(
+    project_id: UUID, requirement_id: UUID, comment_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Adds the caller's reaction to a comment (a single "like", not a
+    multi-emoji reaction picker — see CommentReaction model docstring)."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_id != requirement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.add_reaction(db, comment_id, current_user.id)
+
+
+@router.delete("/{requirement_id}/comments/{comment_id}/reaction", status_code=status.HTTP_204_NO_CONTENT)
+def unreact_to_comment(
+    project_id: UUID, requirement_id: UUID, comment_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    _get_requirement_in_project(db, project_id, requirement_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_id != requirement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.remove_reaction(db, comment_id, current_user.id)
+
+
+@router.put("/{requirement_id}/subscription", status_code=status.HTTP_204_NO_CONTENT)
+def subscribe_to_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Opts the caller into notifications for this specific requirement
+    (independent of their broad per-type notification preferences)."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    engagement.subscribe(db, current_user.id, "requirement", requirement_id)
+
+
+@router.delete("/{requirement_id}/subscription", status_code=status.HTTP_204_NO_CONTENT)
+def unsubscribe_from_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    _get_requirement_in_project(db, project_id, requirement_id)
+    engagement.unsubscribe(db, current_user.id, "requirement", requirement_id)
 
 
 # --- File attachments (C-M-02) and shared-resource links (C-M-04) ----------
@@ -418,9 +652,9 @@ def link_org_resource(
         select(RequirementFile).where(RequirementFile.requirement_id == requirement.id, RequirementFile.file_id == asset.id)
     )
     if existing is None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        db.add(RequirementFile(requirement_id=requirement.id, file_id=asset.id, linked_by=current_user.id, created_at=datetime.now(timezone.utc)))
+        db.add(RequirementFile(requirement_id=requirement.id, file_id=asset.id, linked_by=current_user.id, created_at=datetime.now(UTC)))
         db.commit()
     return asset
 
