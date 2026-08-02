@@ -2,11 +2,20 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { ChangeEntry, ChangeRequest, Comment, ProjectStage } from "../api/types";
+import type {
+  ChangeEntry,
+  ChangeRequest,
+  ChangeRequestTask,
+  ChangeRequestVoteChoice,
+  ChangeRequestVoteTally,
+  Comment,
+  ProjectStage,
+} from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
+import { useAuth } from "../context/AuthContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { t } from "../i18n/strings";
 
@@ -15,27 +24,55 @@ const strings = t();
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01). */
 export function ChangeRequestDetailPage() {
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
+  const { user } = useAuth();
   const myRoles = useMyProjectRoles(projectId);
   const canDecide = myRoles.includes("project_manager");
+  const canManageTasks = canDecide || myRoles.includes("project_administrator");
+  const canVote = myRoles.includes("stakeholder") || canDecide;
   const [cr, setCr] = useState<ChangeRequest | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [decisionNote, setDecisionNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [activity, setActivity] = useState<ChangeEntry[]>([]);
+  const [tasks, setTasks] = useState<ChangeRequestTask[]>([]);
+  const [newTaskDescription, setNewTaskDescription] = useState("");
+  const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
+  const [voteComment, setVoteComment] = useState("");
 
   async function reload() {
     if (!projectId || !crId) return;
-    const [crData, commentData, stageData, activityData] = await Promise.all([
+    const [crData, commentData, stageData, activityData, taskData, voteData] = await Promise.all([
       api.get<ChangeRequest>(`/api/v1/projects/${projectId}/change-requests/${crId}`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/activity`),
+      api.get<ChangeRequestTask[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`),
+      api.get<ChangeRequestVoteTally>(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`),
     ]);
     setCr(crData);
     setComments(commentData);
     setStages(stageData);
     setActivity(activityData);
+    setTasks(taskData);
+    setTally(voteData);
+  }
+
+  async function addTask() {
+    if (!newTaskDescription.trim()) return;
+    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, { description: newTaskDescription });
+    setNewTaskDescription("");
+    reload();
+  }
+
+  async function toggleTaskDone(task: ChangeRequestTask) {
+    await api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`, { is_done: !task.is_done });
+    reload();
+  }
+
+  async function castVote(vote: ChangeRequestVoteChoice) {
+    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`, { vote, comment: voteComment || null });
+    reload();
   }
 
   function stageName(id: string | null) {
@@ -164,6 +201,61 @@ export function ChangeRequestDetailPage() {
             </>
           )}
         </div>
+      </div>
+
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.tasks}</h2>
+        {tasks.map((task) => (
+          <label key={task.id} className="row" style={{ gap: "0.5rem" }}>
+            <input
+              type="checkbox" checked={task.is_done}
+              disabled={!(canManageTasks || task.assignee_id === user?.id)}
+              onChange={() => toggleTaskDone(task)}
+            />
+            <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{task.description}</span>
+            {task.due_date && <span className="text-muted">({task.due_date})</span>}
+          </label>
+        ))}
+        {canManageTasks && (
+          <div className="row">
+            <input
+              className="input" placeholder={strings.changeRequests.taskDescription}
+              value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)}
+            />
+            <button className="btn" onClick={addTask}>
+              {strings.changeRequests.newTask}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.votes}</h2>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.changeRequests.votingAdvisoryNotice}</p>
+        {tally && (
+          <div className="row">
+            <span className="badge">
+              {tally.approve_count} {strings.changeRequests.voteApproveCount}
+            </span>
+            <span className="badge">
+              {tally.reject_count} {strings.changeRequests.voteRejectCount}
+            </span>
+          </div>
+        )}
+        {canVote && (cr.status === "submitted" || cr.status === "in_review") && (
+          <div className="row">
+            <input
+              className="input" placeholder={strings.changeRequests.voteComment}
+              value={voteComment} onChange={(e) => setVoteComment(e.target.value)}
+            />
+            <button className="btn btn-primary" onClick={() => castVote("approve")}>
+              {strings.changeRequests.voteApprove}
+            </button>
+            <button className="btn btn-danger" onClick={() => castVote("reject")}>
+              {strings.changeRequests.voteReject}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card stack">

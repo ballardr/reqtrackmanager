@@ -19,16 +19,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user
 from app.metrics import (
     change_requests_approved_total,
     change_requests_rejected_total,
     change_requests_submitted_total,
 )
-from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
+from app.models.change_request import (
+    ChangeRequest,
+    ChangeRequestTask,
+    ChangeRequestVersion,
+    ChangeRequestVote,
+    ReviewComment,
+)
 from app.models.custom_field import CustomFieldEntityKind
 from app.models.enums import (
     ChangeRequestKind,
     ChangeRequestStatus,
+    ChangeRequestVoteChoice,
     ProjectRole,
     RequirementStatus,
     ReviewTargetType,
@@ -37,7 +45,17 @@ from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement
 from app.models.user import User
-from app.schemas.change_request import ChangeRequestCreate, ChangeRequestDecision, ChangeRequestOut
+from app.schemas.change_request import (
+    ChangeRequestCreate,
+    ChangeRequestDecision,
+    ChangeRequestOut,
+    ChangeRequestTaskCreate,
+    ChangeRequestTaskOut,
+    ChangeRequestTaskUpdate,
+    ChangeRequestVoteCreate,
+    ChangeRequestVoteOut,
+    ChangeRequestVoteTallyOut,
+)
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.requirement import CommentCreate, CommentOut
 from app.services import engagement, notifications, pubsub
@@ -48,6 +66,8 @@ from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
     get_project_users_by_role,
+    require_project_manage,
+    require_project_role,
     require_project_view,
 )
 from app.services.requirements import apply_new_version, create_requirement, get_current_version
@@ -100,6 +120,9 @@ def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, curre
         is_subscribed=engagement.is_subscribed(db, current_user_id, "change_request", cr.id),
         comment_count=engagement.get_comment_count(db, ReviewTargetType.CHANGE_REQUEST, cr.id),
         requires_approval=cr.status in OPEN_CR_STATUSES,
+        proposed_review_date=version.proposed_review_date,
+        proposed_review_lead_days=version.proposed_review_lead_days,
+        proposed_reviewer_id=version.proposed_reviewer_id,
     )
 
 
@@ -159,6 +182,9 @@ def create_change_request(
         proposed_target_stage_id=payload.proposed_target_stage_id, proposed_level=payload.proposed_level,
         reason=payload.reason, custom_fields=custom_fields,
         created_by=current_user.id, created_at=datetime.now(UTC),
+        proposed_review_date=payload.proposed_review_date,
+        proposed_review_lead_days=payload.proposed_review_lead_days,
+        proposed_reviewer_id=payload.proposed_reviewer_id,
     )
     db.add(version)
     log_event(db, entity_type="change_request", entity_id=cr.id, action="created",
@@ -319,6 +345,9 @@ def decide_change_request(
                 level=version.proposed_level,
                 change_note=f"Applied via approved change request: {version.reason}",
                 change_request_id=cr.id, custom_fields=version.custom_fields,
+                review_date=version.proposed_review_date, review_date_explicitly_set=True,
+                review_lead_days=version.proposed_review_lead_days, review_lead_days_explicitly_set=True,
+                reviewer_id=version.proposed_reviewer_id, reviewer_id_explicitly_set=True,
             )
         else:
             project = db.get(Project, project_id)
@@ -333,6 +362,8 @@ def decide_change_request(
                 clarification=version.proposed_clarification, owner_id=None, keywords=[], sort_order=count,
                 target_stage_id=version.proposed_target_stage_id, level=version.proposed_level,
                 custom_fields=version.custom_fields,
+                review_date=version.proposed_review_date, review_lead_days=version.proposed_review_lead_days,
+                reviewer_id=version.proposed_reviewer_id,
             )
             db.flush()
             current_version = get_current_version(db, requirement.id)
@@ -405,6 +436,122 @@ def _get_cr_in_project(db: Session, project_id: UUID, cr_id: UUID) -> ChangeRequ
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
     return cr
+
+
+@router.post("/{cr_id}/tasks", response_model=ChangeRequestTaskOut, status_code=status.HTTP_201_CREATED)
+def create_task(
+    project_id: UUID, cr_id: UUID, payload: ChangeRequestTaskCreate,
+    current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Assigns a task during a change request's review (C-R-02, C-R-04)."""
+    cr = _get_cr_in_project(db, project_id, cr_id)
+    task = ChangeRequestTask(
+        change_request_id=cr.id, description=payload.description,
+        assignee_id=payload.assignee_id, due_date=payload.due_date, created_by=current_user.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.get("/{cr_id}/tasks", response_model=list[ChangeRequestTaskOut])
+def list_tasks(
+    project_id: UUID, cr_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    cr = _get_cr_in_project(db, project_id, cr_id)
+    return db.scalars(
+        select(ChangeRequestTask).where(ChangeRequestTask.change_request_id == cr.id).order_by(ChangeRequestTask.created_at)
+    ).all()
+
+
+@router.patch("/{cr_id}/tasks/{task_id}", response_model=ChangeRequestTaskOut)
+def update_task(
+    project_id: UUID, cr_id: UUID, task_id: UUID, payload: ChangeRequestTaskUpdate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Edits a task, or marks it done/undone.
+
+    A project manager can edit anything. A task's own assignee may toggle
+    `is_done` on their own task without manager rights, but may not reassign
+    or reschedule it.
+    """
+    cr = _get_cr_in_project(db, project_id, cr_id)
+    task = db.get(ChangeRequestTask, task_id)
+    if task is None or task.change_request_id != cr.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
+
+    is_manager = ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id)
+    is_own_task_done_toggle = (
+        task.assignee_id == current_user.id
+        and payload.description is None and payload.assignee_id is None and payload.due_date is None
+        and payload.is_done is not None
+    )
+    if not (is_manager or is_own_task_done_toggle):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager, or the task's own assignee toggling done-status, may edit this task.")
+
+    if payload.description is not None:
+        task.description = payload.description
+    if payload.assignee_id is not None:
+        task.assignee_id = payload.assignee_id
+    if payload.due_date is not None:
+        task.due_date = payload.due_date
+    if payload.is_done is not None:
+        task.is_done = payload.is_done
+        task.completed_at = datetime.now(UTC) if payload.is_done else None
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.post("/{cr_id}/votes", response_model=ChangeRequestVoteOut)
+def cast_vote(
+    project_id: UUID, cr_id: UUID, payload: ChangeRequestVoteCreate,
+    current_user: User = Depends(require_project_role(ProjectRole.STAKEHOLDER)), db: Session = Depends(get_db),
+):
+    """Casts (or updates) the caller's advisory vote on a change request (C-R-03).
+
+    Advisory only — see `models.change_request.ChangeRequestVote`'s
+    docstring. Voting again before a decision is made updates the existing
+    vote rather than creating a duplicate.
+    """
+    cr = _get_cr_in_project(db, project_id, cr_id)
+    if cr.status not in OPEN_CR_STATUSES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Voting is only open while a change request is under review.")
+
+    existing = db.scalar(
+        select(ChangeRequestVote).where(ChangeRequestVote.change_request_id == cr.id, ChangeRequestVote.user_id == current_user.id)
+    )
+    if existing is not None:
+        existing.vote = payload.vote
+        existing.comment = payload.comment
+        existing.voted_at = datetime.now(UTC)
+        vote = existing
+    else:
+        vote = ChangeRequestVote(
+            change_request_id=cr.id, user_id=current_user.id, vote=payload.vote,
+            comment=payload.comment, voted_at=datetime.now(UTC),
+        )
+        db.add(vote)
+    db.commit()
+    db.refresh(vote)
+    return vote
+
+
+@router.get("/{cr_id}/votes", response_model=ChangeRequestVoteTallyOut)
+def list_votes(
+    project_id: UUID, cr_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    cr = _get_cr_in_project(db, project_id, cr_id)
+    votes = db.scalars(select(ChangeRequestVote).where(ChangeRequestVote.change_request_id == cr.id)).all()
+    return ChangeRequestVoteTallyOut(
+        votes=list(votes),
+        approve_count=sum(1 for v in votes if v.vote == ChangeRequestVoteChoice.APPROVE),
+        reject_count=sum(1 for v in votes if v.vote == ChangeRequestVoteChoice.REJECT),
+    )
 
 
 @router.post("/{cr_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)

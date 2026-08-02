@@ -190,6 +190,34 @@ The platform should include the following security controls:
 - sanitization of data entering and leaving the database
 - secure handling of secrets through environment variables or secret stores
 
+**Implementation note (Massif v3, E-U-01):** optional SSO/OAuth is implemented as a per-organisation OIDC authorization-code flow (`backend/app/routers/auth_oidc.py`, `backend/app/services/oidc_client.py`, `backend/app/services/oidc_provisioning.py`), tested end-to-end against a real Keycloak instance rather than only implemented in the abstract — see [enterprise-integration.md](enterprise-integration.md) for the full design, the provider-agnostic discovery mechanism, and the SCIM/separate-port-provisioning blueprint for the two related enterprise requirements not yet built. The diagram below shows the login flow this session actually tested.
+
+This diagram represents the sequence of an SSO login attempt: the browser, this app's backend, and the external identity provider (IdP, e.g. Keycloak). Read it top-to-bottom as the order operations happen in; the two "Backend validates..." steps are the security-critical points — the backend never trusts anything the browser or the IdP redirect chain claims about identity until it has independently verified the token's signature against the IdP's own published keys. It matters here because this is the one flow in the system where a third party (the IdP) is trusted to assert who a user is — every other auth path in the app only ever trusts its own database.
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Backend as ReqTrackManager Backend
+    participant IdP as Identity Provider (e.g. Keycloak)
+
+    Browser->>Backend: GET /login/{org-slug}
+    Backend-->>Browser: org branding + "Sign in with SSO" button
+    Browser->>Backend: click SSO button
+    Backend-->>Browser: 302 redirect to IdP authorize endpoint (signed state param)
+    Browser->>IdP: authorize request
+    IdP-->>Browser: IdP's own login form
+    Browser->>IdP: submit credentials
+    IdP-->>Browser: 302 redirect to backend callback with auth code
+    Browser->>Backend: GET /auth/oidc/callback?code=...&state=...
+    Backend->>IdP: exchange code for tokens
+    IdP-->>Backend: access_token + id_token
+    Backend->>Backend: validate id_token signature via IdP's JWKS, check issuer/audience
+    Backend->>Backend: find-or-provision User; sync org role from IdP group claims
+    Backend-->>Browser: 302 redirect to frontend with app access token
+```
+
+**Implementation note (Massif v3, C-R-05/C-R-08):** date-driven background checks (a requirement's review-due reminder, a project stage's review-deadline auto-approval) run as APScheduler cron jobs in-process in the same backend container (`backend/app/services/scheduler.py`), started from the same FastAPI lifespan handler as the existing `asyncio`-loop background tasks (digest batching, disk monitoring) — additive to that existing pattern, not a replacement, and still consistent with the single-backend-container deployment model described above.
+
 ## Data and Workflow Model
 
 The platform is centered on a formal workflow for requirements management:

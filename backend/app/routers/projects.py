@@ -30,6 +30,7 @@ from app.models.project import (
     ProjectGroup,
     ProjectGroupMember,
     ProjectStage,
+    StageReviewResponse,
     UserProjectRole,
 )
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
@@ -51,7 +52,11 @@ from app.schemas.project import (
     ProjectStageCreate,
     ProjectStageOut,
     ProjectUpdate,
+    StageCompleteRequest,
     StageProgressOut,
+    StageReviewDeadlineSet,
+    StageReviewResponseCreate,
+    StageReviewResponseOut,
     TerminologyUpdate,
     UserProjectRoleAssign,
 )
@@ -70,6 +75,7 @@ from app.services.rbac import (
     require_project_manage,
     require_project_view,
 )
+from app.services.stages import complete_stage
 from app.services.templates import clone_project
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -578,6 +584,85 @@ def transition_stage(
                    actor_id=current_user.id, project_id=project.id, detail={"status": new_status.value})
 
     _notify_stage_transition(db, project, stage)
+    db.commit()
+    db.refresh(stage)
+    return stage
+
+
+@router.post("/{project_id}/stages/{stage_id}/review-deadline", response_model=ProjectStageOut)
+def set_stage_review_deadline(
+    project_id: UUID, stage_id: UUID, payload: StageReviewDeadlineSet,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sets (or clears) a stage's review-response deadline (C-R-05).
+
+    Only meaningful while the stage is in REVIEW; the daily scheduler sweep
+    (services/stages.py) auto-approves the stage once the deadline passes
+    with no stakeholder rejection. Setting a new deadline clears any
+    responses from a prior review cycle so they don't leak into this one.
+    """
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    if stage.status != StageStatus.REVIEW:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A review deadline can only be set while the stage is in review.")
+    db.execute(StageReviewResponse.__table__.delete().where(StageReviewResponse.stage_id == stage.id))
+    stage.review_deadline = payload.review_deadline
+    log_event(db, entity_type="project_stage", entity_id=stage.id, action="review_deadline_set",
+              actor_id=current_user.id, project_id=project.id,
+              detail={"review_deadline": payload.review_deadline.isoformat() if payload.review_deadline else None})
+    db.commit()
+    db.refresh(stage)
+    return stage
+
+
+@router.post("/{project_id}/stages/{stage_id}/review-response", response_model=StageReviewResponseOut)
+def submit_stage_review_response(
+    project_id: UUID, stage_id: UUID, payload: StageReviewResponseCreate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """A stakeholder's response to a stage's review deadline (C-R-05)."""
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    if stage.status != StageStatus.REVIEW or stage.review_deadline is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This stage has no open review deadline.")
+    if ProjectRole.STAKEHOLDER not in get_effective_project_roles(db, current_user.id, project_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only stakeholders or managers may respond to a stage review.")
+
+    existing = db.scalar(
+        select(StageReviewResponse).where(StageReviewResponse.stage_id == stage.id, StageReviewResponse.user_id == current_user.id)
+    )
+    if existing is not None:
+        existing.response = payload.response
+        existing.comment = payload.comment
+        existing.responded_at = datetime.now(UTC)
+        response = existing
+    else:
+        response = StageReviewResponse(
+            stage_id=stage.id, user_id=current_user.id, response=payload.response,
+            comment=payload.comment, responded_at=datetime.now(UTC),
+        )
+        db.add(response)
+    db.commit()
+    db.refresh(response)
+    return response
+
+
+@router.post("/{project_id}/stages/{stage_id}/complete", response_model=ProjectStageOut)
+def complete_stage_endpoint(
+    project_id: UUID, stage_id: UUID, payload: StageCompleteRequest,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Marks a stage completed (C-P-02), optionally cascading to its
+    approved requirements (C-P-03, defaults to off per the requirement's
+    clarification)."""
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    complete_stage(db, project, stage, current_user, cascade_to_requirements=payload.cascade_to_requirements)
     db.commit()
     db.refresh(stage)
     return stage

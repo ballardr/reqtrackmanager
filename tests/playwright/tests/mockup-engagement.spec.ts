@@ -26,6 +26,14 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await page.goto("/projects");
 
     await page.getByRole("button", { name: "New project" }).click();
+    // The org dropdown's default selection is whichever org sorts first
+    // alphabetically, not necessarily the admin's own org (this stack may
+    // also have E2E-workflow seed orgs present) — select explicitly, after
+    // waiting for the actual option (not just any combobox on the page —
+    // the role/stage filter comboboxes already have static options and can
+    // satisfy a weaker "not empty" check before the org picker mounts).
+    await expect(page.getByRole("combobox").first()).toContainText("Default Organization");
+    await page.getByRole("combobox").first().selectOption({ label: "Default Organization" });
     await page.getByPlaceholder("Name").fill(projectName);
     await page.getByPlaceholder("Summary").fill("Created by Playwright (mockup engagement spec)");
     await page.getByRole("button", { name: "Create" }).click();
@@ -45,7 +53,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   });
 
   await test.step("create a requirement and open its card from the card-based list", async () => {
-    await page.getByText("Requirements").click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Users can export their data");
     await page.getByRole("button", { name: "Create", exact: true }).click();

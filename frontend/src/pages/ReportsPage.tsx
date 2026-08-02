@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Category, Component, FileAsset, Project, RequirementStatus } from "../api/types";
+import type { Category, Component, FileAsset, Project, ReportTemplate, RequirementStatus } from "../api/types";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -36,6 +36,8 @@ export function ReportsPage() {
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">("");
   const [keyword, setKeyword] = useState("");
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
+  const [reportTemplateId, setReportTemplateId] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -47,8 +49,12 @@ export function ReportsPage() {
       ]);
       setComponents(comps);
       setCategories(cats);
-      const orgResources = await api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`);
+      const [orgResources, templates] = await Promise.all([
+        api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`),
+        api.get<ReportTemplate[]>(`/api/v1/orgs/${project.organization_id}/report-templates`),
+      ]);
       setResources(orgResources);
+      setReportTemplates(templates);
     })();
   }, [projectId]);
 
@@ -68,6 +74,7 @@ export function ReportsPage() {
         status: statusFilter || null,
         keyword: keyword || null,
         resource_file_ids: resourceFileIds,
+        report_template_id: kind === "pdf" ? reportTemplateId || null : null,
       });
       downloadBlob(blob, kind === "pdf" ? "requirements.pdf" : "requirements.csv");
     } finally {
@@ -133,6 +140,20 @@ export function ReportsPage() {
               </label>
             ))}
           </div>
+        )}
+
+        {reportTemplates.length > 0 && (
+          <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
+            {strings.reports.reportTemplate}
+            <select className="input" value={reportTemplateId} onChange={(e) => setReportTemplateId(e.target.value)}>
+              <option value="">{strings.reports.noTemplate}</option>
+              {reportTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
 
         <div className="row">

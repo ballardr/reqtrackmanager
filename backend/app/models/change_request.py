@@ -10,16 +10,22 @@ request's proposed content is itself logged (C-A-04).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import ChangeRequestKind, ChangeRequestStatus, RequirementLevel, ReviewTargetType
+from app.models.enums import (
+    ChangeRequestKind,
+    ChangeRequestStatus,
+    ChangeRequestVoteChoice,
+    RequirementLevel,
+    ReviewTargetType,
+)
 
 
 class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
@@ -88,6 +94,15 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_level: Mapped[RequirementLevel] = mapped_column(
         str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT
     )
+    # Mirrors RequirementVersion's review-scheduling fields (C-R-06/08/10) so
+    # a change request can propose setting/changing them, same as any other
+    # requirement content — review_date can only change via this path once a
+    # requirement is approved.
+    proposed_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    proposed_review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proposed_reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     reason: Mapped[str] = mapped_column(Text)
     # Values for this project's custom change-request attribute definitions
     # (C-C-01, C-C-02), keyed by CustomFieldDefinition id.
@@ -113,3 +128,35 @@ class ReviewComment(UUIDPKMixin, TimestampMixin, Base):
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
+
+
+class ChangeRequestTask(UUIDPKMixin, TimestampMixin, Base):
+    """A task assigned during a change request's review (C-R-02, C-R-04)."""
+
+    __tablename__ = "change_request_tasks"
+
+    change_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("change_requests.id"))
+    description: Mapped[str] = mapped_column(Text)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ChangeRequestVote(UUIDPKMixin, Base):
+    """A stakeholder's advisory vote on a change request's approval (C-R-03).
+
+    Advisory only — does not change `ChangeRequest.status` or bypass the
+    project manager's own approve/reject decision; it's a visible tally the
+    decision-maker can see alongside the change request.
+    """
+
+    __tablename__ = "change_request_votes"
+    __table_args__ = (UniqueConstraint("change_request_id", "user_id"),)
+
+    change_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("change_requests.id"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    vote: Mapped[ChangeRequestVoteChoice] = mapped_column(str_enum(ChangeRequestVoteChoice, 20))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

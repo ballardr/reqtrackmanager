@@ -76,6 +76,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     auth_backend: Mapped[str] = mapped_column(String(50), default="native")
     external_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Per OIDC spec, `sub` is only guaranteed unique *within a single
+    # issuer*, not globally — this is matched alongside external_subject so
+    # two different, unrelated IdPs (e.g. different orgs' independently
+    # configured providers) can never collide on the same subject value and
+    # resolve to the same account (E-U-01 hardening).
+    oidc_issuer: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -99,5 +105,9 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    # Massif (v3) C-A-13: stamped on every successful login (native or 2FA
+    # completion), used by the access-review user-directory filters
+    # (stale_since_days / never_logged_in) in routers/orgs.py and system.py.
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")  # noqa: F821

@@ -11,6 +11,7 @@ import type {
   ProjectStage,
   Requirement,
   RequirementLevel,
+  RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
@@ -44,6 +45,9 @@ export function RequirementDetailPage() {
     changeNote: "",
     targetStageId: "",
     level: "requirement" as RequirementLevel,
+    reviewDate: "",
+    reviewLeadDays: "",
+    reviewerId: "",
   });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
@@ -51,6 +55,9 @@ export function RequirementDetailPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [activity, setActivity] = useState<ChangeEntry[]>([]);
+  const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   async function reload() {
     if (!projectId || !requirementId) return;
@@ -78,6 +85,9 @@ export function RequirementDetailPage() {
       changeNote: "",
       targetStageId: req.target_stage_id ?? "",
       level: req.level,
+      reviewDate: req.review_date ?? "",
+      reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
+      reviewerId: req.reviewer_id ?? "",
     });
   }
 
@@ -116,6 +126,9 @@ export function RequirementDetailPage() {
         keywords: requirement.keywords,
         custom_fields: customFieldValues,
         change_note: form.changeNote,
+        review_date: form.reviewDate || null,
+        review_lead_days: form.reviewLeadDays ? Number(form.reviewLeadDays) : null,
+        reviewer_id: form.reviewerId || null,
       });
       reload();
     } catch (err) {
@@ -126,6 +139,30 @@ export function RequirementDetailPage() {
   async function archive() {
     await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
     navigate(`/projects/${projectId}/requirements`);
+  }
+
+  async function markCompleted() {
+    await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/complete`);
+    reload();
+  }
+
+  async function unmarkCompleted() {
+    await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/uncomplete`);
+    reload();
+  }
+
+  async function submitReview() {
+    setReviewError(null);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/reviews`, {
+        outcome: reviewOutcome,
+        comment: reviewComment || null,
+      });
+      setReviewComment("");
+      reload();
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : strings.common.error);
+    }
   }
 
   async function toggleSubscription() {
@@ -162,6 +199,16 @@ export function RequirementDetailPage() {
         </h1>
         <div className="row">
           <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
+          {canArchive && requirement.status === "approved" && (
+            <button className="btn" onClick={markCompleted}>
+              {strings.requirements.markCompleted}
+            </button>
+          )}
+          {canArchive && requirement.status === "completed" && (
+            <button className="btn" onClick={unmarkCompleted}>
+              {strings.requirements.unmarkCompleted}
+            </button>
+          )}
           {canArchive && (
             <button className="btn btn-danger" onClick={archive}>
               {strings.requirements.archive}
@@ -193,6 +240,7 @@ export function RequirementDetailPage() {
             <span className="badge">{strings.requirements.status}: {requirement.status}</span>
             <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
             <span className="badge">Level: {requirement.level}</span>
+            {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}
             {requirement.keywords.map((k) => (
               <span key={k} className="badge">
                 {k}
@@ -253,6 +301,29 @@ export function RequirementDetailPage() {
               </select>
             </label>
           </div>
+          <div className="row">
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.reviewDate}
+              <input
+                className="input" type="date" value={form.reviewDate}
+                onChange={(e) => setForm((f) => ({ ...f, reviewDate: e.target.value }))}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.reviewLeadDays}
+              <input
+                className="input" type="number" min={0} value={form.reviewLeadDays}
+                onChange={(e) => setForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.reviewer} ({strings.admin.userId})
+              <input
+                className="input" value={form.reviewerId}
+                onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
+              />
+            </label>
+          </div>
           <CustomFieldsForm
             definitions={customFieldDefs}
             values={customFieldValues}
@@ -267,6 +338,39 @@ export function RequirementDetailPage() {
           {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
           <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.save}
+          </button>
+        </div>
+      )}
+
+      {requirement.review_date && (
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
+          <div className="row">
+            <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
+            <span className="badge">{strings.requirements.reviewer}: {requirement.reviewer_id ?? strings.reviews.unassigned}</span>
+          </div>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.requirements.recordReviewOutcome}
+            <select
+              className="input" value={reviewOutcome}
+              onChange={(e) => setReviewOutcome(e.target.value as RequirementReviewOutcome)}
+            >
+              <option value="met">{strings.requirements.reviewOutcomeMet}</option>
+              <option value="failed">{strings.requirements.reviewOutcomeFailed}</option>
+            </select>
+          </label>
+          {reviewOutcome === "failed" && (
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.requirements.reviewComment}
+              <textarea
+                className="input" rows={2} value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+              />
+            </label>
+          )}
+          {reviewError && <div style={{ color: "var(--color-danger)" }}>{reviewError}</div>}
+          <button className="btn btn-primary" onClick={submitReview} style={{ alignSelf: "flex-start" }}>
+            {strings.requirements.submitReview}
           </button>
         </div>
       )}

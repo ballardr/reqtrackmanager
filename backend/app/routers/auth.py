@@ -9,6 +9,7 @@ counted (metrics) regardless of outcome.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
@@ -82,6 +83,10 @@ def login(
     if result.user.is_2fa_enabled:
         return TwoFactorChallengeResponse(challenge_token=create_2fa_challenge_token(str(result.user.id)))
 
+    # Stamped here, not on the 2FA-challenge branch above (C-A-13): a
+    # challenge only proves the password was correct, not a completed login.
+    result.user.last_login_at = datetime.now(UTC)
+    db.commit()
     token = create_access_token(str(result.user.id), token_version=result.user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(result.user))
 
@@ -97,6 +102,8 @@ def verify_2fa(payload: TwoFactorVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     if not totp.verify_code(user.totp_secret, payload.code):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
+    user.last_login_at = datetime.now(UTC)
+    db.commit()
     token = create_access_token(str(user.id), token_version=user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 

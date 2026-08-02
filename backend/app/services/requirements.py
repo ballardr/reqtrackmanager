@@ -9,7 +9,7 @@ management (C-M-01, C-G-09).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -74,6 +74,9 @@ def create_requirement(
     level: RequirementLevel = RequirementLevel.REQUIREMENT,
     custom_fields: dict[str, Any] | None = None,
     creator_override_id: UUID | None = None,
+    review_date: date | None = None,
+    review_lead_days: int | None = None,
+    reviewer_id: UUID | None = None,
 ) -> Requirement:
     """Creates a requirement and its initial (version 1) content snapshot.
 
@@ -101,6 +104,7 @@ def create_requirement(
         owner_id=owner_id or creator.id, target_stage_id=target_stage_id, level=level,
         sort_order=sort_order, created_by=creator.id, created_at=now,
         change_note="Initial creation.", custom_fields=custom_fields or {},
+        review_date=review_date, review_lead_days=review_lead_days, reviewer_id=reviewer_id,
     )
     db.add(version)
 
@@ -127,14 +131,27 @@ def apply_new_version(
     change_note: str = "",
     change_request_id: UUID | None = None,
     custom_fields: dict[str, Any] | None = None,
+    review_date: date | None = None,
+    review_date_explicitly_set: bool = False,
+    review_lead_days: int | None = None,
+    review_lead_days_explicitly_set: bool = False,
+    reviewer_id: UUID | None = None,
+    reviewer_id_explicitly_set: bool = False,
 ) -> RequirementVersion:
     """Closes the current version and inserts a new one with the given changes.
 
     Any field left as None carries over the current version's value
     unchanged, so callers only need to specify what is actually changing.
-    `target_stage_id` is nullable in the schema, so `target_stage_explicitly_set`
-    disambiguates "clear the target stage" (pass `target_stage_id=None,
-    target_stage_explicitly_set=True`) from "leave it unchanged".
+    `target_stage_id` (and, per C-R-06, the review-scheduling fields) are
+    nullable in the schema, so their `*_explicitly_set` flags disambiguate
+    "clear this field" (pass the value as None with the flag True) from
+    "leave it unchanged" (the flag stays False).
+
+    `review_reminder_sent_at` always resets to unset on a new version — it's
+    tied to whatever `review_date` this version carries, and any version
+    change is a safe point to re-arm the reminder rather than risk silently
+    carrying forward a "reminder already sent" flag for a date that may no
+    longer even be the same review target.
     """
     now = datetime.now(UTC)
     current_version.valid_to = now
@@ -158,6 +175,10 @@ def apply_new_version(
         created_by=actor.id,
         created_at=now,
         custom_fields=custom_fields if custom_fields is not None else current_version.custom_fields,
+        review_date=review_date if review_date_explicitly_set else current_version.review_date,
+        review_lead_days=review_lead_days if review_lead_days_explicitly_set else current_version.review_lead_days,
+        reviewer_id=reviewer_id if reviewer_id_explicitly_set else current_version.reviewer_id,
+        review_reminder_sent_at=None,
     )
     db.add(new_version)
     return new_version

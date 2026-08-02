@@ -59,6 +59,40 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  # Real OIDC identity provider used to test the SSO login flow end-to-end
+  # (Massif v3, E-U-01) — see tests/container/keycloak/realm-export.json for
+  # the realm/client/test-user configuration, and
+  # tests/playwright/tests/e2e-workflows/sso.spec.ts for the spec that
+  # drives a real login through this instance's own login form.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm --health-enabled=true
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Keycloak always advertises this as its issuer/endpoint host in
+      # discovery documents and issued tokens, regardless of which hostname
+      # a caller actually used to reach it (KC_HOSTNAME_STRICT=false) — this
+      # is what makes the split browser-vs-backend addressing below work:
+      # the browser is redirected to http://localhost:8080/..., matching
+      # this setting, while the backend itself reaches this same container
+      # via the internal http://keycloak:8080 (see backend's
+      # OIDC_INTERNAL_BASE_URL_OVERRIDE below).
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: "8080"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && timeout 3 cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
   backend:
     build:
       context: ../../backend
@@ -78,6 +112,14 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      # See keycloak service's comment above: the backend reaches Keycloak
+      # over the Docker-internal network, but every org's oidc_issuer_url is
+      # configured with Keycloak's browser-facing public URL
+      # (http://localhost:8080/realms/...) since that's what must appear in
+      # tokens and what the browser gets redirected to.
+      OIDC_INTERNAL_BASE_URL_OVERRIDE: http://keycloak:8080
     depends_on:
       db:
         condition: service_healthy

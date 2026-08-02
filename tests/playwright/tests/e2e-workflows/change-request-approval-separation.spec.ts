@@ -39,8 +39,13 @@ test("change request submitter cannot approve their own request; the project man
     await page.getByText(proposedName).click();
     await page.getByRole("button", { name: "Submit" }).click();
     await expect(page.getByText("submitted", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
+    // Exact match: a stakeholder can cast an advisory "Vote to approve" /
+    // "Vote to reject" (C-R-03, doesn't touch the CR's real status), which
+    // would otherwise substring-match a loose "Approve"/"Reject" query —
+    // the actual decision controls this asserts are absent are the exact-
+    // labelled "Approve"/"Reject" buttons gated to project managers.
+    await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
     crStatusAfterSubmit = "submitted";
   });
 
@@ -66,7 +71,10 @@ test("change request submitter cannot approve their own request; the project man
     await page.getByText(proposedName).click();
     await expect(page.getByText(crStatusAfterSubmit, { exact: true })).toBeVisible();
     await page.getByPlaceholder("Decision note").fill("Approved — matches the new latency budget.");
-    await page.getByRole("button", { name: "Approve" }).click();
+    // Exact match: the PM also sees the advisory "Vote to approve" button
+    // (project managers inherit stakeholder voting rights), which a loose
+    // "Approve" query would ambiguously match alongside the real decision button.
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("approved", { exact: true })).toBeVisible();
   });
 

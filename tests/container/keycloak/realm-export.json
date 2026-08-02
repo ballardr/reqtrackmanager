@@ -1,0 +1,77 @@
+{
+  "realm": "reqtrack",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "groups": [
+    { "name": "reqtrack-org-admins", "path": "/reqtrack-org-admins" },
+    { "name": "reqtrack-members", "path": "/reqtrack-members" }
+  ],
+  "users": [
+    {
+      "username": "sso-admin@example.com",
+      "email": "sso-admin@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "SSO",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "KeycloakPass123!", "temporary": false }
+      ],
+      "groups": ["/reqtrack-org-admins"]
+    },
+    {
+      "username": "sso-member@example.com",
+      "email": "sso-member@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "SSO",
+      "lastName": "Member",
+      "credentials": [
+        { "type": "password", "value": "KeycloakPass123!", "temporary": false }
+      ],
+      "groups": ["/reqtrack-members"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "reqtrack-backend",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "secret": "reqtrack-backend-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:8000/api/v1/auth/oidc/callback"],
+      "webOrigins": ["http://localhost:8000"],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "emailVerified",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean"
+          }
+        }
+      ]
+    }
+  ]
+}

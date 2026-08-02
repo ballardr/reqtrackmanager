@@ -29,6 +29,14 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("create project", async () => {
     await page.getByRole("button", { name: "New project" }).click();
+    // The org dropdown's default selection is whichever org sorts first
+    // alphabetically, not necessarily the admin's own org (this stack may
+    // also have E2E-workflow seed orgs present) — select explicitly, after
+    // waiting for the actual option (not just any combobox on the page —
+    // the role/stage filter comboboxes already have static options and can
+    // satisfy a weaker "not empty" check before the org picker mounts).
+    await expect(page.getByRole("combobox").first()).toContainText("Default Organization");
+    await page.getByRole("combobox").first().selectOption({ label: "Default Organization" });
     await page.getByPlaceholder("Name").fill(projectName);
     await page.getByPlaceholder("Summary").fill("Created by Playwright");
     await page.getByRole("button", { name: "Create" }).click();
@@ -51,7 +59,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   });
 
   await test.step("add requirement", async () => {
-    await page.getByText("Requirements").click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -64,7 +72,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Approve stage" }).click();
     await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
 
-    await page.getByText("Requirements").click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await expect(page.getByText("Locked (approved)")).toBeVisible();
   });
 
@@ -79,10 +87,13 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
     await page.getByText("Boot in under 3 seconds").click();
     await page.getByRole("button", { name: "Submit" }).click();
-    await page.getByRole("button", { name: "Approve" }).click();
+    // Exact match: a project manager also sees the advisory "Vote to
+    // approve" button, which a loose "Approve" query would ambiguously
+    // match alongside the real decision button.
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("approved", { exact: true })).toBeVisible();
 
-    await page.getByText("Requirements").click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await expect(page.getByText("Boot in under 3 seconds")).toBeVisible();
     requirementCode = "SW-PERF-001";
   });

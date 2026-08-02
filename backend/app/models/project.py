@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum, utcnow
-from app.models.enums import ProjectRole, StageStatus
+from app.models.enums import ProjectRole, StageReviewResponseChoice, StageStatus
 
 
 class Project(UUIDPKMixin, TimestampMixin, Base):
@@ -62,6 +62,11 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     report_chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     report_appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
+    # Massif (v3): default notification lead time (in days) before a
+    # requirement's review_date, used when a requirement doesn't set its own
+    # review_lead_days override (C-R-08).
+    review_reminder_lead_days_default: Mapped[int] = mapped_column(Integer, default=7)
+
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """One lifecycle horizon of a project (C-G-08, C-G-10).
@@ -86,6 +91,34 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
 
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # Massif (v3): completion tracking (C-P-02) and review-deadline "assumed
+    # approval" (C-R-05). completed_at/completed_by mirror the existing
+    # approved_at/approved_by pattern. review_deadline is set by a project
+    # manager while the stage is in REVIEW; the daily scheduler sweep
+    # (services/stages.py) auto-approves the stage once it passes, unless a
+    # stakeholder explicitly rejected via StageReviewResponse.
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    review_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StageReviewResponse(UUIDPKMixin, Base):
+    """A stakeholder's response to a project stage's review deadline (C-R-05).
+
+    One row per (stage, user) per review cycle; rows are cleared whenever a
+    new `review_deadline` is set on the stage, so a later review cycle isn't
+    contaminated by an earlier cycle's responses.
+    """
+
+    __tablename__ = "stage_review_responses"
+    __table_args__ = (UniqueConstraint("stage_id", "user_id"),)
+
+    stage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_stages.id"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    response: Mapped[StageReviewResponseChoice] = mapped_column(str_enum(StageReviewResponseChoice, 20))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    responded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ProjectComponent(UUIDPKMixin, TimestampMixin, Base):

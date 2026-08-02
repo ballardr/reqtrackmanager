@@ -17,16 +17,16 @@ queryable history for audit and baselining.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import RequirementLevel, RequirementLinkType, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementLinkType, RequirementReviewOutcome, RequirementStatus
 
 
 class Requirement(UUIDPKMixin, TimestampMixin, Base):
@@ -113,6 +113,15 @@ class RequirementVersion(UUIDPKMixin, Base):
     )
     change_note: Mapped[str] = mapped_column(Text, default="")
 
+    # Massif (v3) review scheduling (C-R-06/08/10). These live on the
+    # versioned table, not the Requirement identity row, because C-R-06's
+    # clarification requires them to only change on creation or via a change
+    # request — the same CR-gated path already used by name/reasoning/etc.
+    review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    review_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    review_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -167,3 +176,25 @@ class BaselineItem(UUIDPKMixin, Base):
     )
 
     baseline: Mapped[Baseline] = relationship(back_populates="items")
+
+
+class RequirementReview(UUIDPKMixin, Base):
+    """A recorded outcome of a requirement's scheduled review (C-R-07).
+
+    Recording an outcome does not change `RequirementVersion.review_date`
+    itself (that field only changes on creation or via a change request,
+    per C-R-06) — instead, a requirement drops off the "due for review" list
+    once a `RequirementReview` exists with `reviewed_at >= review_date`,
+    until a future change request sets a new review date.
+    """
+
+    __tablename__ = "requirement_reviews"
+
+    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    requirement_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_versions.id")
+    )
+    reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[RequirementReviewOutcome] = mapped_column(str_enum(RequirementReviewOutcome, 20))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)

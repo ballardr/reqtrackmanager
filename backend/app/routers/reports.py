@@ -17,13 +17,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.file import FileAsset
+from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword
 from app.models.user import User
 from app.schemas.report import ReportRequest
 from app.services.files import read_file
 from app.services.rbac import require_project_view
-from app.services.reports import ReportRequirementRow, generate_csv_report, generate_pdf_report
+from app.services.reports import ReportBranding, ReportRequirementRow, generate_csv_report, generate_pdf_report
 from app.services.requirements import get_current_version
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
@@ -105,8 +106,25 @@ def generate_pdf(
     post_markdown = payload.post_markdown or _chapters_markdown(project.report_appendices)
     post_markdown = f"{post_markdown}\n\n{resource_markdown}".strip()
 
+    branding = None
+    if payload.report_template_id is not None:
+        template = db.get(ReportTemplate, payload.report_template_id)
+        if template is None or template.organization_id != project.organization_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this project's organisation.")
+        logo_bytes = None
+        if template.include_logo:
+            org = db.get(Organization, project.organization_id)
+            logo_asset = db.get(FileAsset, org.logo_file_id) if org and org.logo_file_id else None
+            if logo_asset is not None:
+                logo_bytes = read_file(logo_asset)
+        branding = ReportBranding(
+            accent_color_hex=template.accent_color_hex, include_cover_page=template.include_cover_page,
+            footer_text=template.footer_text, logo_bytes=logo_bytes,
+        )
+
     pdf_bytes = generate_pdf_report(
-        project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown
+        project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown,
+        branding=branding,
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",

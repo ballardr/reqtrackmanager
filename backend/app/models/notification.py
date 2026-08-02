@@ -39,6 +39,8 @@ class NotificationType(str, enum.Enum):
     PERMISSION_GRANTED = "permission_granted"
     PERMISSION_REVOKED = "permission_revoked"
     COMMENT_ADDED = "comment_added"
+    REQUIREMENT_REVIEW_DUE = "requirement_review_due"
+    STAGE_REVIEW_AUTO_APPROVED = "stage_review_auto_approved"
 
 
 class DigestMode(str, enum.Enum):

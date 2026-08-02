@@ -26,10 +26,12 @@ test.describe("org admin of two organisations", () => {
 
     await test.step("create a new project in Alpha through the real UI form", async () => {
       await page.getByRole("button", { name: "New project" }).click();
-      // The org picker's options load asynchronously — wait for it to be
-      // populated before selecting, or selectOption can fire before the
-      // fetch resolves.
-      await expect(page.getByRole("combobox").first().locator("option")).not.toHaveCount(0);
+      // The org picker's options load asynchronously — wait for the actual
+      // expected option text, not just "any options exist" (the role/stage
+      // filter comboboxes elsewhere on this page already have static
+      // options and can satisfy a weaker "not empty" check before the org
+      // picker itself has even mounted).
+      await expect(page.getByRole("combobox").first()).toContainText(ORG_NAMES.alpha);
       await page.getByRole("combobox").first().selectOption({ label: ORG_NAMES.alpha });
       await page.getByPlaceholder("Name").fill(newAlphaProject);
       await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -39,7 +41,7 @@ test.describe("org admin of two organisations", () => {
     await test.step("create a new project in Beta through the real UI form", async () => {
       await page.goto("/projects");
       await page.getByRole("button", { name: "New project" }).click();
-      await expect(page.getByRole("combobox").first().locator("option")).not.toHaveCount(0);
+      await expect(page.getByRole("combobox").first()).toContainText(ORG_NAMES.beta);
       await page.getByRole("combobox").first().selectOption({ label: ORG_NAMES.beta });
       await page.getByPlaceholder("Name").fill(newBetaProject);
       await page.getByRole("button", { name: "Create", exact: true }).click();

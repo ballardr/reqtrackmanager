@@ -1,4 +1,4 @@
-import { Building2, History, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, ShieldCheck } from "lucide-react";
+import { Building2, CalendarClock, History, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, ShieldCheck } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -109,6 +109,9 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 <Link to={`/projects/${projectId}/reports`} className={navLinkClass(`/projects/${projectId}/reports`)}>
                   <FileText size={16} /> {strings.nav.reports}
                 </Link>
+                <Link to={`/projects/${projectId}/reviews-due`} className={navLinkClass(`/projects/${projectId}/reviews-due`)}>
+                  <CalendarClock size={16} /> {strings.reviews.projectTitle}
+                </Link>
                 <Link to={`/projects/${projectId}/history`} className={navLinkClass(`/projects/${projectId}/history`)}>
                   <History size={16} /> {strings.history.title}
                 </Link>
@@ -124,11 +127,17 @@ function LayoutShell({ children }: { children: ReactNode }) {
             <Link to="/orgs" className={navLinkClass("/orgs")}>
               <Building2 size={16} /> {strings.orgAdmin.organizations}
             </Link>
+            <Link to="/my-reviews" className={navLinkClass("/my-reviews")}>
+              <CalendarClock size={16} /> {strings.nav.myReviews}
+            </Link>
             {user.is_server_admin && (
               <>
                 <div className="nav-section-label">Server Management</div>
                 <Link to="/server/organisations" className={navLinkClass("/server/organisations")}>
                   <ShieldCheck size={16} /> Organisations
+                </Link>
+                <Link to="/server/access-review" className={navLinkClass("/server/access-review")}>
+                  <ShieldCheck size={16} /> {strings.orgAdmin.accessReview}
                 </Link>
               </>
             )}

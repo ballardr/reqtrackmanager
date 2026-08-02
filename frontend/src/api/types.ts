@@ -84,6 +84,8 @@ export interface Organization {
   created_at: string;
   logo_file_id: string | null;
   default_template_project_id: string | null;
+  login_background_file_id: string | null;
+  slug: string | null;
 }
 
 export interface FileAsset {
@@ -105,6 +107,18 @@ export interface OrgUser {
   is_archived: boolean;
   roles: OrgRole[];
   display_name_locked: boolean;
+  last_login_at: string | null;
+  is_2fa_enabled: boolean;
+}
+
+export interface SystemUser {
+  user_id: string;
+  email: string;
+  display_name: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  is_2fa_enabled: boolean;
+  created_at: string;
 }
 
 export interface OrgGroup {
@@ -155,6 +169,20 @@ export interface ProjectStage {
   sort_order: number;
   is_current: boolean;
   approved_at: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  review_deadline: string | null;
+}
+
+export type StageReviewResponseChoice = "approved" | "rejected";
+
+export interface StageReviewResponseEntry {
+  id: string;
+  stage_id: string;
+  user_id: string;
+  response: StageReviewResponseChoice;
+  comment: string | null;
+  responded_at: string;
 }
 
 export interface Component {
@@ -226,6 +254,29 @@ export interface Requirement {
   comment_count: number;
   has_open_change_request: boolean;
   requires_approval: boolean;
+  review_date: string | null;
+  review_lead_days: number | null;
+  reviewer_id: string | null;
+}
+
+export type RequirementReviewOutcome = "met" | "failed";
+
+export interface RequirementReview {
+  id: string;
+  requirement_id: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  outcome: RequirementReviewOutcome;
+  comment: string | null;
+}
+
+export interface RequirementDueForReview {
+  requirement_id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  review_date: string;
+  reviewer_id: string | null;
 }
 
 export interface RequirementVersionEntry {
@@ -283,6 +334,38 @@ export interface ChangeRequest {
   is_subscribed: boolean;
   comment_count: number;
   requires_approval: boolean;
+  proposed_review_date: string | null;
+  proposed_review_lead_days: number | null;
+  proposed_reviewer_id: string | null;
+}
+
+export interface ChangeRequestTask {
+  id: string;
+  change_request_id: string;
+  description: string;
+  assignee_id: string | null;
+  due_date: string | null;
+  is_done: boolean;
+  completed_at: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export type ChangeRequestVoteChoice = "approve" | "reject";
+
+export interface ChangeRequestVote {
+  id: string;
+  change_request_id: string;
+  user_id: string;
+  vote: ChangeRequestVoteChoice;
+  comment: string | null;
+  voted_at: string;
+}
+
+export interface ChangeRequestVoteTally {
+  votes: ChangeRequestVote[];
+  approve_count: number;
+  reject_count: number;
 }
 
 export interface ChangeEntry {
@@ -322,4 +405,32 @@ export interface OrgAdvancedSettings {
   smtp_username: string | null;
   smtp_use_tls: boolean;
   sso_group_mappings: SsoGroupMapping[];
+}
+
+export interface ReportTemplate {
+  id: string;
+  organization_id: string;
+  name: string;
+  accent_color_hex: string;
+  include_cover_page: boolean;
+  include_logo: boolean;
+  footer_text: string | null;
+}
+
+export interface OrgSsoConfig {
+  slug: string | null;
+  sso_enabled: boolean;
+  sso_only: boolean;
+  oidc_issuer_url: string | null;
+  oidc_client_id: string | null;
+  oidc_required_group: string | null;
+}
+
+export interface OrgLoginInfo {
+  name: string;
+  slug: string;
+  logo_file_id: string | null;
+  login_background_file_id: string | null;
+  sso_enabled: boolean;
+  sso_only: boolean;
 }

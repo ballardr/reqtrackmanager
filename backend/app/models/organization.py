@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,12 +38,33 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             `services/email.py`, which still sends through the
             deployment-wide SMTP_HOST configured in `config.py`. Documented
             in docs/decisions.md rather than silently half-built.
-        sso_group_mappings: Storage-only mapping of external SSO group names
-            to a local org role or project group, for a future SSO backend
-            (C-U-07, E-U-01) to consume. No SSO backend exists yet (native
-            auth only — see `app/auth_backends/`), so nothing currently
-            reads this column; it lets an admin prepare the mapping ahead of
-            that integration shipping.
+        sso_group_mappings: Mapping of external SSO/OIDC claim values to a
+            local `OrgRole`, e.g. `[{"claim_value": "reqtrack-admins",
+            "org_role": "org_admin"}]` (C-U-07, E-U-01). Was storage-only
+            until Massif (v3)'s `OIDCAuthBackend`
+            (`app/services/oidc_provisioning.py`) started actually reading
+            it to provision org roles on first SSO login.
+        slug: URL-safe identifier used to resolve this organisation's
+            branded login page at `/login/{slug}` (E-P-03).
+        sso_enabled / sso_only: Whether this organisation's login page offers
+            an OIDC "Sign in with SSO" button, and whether the native
+            email/password form is hidden entirely when it does.
+        oidc_issuer_url / oidc_client_id / oidc_client_secret: Per-org OIDC
+            provider configuration. `oidc_client_secret` is stored in
+            plaintext for this proof-of-concept — see
+            docs/enterprise-integration.md for the explicit follow-up to
+            move this to real secret storage before production use.
+        login_background_file_id: Optional uploaded background image for
+            this organisation's login page (E-P-03), same upload pattern as
+            `logo_file_id`.
+        oidc_required_group: Optional access gate, distinct from
+            `sso_group_mappings`. When set, a successfully-authenticated SSO
+            user whose IdP `groups`/`roles` claim doesn't contain this exact
+            value is refused a session entirely (`oidc_provisioning.
+            meets_required_group`) — "in the org" and "let in at all" are
+            deliberately separate checks, so an admin can gate access to a
+            specific provisioning group without that group needing to also
+            be one of the role-granting entries in `sso_group_mappings`.
     """
 
     __tablename__ = "organizations"
@@ -66,6 +87,40 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     smtp_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True)
     sso_group_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+
+    slug: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    sso_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    sso_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    oidc_issuer_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    oidc_client_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_required_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    login_background_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("file_assets.id", use_alter=True, name="fk_organizations_login_background_file_id"),
+        nullable=True,
+    )
+
+
+class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
+    """A named, reusable PDF report branding preset for an organisation (R-G-05).
+
+    Org-scoped (shared across the org's projects) to match how the org logo
+    already works. Selected optionally at report-generation time; when none
+    is selected, `services/reports.py` produces today's plain, unbranded
+    output.
+    """
+
+    __tablename__ = "report_templates"
+    __table_args__ = (UniqueConstraint("organization_id", "name"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#2563eb")
+    include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
+    footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):

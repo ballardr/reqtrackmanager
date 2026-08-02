@@ -13,7 +13,7 @@ const strings = t();
  * the project overview list, or "automatic" (the sole accessible project if
  * there's exactly one, else the overview list).
  */
-async function resolveLandingPath(user: User): Promise<string> {
+export async function resolveLandingPath(user: User): Promise<string> {
   const preference = user.landing_preference;
   if (preference && preference !== "auto" && preference !== "overview") {
     return `/projects/${preference}`;

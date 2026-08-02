@@ -1,0 +1,80 @@
+# Enterprise integration: SSO, SCIM, and the separate-port provisioning API
+
+This document covers Massif (v3)'s enterprise-authentication requirements (E-U-01, E-U-02, E-P-02, E-P-03). Two of these are real, working, tested code in this pass. Two are deliberately left as a concrete architectural blueprint for a follow-up session, since each is effectively its own project. All four build on the same provisioning core, so the blueprint isn't speculative — it reuses code that already exists and already works.
+
+| Requirement | Status this pass |
+| --- | --- |
+| E-U-01 (SSO/OIDC login) | **Built and tested end-to-end** against a real Keycloak instance |
+| E-P-03 (per-org branded login page) | **Built** (org-scoped `/login/{slug}` page, custom background/logo, SSO button) |
+| E-U-02 (SCIM provisioning) | Blueprint only (below) |
+| E-P-02 (separate-port provisioning API) | Blueprint only (below) |
+
+## What was built: OIDC login (E-U-01)
+
+### Why this needed a new code path, not the existing `AuthBackend` protocol
+
+`backend/app/auth_backends/base.py`'s `AuthBackend` protocol is shaped for password-style login: one call, `authenticate(db, identifier, credential)`, one response. OIDC's authorization-code flow is inherently multi-step and redirect-driven (browser → authorize endpoint → IdP login → browser → callback with a code → server-side token exchange). Rather than force that shape onto the protocol, the OIDC flow lives in its own router, `backend/app/routers/auth_oidc.py`, which at the end of a successful exchange calls the exact same `create_access_token()` (`backend/app/security.py`) the native flow uses. The result: once logged in via SSO, the session is indistinguishable from a native one to the rest of the app — `token_version` revocation, the WebSocket expiry check, everything downstream just works.
+
+### Provider-agnostic by design
+
+`backend/app/services/oidc_client.py` uses standard OIDC discovery (`GET {issuer}/.well-known/openid-configuration`) rather than hardcoding any one provider's endpoint shapes. The same code is what was tested against Keycloak; swapping in Authentik, Microsoft Entra ID, or any other RFC-compliant OIDC provider is a configuration change on the `Organization` row (`oidc_issuer_url`, `oidc_client_id`, `oidc_client_secret`), not a code change. Provider-specific notes:
+
+- **Keycloak** (the one actually tested — see below): issuer is `{base}/realms/{realm}`, and its `groups` claim requires an explicit protocol mapper on the client (`oidc-group-membership-mapper`) — see `tests/container/keycloak/realm-export.json` for a working example.
+- **Authentik**: issuer is typically `{base}/application/o/{slug}/`; Authentik includes group membership in the `groups` claim by default when the "OpenID Connect" scope includes it in the provider's property mappings — no extra mapper step needed, unlike Keycloak.
+- **Microsoft Entra ID**: issuer is `https://login.microsoftonline.com/{tenant-id}/v2.0`. Entra doesn't emit a `groups` claim by default for large tenants (it emits an `_claim_sources` indirection instead, called the "groups overage" case) — for org-role mapping to work reliably via `sso_group_mappings`, the app registration's token configuration must add the `groups` claim explicitly and the tenant must have fewer than the overage threshold (~200) groups on the signing-in user, or a follow-up would need to call the Microsoft Graph API to resolve overage groups. Not needed for the tested Keycloak path.
+
+### How a user gains permissions (the actual question this had to answer)
+
+`backend/app/services/oidc_provisioning.py` has two functions, both unit-tested (`backend/tests/test_oidc_provisioning.py`) and exercised for real by the Keycloak-driven Playwright spec:
+
+- **`find_or_provision_user(db, claims)`**: resolves an existing `User` by `external_subject` (the IdP's stable subject id) first. Falls back to matching by email, but *only* when the IdP asserts `email_verified: true` — this is a deliberate anti-spoofing check. An IdP that doesn't assert verified email must never be allowed to silently take over an existing native account just by claiming its address; that would let anyone who can create an account at an unverified-email IdP hijack any existing local account by email alone. (Caught by `test_find_or_provision_user_does_not_link_to_existing_account_via_unverified_email`, which found a real bug during development: the original code fell through to trying to *create* a second user with the same email, which the DB's unique constraint correctly rejected — but as an unhandled 500, not a clean refusal. Fixed to raise a clear error instead.) Otherwise provisions a new `User` with `auth_backend="oidc"`, `password_hash=None`.
+- **`sync_org_roles_from_claims(db, user, org, claims)`**: applies `Organization.sso_group_mappings` (a `[{"sso_group": "...", "org_role": "..."}]` list — the same field the UI already exposed for future SSO, per its pre-existing docstring in `models/organization.py`, now actually consumed) against the IdP's `groups` or `roles` claim. A user with no matching group still gets an account — they can log in, but see no organisation content, same as any other user nobody has granted a role to yet.
+
+### Gating access to a specific group, separate from role mapping
+
+`Organization.oidc_required_group` (configurable per org, in the same SSO settings card as everything else) is a distinct, opt-in check from the role mapping above — it answers "should this person be let in at all," not "which role do they get." `oidc_provisioning.meets_required_group(org, claims)` is evaluated in `auth_oidc.oidc_callback` immediately after the ID token is verified and *before* any local account is provisioned or any token is issued: if the org has a required group configured and the authenticated user's `groups`/`roles` claim doesn't contain it, the callback redirects to the frontend with `?error=not_provisioned`, and `OidcCompletePage` shows "Your organisation has not provisioned you access." instead of ever storing a session token. The user genuinely authenticated at the IdP — the refusal is entirely this app's own policy layered on top, not an IdP-side failure — so the same account can start working immediately once an admin adds them to the required group, with no re-registration needed. Left unset, every organisation defaults to today's behaviour (any successful IdP login is admitted, with `sso_group_mappings` alone deciding what role, if any, they end up with).
+
+### Tested end-to-end, with a real IdP, not just designed
+
+`tests/container/docker-compose.yml` runs a real Keycloak instance (`tests/container/keycloak/realm-export.json` defines one realm, one confidential client, two test users in different groups). `tests/playwright/tests/e2e-workflows/sso.spec.ts` drives a real browser through the entire flow: the org-branded login page → Keycloak's own login form (not this app's UI) → the callback → landing authenticated in the app — then confirms via the API that the resulting account holds the org role its Keycloak group maps to, confirms separately that a user in an *unmapped* group gets an account but zero organisations, and confirms the required-group gate: a real, successfully-authenticated Keycloak user outside the configured group is shown the denial message and never receives a session token, while a user inside that group still gets in. All four pass.
+
+#### A real Docker-networking problem this surfaced, and how it's handled
+
+The backend reaches Keycloak over the Compose-internal network (`http://keycloak:8080`), but a real browser can only reach the published port (`http://localhost:8080`) — and the two must actually be the *same URL* everywhere else, since that URL is what appears in issued tokens' `iss` claim and what the browser gets redirected to. Keycloak is configured (`KC_HOSTNAME=localhost`, `KC_HOSTNAME_STRICT=false`) to always advertise `http://localhost:8080` as its canonical issuer regardless of which hostname a caller used to reach it, and the backend has a narrow, explicitly-scoped escape hatch — `Settings.oidc_internal_base_url_override` (`OIDC_INTERNAL_BASE_URL_OVERRIDE` env var, set only in `tests/container/docker-compose.yml`) — that rewrites the scheme+host of its own *outbound* HTTP calls (discovery, token exchange, JWKS fetch) to the internal address, while every URL the browser ever sees stays on the public host. In a real deployment, where the IdP's public URL is reachable from the backend too (the normal case), this override is simply left unset.
+
+#### SSRF guard on org-configured issuers, and self-hosted IdPs with no public IP
+
+Because `oidc_issuer_url` is set by an org's own admin rather than a deployment-trusted value, every outbound OIDC call (discovery, token exchange, JWKS fetch) validates the *resolved* IP of the target host and refuses to proceed if it's private/loopback/link-local — otherwise a malicious org admin could point their issuer (or, transitively, a discovery document's `token_endpoint`/`jwks_uri`) at internal-only infrastructure and get the backend to make requests against it. This is enforced regardless of `oidc_internal_base_url_override`, which is a narrow dev/test-only rewrite for one specific address, not a general bypass.
+
+This means a genuinely self-hosted identity provider — an on-prem Keycloak or Authentik with no public IP at all, common for enterprises that keep their IdP inside a corporate LAN or VPC — would be rejected by this check by default. For that case, set `OIDC_ALLOW_PRIVATE_NETWORK_TARGETS=true` (`Settings.oidc_allow_private_network_targets`), which disables the public-IP check deployment-wide. This is a blanket allow across every organisation configured on the deployment, not a per-org toggle, so it should only be enabled when every org sharing the deployment is trusted not to point its issuer at the deployment's own internal infrastructure — appropriate for a single-tenant deployment or one serving only mutually-trusted organisations, not a deployment hosting mutually-untrusted tenants.
+
+## Blueprint: SCIM provisioning (E-U-02)
+
+Not built this pass. Designed to share the exact provisioning core built for SSO above, since SCIM and SSO converge on identical logic — only the trigger differs (an IdP pushing a change vs. a user completing a login redirect).
+
+**Scope**: a subset of RFC 7644 (SCIM 2.0) covering the two resource types that matter here — `/scim/v2/Users` and `/scim/v2/Groups` — not the full spec (no `/scim/v2/Schemas` introspection, no PATCH-with-arbitrary-path-expressions, just the operations real IdP provisioning connectors actually send in practice: `POST`/`GET`/`PUT`/`DELETE` on Users, group membership updates).
+
+**Mapping onto existing models**:
+- `POST /scim/v2/Users` → calls `oidc_provisioning.find_or_provision_user()` directly with a synthesized claims dict built from the SCIM payload (`userName` → email, `id`/`externalId` → `external_subject`), instead of from a verified ID token — trust here comes from the bearer token authenticating the *request*, not from a signed ID token, since there's no login flow involved.
+- `PUT`/`PATCH /scim/v2/Users/{id}` → deactivate/reactivate maps to the existing `is_active` flag and the existing deactivation service (`backend/app/services/...` — the same path the UI's "Deactivate user" action already uses, including its C-U-09 sole-manager-fallback guard).
+- `GET/POST/DELETE /scim/v2/Groups` and group-membership PATCH operations → map onto `OrgGroup`/`OrgGroupMember`, with group membership changes calling `sync_org_roles_from_claims()`-equivalent logic keyed off group name rather than an OIDC claim.
+
+**Authentication**: a per-organisation bearer token (a new `Organization.scim_bearer_token_hash` column, generated once and shown to the admin exactly once, verified by hash on every SCIM request) — deliberately not a user JWT, since SCIM calls come from the IdP's provisioning engine, not a logged-in browser.
+
+**Pointing real IdPs at it**: Keycloak's SCIM support requires the community `keycloak-scim` extension (not built in as of Keycloak 26); Entra ID and Authentik both have first-party SCIM provisioning connectors in their admin UI that just need the base URL (`https://{host}/scim/v2`) and the bearer token above.
+
+## Blueprint: separate-port provisioning API (E-P-02)
+
+Not built this pass. The requirement's own wording — "a provisioning service on a separate TCP/IP port... [so] a firewall or routing rules [can] easily secure this service to only be accessible by authorised services" — is about network exposure, not application logic, so the design reuses the main app's routers rather than duplicating them.
+
+**Design**: a second, minimal FastAPI app (`backend/app/provisioning_app.py`, sketch) that mounts only the SCIM router above plus a project-creation endpoint, served by a second `uvicorn` process bound to a different port (e.g. `8001`) inside the *same* backend container and sharing the same SQLAlchemy models/database — not a separate service, consistent with I-M-01's single-backend-container deployment model. `docker-compose.yml` would publish the extra port only when the deployment operator chooses to (most deployments would keep it firewalled/internal-only, per the requirement's own reasoning), and the container's entrypoint would run both `uvicorn` processes (e.g. via a small process supervisor, or two `CMD` entries if split into two containers built from the same image later becomes preferable).
+
+**Authentication**: the same per-org SCIM bearer token, or a separate service-API-token concept if broader automation than SCIM's user/group scope is needed (e.g. project creation) — never user JWTs, since this port is meant for machine-to-machine automation per the requirement's own framing.
+
+## E-P-03 detail: per-org branded login page and the multi-org login question
+
+Built this pass, alongside the OIDC work above (the two share config): `GET /login/{slug}` (frontend route, `frontend/src/pages/OrgLoginPage.tsx`) resolves an organisation by its `slug` and renders its `login_background_file_id` background and logo, with a "Sign in with SSO" button when `sso_enabled`, alongside the native form unless `sso_only` is set.
+
+**Where does a user in multiple organisations log in?** A `User` is one global account across every org it belongs to (C-U-02, C-U-15) — login is not an org-scoped identity space. Org-branded pages are a *presentation and IdP-selection* convenience, not a separate account space: the root `/login` page always offers the native form (works for any native-backend user regardless of which orgs they're in); an org's `/login/{slug}` page offers that org's SSO button plus the native form as a fallback (unless `sso_only`). Any successful login through any of these paths resolves to and lands in the *same* global account, with access scoped by whatever real roles that account holds everywhere — the entry page only affects how the user authenticated, never what they can subsequently see.
+
+**Documented limitation of `sso_only`**: if an org sets `sso_only=True`, a user who is *only* a member of that org and was SSO-provisioned (no `password_hash` — `auth_backend="oidc"`) has no native fallback anywhere; they must reach that org's SSO button specifically. If their identity at the IdP is later deprovisioned while they still hold other, native-auth org memberships, they lose their one working login path entirely — the account still exists and still holds those other memberships, but nothing can authenticate into it — unless an admin sets a native password for them as a break-glass measure (existing "Users" admin UI has no such action today; this would be a natural addition alongside the SCIM work above, since SCIM deprovisioning is the more common trigger for exactly this scenario). Deployments enabling `sso_only` should have an operational plan for this before doing so.

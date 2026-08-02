@@ -40,6 +40,8 @@ export function ProjectAdminPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryPrefix, setNewCategoryPrefix] = useState("");
   const [memberInputs, setMemberInputs] = useState<Record<string, string>>({});
+  const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
+  const [cascadeInputs, setCascadeInputs] = useState<Record<string, boolean>>({});
 
   const [settingsName, setSettingsName] = useState("");
   const [settingsSummary, setSettingsSummary] = useState("");
@@ -141,6 +143,23 @@ export function ProjectAdminPage() {
 
   async function approveStage(stageId: string) {
     await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`);
+    reload();
+  }
+
+  async function setReviewDeadline(stageId: string, isoDeadline: string) {
+    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-deadline`, {
+      review_deadline: isoDeadline || null,
+    });
+    reload();
+  }
+
+  async function respondToStageReview(stageId: string, response: "approved" | "rejected") {
+    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response });
+    reload();
+  }
+
+  async function completeStage(stageId: string, cascade: boolean) {
+    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade });
     reload();
   }
 
@@ -305,14 +324,57 @@ export function ProjectAdminPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.stages}</h2>
         {stages.map((s) => (
-          <div key={s.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span>
-              {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
-            </span>
-            {s.status !== "approved" && s.status !== "completed" && (
-              <button className="btn" onClick={() => approveStage(s.id)}>
-                <Check size={14} /> {strings.admin.approveStage}
-              </button>
+          <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span>
+                {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
+                {s.review_deadline && <span className="badge">{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</span>}
+                {s.completed_at && <span className="badge">{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</span>}
+              </span>
+              {s.status !== "approved" && s.status !== "completed" && (
+                <button className="btn" onClick={() => approveStage(s.id)}>
+                  <Check size={14} /> {strings.admin.approveStage}
+                </button>
+              )}
+              {s.status === "approved" && (
+                <div className="row">
+                  <label className="row" style={{ gap: "0.25rem" }}>
+                    <input
+                      type="checkbox" checked={cascadeInputs[s.id] ?? false}
+                      onChange={(e) => setCascadeInputs((c) => ({ ...c, [s.id]: e.target.checked }))}
+                    />
+                    {strings.admin.cascadeToRequirements}
+                  </label>
+                  <button className="btn" onClick={() => completeStage(s.id, cascadeInputs[s.id] ?? false)}>
+                    {strings.admin.completeStage}
+                  </button>
+                </div>
+              )}
+            </div>
+            {s.status === "review" && (
+              <div className="row">
+                <input
+                  className="input" type="datetime-local" style={{ maxWidth: 220 }}
+                  value={deadlineInputs[s.id] ?? ""}
+                  onChange={(e) => setDeadlineInputs((d) => ({ ...d, [s.id]: e.target.value }))}
+                />
+                <button
+                  className="btn"
+                  onClick={() => setReviewDeadline(s.id, deadlineInputs[s.id] ? new Date(deadlineInputs[s.id]).toISOString() : "")}
+                >
+                  {strings.admin.setReviewDeadline}
+                </button>
+                {s.review_deadline && (
+                  <>
+                    <button className="btn" onClick={() => respondToStageReview(s.id, "approved")}>
+                      {strings.admin.respondApprove}
+                    </button>
+                    <button className="btn btn-danger" onClick={() => respondToStageReview(s.id, "rejected")}>
+                      {strings.admin.respondReject}
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
         ))}

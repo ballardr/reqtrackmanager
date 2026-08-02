@@ -91,3 +91,24 @@ class RequirementLinkType(str, enum.Enum):
     RELATES_TO = "relates_to"
     DEPENDS_ON = "depends_on"
     DERIVED_FROM = "derived_from"
+
+
+class RequirementReviewOutcome(str, enum.Enum):
+    """Outcome recorded when a requirement's scheduled review is performed (C-R-07)."""
+
+    MET = "met"
+    FAILED = "failed"
+
+
+class ChangeRequestVoteChoice(str, enum.Enum):
+    """A stakeholder's advisory vote on a change request (C-R-03)."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class StageReviewResponseChoice(str, enum.Enum):
+    """A stakeholder's response to a project stage's review deadline (C-R-05)."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"

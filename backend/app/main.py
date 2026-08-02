@@ -26,6 +26,7 @@ from app.metrics import http_request_duration_seconds, http_requests_total
 from app.migrations import run_migrations
 from app.routers import (
     auth,
+    auth_oidc,
     change_requests,
     custom_fields,
     files,
@@ -35,6 +36,7 @@ from app.routers import (
     projects,
     reports,
     requirements,
+    reviews,
     system,
     ws,
 )
@@ -42,6 +44,7 @@ from app.services import pubsub
 from app.services.bootstrap import run_bootstrap
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.notifications import run_digest_loop
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
 
@@ -61,9 +64,11 @@ async def lifespan(_: FastAPI):
         db.close()
     disk_monitor_task = asyncio.create_task(run_disk_monitor_loop())
     digest_task = asyncio.create_task(run_digest_loop())
+    start_scheduler()
     yield
     disk_monitor_task.cancel()
     digest_task.cancel()
+    stop_scheduler()
 
 
 app = FastAPI(
@@ -128,6 +133,7 @@ async def metrics_middleware(request: Request, call_next):
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(auth_oidc.router)
 app.include_router(orgs.router)
 app.include_router(projects.router)
 app.include_router(requirements.router)
@@ -136,6 +142,7 @@ app.include_router(reports.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(notifications.router)
+app.include_router(reviews.router)
 app.include_router(system.router)
 if settings.websocket_enabled:
     # I-A-04: the WebSocket interface is optional — deployments that can't

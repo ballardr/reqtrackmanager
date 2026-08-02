@@ -7,13 +7,13 @@ traceability links, and discussion comments (C-G-02, C-G-09, C-M-01, C-R-01).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import RequirementLevel, RequirementLinkType, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementLinkType, RequirementReviewOutcome, RequirementStatus
 
 
 class RequirementCreate(BaseModel):
@@ -28,6 +28,9 @@ class RequirementCreate(BaseModel):
     keywords: list[str] = []
     custom_fields: dict[str, Any] = {}
     creator_id: UUID | None = None  # PM-only override (C-A-11)
+    review_date: date | None = None  # C-R-06
+    review_lead_days: int | None = None  # C-R-08 per-requirement override
+    reviewer_id: UUID | None = None  # C-R-10
 
 
 class RequirementUpdate(BaseModel):
@@ -45,6 +48,9 @@ class RequirementUpdate(BaseModel):
     keywords: list[str] = []
     custom_fields: dict[str, Any] = {}
     change_note: str = ""
+    review_date: date | None = None  # C-R-06 (blocked by is_locked() once approved, same as every other field here)
+    review_lead_days: int | None = None
+    reviewer_id: UUID | None = None
 
 
 class RequirementOut(BaseModel):
@@ -69,6 +75,9 @@ class RequirementOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_subscribed: bool = False
+    review_date: date | None = None
+    review_lead_days: int | None = None
+    reviewer_id: UUID | None = None
     # Derived list-view indicators (mock's card "badges") — not stored data,
     # computed at read time from comments/change-requests/status.
     comment_count: int = 0
@@ -127,3 +136,26 @@ class CommentOut(BaseModel):
     created_at: datetime
     reaction_count: int = 0
     reacted_by_me: bool = False
+
+
+class RequirementReviewCreate(BaseModel):
+    outcome: RequirementReviewOutcome
+    comment: str | None = None
+
+
+class RequirementReviewOut(BaseModel):
+    id: UUID
+    requirement_id: UUID
+    reviewed_by: UUID
+    reviewed_at: datetime
+    outcome: RequirementReviewOutcome
+    comment: str | None = None
+
+
+class RequirementDueForReviewOut(BaseModel):
+    requirement_id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    review_date: date
+    reviewer_id: UUID | None = None

@@ -84,6 +84,35 @@ def create_2fa_challenge_token(subject: str) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_oidc_state_token(organization_id: str, client_nonce: str) -> str:
+    """Creates a short-lived signed token carrying the organisation id
+    (and the browser-generated client nonce, see below) through an OIDC
+    authorization-code round trip (E-U-01), used as the `state` parameter.
+
+    Avoids needing server-side session storage for `state`: the org id is
+    embedded directly in a signed token rather than looked up from a
+    session, so the callback handler can recover it (and be sure it wasn't
+    tampered with) without any shared server-side state between the
+    redirect and the callback.
+
+    `client_nonce`: a random value the *frontend* generates and stores in
+    `sessionStorage` before it ever navigates to the login-start endpoint,
+    echoed back through this token and the eventual callback redirect. This
+    is what proves the browser landing on `/oidc-complete` with a token is
+    the same browser that actually initiated this specific login attempt —
+    without it, `state` alone only proves the org wasn't tampered with, not
+    who's holding the resulting session. See `routers/auth_oidc.py` and
+    `OidcCompletePage.tsx` for the two ends of this check; without it, an
+    attacker could complete their own legitimate login (native or SSO,
+    unrelated to any particular org's flow) and hand a victim a crafted
+    `/oidc-complete?token=...` link, silently logging the victim's browser
+    into the attacker's account (a login-CSRF / session-fixation pattern).
+    """
+    expire = datetime.now(UTC) + timedelta(minutes=10)
+    payload = {"org_id": organization_id, "client_nonce": client_nonce, "exp": expire, "purpose": "oidc_state"}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
 def decode_access_token(token: str) -> dict[str, Any] | None:
     """Decodes and validates a JWT access token.
 

@@ -27,6 +27,8 @@ class OrganizationOut(BaseModel):
     created_at: datetime
     logo_file_id: UUID | None = None
     default_template_project_id: UUID | None = None
+    login_background_file_id: UUID | None = None
+    slug: str | None = None
 
 
 class DefaultTemplateUpdate(BaseModel):
@@ -36,17 +38,18 @@ class DefaultTemplateUpdate(BaseModel):
 
 
 class SsoGroupMapping(BaseModel):
-    """Maps one external SSO group name to a local org role. Storage-only —
-    see `Organization.sso_group_mappings` for why nothing consumes this yet."""
+    """Maps one external SSO group name to a local org role (C-U-07, E-U-01)
+    — consumed by `services/oidc_provisioning.sync_org_roles_from_claims` on
+    every SSO login. Distinct from `Organization.oidc_required_group`, which
+    gates *whether* a login is admitted at all, not which role it gets."""
 
     sso_group: str
     org_role: OrgRole
 
 
 class OrgAdvancedSettingsOut(BaseModel):
-    """Per-organisation SMTP override and SSO group-mapping settings.
-    Storage-only seams for future integrations — see `Organization` model
-    docstring and docs/decisions.md."""
+    """Per-organisation SMTP override and SSO group-mapping settings — see
+    `Organization` model docstring and docs/decisions.md."""
 
     smtp_host: str | None = None
     smtp_port: int | None = None
@@ -81,6 +84,59 @@ class OrgUserOut(BaseModel):
     is_archived: bool
     roles: list[OrgRole]
     display_name_locked: bool = False
+    last_login_at: datetime | None = None
+    is_2fa_enabled: bool = False
+
+
+class OrgSsoConfigUpdate(BaseModel):
+    """Per-organisation SSO/OIDC configuration (E-U-01, E-P-03)."""
+
+    slug: str | None = None
+    sso_enabled: bool = False
+    sso_only: bool = False
+    oidc_issuer_url: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_required_group: str | None = None
+
+
+class OrgSsoConfigOut(BaseModel):
+    slug: str | None = None
+    sso_enabled: bool
+    sso_only: bool
+    oidc_issuer_url: str | None = None
+    oidc_client_id: str | None = None
+    oidc_required_group: str | None = None
+
+
+class OrgLoginInfoOut(BaseModel):
+    """Public, unauthenticated org-branded login page info (E-P-03) — no
+    secrets, just enough to render the page and offer an SSO button."""
+
+    name: str
+    slug: str
+    logo_file_id: UUID | None = None
+    login_background_file_id: UUID | None = None
+    sso_enabled: bool
+    sso_only: bool
+
+
+class ReportTemplateCreate(BaseModel):
+    name: str
+    accent_color_hex: str = "#2563eb"
+    include_cover_page: bool = True
+    include_logo: bool = True
+    footer_text: str | None = None
+
+
+class ReportTemplateOut(BaseModel):
+    id: UUID
+    organization_id: UUID
+    name: str
+    accent_color_hex: str
+    include_cover_page: bool
+    include_logo: bool
+    footer_text: str | None = None
 
 
 class DisplayNameLockUpdate(BaseModel):

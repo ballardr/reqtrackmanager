@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import UTC
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user
 from app.metrics import (
     requirements_archived_total,
     requirements_created_total,
@@ -29,6 +30,7 @@ from app.models.enums import (
     ChangeRequestStatus,
     ProjectRole,
     RequirementLevel,
+    RequirementReviewOutcome,
     RequirementStatus,
     ReviewTargetType,
     StageStatus,
@@ -36,7 +38,7 @@ from app.models.enums import (
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementLink, RequirementVersion
+from app.models.requirement import Requirement, RequirementLink, RequirementReview, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
@@ -45,11 +47,14 @@ from app.schemas.requirement import (
     CommentCreate,
     CommentOut,
     RequirementCreate,
+    RequirementDueForReviewOut,
     RequirementImportError,
     RequirementImportResult,
     RequirementLinkCreate,
     RequirementLinkOut,
     RequirementOut,
+    RequirementReviewCreate,
+    RequirementReviewOut,
     RequirementUpdate,
     RequirementVersionOut,
 )
@@ -58,7 +63,7 @@ from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
 from app.services.files import delete_file, upload_file
 from app.services.changes import get_project_changes
-from app.services.rbac import get_effective_project_roles, require_project_view
+from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.requirements import (
     apply_new_version,
     archive_requirement,
@@ -68,6 +73,7 @@ from app.services.requirements import (
     is_locked,
     set_keywords,
 )
+from app.services.reviews import get_due_reviews_for_project
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/requirements", tags=["requirements"])
 
@@ -116,6 +122,7 @@ def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, 
         comment_count=engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id),
         has_open_change_request=_has_open_change_request(db, requirement.id),
         requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
+        review_date=version.review_date, review_lead_days=version.review_lead_days, reviewer_id=version.reviewer_id,
     )
 
 
@@ -150,6 +157,7 @@ def create_requirement_endpoint(
         owner_id=payload.owner_id, keywords=payload.keywords, sort_order=count,
         target_stage_id=payload.target_stage_id, level=payload.level,
         custom_fields=custom_fields, creator_override_id=creator_override_id,
+        review_date=payload.review_date, review_lead_days=payload.review_lead_days, reviewer_id=payload.reviewer_id,
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="created",
               actor_id=current_user.id, project_id=project_id)
@@ -317,6 +325,24 @@ async def import_requirements(
     return RequirementImportResult(created=created, errors=errors)
 
 
+@router.get("/reviews/due", response_model=list[RequirementDueForReviewOut])
+def list_due_reviews(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Requirements due/overdue for review in this project, project-basis (C-R-09).
+
+    Registered before `GET /{requirement_id}` so this static path isn't
+    swallowed by that dynamic route (same reasoning as `/import` above).
+    """
+    return [
+        RequirementDueForReviewOut(
+            requirement_id=req.id, project_id=req.project_id, unique_code=req.unique_code,
+            name=version.name, review_date=version.review_date, reviewer_id=version.reviewer_id,
+        )
+        for version, req in get_due_reviews_for_project(db, project_id)
+    ]
+
+
 @router.get("/{requirement_id}", response_model=RequirementOut)
 def get_requirement(
     project_id: UUID, requirement_id: UUID,
@@ -354,6 +380,9 @@ def update_requirement(
         target_stage_id=payload.target_stage_id, target_stage_explicitly_set=True, level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
         custom_fields=custom_fields,
+        review_date=payload.review_date, review_date_explicitly_set=True,
+        review_lead_days=payload.review_lead_days, review_lead_days_explicitly_set=True,
+        reviewer_id=payload.reviewer_id, reviewer_id_explicitly_set=True,
     )
     if payload.component_id != requirement.component_id or payload.category_id != requirement.category_id:
         component = db.get(ProjectComponent, payload.component_id)
@@ -391,6 +420,97 @@ def delete_requirement(
     requirements_archived_total.inc()
     db.commit()
     pubsub.notify(project_id, {"type": "requirement", "action": "archived", "id": str(requirement.id)})
+
+
+@router.post("/{requirement_id}/reviews", response_model=RequirementReviewOut, status_code=status.HTTP_201_CREATED)
+def record_review_outcome(
+    project_id: UUID, requirement_id: UUID, payload: RequirementReviewCreate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Records the outcome of a requirement's scheduled review (C-R-07).
+
+    Gate: the requirement's assigned reviewer (C-R-10), or a project manager
+    as a fallback. Doesn't touch `review_date` itself (see
+    `services/reviews.py`'s due-list definition) — the requirement drops off
+    the due list because a review now exists, not because the date changed.
+    """
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    version = get_current_version(db, requirement.id)
+    is_reviewer = version.reviewer_id == current_user.id
+    is_manager = ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id)
+    if not (is_reviewer or is_manager):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the assigned reviewer or a project manager may record this.")
+    if payload.outcome == RequirementReviewOutcome.FAILED and not (payload.comment or "").strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required when the outcome is 'failed'.")
+
+    review = RequirementReview(
+        requirement_id=requirement.id, requirement_version_id=version.id,
+        reviewed_by=current_user.id, reviewed_at=datetime.now(UTC),
+        outcome=payload.outcome, comment=payload.comment,
+    )
+    db.add(review)
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="review_recorded",
+              actor_id=current_user.id, project_id=project_id, detail={"outcome": payload.outcome.value})
+    db.commit()
+    db.refresh(review)
+    return RequirementReviewOut(
+        id=review.id, requirement_id=review.requirement_id, reviewed_by=review.reviewed_by,
+        reviewed_at=review.reviewed_at, outcome=review.outcome, comment=review.comment,
+    )
+
+
+@router.post("/{requirement_id}/complete", response_model=RequirementOut)
+def complete_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Marks an approved requirement completed (C-P-03), gated the same as
+    archiving — a status transition a project manager can make directly,
+    not content that needs to go through a change request. Who/when is
+    captured by the resulting version's created_by/created_at, same as
+    every other requirement edit."""
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    current_version = get_current_version(db, requirement.id)
+    if current_version.status != RequirementStatus.APPROVED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only an approved requirement can be marked completed.")
+    new_version = apply_new_version(
+        db, requirement, current_version, current_user,
+        status_value=RequirementStatus.COMPLETED, change_note="Marked completed.",
+    )
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="completed",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(requirement)
+    return _to_out(db, requirement, new_version, current_user.id)
+
+
+@router.post("/{requirement_id}/uncomplete", response_model=RequirementOut)
+def uncomplete_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Reverts a completed requirement back to approved, to correct a mistake."""
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    current_version = get_current_version(db, requirement.id)
+    if current_version.status != RequirementStatus.COMPLETED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is not marked completed.")
+    new_version = apply_new_version(
+        db, requirement, current_version, current_user,
+        status_value=RequirementStatus.APPROVED, change_note="Completion reverted.",
+    )
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="uncompleted",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(requirement)
+    return _to_out(db, requirement, new_version, current_user.id)
 
 
 @router.get("/{requirement_id}/history", response_model=list[RequirementVersionOut])

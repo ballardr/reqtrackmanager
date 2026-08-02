@@ -29,6 +29,9 @@ class ReportRequest(BaseModel):
             render as additional report sections, appended after the
             requirement table (R-G-04). Only text/markdown files can be
             rendered as text; other content types are noted but skipped.
+        report_template_id: An optional selected `ReportTemplate` (R-G-05)
+            to brand the PDF with (accent colour, cover page, footer, logo).
+            Ignored for CSV exports, which have no branded layout.
     """
 
     pre_markdown: str = ""
@@ -39,6 +42,7 @@ class ReportRequest(BaseModel):
     status: RequirementStatus | None = None
     keyword: str | None = None
     resource_file_ids: list[UUID] = []
+    report_template_id: UUID | None = None
 
 
 class ReportChapter(BaseModel):

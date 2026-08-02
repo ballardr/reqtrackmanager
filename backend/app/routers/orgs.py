@@ -9,10 +9,10 @@ C-U-12).
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,8 +21,8 @@ from app.deps import get_current_user
 from app.models.enums import OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
-from app.models.project import ProjectGroupMember, UserProjectRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
+from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 from app.schemas.file import FileAssetOut
 from app.schemas.org import (
@@ -35,9 +35,14 @@ from app.schemas.org import (
     OrgGroupCreate,
     OrgGroupMemberAdd,
     OrgGroupOut,
+    OrgLoginInfoOut,
     OrgRoleAssign,
+    OrgSsoConfigOut,
+    OrgSsoConfigUpdate,
     OrgUserCreate,
     OrgUserOut,
+    ReportTemplateCreate,
+    ReportTemplateOut,
 )
 from app.security import hash_password
 from app.services import engagement
@@ -153,6 +158,12 @@ def create_org_user(
 @router.get("/{organization_id}/users", response_model=list[OrgUserOut])
 def list_org_users(
     organization_id: UUID,
+    stale_since_days: int | None = Query(None, ge=0),
+    never_logged_in: bool | None = None,
+    has_2fa: bool | None = None,
+    org_role: OrgRole | None = None,
+    has_project_access: bool | None = None,
+    is_active: bool | None = None,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
@@ -161,7 +172,22 @@ def list_org_users(
     Archived users are excluded (C-U-05: an archived user "no longer
     show[s] as users", though their past contributions stay attributed to
     them elsewhere via the unaffected `creator_id`/`actor_id` foreign keys).
+
+    The access-review filters (C-A-13) — `stale_since_days`,
+    `never_logged_in`, `has_2fa`, `org_role`, `has_project_access`,
+    `is_active` — are org-admin only; a plain member/project-creator can
+    still call this endpoint unfiltered for the general member directory
+    (existing behavior), but supplying any filter requires org-admin,
+    scoped to *this* organisation via `organization_id` (not "an org admin
+    somewhere else" — same pattern as every other org-scoped admin check).
     """
+    filters_requested = any(
+        v is not None for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active)
+    )
+    is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
+    if filters_requested and not is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an organisation admin may use access-review filters.")
+
     rows = db.execute(
         select(User, UserOrgRole.role).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
             UserOrgRole.organization_id == organization_id, User.is_archived.is_(False)
@@ -178,9 +204,55 @@ def list_org_users(
                 is_archived=user.is_archived,
                 roles=[],
                 display_name_locked=user.display_name_locked,
+                # C-A-13 access-review data: real values only for org admins
+                # (matching the filter gate above) — a plain member calling
+                # this same endpoint for the general directory must not
+                # receive other members' account-security posture.
+                last_login_at=user.last_login_at if is_admin else None,
+                is_2fa_enabled=user.is_2fa_enabled if is_admin else False,
             )
         by_user[user.id].roles.append(role)
-    return list(by_user.values())
+
+    results = list(by_user.values())
+    if is_active is not None:
+        results = [r for r in results if r.is_active == is_active]
+    if has_2fa is not None:
+        results = [r for r in results if r.is_2fa_enabled == has_2fa]
+    if org_role is not None:
+        results = [r for r in results if org_role in r.roles]
+    if never_logged_in:
+        results = [r for r in results if r.last_login_at is None]
+    if stale_since_days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=stale_since_days)
+        results = [r for r in results if r.last_login_at is None or r.last_login_at < cutoff]
+    if has_project_access is not None:
+        access_ids = _org_users_with_project_access(db, organization_id)
+        results = [r for r in results if (r.user_id in access_ids) == has_project_access]
+    return results
+
+
+def _org_users_with_project_access(db: Session, organization_id: UUID) -> set[UUID]:
+    """User ids with at least one direct project role or direct project-group
+    membership on any project in this organisation (used by the
+    `has_project_access` access-review filter, C-A-13). Direct resolution
+    only, not nested org groups — matches the same scope already used by
+    `get_project_managers` for similar bulk/administrative queries."""
+    direct_role_ids = set(
+        db.scalars(
+            select(UserProjectRole.user_id)
+            .join(Project, Project.id == UserProjectRole.project_id)
+            .where(Project.organization_id == organization_id)
+        ).all()
+    )
+    direct_group_ids = set(
+        db.scalars(
+            select(ProjectGroupMember.user_id)
+            .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+            .join(Project, Project.id == ProjectGroup.project_id)
+            .where(Project.organization_id == organization_id, ProjectGroupMember.user_id.is_not(None))
+        ).all()
+    )
+    return direct_role_ids | direct_group_ids
 
 
 @router.put("/{organization_id}/users/{user_id}/display-name-lock", status_code=status.HTTP_204_NO_CONTENT)
@@ -659,8 +731,9 @@ def get_advanced_settings(
 ):
     """Per-organisation SMTP override and SSO group-mapping settings.
 
-    Storage-only: see `Organization` model docstring for why nothing
-    currently reads `smtp_*`/`sso_group_mappings` at runtime. The stored
+    `smtp_*` remain storage-only (see `Organization` model docstring);
+    `sso_group_mappings` is read by `services/oidc_provisioning.
+    sync_org_roles_from_claims` on every SSO login. The stored
     `smtp_password` is never echoed back (write-only), matching how the
     bootstrap/native-auth password is handled elsewhere.
     """
@@ -701,3 +774,161 @@ def update_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
     )
+
+
+# --- SSO / branded login page (E-U-01, E-P-03) ------------------------------
+
+
+@router.get("/by-slug/{slug}/login-info", response_model=OrgLoginInfoOut)
+def get_org_login_info(slug: str, db: Session = Depends(get_db)):
+    """Public, unauthenticated lookup used by the org-branded login page
+    (`/login/{slug}` in the frontend) to render branding and decide whether
+    to show a "Sign in with SSO" button. Returns no secrets."""
+    org = db.scalar(select(Organization).where(Organization.slug == slug))
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return OrgLoginInfoOut(
+        name=org.name, slug=org.slug, logo_file_id=org.logo_file_id,
+        login_background_file_id=org.login_background_file_id,
+        sso_enabled=org.sso_enabled, sso_only=org.sso_only,
+    )
+
+
+@router.get("/{organization_id}/sso-config", response_model=OrgSsoConfigOut)
+def get_sso_config(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return OrgSsoConfigOut(
+        slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
+        oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
+        oidc_required_group=org.oidc_required_group,
+    )
+
+
+@router.put("/{organization_id}/sso-config", response_model=OrgSsoConfigOut)
+def update_sso_config(
+    organization_id: UUID, payload: OrgSsoConfigUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Configures an organisation's OIDC SSO login (E-U-01) and its
+    slug-resolved branded login page (E-P-03).
+
+    `oidc_client_secret` is stored in plaintext for this proof-of-concept —
+    see docs/enterprise-integration.md for the follow-up to move this to
+    real secret storage before production use.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if payload.slug is not None:
+        existing = db.scalar(select(Organization).where(Organization.slug == payload.slug))
+        if existing is not None and existing.id != org.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This slug is already in use.")
+        org.slug = payload.slug
+    if payload.sso_enabled and not org.slug:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Set a slug before enabling SSO (needed for the login page URL).")
+    org.sso_enabled = payload.sso_enabled
+    org.sso_only = payload.sso_only
+    org.oidc_issuer_url = payload.oidc_issuer_url
+    org.oidc_client_id = payload.oidc_client_id
+    if payload.oidc_client_secret:
+        # Blank means "leave unchanged" — same pattern as smtp_password above.
+        org.oidc_client_secret = payload.oidc_client_secret
+    org.oidc_required_group = payload.oidc_required_group
+    log_event(db, entity_type="organization", entity_id=organization_id, action="sso_config_updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(org)
+    return OrgSsoConfigOut(
+        slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
+        oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
+        oidc_required_group=org.oidc_required_group,
+    )
+
+
+@router.post("/{organization_id}/login-background", response_model=OrganizationOut)
+async def upload_login_background(
+    organization_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Uploads a custom background image for this organisation's branded
+    login page (E-P-03), same upload pattern as the org logo."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "login-background", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    org.login_background_file_id = asset.id
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+# --- Report templates (R-G-05) -----------------------------------------------
+
+
+@router.post("/{organization_id}/report-templates", response_model=ReportTemplateOut, status_code=status.HTTP_201_CREATED)
+def create_report_template(
+    organization_id: UUID, payload: ReportTemplateCreate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Creates a named PDF report branding preset for this organisation (R-G-05)."""
+    template = ReportTemplate(
+        organization_id=organization_id, name=payload.name, accent_color_hex=payload.accent_color_hex,
+        include_cover_page=payload.include_cover_page, include_logo=payload.include_logo,
+        footer_text=payload.footer_text, created_by=current_user.id,
+    )
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+@router.get("/{organization_id}/report-templates", response_model=list[ReportTemplateOut])
+def list_report_templates(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """Lists an organisation's report templates — any org member may select
+    one when generating a report, so listing isn't admin-only (only
+    create/edit/delete are)."""
+    return db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == organization_id)).all()
+
+
+@router.put("/{organization_id}/report-templates/{template_id}", response_model=ReportTemplateOut)
+def update_report_template(
+    organization_id: UUID, template_id: UUID, payload: ReportTemplateCreate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    template = db.get(ReportTemplate, template_id)
+    if template is None or template.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report template not found.")
+    template.name = payload.name
+    template.accent_color_hex = payload.accent_color_hex
+    template.include_cover_page = payload.include_cover_page
+    template.include_logo = payload.include_logo
+    template.footer_text = payload.footer_text
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+@router.delete("/{organization_id}/report-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_report_template(
+    organization_id: UUID, template_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    template = db.get(ReportTemplate, template_id)
+    if template is None or template.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report template not found.")
+    db.delete(template)
+    db.commit()

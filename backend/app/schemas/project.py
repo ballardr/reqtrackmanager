@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
-from app.models.enums import ProjectRole, StageStatus
+from app.models.enums import ProjectRole, StageReviewResponseChoice, StageStatus
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
@@ -100,6 +100,31 @@ class ProjectStageOut(BaseModel):
     sort_order: int
     is_current: bool
     approved_at: datetime | None = None
+    completed_at: datetime | None = None
+    completed_by: UUID | None = None
+    review_deadline: datetime | None = None
+
+
+class StageReviewDeadlineSet(BaseModel):
+    review_deadline: datetime | None = None
+
+
+class StageReviewResponseCreate(BaseModel):
+    response: StageReviewResponseChoice
+    comment: str | None = None
+
+
+class StageReviewResponseOut(BaseModel):
+    id: UUID
+    stage_id: UUID
+    user_id: UUID
+    response: StageReviewResponseChoice
+    comment: str | None = None
+    responded_at: datetime
+
+
+class StageCompleteRequest(BaseModel):
+    cascade_to_requirements: bool = False
 
 
 class ComponentCreate(BaseModel):

@@ -3,7 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
-import type { FileAsset, OrgAdvancedSettings, OrgGroup, OrgRole, OrgUser, Organization, ProjectListItem } from "../api/types";
+import type {
+  FileAsset,
+  OrgAdvancedSettings,
+  OrgGroup,
+  OrgRole,
+  OrgSsoConfig,
+  OrgUser,
+  Organization,
+  ProjectListItem,
+  ReportTemplate,
+} from "../api/types";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -39,24 +49,58 @@ export function OrgAdminPage() {
   const [newMappingGroup, setNewMappingGroup] = useState("");
   const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
   const [advancedError, setAdvancedError] = useState<string | null>(null);
+  const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
+
+  const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
+  const [slugInput, setSlugInput] = useState("");
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [ssoOnly, setSsoOnly] = useState(false);
+  const [oidcIssuerUrl, setOidcIssuerUrl] = useState("");
+  const [oidcClientId, setOidcClientId] = useState("");
+  const [oidcClientSecret, setOidcClientSecret] = useState("");
+  const [oidcRequiredGroup, setOidcRequiredGroup] = useState("");
+  const [ssoError, setSsoError] = useState<string | null>(null);
+
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
+  const [newTemplateName, setNewTemplateName] = useState("");
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const resourceInputRef = useRef<HTMLInputElement>(null);
+  const loginBackgroundInputRef = useRef<HTMLInputElement>(null);
+
+  async function loadUsers(filter: typeof userFilter) {
+    if (!orgId) return;
+    const query =
+      filter === "stale" ? "?stale_since_days=180" :
+      filter === "no2fa" ? "?has_2fa=false" :
+      filter === "noaccess" ? "?has_project_access=false" : "";
+    try {
+      setUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${orgId}/users${query}`));
+    } catch (err) {
+      // Non-admins get 403 on filtered queries; fall back to the plain list.
+      if (err instanceof ApiError && err.status === 403) {
+        setUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${orgId}/users`));
+      } else {
+        throw err;
+      }
+    }
+  }
 
   async function reload() {
     if (!orgId) return;
-    const [o, u, g, r, projects] = await Promise.all([
+    const [o, g, r, projects, templates] = await Promise.all([
       api.get<Organization>(`/api/v1/orgs/${orgId}`),
-      api.get<OrgUser[]>(`/api/v1/orgs/${orgId}/users`),
       api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
       api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+      api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
     ]);
     setOrg(o);
-    setUsers(u);
     setGroups(g);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
+    setReportTemplates(templates);
+    await loadUsers(userFilter);
 
     try {
       const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
@@ -69,6 +113,25 @@ export function OrgAdminPage() {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
     }
+
+    try {
+      const sso = await api.get<OrgSsoConfig>(`/api/v1/orgs/${orgId}/sso-config`);
+      setSsoConfig(sso);
+      setSlugInput(sso.slug ?? "");
+      setSsoEnabled(sso.sso_enabled);
+      setSsoOnly(sso.sso_only);
+      setOidcIssuerUrl(sso.oidc_issuer_url ?? "");
+      setOidcClientId(sso.oidc_client_id ?? "");
+      setOidcRequiredGroup(sso.oidc_required_group ?? "");
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 403)) throw err;
+    }
+  }
+
+  function applyUserFilter(filter: typeof userFilter) {
+    const next = userFilter === filter ? "" : filter;
+    setUserFilter(next);
+    loadUsers(next);
   }
 
   async function saveAdvanced() {
@@ -143,6 +206,42 @@ export function OrgAdminPage() {
     reload();
   }
 
+  async function uploadLoginBackground(file: File) {
+    await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
+    reload();
+  }
+
+  async function saveSso() {
+    setSsoError(null);
+    try {
+      const saved = await api.put<OrgSsoConfig>(`/api/v1/orgs/${orgId}/sso-config`, {
+        slug: slugInput || null,
+        sso_enabled: ssoEnabled,
+        sso_only: ssoOnly,
+        oidc_issuer_url: oidcIssuerUrl || null,
+        oidc_client_id: oidcClientId || null,
+        oidc_client_secret: oidcClientSecret || null,
+        oidc_required_group: oidcRequiredGroup || null,
+      });
+      setSsoConfig(saved);
+      setOidcClientSecret("");
+    } catch (err) {
+      setSsoError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function createReportTemplate() {
+    if (!newTemplateName) return;
+    await api.post(`/api/v1/orgs/${orgId}/report-templates`, { name: newTemplateName });
+    setNewTemplateName("");
+    reload();
+  }
+
+  async function deleteReportTemplate(templateId: string) {
+    await api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`);
+    reload();
+  }
+
   async function uploadResource(file: File) {
     await api.postFile(`/api/v1/orgs/${orgId}/resources`, file);
     reload();
@@ -197,6 +296,84 @@ export function OrgAdminPage() {
         />
       </div>
 
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportTemplates}</h2>
+        {reportTemplates.map((tpl) => (
+          <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
+            <span>
+              {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
+            </span>
+            <button className="btn btn-danger" onClick={() => deleteReportTemplate(tpl.id)}>
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <div className="row">
+          <input
+            className="input" placeholder={strings.admin.templateName}
+            value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={createReportTemplate} disabled={!newTemplateName}>
+            <Plus size={14} /> {strings.admin.newReportTemplate}
+          </button>
+        </div>
+      </div>
+
+      {ssoConfig && (
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.ssoConfig}</h2>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.slug}
+            <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+              {strings.orgAdmin.slugHint.replace("{slug}", slugInput || "…")}
+            </span>
+          </label>
+          <label className="row">
+            <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
+            {strings.orgAdmin.ssoEnabled}
+          </label>
+          <label className="row">
+            <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
+            {strings.orgAdmin.ssoOnly}
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcIssuerUrl}
+            <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcClientId}
+            <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcClientSecret}
+            <input
+              className="input" type="password" value={oidcClientSecret}
+              onChange={(e) => setOidcClientSecret(e.target.value)}
+            />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcRequiredGroup}
+            <input
+              className="input" value={oidcRequiredGroup}
+              onChange={(e) => setOidcRequiredGroup(e.target.value)}
+            />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.loginBackground}
+            <input
+              ref={loginBackgroundInputRef} type="file" accept="image/*"
+              onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
+            />
+          </label>
+          {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
+          <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
+            {strings.orgAdmin.saveSso}
+          </button>
+        </div>
+      )}
+
       {templateProjects.length > 0 && (
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.defaultTemplate}</h2>
@@ -217,6 +394,22 @@ export function OrgAdminPage() {
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.users}</h2>
+        <div className="row">
+          <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
+            {strings.orgAdmin.filterStale}
+          </button>
+          <button className={`btn${userFilter === "no2fa" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("no2fa")}>
+            {strings.orgAdmin.filterNo2fa}
+          </button>
+          <button className={`btn${userFilter === "noaccess" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("noaccess")}>
+            {strings.orgAdmin.filterNoProjectAccess}
+          </button>
+          {userFilter && (
+            <button className="btn" onClick={() => applyUserFilter("")}>
+              {strings.orgAdmin.filterClear}
+            </button>
+          )}
+        </div>
         <table>
           <thead>
             <tr>
@@ -224,6 +417,8 @@ export function OrgAdminPage() {
               <th>{strings.orgAdmin.name}</th>
               <th>{strings.orgAdmin.roles}</th>
               <th>{strings.orgAdmin.status}</th>
+              <th>{strings.orgAdmin.lastLogin}</th>
+              <th>{strings.orgAdmin.twoFactor}</th>
               <th></th>
             </tr>
           </thead>
@@ -234,6 +429,8 @@ export function OrgAdminPage() {
                 <td>{u.display_name}</td>
                 <td>{u.roles.join(", ")}</td>
                 <td>{u.is_archived ? "archived" : u.is_active ? "active" : "deactivated"}</td>
+                <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
+                <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
                 <td>
                   <button
                     className="btn"

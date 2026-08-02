@@ -6,12 +6,18 @@ Alembic autogeneration and for `Base.metadata.create_all()` in tests.
 """
 
 from app.models.audit import AuditEvent, LoginEvent
-from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
+from app.models.change_request import (
+    ChangeRequest,
+    ChangeRequestTask,
+    ChangeRequestVersion,
+    ChangeRequestVote,
+    ReviewComment,
+)
 from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import Notification, NotificationPreference
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -20,6 +26,7 @@ from app.models.project import (
     ProjectGroup,
     ProjectGroupMember,
     ProjectStage,
+    StageReviewResponse,
     UserProjectRole,
 )
 from app.models.requirement import (
@@ -28,6 +35,7 @@ from app.models.requirement import (
     Requirement,
     RequirementKeyword,
     RequirementLink,
+    RequirementReview,
     RequirementVersion,
 )
 from app.models.user import User
@@ -36,7 +44,9 @@ __all__ = [
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",
+    "ChangeRequestTask",
     "ChangeRequestVersion",
+    "ChangeRequestVote",
     "ReviewComment",
     "CustomFieldDefinition",
     "CommentReaction",
@@ -48,6 +58,7 @@ __all__ = [
     "Organization",
     "OrgGroup",
     "OrgGroupMember",
+    "ReportTemplate",
     "UserOrgRole",
     "FavoriteProject",
     "Project",
@@ -56,12 +67,14 @@ __all__ = [
     "ProjectGroup",
     "ProjectGroupMember",
     "ProjectStage",
+    "StageReviewResponse",
     "UserProjectRole",
     "Baseline",
     "BaselineItem",
     "Requirement",
     "RequirementKeyword",
     "RequirementLink",
+    "RequirementReview",
     "RequirementVersion",
     "User",
 ]

@@ -123,3 +123,11 @@ export function fileUrl(fileId: string): string {
 export function getAuthToken(): string | null {
   return authToken;
 }
+
+/** Builds an absolute backend URL for endpoints the browser must navigate to
+ * directly (full-page redirects) rather than call via fetch, e.g. the OIDC
+ * login entry point (E-U-01), which itself issues a 302 to the identity
+ * provider. */
+export function apiUrl(path: string): string {
+  return `${BASE_URL}${path}`;
+}

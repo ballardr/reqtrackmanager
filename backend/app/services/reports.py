@@ -22,7 +22,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, ListFlowable, ListItem, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 _md = MarkdownIt()
 _styles = getSampleStyleSheet()
@@ -95,8 +95,25 @@ def _markdown_to_flowables(markdown_text: str) -> list:
     return flowables
 
 
+@dataclass
+class ReportBranding:
+    """Optional per-report branding, sourced from an org's `ReportTemplate`
+    (R-G-05). `generate_pdf_report` falls back to today's plain, unbranded
+    styling when this is omitted entirely."""
+
+    accent_color_hex: str = "#2d3748"
+    include_cover_page: bool = False
+    footer_text: str | None = None
+    logo_bytes: bytes | None = None
+
+
 def generate_pdf_report(
-    *, project_name: str, pre_markdown: str, rows: list[ReportRequirementRow], post_markdown: str
+    *,
+    project_name: str,
+    pre_markdown: str,
+    rows: list[ReportRequirementRow],
+    post_markdown: str,
+    branding: ReportBranding | None = None,
 ) -> bytes:
     """Builds a PDF report of a project's requirements.
 
@@ -107,13 +124,34 @@ def generate_pdf_report(
         rows: The requirement rows to tabulate.
         post_markdown: Custom Markdown rendered after the requirement table
             (R-G-01, e.g. appendices).
+        branding: Optional selected `ReportTemplate` styling (R-G-05) — an
+            accent colour applied to the table header, an optional cover
+            page (with the org logo if provided), and an optional footer.
 
     Returns:
         The generated PDF file content as bytes.
     """
+    accent_color = colors.HexColor((branding or ReportBranding()).accent_color_hex)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    story: list = [Paragraph(_safe(project_name), _styles["Title"]), Spacer(1, 0.5 * cm)]
+    story: list = []
+
+    if branding and branding.include_cover_page:
+        cover_style = ParagraphStyle("cover_title", parent=_styles["Title"], textColor=accent_color, fontSize=28)
+        story.append(Spacer(1, 6 * cm))
+        if branding.logo_bytes:
+            try:
+                story.append(Image(io.BytesIO(branding.logo_bytes), width=4 * cm, height=4 * cm, kind="proportional"))
+                story.append(Spacer(1, 1 * cm))
+            except Exception:  # noqa: BLE001 - a malformed/unsupported logo image must never break report generation
+                pass
+        story.append(Paragraph(_safe(project_name), cover_style))
+        story.append(PageBreak())
+        story.append(Spacer(1, 0.5 * cm))
+    else:
+        story.append(Paragraph(_safe(project_name), _styles["Title"]))
+        story.append(Spacer(1, 0.5 * cm))
+
     story.extend(_markdown_to_flowables(pre_markdown))
 
     table_style = ParagraphStyle("cell", parent=_styles["BodyText"], fontSize=8, leading=10)
@@ -127,7 +165,7 @@ def generate_pdf_report(
         ])
     table = Table(data, repeatRows=1, colWidths=[2.2 * cm, 3.5 * cm, 2.3 * cm, 2.3 * cm, 2 * cm, 5.2 * cm])
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2d3748")),
+        ("BACKGROUND", (0, 0), (-1, 0), accent_color),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -136,7 +174,17 @@ def generate_pdf_report(
     story.append(Spacer(1, 0.5 * cm))
     story.extend(_markdown_to_flowables(post_markdown))
 
-    doc.build(story)
+    footer_text = branding.footer_text if branding else None
+
+    def _draw_footer(canvas, doc_):
+        if not footer_text:
+            return
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.drawCentredString(doc_.pagesize[0] / 2, 1 * cm, footer_text)
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
     return buffer.getvalue()
 
 
