@@ -264,7 +264,11 @@ export function RequirementsPage() {
             values={customFieldValues}
             onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
           />
-          <button className="btn btn-primary" onClick={createRequirement} disabled={!newName}>
+          <button
+            className="btn btn-primary"
+            onClick={createRequirement}
+            disabled={!newName || !newComponentId || !newCategoryId}
+          >
             {strings.common.create}
           </button>
         </div>

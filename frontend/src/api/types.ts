@@ -119,6 +119,8 @@ export interface SystemUser {
   last_login_at: string | null;
   is_2fa_enabled: boolean;
   created_at: string;
+  is_server_admin: boolean;
+  has_org_membership: boolean;
 }
 
 export interface OrgGroup {

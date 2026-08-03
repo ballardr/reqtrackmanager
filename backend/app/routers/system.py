@@ -14,7 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import exists, select, true
+from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -40,9 +40,13 @@ class ServerAdminUpdate(BaseModel):
 
 class SystemUserOut(BaseModel):
     """Account-level fields only (I-M-05: server admin "does not give access
-    to data within organisations") — deliberately omits org role and project
-    access, which only have meaning scoped to a specific organisation and
-    would leak cross-tenant membership if surfaced here."""
+    to data within organisations") — deliberately omits *which* organisations
+    a user belongs to, or their role in any of them, which would leak
+    cross-tenant membership if surfaced here. `has_org_membership` is a plain
+    yes/no and doesn't name any organisation, so it doesn't regress that —
+    it's exactly the same information `no_org_membership=true` already lets
+    a caller probe for one user at a time, just returned directly instead of
+    needing to be inferred from filter behaviour."""
 
     user_id: UUID
     email: str
@@ -51,6 +55,8 @@ class SystemUserOut(BaseModel):
     last_login_at: datetime | None = None
     is_2fa_enabled: bool
     created_at: datetime
+    is_server_admin: bool
+    has_org_membership: bool
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -73,11 +79,24 @@ def set_server_admin(
         db: Active database session.
 
     Raises:
-        HTTPException: 404 if `user_id` doesn't exist.
+        HTTPException: 404 if `user_id` doesn't exist; 400 if this would
+            revoke the deployment's last active server admin.
     """
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    if not payload.is_server_admin and target.is_server_admin:
+        # Revoking, not granting or a no-op — check this wouldn't leave the
+        # deployment with zero active server admins, which would be an
+        # unrecoverable lockout: nobody left with the authority to grant the
+        # role back to anyone, ever, short of direct database access. Only
+        # *active* admins count — a deactivated one can't do anything
+        # anyway, so doesn't cover for a revocation.
+        active_admin_count = db.scalar(
+            select(func.count()).select_from(User).where(User.is_server_admin.is_(True), User.is_active.is_(True))
+        )
+        if target.is_active and active_admin_count <= 1:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot revoke the deployment's last active server admin.")
     target.is_server_admin = payload.is_server_admin
     log_event(
         db,
@@ -95,6 +114,7 @@ def list_system_users(
     stale_since_days: int | None = Query(None, ge=0),
     is_active: bool | None = None,
     has_2fa: bool | None = None,
+    is_server_admin: bool | None = None,
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
@@ -103,29 +123,115 @@ def list_system_users(
     `no_org_membership` is the requirement's literal "orphaned account"
     clarification: an enabled user who belongs to no organisation and
     therefore has no project access either (C-U-02: all project users must
-    be organisation users). Server-admin only (`require_server_admin`, no
-    org-admin fallback) — this spans every organisation's users.
+    be organisation users). A server admin is, *by design* (I-M-05), never a
+    member of any organisation — that's the intended shape of the role, not
+    an oversight — so `no_org_membership=true` always excludes server admins
+    regardless of any other filter, closing a false-positive a hardening
+    review found: every deployment's own server admin(s) were being flagged
+    as "orphaned" alongside genuinely-forgotten accounts. Use the independent
+    `is_server_admin` filter to review the server-admin roster itself (which
+    intentionally is *not* restricted to org-less accounts — I-M-08 lets a
+    bootstrap server admin also hold an organisation of their own).
+
+    Server-admin only (`require_server_admin`, no org-admin fallback) — this
+    spans every organisation's users.
     """
     query = select(User).where(User.is_archived.is_(False))
+    has_org_role = exists().where(UserOrgRole.user_id == User.id)
     if no_org_membership:
-        has_org_role = exists().where(UserOrgRole.user_id == User.id)
-        query = query.where(~has_org_role)
+        query = query.where(~has_org_role, User.is_server_admin.is_(False))
     if is_active is not None:
         query = query.where(User.is_active == is_active)
     if has_2fa is not None:
         query = query.where(User.is_2fa_enabled == has_2fa)
+    if is_server_admin is not None:
+        query = query.where(User.is_server_admin == is_server_admin)
     if stale_since_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=stale_since_days)
         query = query.where((User.last_login_at.is_(None)) | (User.last_login_at < cutoff))
 
     users = db.scalars(query).all()
+    user_ids = [u.id for u in users]
+    org_member_ids = (
+        set(db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.user_id.in_(user_ids)).distinct()).all())
+        if user_ids
+        else set()
+    )
     return [
         SystemUserOut(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
+            is_server_admin=u.is_server_admin, has_org_membership=u.id in org_member_ids,
         )
         for u in users
     ]
+
+
+def _require_orphaned_user(db: Session, user_id: UUID) -> User:
+    """Resolves `user_id` for the deactivate/reactivate endpoints below,
+    which are deliberately scoped to accounts with no organisation
+    membership at all (mirroring `no_org_membership`'s own definition).
+
+    A server admin's authority is tenancy-wide but content-free (I-M-05):
+    acting on an org member's account is the *organisation's own* admin's
+    call (`deactivate_org_user`/`archive_org_user`), not the server admin's —
+    so this deliberately refuses to touch any user who has an org role
+    anywhere, directing the caller to the right place instead.
+
+    Raises:
+        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to
+            any organisation.
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    has_org_role = db.scalar(select(exists().where(UserOrgRole.user_id == user_id)))
+    if has_org_role:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This user belongs to an organisation — use that organisation's own admin console to manage them.",
+        )
+    return user
+
+
+@router.post("/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_orphaned_user(
+    user_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Deactivates an orphaned account (C-U-04; C-A-13's "should be
+    deactivated" clarification) — the one category of user no organisation
+    admin can ever reach, since `deactivate_org_user` requires the target to
+    already belong to that org. See `_require_orphaned_user` for the scoping
+    rule this shares with `reactivate_orphaned_user`.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot deactivate your own account.")
+    user = _require_orphaned_user(db, user_id)
+    user.is_active = False
+    user.deactivated_at = datetime.now(UTC)
+    log_event(db, entity_type="user", entity_id=user_id, action="deactivated", actor_id=current_user.id)
+    db.commit()
+
+
+@router.post("/users/{user_id}/reactivate", status_code=status.HTTP_204_NO_CONTENT)
+def reactivate_orphaned_user(
+    user_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Reactivates a previously-deactivated orphaned account. No user-facing
+    lifecycle action currently reverses a deactivation at all (org-scoped or
+    otherwise) — added alongside `deactivate_orphaned_user` so a server admin
+    who deactivates an orphaned account by mistake, or whose owner turns out
+    to still need it, isn't left with no way back short of direct database
+    access."""
+    user = _require_orphaned_user(db, user_id)
+    user.is_active = True
+    user.deactivated_at = None
+    log_event(db, entity_type="user", entity_id=user_id, action="reactivated", actor_id=current_user.id)
+    db.commit()
 
 
 @router.post("/pats/revoke-all", response_model=BulkRevokeResult)
