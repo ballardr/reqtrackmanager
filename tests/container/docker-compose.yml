@@ -99,6 +99,7 @@ services:
     environment:
       DATABASE_URL: postgresql://reqtrack:reqtrack@db:5432/reqtrack_test
       JWT_SECRET: test-secret-not-for-production
+      APP_SECRET_ENCRYPTION_KEY: test-encryption-key-not-for-production
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
       SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:-ChangeMe123!}

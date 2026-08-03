@@ -134,7 +134,7 @@ def test_org_group_nested_in_project_group_grants_effective_role(client, admin_t
 
 
 def test_plain_member_can_leave_organization(client, admin_token, org_id):
-    user_id = create_org_user(client, admin_token, org_id, "leaver@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "leaver@example.com", role="member")
     token = login(client, "leaver@example.com", "Password123!")
 
     resp = client.delete(f"/api/v1/orgs/{org_id}/membership", headers=auth_headers(token))

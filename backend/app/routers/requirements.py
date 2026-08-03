@@ -60,9 +60,9 @@ from app.schemas.requirement import (
 )
 from app.services import engagement, notifications, pubsub
 from app.services.audit import log_event
+from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.files import delete_file, upload_file
-from app.services.changes import get_project_changes
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.requirements import (
     apply_new_version,
@@ -621,6 +621,11 @@ def create_link(
         link_type=payload.link_type, created_by=current_user.id,
     )
     db.add(link)
+    db.flush()
+    log_event(db, entity_type="requirement_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"source_requirement_id": str(requirement_id), "target_requirement_id": str(target.id),
+                      "link_type": payload.link_type.value})
     db.commit()
     db.refresh(link)
     return link
@@ -775,6 +780,8 @@ def link_org_resource(
         from datetime import datetime
 
         db.add(RequirementFile(requirement_id=requirement.id, file_id=asset.id, linked_by=current_user.id, created_at=datetime.now(UTC)))
+        log_event(db, entity_type="requirement", entity_id=requirement.id, action="file_linked",
+                  actor_id=current_user.id, project_id=project_id, detail={"file_id": str(asset.id)})
         db.commit()
     return asset
 
@@ -811,4 +818,6 @@ def unlink_requirement_file(
     db.flush()
     if asset is not None and not asset.is_org_resource:
         delete_file(db, asset)
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="file_unlinked",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()

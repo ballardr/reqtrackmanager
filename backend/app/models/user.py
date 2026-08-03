@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.encrypted_type import EncryptedString
 from app.models.notification import DigestMode
 
 
@@ -53,6 +54,10 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             user (C-U-14). Only meaningful for the native auth backend.
         totp_secret: The TOTP secret, set on enrollment and only "live"
             once `is_2fa_enabled` is True; never returned via the API.
+            Encrypted at rest at the application layer (`EncryptedString`,
+            SOC 2 hardening pass) — the column stores Fernet ciphertext, not
+            the plaintext secret, so a database compromise alone doesn't
+            expose it.
         email_digest_mode: Whether email notifications are sent instantly,
             batched into a daily digest, or not at all (C-N-05).
         token_version: Access tokens are stateless JWTs with no revocation
@@ -99,7 +104,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     display_name_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    totp_secret: Mapped[str | None] = mapped_column(EncryptedString(255), nullable=True)
 
     email_digest_mode: Mapped[DigestMode] = mapped_column(str_enum(DigestMode, 20), default=DigestMode.INSTANT)
 

@@ -85,6 +85,15 @@ def calculate_total(items: list[Item]) -> Decimal:
 - The project should support Loki-based log aggregation and Tempo-based tracing, and the documentation should include setup instructions for both, including how to configure and use Grafana Alloy for shipping logs, traces, and metrics to these systems.
 - As some requirements may be sensitive, designs must keep security at the forefront of architectural decisions.
 
+## Compliance: SOC 2 Policy Adherence
+
+- `docs/soc2/policies/` contains this project's adopted SOC 2 policy set (information security, access control, change management/secure development, system operations/monitoring/logging, incident response, vendor management, data classification/confidentiality, encryption/key management, data retention/disposal, risk assessment, security awareness training) and `docs/soc2/trust-services-criteria-mapping.md` maps them to the Security and Confidentiality Trust Services Criteria. These are binding on agent work in this repository, not just descriptive.
+- Before making a change that touches authentication, authorization/RBAC, secrets or credentials, logging/audit trails, data retention or deletion, multi-tenant data isolation, or third-party/vendor integrations, consult the relevant policy in `docs/soc2/policies/` and follow it.
+- Do not introduce a change that regresses a control described in these policies (e.g. weakening org/project-scoped authorization checks, logging or returning a Restricted-classified value such as a password hash or secret, storing a new secret in plaintext without noting it as a gap, bypassing the audit-logging pattern in `backend/app/services/audit.py` for a mutating action) without first flagging it explicitly to the user — do not silently ship a regression against an adopted policy.
+- Follow [change-management-and-secure-development-policy.md](docs/soc2/policies/change-management-and-secure-development-policy.md)'s practice for security-sensitive changes specifically: run the existing test suites, and for anything touching the areas above, perform the same identify → verify → remediate review this codebase's own hardening passes use (see `docs/decisions.md`), recording the outcome there.
+- These policies document existing gaps candidly (e.g. no CI gate, no account lockout, plaintext OIDC client secret) rather than hiding them — do not treat a documented gap as license to introduce further, unrelated ones. If new work closes one of these gaps, update the corresponding policy's "Known Gaps / Exceptions" section and the control matrix's Status column to reflect it.
+- This section does not change the authority of [docs/requirements.md](docs/requirements.md), which remains the product requirements source of truth; the SOC 2 policies govern *how* changes are made, not *what* the product does.
+
 ## Documentation and Decision Governance
 
 - The requirements document at [docs/requirements.md](docs/requirements.md) is fully authoritative and must not be changed by the agent. All decisions should be made in compliance with the requirements laid out in this document.

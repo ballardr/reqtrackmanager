@@ -21,6 +21,15 @@ class Settings(BaseSettings):
         database_url: SQLAlchemy connection string for PostgreSQL.
         jwt_secret: Symmetric secret used to sign access tokens.
         jwt_algorithm: JWT signing algorithm.
+        app_secret_encryption_key: Symmetric key used to encrypt genuine
+            secrets at rest at the application layer — `Organization.
+            oidc_client_secret`, `Organization.smtp_password`, and `User.
+            totp_secret` (see `app.models.encrypted_type.EncryptedString`).
+            Distinct from `jwt_secret` (signs tokens; not used for
+            encryption) so the two can be rotated independently. Like
+            `jwt_secret`, this must be a strong random value distinct per
+            deployment — the production Compose stack fails fast if it's
+            left unset.
         access_token_expire_minutes: Access token lifetime in minutes.
         server_admin_enabled: Whether the deployment-config server admin
             bootstrap user is created/enabled on startup (I-M-06).
@@ -95,6 +104,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack"
     jwt_secret: str = "change-me-in-production"
+    app_secret_encryption_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 12
 

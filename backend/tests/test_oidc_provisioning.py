@@ -12,7 +12,6 @@ from app.models.organization import Organization
 from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
 from tests.conftest import auth_headers, create_org_admin_in
 
-
 ISSUER_A = "https://idp-a.example.com/realms/tenant"
 ISSUER_B = "https://idp-b.example.com/realms/other-tenant"
 

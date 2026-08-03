@@ -289,7 +289,8 @@ def get_project(project_id: UUID, current_user: User = Depends(require_project_v
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(
     project_id: UUID, payload: ProjectUpdate,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Updates project settings: name/summary, the member change-request
     toggle (C-U-13), and the template flag (C-E-05)."""
@@ -301,6 +302,8 @@ def update_project(
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.is_template is not None:
         project.is_template = payload.is_template
+    log_event(db, entity_type="project", entity_id=project_id, action="settings_updated",
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
     return project
@@ -309,10 +312,13 @@ def update_project(
 @router.put("/{project_id}/terminology", response_model=ProjectOut)
 def update_terminology(
     project_id: UUID, payload: TerminologyUpdate,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Sets per-project terminology overrides (C-C-03), e.g. {"stage": "Horizon"}."""
     project.terminology = payload.terminology
+    log_event(db, entity_type="project", entity_id=project_id, action="terminology_updated",
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
     return project
@@ -331,13 +337,16 @@ def get_report_config(
 @router.put("/{project_id}/report-config", response_model=ProjectReportConfig)
 def update_report_config(
     project_id: UUID, payload: ProjectReportConfig,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Saves the project's persisted report structure, used as the default
     report content on generation unless overridden ad hoc."""
     project.report_intro = payload.intro
     project.report_chapters = [c.model_dump() for c in payload.chapters]
     project.report_appendices = [c.model_dump() for c in payload.appendices]
+    log_event(db, entity_type="project", entity_id=project_id, action="report_config_updated",
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
     return ProjectReportConfig(
@@ -706,11 +715,16 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage)
 
 @router.post("/{project_id}/components", response_model=ComponentOut, status_code=status.HTTP_201_CREATED)
 def create_component(
-    payload: ComponentCreate, project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    payload: ComponentCreate, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     count = len(db.scalars(select(ProjectComponent.id).where(ProjectComponent.project_id == project.id)).all())
     component = ProjectComponent(project_id=project.id, name=payload.name, prefix=payload.prefix, sort_order=count)
     db.add(component)
+    db.flush()
+    log_event(db, entity_type="project_component", entity_id=component.id, action="created",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"name": component.name})
     db.commit()
     db.refresh(component)
     return component
@@ -726,19 +740,30 @@ def list_components(project_id: UUID, current_user: User = Depends(require_proje
 @router.post("/{project_id}/components/{component_id}/move", response_model=ComponentOut)
 def move_component(
     project_id: UUID, component_id: UUID, payload: MoveDirection,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Moves a component up/down in display order (C-E-01)."""
-    return _move_ordered(db, ProjectComponent, project.id, component_id, payload.direction)
+    result = _move_ordered(db, ProjectComponent, project.id, component_id, payload.direction)
+    log_event(db, entity_type="project_component", entity_id=component_id, action="reordered",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"direction": payload.direction})
+    db.commit()
+    return result
 
 
 @router.post("/{project_id}/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
 def create_category(
-    payload: CategoryCreate, project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    payload: CategoryCreate, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     count = len(db.scalars(select(ProjectCategory.id).where(ProjectCategory.project_id == project.id)).all())
     category = ProjectCategory(project_id=project.id, name=payload.name, prefix=payload.prefix, sort_order=count)
     db.add(category)
+    db.flush()
+    log_event(db, entity_type="project_category", entity_id=category.id, action="created",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"name": category.name})
     db.commit()
     db.refresh(category)
     return category
@@ -754,10 +779,16 @@ def list_categories(project_id: UUID, current_user: User = Depends(require_proje
 @router.post("/{project_id}/categories/{category_id}/move", response_model=CategoryOut)
 def move_category(
     project_id: UUID, category_id: UUID, payload: MoveDirection,
-    project: Project = Depends(require_project_manage), db: Session = Depends(get_db)
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Moves a category up/down in display order (C-E-02)."""
-    return _move_ordered(db, ProjectCategory, project.id, category_id, payload.direction)
+    result = _move_ordered(db, ProjectCategory, project.id, category_id, payload.direction)
+    log_event(db, entity_type="project_category", entity_id=category_id, action="reordered",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"direction": payload.direction})
+    db.commit()
+    return result
 
 
 def _move_ordered(db: Session, model, project_id: UUID, item_id: UUID, direction: str):

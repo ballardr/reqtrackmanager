@@ -4,7 +4,6 @@ completion tracking (C-P-02, C-P-03)."""
 from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
-from app.models.project import ProjectStage
 from app.services.stages import auto_approve_overdue_stage_reviews
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 

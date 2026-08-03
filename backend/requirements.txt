@@ -17,6 +17,7 @@ passlib[bcrypt]==1.7.4
 # without patching passlib itself.
 bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
+cryptography==49.0.0
 prometheus-client==0.20.0
 markdown-it-py==3.0.0
 reportlab==4.2.5

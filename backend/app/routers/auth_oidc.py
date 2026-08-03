@@ -28,10 +28,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.deps import get_client_ip
 from app.models.organization import Organization
 from app.security import create_access_token, create_oidc_state_token, decode_access_token
 from app.services import oidc_client
-from app.services.audit import log_event
+from app.services.audit import log_event, log_login
 from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
 
 router = APIRouter(prefix="/api/v1/auth/oidc", tags=["auth-oidc"])
@@ -72,13 +73,20 @@ def start_oidc_login(slug: str, client_nonce: str = Query(..., min_length=16, ma
 
 
 @router.get("/callback")
-def oidc_callback(code: str, state: str, db: Session = Depends(get_db)):
+def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip), db: Session = Depends(get_db)):
     """Completes login: exchanges the authorization code, verifies the ID
     token, checks the org's required-group access gate (if configured),
     provisions/resolves the user and syncs their org role, then redirects to
     the frontend with a working app access token — or, if the required-group
     gate rejects the claims, redirects with an error message instead and
     never issues a token.
+
+    Every attempt — a failed token exchange/ID-token verification, a
+    required-group denial, or a successful login — is recorded as a
+    `login_events` row (same table native `/login` writes to, with the
+    source IP), not just as an `audit_events` entry, so SSO logins show up
+    in the same authentication-monitoring trail as native ones rather than
+    being a blind spot (SOC 2 monitoring/logging hardening pass).
     """
     state_claims = decode_access_token(state)
     if (
@@ -103,6 +111,10 @@ def oidc_callback(code: str, state: str, db: Session = Depends(get_db)):
             discovery, tokens["id_token"], client_id=org.oidc_client_id, issuer_url=org.oidc_issuer_url,
         )
     except (KeyError, ValueError) as exc:
+        log_login(
+            db, user_id=None, email_attempted=f"(oidc login failed: {org.slug})", ip_address=request_ip, success=False,
+        )
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"SSO login failed: {exc}") from exc
 
     if not meets_required_group(org, claims):
@@ -113,6 +125,9 @@ def oidc_callback(code: str, state: str, db: Session = Depends(get_db)):
         # they're let in at all).
         log_event(db, entity_type="organization", entity_id=org.id, action="oidc_login_denied_not_provisioned",
                   actor_id=None, organization_id=org.id, detail={"subject": claims.get("sub"), "email": claims.get("email")})
+        log_login(
+            db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False,
+        )
         db.commit()
         message = f"{org.name} has not provisioned you access."
         return RedirectResponse(
@@ -125,6 +140,7 @@ def oidc_callback(code: str, state: str, db: Session = Depends(get_db)):
     sync_org_roles_from_claims(db, user, org, claims)
     log_event(db, entity_type="user", entity_id=user.id, action="oidc_login",
               actor_id=user.id, organization_id=org.id, detail={"issuer": org.oidc_issuer_url})
+    log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)
     db.commit()
 
     app_token = create_access_token(str(user.id), token_version=user.token_version)

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.encrypted_type import EncryptedString
 from app.models.enums import OrgRole
 
 
@@ -38,6 +39,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             `services/email.py`, which still sends through the
             deployment-wide SMTP_HOST configured in `config.py`. Documented
             in docs/decisions.md rather than silently half-built.
+            `smtp_password` is encrypted at rest at the application layer
+            (`EncryptedString`, SOC 2 hardening pass) — same treatment as
+            `oidc_client_secret`, since it's a genuine credential even
+            though the feature it belongs to isn't wired in yet.
         sso_group_mappings: Mapping of external SSO/OIDC claim values to a
             local `OrgRole`, e.g. `[{"claim_value": "reqtrack-admins",
             "org_role": "org_admin"}]` (C-U-07, E-U-01). Was storage-only
@@ -50,10 +55,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             an OIDC "Sign in with SSO" button, and whether the native
             email/password form is hidden entirely when it does.
         oidc_issuer_url / oidc_client_id / oidc_client_secret: Per-org OIDC
-            provider configuration. `oidc_client_secret` is stored in
-            plaintext for this proof-of-concept — see
-            docs/enterprise-integration.md for the explicit follow-up to
-            move this to real secret storage before production use.
+            provider configuration. `oidc_client_secret` is encrypted at
+            rest at the application layer (`EncryptedString`, SOC 2
+            hardening pass) — previously plaintext, see
+            docs/enterprise-integration.md's history of that follow-up.
         login_background_file_id: Optional uploaded background image for
             this organisation's login page (E-P-03), same upload pattern as
             `logo_file_id`.
@@ -84,7 +89,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     smtp_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     smtp_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     smtp_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    smtp_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_password: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
     smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True)
     sso_group_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
@@ -93,7 +98,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     sso_only: Mapped[bool] = mapped_column(Boolean, default=False)
     oidc_issuer_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     oidc_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    oidc_client_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_secret: Mapped[str | None] = mapped_column(EncryptedString(1000), nullable=True)
     oidc_required_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
     login_background_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

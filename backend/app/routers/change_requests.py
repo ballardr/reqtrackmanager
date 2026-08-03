@@ -451,6 +451,9 @@ def create_task(
         assignee_id=payload.assignee_id, due_date=payload.due_date, created_by=current_user.id,
     )
     db.add(task)
+    db.flush()
+    log_event(db, entity_type="change_request_task", entity_id=task.id, action="created",
+              actor_id=current_user.id, project_id=project_id, detail={"description": task.description})
     db.commit()
     db.refresh(task)
     return task
@@ -501,6 +504,8 @@ def update_task(
     if payload.is_done is not None:
         task.is_done = payload.is_done
         task.completed_at = datetime.now(UTC) if payload.is_done else None
+    log_event(db, entity_type="change_request_task", entity_id=task.id, action="updated",
+              actor_id=current_user.id, project_id=project_id, detail={"is_done": task.is_done})
     db.commit()
     db.refresh(task)
     return task
@@ -535,6 +540,9 @@ def cast_vote(
             comment=payload.comment, voted_at=datetime.now(UTC),
         )
         db.add(vote)
+    db.flush()
+    log_event(db, entity_type="change_request_vote", entity_id=vote.id, action="cast",
+              actor_id=current_user.id, project_id=project_id, detail={"vote": payload.vote.value})
     db.commit()
     db.refresh(vote)
     return vote

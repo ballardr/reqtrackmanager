@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import OrgRole, ProjectRole
-from app.models.organization import OrgGroup, OrgGroupMember, Organization, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 

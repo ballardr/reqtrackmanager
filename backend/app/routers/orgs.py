@@ -288,26 +288,33 @@ def assign_org_role(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Grants an organisation role to a user (C-U-01)."""
+    """Grants an organisation role to a user (C-U-01).
+
+    The affected user is always the `{user_id}` path parameter, not
+    `payload.user_id` — the request body's `role` field is the only part of
+    the payload actually used; a mismatched body `user_id` is ignored rather
+    than trusted, so the URL a caller is authorized against (and what ends
+    up in the audit trail) can never diverge from who is actually affected.
+    """
     existing = db.scalar(
         select(UserOrgRole).where(
-            UserOrgRole.user_id == payload.user_id,
+            UserOrgRole.user_id == user_id,
             UserOrgRole.organization_id == organization_id,
             UserOrgRole.role == payload.role,
         )
     )
     if existing is None:
-        db.add(UserOrgRole(user_id=payload.user_id, organization_id=organization_id, role=payload.role))
+        db.add(UserOrgRole(user_id=user_id, organization_id=organization_id, role=payload.role))
         log_event(
             db,
             entity_type="user_org_role",
-            entity_id=payload.user_id,
+            entity_id=user_id,
             action="granted",
             actor_id=current_user.id,
             organization_id=organization_id,
             detail={"role": payload.role.value},
         )
-        granted_user = db.get(User, payload.user_id)
+        granted_user = db.get(User, user_id)
         if granted_user is not None:
             notify(
                 db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
@@ -380,7 +387,6 @@ def leave_organization(
 
     from app.models.enums import ProjectRole  # local import matching this module's existing convention
     from app.models.project import Project, ProjectGroup  # local import to avoid cycle at module load
-
     from app.services.rbac import get_effective_project_roles
 
     projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
@@ -459,12 +465,17 @@ def deactivate_org_user(
     so this can't race a concurrent removal (another deactivation, a role
     revocation, or someone leaving the org) on the same project — see
     `lock_project_for_update`'s docstring for the exact race this closes.
+
+    The target user must actually be a member of `organization_id` — an org
+    admin's authority to deactivate accounts is scoped to their own
+    organisation's members, same as every other org-scoped action, not to
+    every account in the deployment (SOC 2 access-control hardening pass).
     """
     from app.services.rbac import lock_project_for_update
 
     user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    if user is None or not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
     user.is_active = False
     user.deactivated_at = _now()
 
@@ -518,10 +529,12 @@ def archive_org_user(
     db: Session = Depends(get_db),
 ):
     """Archives a deactivated user, hiding them from user lists while
-    preserving attribution of their past contributions (C-U-05)."""
+    preserving attribution of their past contributions (C-U-05).
+
+    Scoped to members of `organization_id`, same as `deactivate_org_user`."""
     user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    if user is None or not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
     if user.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User must be deactivated before archiving.")
     user.is_archived = True
@@ -697,6 +710,8 @@ async def upload_org_logo(
     )
     db.flush()
     org.logo_file_id = asset.id
+    log_event(db, entity_type="organization", entity_id=organization_id, action="logo_updated",
+              actor_id=current_user.id, organization_id=organization_id, detail={"file_id": str(asset.id)})
     db.commit()
     db.refresh(org)
     return org
@@ -718,6 +733,11 @@ def set_default_template(
         if project is None or project.organization_id != organization_id or not project.is_template:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "project_id must be a template project in this organisation.")
     org.default_template_project_id = payload.project_id
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="default_template_updated",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"project_id": str(payload.project_id) if payload.project_id else None},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -817,9 +837,9 @@ def update_sso_config(
     """Configures an organisation's OIDC SSO login (E-U-01) and its
     slug-resolved branded login page (E-P-03).
 
-    `oidc_client_secret` is stored in plaintext for this proof-of-concept —
-    see docs/enterprise-integration.md for the follow-up to move this to
-    real secret storage before production use.
+    `oidc_client_secret` is encrypted at rest at the application layer
+    (`EncryptedString`, SOC 2 hardening pass) — see `models.organization`
+    for details.
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -867,6 +887,8 @@ async def upload_login_background(
     )
     db.flush()
     org.login_background_file_id = asset.id
+    log_event(db, entity_type="organization", entity_id=organization_id, action="login_background_updated",
+              actor_id=current_user.id, organization_id=organization_id, detail={"file_id": str(asset.id)})
     db.commit()
     db.refresh(org)
     return org
@@ -887,6 +909,9 @@ def create_report_template(
         footer_text=payload.footer_text, created_by=current_user.id,
     )
     db.add(template)
+    db.flush()
+    log_event(db, entity_type="report_template", entity_id=template.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.commit()
     db.refresh(template)
     return template
@@ -917,6 +942,8 @@ def update_report_template(
     template.include_cover_page = payload.include_cover_page
     template.include_logo = payload.include_logo
     template.footer_text = payload.footer_text
+    log_event(db, entity_type="report_template", entity_id=template.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.commit()
     db.refresh(template)
     return template
@@ -930,5 +957,7 @@ def delete_report_template(
     template = db.get(ReportTemplate, template_id)
     if template is None or template.organization_id != organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report template not found.")
+    log_event(db, entity_type="report_template", entity_id=template.id, action="deleted",
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.delete(template)
     db.commit()

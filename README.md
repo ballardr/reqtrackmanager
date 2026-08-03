@@ -1,5 +1,7 @@
 # ReqTrackManager
 
+[![CI](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml/badge.svg)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+
 ReqTrackManager is an open-source engineering requirements management system (ERMS) for product development teams — a formal alternative to IBM DOORS-style tools for teams that can't justify the cost, without falling back to a static requirements document. See [docs/requirements.md](docs/requirements.md) for the full product requirements and [docs/solution-architecture.md](docs/solution-architecture.md) for the architecture.
 
 This build implements the **Ossa (v1)**, **Pelion (v2)**, and most of **Massif (v3)** milestones: a complete requirements management workflow (organisations/projects, role-based access, requirement authoring with full version history, stage approval and baselining, formal change requests, discussion threads, PDF/CSV reporting), Pelion v2's customisation, notification, and file-management layer (custom fields, per-project terminology, project templates, file attachments and shared resources, in-app/email notifications, 2FA, project favourites/filters), and Massif v3's enterprise layer (requirement review scheduling with due-date notifications, change-request tasks and advisory stakeholder voting, project-stage review deadlines with assumed-approval, requirement/stage completion tracking, an access-review user directory, selectable report branding, and SSO/OIDC login tested end-to-end against a real Keycloak instance). See [docs/decisions.md](docs/decisions.md) for the scoping and implementation decisions made along the way, [docs/enterprise-integration.md](docs/enterprise-integration.md) for the SSO design and the SCIM/separate-port-provisioning blueprint, [docs/deployment.md](docs/deployment.md) for deploying to production, and [docs/user-guide.md](docs/user-guide.md) for a walkthrough of using the app.
@@ -36,7 +38,7 @@ Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
 ## Production deployment
 
-The root `docker-compose.yml` is the production-oriented stack: no MailHog, no baked-in secret defaults (it refuses to start until you provide `JWT_SECRET`, `SERVER_ADMIN_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST` via environment or a `.env` file), and Postgres isn't exposed to the host. See [docs/deployment.md](docs/deployment.md) for the full guide, including required configuration and a security checklist.
+The root `docker-compose.yml` is the production-oriented stack: no MailHog, no baked-in secret defaults (it refuses to start until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST` via environment or a `.env` file), and Postgres isn't exposed to the host. See [docs/deployment.md](docs/deployment.md) for the full guide, including required configuration and a security checklist.
 
 ```bash
 docker compose up --build -d
@@ -59,6 +61,7 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `DATABASE_URL` | `postgresql://reqtrack:reqtrack@localhost:5432/reqtrack` | — | SQLAlchemy connection string |
 | `POSTGRES_PASSWORD` | `reqtrack` | Recommended | Postgres password, shared by the `db` service and the backend's `DATABASE_URL` |
 | `JWT_SECRET` | `change-me-in-production` | **Yes** | Access token signing secret |
+| `APP_SECRET_ENCRYPTION_KEY` | `change-me-in-production` | **Yes** | Encrypts SSO client secrets, per-org SMTP passwords, and TOTP secrets at rest (application-layer, distinct from `JWT_SECRET` so the two can be rotated independently) |
 | `JWT_ALGORITHM` | `HS256` | — | JWT signing algorithm |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `720` | — | Access token lifetime |
 | `SERVER_ADMIN_ENABLED` | `true` | — | Whether to bootstrap the server-admin user (I-M-06) |
@@ -145,6 +148,10 @@ npx playwright install --with-deps chromium
 npm test
 ```
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`: frontend lint + type-check + build, the full backend pytest suite with coverage (reported as a check, a job-summary percentage, and a downloadable HTML report) plus `ruff` lint against the real dev/test Docker Compose stack, and the full Playwright E2E suite against the running containers — all of it gating. A final job builds the production backend/frontend images (proving both Dockerfiles still build) once the two test jobs pass; it does not publish them yet — see the comments at the top of that job for exactly what to uncomment when ready.
+
 ### Backups
 
 Backups target the production stack's `db` service (run from the repo root, with the root stack up):
@@ -175,7 +182,7 @@ The frontend is a single-page app talking to a REST/JSON API (I-A-01, I-A-02), d
 
 ## Known limitations
 
-Deferred to a follow-up session or later, per `docs/requirements.md`: SCIM provisioning (E-U-02) and the standalone separate-port provisioning API (E-P-02) — each scoped as an implementable blueprint rather than built, since each is effectively its own project (see [docs/enterprise-integration.md](docs/enterprise-integration.md)) — plus Murchison (v4)'s AI-assisted authoring and IBM DOORS import/export. A small number of Ossa/Pelion/Massif-tagged items were implemented with a deliberately scoped-down approach (documented in [docs/decisions.md](docs/decisions.md)): login IP is logged but not geolocated, requirement/component/category ordering is move-up/move-down rather than drag-and-drop, the backend does not yet emit OpenTelemetry traces (the Alloy/Tempo pipeline is wired and ready for it), permission-revocation does not currently send a notification (only grant does), notification email/digest delivery plus the disk-usage monitor and the new review/stage-deadline scheduler run as in-process background tasks rather than a separate worker service, and SSO's OIDC client secret is stored in plaintext pending real secret-store integration.
+Deferred to a follow-up session or later, per `docs/requirements.md`: SCIM provisioning (E-U-02) and the standalone separate-port provisioning API (E-P-02) — each scoped as an implementable blueprint rather than built, since each is effectively its own project (see [docs/enterprise-integration.md](docs/enterprise-integration.md)) — plus Murchison (v4)'s AI-assisted authoring and IBM DOORS import/export. A small number of Ossa/Pelion/Massif-tagged items were implemented with a deliberately scoped-down approach (documented in [docs/decisions.md](docs/decisions.md)): login IP is logged but not geolocated, requirement/component/category ordering is move-up/move-down rather than drag-and-drop, the backend does not yet emit OpenTelemetry traces (the Alloy/Tempo pipeline is wired and ready for it), permission-revocation does not currently send a notification (only grant does), and notification email/digest delivery plus the disk-usage monitor and the review/stage-deadline scheduler run as in-process background tasks rather than a separate worker service. See [docs/soc2/](docs/soc2/) for the fuller, ongoing catalogue of known gaps against a SOC 2 Security + Confidentiality control set (e.g. no login rate limiting, no branch protection enforcing CI) and their remediation status.
 
 ## Code Quality Rules
 

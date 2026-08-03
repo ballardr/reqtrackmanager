@@ -22,7 +22,8 @@ import socket
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from authlib.jose import JsonWebKey, jwt as jose_jwt
+from authlib.jose import JsonWebKey
+from authlib.jose import jwt as jose_jwt
 from authlib.jose.errors import JoseError
 
 from app.config import get_settings
@@ -70,7 +71,7 @@ def _assert_safe_external_url(url: str) -> None:
         addr_infos = socket.getaddrinfo(parts.hostname, None)
     except socket.gaierror as exc:
         raise ValueError(f"Could not resolve OIDC endpoint host {parts.hostname!r}: {exc}") from exc
-    for family, _, _, _, sockaddr in addr_infos:
+    for _family, _, _, _, sockaddr in addr_infos:
         ip = ipaddress.ip_address(sockaddr[0])
         if not ip.is_global:
             raise ValueError(

@@ -25,10 +25,22 @@ from app.services import pubsub
 router = APIRouter(tags=["realtime"])
 
 # How often the receive loop wakes up (even with no incoming message) to
-# check whether the connection's token has expired. Bounds the exposure
-# window described in the connection-lifetime docstring below without
-# needing a full periodic re-auth round-trip.
+# check whether the connection's token has expired and whether the account
+# is still active. Bounds the exposure window described in the
+# connection-lifetime docstring below without needing a full periodic
+# re-auth round-trip.
 _EXPIRY_CHECK_INTERVAL_SECONDS = 60
+
+
+def _user_still_active(user_id: UUID) -> bool:
+    """Re-checks `User.is_active` in a fresh, short-lived session — used by
+    the periodic recheck below rather than holding one DB session open for
+    a connection's entire (potentially hours-long) lifetime."""
+    db = SessionLocal()
+    try:
+        return bool(db.scalar(select(User.is_active).where(User.id == user_id)))
+    finally:
+        db.close()
 
 
 @router.websocket("/ws/projects/{project_id}")
@@ -37,18 +49,17 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
 
     Message shape: {"type": "requirement" | "change_request", "action": str, "id": str}
 
-    Access is checked once at handshake time and then never again for the
-    life of the connection — a plain `while True: await receive_text()` loop
-    has no way to notice a subsequent token expiry, role revocation, or
-    account deactivation on its own. That means a long-lived connection
-    opened right after login could keep streaming project updates well past
-    the point the REST API would start rejecting the same token (which
-    re-checks `is_active`/role fresh on every request). This handler closes
-    the socket once the *original* token's own `exp` is reached, capping the
-    exposure window to the token's normal lifetime rather than leaving it
-    unbounded — it does not re-check role/`is_active` mid-connection, since
-    that would need a DB round-trip on every check interval; expiry is the
-    cheap, always-available bound.
+    Access is checked once at handshake time; token expiry and account
+    deactivation are then rechecked every `_EXPIRY_CHECK_INTERVAL_SECONDS`
+    (SOC 2 access-control hardening pass — a deactivated account's already-
+    open socket now closes within one interval, matching the REST API's
+    behaviour of rejecting `is_active=False` on every request, rather than
+    only once the token naturally expires). Project *role* changes are
+    still not rechecked mid-connection — narrowing, not eliminating, the
+    original exposure window: a role downgrade/removal takes effect on the
+    next REST call immediately, but an already-open socket keeps streaming
+    that project's updates until the connection's token expires or the
+    account itself is deactivated/archived.
     """
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
@@ -90,8 +101,11 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
                 break
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=_EXPIRY_CHECK_INTERVAL_SECONDS)
-            except asyncio.TimeoutError:
-                continue  # no message within the interval — loop back to the expiry check
+            except TimeoutError:
+                if not _user_still_active(user.id):
+                    await websocket.close(code=4401)
+                    break
+                continue  # still active — loop back to the expiry/active check
     except WebSocketDisconnect:
         pass
     finally:

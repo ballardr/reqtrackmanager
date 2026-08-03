@@ -159,7 +159,7 @@ def main() -> None:
     print("Creating persona users...")
     serveradmin = create_org_user(h_admin, alpha["id"], "e2e-serveradmin@example.com", "E2E Server Admin Only", "member")
     orgadmin_ab = create_org_user(h_admin, alpha["id"], "e2e-orgadmin-ab@example.com", "E2E OrgAdmin AlphaBeta", "org_admin")
-    orgadmin_g = create_org_user(h_admin, gamma["id"], "e2e-orgadmin-g@example.com", "E2E OrgAdmin Gamma", "org_admin")
+    create_org_user(h_admin, gamma["id"], "e2e-orgadmin-g@example.com", "E2E OrgAdmin Gamma", "org_admin")
     stakeholder_a = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a@example.com", "E2E Stakeholder AlphaOnly", "member")
     member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
 
@@ -170,7 +170,7 @@ def main() -> None:
     # to hand orgadmin_ab and member_ab their second-org roles, mirroring
     # how a real admin handoff would work. Not one of the documented
     # personas; never logged into by the Playwright suite.
-    beta_bootstrap = create_org_user(h_admin, beta["id"], "e2e-bootstrap-beta@example.com", "E2E Bootstrap Helper (Beta)", "org_admin")
+    create_org_user(h_admin, beta["id"], "e2e-bootstrap-beta@example.com", "E2E Bootstrap Helper (Beta)", "org_admin")
     h_beta_bootstrap = h(login("e2e-bootstrap-beta@example.com", PASSWORD))
     assign_org_role(h_beta_bootstrap, beta["id"], orgadmin_ab["user_id"], "org_admin")
     assign_org_role(h_beta_bootstrap, beta["id"], member_ab["user_id"], "member")

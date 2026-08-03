@@ -92,18 +92,45 @@ def login(
 
 
 @router.post("/2fa/verify", response_model=TokenResponse)
-def verify_2fa(payload: TwoFactorVerifyRequest, db: Session = Depends(get_db)):
-    """Completes a two-factor login: exchanges a challenge token + TOTP code for an access token."""
+def verify_2fa(
+    payload: TwoFactorVerifyRequest,
+    background_tasks: BackgroundTasks,
+    request_ip: str = Depends(get_client_ip),
+    db: Session = Depends(get_db),
+):
+    """Completes a two-factor login: exchanges a challenge token + TOTP code for an access token.
+
+    Every attempt is recorded via `log_login` (success and failure alike),
+    same as `/login` — this is the step an attacker who has already stolen a
+    password would be brute-forcing, so it must not be a blind spot in the
+    login audit trail (SOC 2 monitoring/logging hardening pass).
+    """
     claims = decode_access_token(payload.challenge_token)
     if not claims or claims.get("purpose") != "2fa_challenge" or "sub" not in claims:
+        log_login(db, user_id=None, email_attempted="(invalid 2fa challenge)", ip_address=request_ip, success=False)
+        login_attempts_total.labels(result="failure").inc()
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     user = db.get(User, UUID(claims["sub"]))
     if user is None or not user.is_active or user.is_archived or not user.is_2fa_enabled or not user.totp_secret:
+        log_login(
+            db, user_id=user.id if user else None,
+            email_attempted=user.email if user else "(invalid 2fa challenge)",
+            ip_address=request_ip, success=False,
+        )
+        login_attempts_total.labels(result="failure").inc()
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     if not totp.verify_code(user.totp_secret, payload.code):
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        login_attempts_total.labels(result="failure").inc()
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
+    login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)
+    login_attempts_total.labels(result="success").inc()
     user.last_login_at = datetime.now(UTC)
     db.commit()
+    background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
     token = create_access_token(str(user.id), token_version=user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 

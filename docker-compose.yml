@@ -10,8 +10,9 @@ version: "3.9"
 # wiping the live database").
 #
 # Before running this in production, override at minimum JWT_SECRET,
-# SERVER_ADMIN_PASSWORD, MINIO_ROOT_PASSWORD, CORS_ORIGINS, and the SMTP_*
-# variables via a `.env` file — see docs/deployment.md.
+# APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, MINIO_ROOT_PASSWORD,
+# CORS_ORIGINS, and the SMTP_* variables via a `.env` file — see
+# docs/deployment.md.
 services:
   db:
     image: postgres:16-alpine
@@ -57,6 +58,7 @@ services:
     environment:
       DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in production}
+      APP_SECRET_ENCRYPTION_KEY: ${APP_SECRET_ENCRYPTION_KEY:?Set APP_SECRET_ENCRYPTION_KEY in production}
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
       SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:?Set SERVER_ADMIN_PASSWORD in production}

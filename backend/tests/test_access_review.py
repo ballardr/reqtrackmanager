@@ -8,7 +8,7 @@ from tests.conftest import auth_headers, create_org_admin_in, create_org_user, l
 def test_plain_member_can_list_org_users_unfiltered(client, admin_token, org_id):
     """Existing behavior preserved: any org member can still see the
     unfiltered member directory."""
-    member_id = create_org_user(client, admin_token, org_id, "plain_member@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "plain_member@example.com", role="member")
     member_token = login(client, "plain_member@example.com", "Password123!")
     resp = client.get(f"/api/v1/orgs/{org_id}/users", headers=auth_headers(member_token))
     assert resp.status_code == 200
