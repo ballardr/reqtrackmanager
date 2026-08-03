@@ -151,6 +151,26 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+    else:
+        # Hardening-review finding: proposed_component_id/proposed_category_id
+        # for a new_requirement change request were never validated against
+        # project_id at all — unlike the direct-create path
+        # (create_requirement_endpoint), which checks component.project_id/
+        # category.project_id explicitly. There's no update endpoint for a
+        # change request's proposed_* fields (they're write-once, set only
+        # here at creation — confirmed via schemas/change_request.py), so
+        # this is the one place this ever needs checking; decide_change_request
+        # only re-checked `is None`, not project membership, so an
+        # unvalidated cross-project reference would have sailed through
+        # approval unchanged and been baked into a real Requirement row.
+        if payload.proposed_component_id is not None:
+            component = db.get(ProjectComponent, payload.proposed_component_id)
+            if component is None or component.project_id != project_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_component_id.")
+        if payload.proposed_category_id is not None:
+            category = db.get(ProjectCategory, payload.proposed_category_id)
+            if category is None or category.project_id != project_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_category_id.")
 
     # Validated against the *requirement* entity kind, not change_request: these
     # values represent proposed custom-attribute values for the requirement

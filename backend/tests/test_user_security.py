@@ -223,3 +223,69 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
         "/api/v1/auth/2fa/disable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(real_token)
     )
     assert resp.status_code == 204
+
+
+def test_2fa_verify_locks_out_after_repeated_failed_codes(client, admin_token):
+    """Hardening-review regression: a stolen password plus an unthrottled,
+    reusable 2FA challenge against a bounded 6-digit TOTP keyspace
+    (re-mintable via a fresh /login every time the challenge token expires)
+    otherwise converges toward a near-certain bypass given enough repeated
+    5-minute windows. After `two_factor_max_failed_attempts` wrong codes,
+    even the *correct* code must be rejected until the lockout clears."""
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
+    secret = enroll.json()["secret"]
+    client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(admin_token))
+
+    login_resp = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "ChangeMe123!"})
+    challenge_token = login_resp.json()["challenge_token"]
+
+    for _ in range(settings.two_factor_max_failed_attempts):
+        resp = client.post(
+            "/api/v1/auth/2fa/verify", json={"challenge_token": challenge_token, "code": "000000"}
+        )
+        assert resp.status_code == 401
+
+    # Locked out now — even the genuinely correct code is rejected, and a
+    # brand-new challenge token (a fresh /login) does not bypass the lock,
+    # since it's keyed to the account, not the token.
+    fresh_login = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "ChangeMe123!"})
+    fresh_challenge_token = fresh_login.json()["challenge_token"]
+    resp = client.post(
+        "/api/v1/auth/2fa/verify",
+        json={"challenge_token": fresh_challenge_token, "code": pyotp.TOTP(secret).now()},
+    )
+    assert resp.status_code == 401
+    assert "too many failed attempts" in resp.json()["detail"].lower()
+
+
+def test_2fa_lockout_clears_once_the_window_passes(client, admin_token):
+    """Once `failed_2fa_locked_until` is in the past, a correct code succeeds again."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.database import SessionLocal
+    from app.models.user import User
+
+    enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
+    secret = enroll.json()["secret"]
+    client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(admin_token))
+    user_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, __import__("uuid").UUID(user_id))
+        user.failed_2fa_locked_until = datetime.now(UTC) - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+
+    login_resp = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "ChangeMe123!"})
+    challenge_token = login_resp.json()["challenge_token"]
+    resp = client.post(
+        "/api/v1/auth/2fa/verify",
+        json={"challenge_token": challenge_token, "code": pyotp.TOTP(secret).now()},
+    )
+    assert resp.status_code == 200

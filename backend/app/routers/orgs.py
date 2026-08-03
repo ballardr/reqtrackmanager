@@ -625,7 +625,28 @@ def add_org_group_member(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
+    """Adds a member to an organisation group.
+
+    Hardening-review finding: this endpoint checked that `group_id`
+    belongs to `organization_id`, but never that `payload.user_id` itself
+    holds any role in that organisation — unlike the structurally parallel
+    `add_project_group_member` (`routers/projects.py`), which explicitly
+    enforces C-U-02 ("All Project users must be an organisation user") via
+    `_require_user_in_org`. Because `get_effective_project_roles` resolves
+    project access through org groups nested into project groups purely
+    from `OrgGroupMember` rows (re-checking only that the *group's* org
+    matches the project's, never that the *member* actually belongs to
+    that org), an org admin adding an arbitrary user id here — anyone in
+    the system, with zero relationship to this organisation — would have
+    silently handed that user full project access the moment this group
+    is (routinely, legitimately) nested into any project group. A genuine
+    cross-tenant privilege escalation, not merely a data-integrity nit.
+    """
     _get_org_group_in_org(db, organization_id, group_id)
+    if not get_effective_org_roles(db, payload.user_id, organization_id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "The user must be a member of this organisation first."
+        )
     existing = db.scalar(
         select(OrgGroupMember).where(
             OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == payload.user_id

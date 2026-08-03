@@ -9,7 +9,7 @@ counted (metrics) regardless of outcome.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth_backends.native import NativeAuthBackend
+from app.config import get_settings
 from app.database import get_db
 from app.deps import get_client_ip, get_current_user
 from app.metrics import login_attempts_total
@@ -43,6 +44,7 @@ from app.services.geoip import resolve_and_store_login_location
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
+_settings = get_settings()
 
 
 @router.post("/login", response_model=TokenResponse | TwoFactorChallengeResponse)
@@ -121,7 +123,22 @@ def verify_2fa(
         login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
+    # Hardening-review finding: a stolen password plus an unthrottled,
+    # reusable 2FA challenge against a bounded 6-digit TOTP keyspace lets an
+    # attacker converge toward a near-certain bypass given enough repeated
+    # 5-minute windows (freely re-mintable via `/login`). This lockout is
+    # keyed to the *account*, not the challenge token, so starting a fresh
+    # login doesn't reset it.
+    if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        login_attempts_total.labels(result="failure").inc()
+        db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Too many failed attempts. Try again later.")
     if not totp.verify_code(user.totp_secret, payload.code):
+        user.failed_2fa_attempts += 1
+        if user.failed_2fa_attempts >= _settings.two_factor_max_failed_attempts:
+            user.failed_2fa_locked_until = datetime.now(UTC) + timedelta(minutes=_settings.two_factor_lockout_minutes)
+            user.failed_2fa_attempts = 0
         log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
         login_attempts_total.labels(result="failure").inc()
         db.commit()
@@ -129,6 +146,8 @@ def verify_2fa(
     login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)
     login_attempts_total.labels(result="success").inc()
     user.last_login_at = datetime.now(UTC)
+    user.failed_2fa_attempts = 0
+    user.failed_2fa_locked_until = None
     db.commit()
     background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
     token = create_access_token(str(user.id), token_version=user.token_version)

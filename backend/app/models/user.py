@@ -58,6 +58,19 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             SOC 2 hardening pass) — the column stores Fernet ciphertext, not
             the plaintext secret, so a database compromise alone doesn't
             expose it.
+        failed_2fa_attempts: Count of consecutive failed `/2fa/verify`
+            codes since the last success (or the last lockout). Hardening
+            review finding: a stolen password plus an unthrottled 2FA
+            challenge (6-digit TOTP, a bounded keyspace, re-mintable via a
+            fresh `/login` call every time the 5-minute challenge token
+            expires) let an attacker converge toward a near-certain bypass
+            given enough repeated windows. This is a per-*account* counter,
+            not per-challenge-token, so restarting the login flow for a
+            fresh token does not reset it.
+        failed_2fa_locked_until: Set once `failed_2fa_attempts` crosses the
+            threshold (see `verify_2fa`); further 2FA verification is
+            rejected outright until this time passes, regardless of code
+            correctness or how many new challenge tokens are minted.
         email_digest_mode: Whether email notifications are sent instantly,
             batched into a daily digest, or not at all (C-N-05).
         token_version: Access tokens are stateless JWTs with no revocation
@@ -105,6 +118,8 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(EncryptedString(255), nullable=True)
+    failed_2fa_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    failed_2fa_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     email_digest_mode: Mapped[DigestMode] = mapped_column(str_enum(DigestMode, 20), default=DigestMode.INSTANT)
 

@@ -91,6 +91,17 @@ class Settings(BaseSettings):
             validated or what the browser is redirected to. Left unset in
             production, where the IdP's public URL is reachable from
             everywhere, including the backend.
+        two_factor_max_failed_attempts: Number of consecutive failed
+            `/2fa/verify` codes (since the last success or lockout) before
+            further attempts are locked out (hardening review: an
+            unthrottled, reusable 2FA challenge against a bounded 6-digit
+            TOTP keyspace, re-mintable via a fresh `/login` each time the
+            challenge token expires, otherwise converges toward a
+            near-certain bypass given enough repeated windows).
+        two_factor_lockout_minutes: How long `/2fa/verify` is locked out
+            for a given account once `two_factor_max_failed_attempts` is
+            reached. The lockout is per-*account*, not per-challenge-token,
+            so re-authenticating for a fresh token does not reset it.
         oidc_allow_private_network_targets: Deployment-level opt-in that
             disables the SSRF guard's public-IP check for org-configured
             OIDC endpoints (`services.oidc_client._assert_safe_external_url`),
@@ -153,6 +164,8 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     mcp_server_public_url: str = "http://localhost:8100"
     pat_default_max_lifetime_days: int = 90
+    two_factor_max_failed_attempts: int = 5
+    two_factor_lockout_minutes: int = 15
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
 

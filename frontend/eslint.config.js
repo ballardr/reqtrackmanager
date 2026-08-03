@@ -22,7 +22,29 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // Context modules intentionally colocate a Provider component with its
+      // paired hook (and, for LoginPage, one small pure helper) — the
+      // idiomatic React pattern this codebase uses throughout. Splitting
+      // each into its own file would only serve fast-refresh's dev-time HMR
+      // granularity, at the cost of scattering tightly-coupled code across
+      // more files; `allowExportNames` is the plugin's own documented
+      // escape hatch for exactly this case, so list the specific known
+      // non-component exports rather than silencing the rule broadly.
+      "react-refresh/only-export-components": [
+        "warn",
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            "useAuth",
+            "useTheme",
+            "useTerm",
+            "useTermPlural",
+            "useOrgLogoFileId",
+            "useViewMode",
+            "resolveLandingPath",
+          ],
+        },
+      ],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   }

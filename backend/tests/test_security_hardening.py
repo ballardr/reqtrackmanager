@@ -175,3 +175,64 @@ def test_report_content_is_escaped_against_markup_injection(client, admin_token,
     )
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"
+
+
+def test_cannot_add_user_from_another_organisation_to_an_org_group(client, admin_token, org_id):
+    """Hardening-review regression (round 3): adding a member to an org
+    group must verify the user actually belongs to that organisation —
+    without this, once the group is nested into a project group (a
+    normal, legitimate admin action already validated to require same-org
+    nesting), the added user would inherit that project's role despite
+    holding zero relationship to the organisation at all."""
+    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Unrelated Org For Group Test")
+    outsider_id = create_org_user(client, other_org_admin_token, other_org["id"], "outsider@example.com", role="member")
+
+    group = client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": "Team"}, headers=auth_headers(admin_token)).json()
+    resp = client.post(
+        f"/api/v1/orgs/{org_id}/groups/{group['id']}/members", json={"user_id": outsider_id},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+    # A genuine member of this org can still be added normally.
+    member_id = create_org_user(client, admin_token, org_id, "real_member@example.com", role="member")
+    resp = client.post(
+        f"/api/v1/orgs/{org_id}/groups/{group['id']}/members", json={"user_id": member_id},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 204
+
+
+def test_cannot_create_change_request_with_component_from_another_project(client, admin_token, org_id):
+    """Hardening-review regression (round 3): a new_requirement change
+    request's proposed_component_id/proposed_category_id must belong to
+    the project it's being submitted to — there's no update endpoint for
+    these fields, so this is the only point they can ever be validated;
+    unchecked, an approved change request would bake a permanent
+    cross-project component/category reference into a real Requirement
+    row."""
+    project_a = create_project(client, admin_token, org_id, "CR Cross-Project A")
+    project_b = create_project(client, admin_token, org_id, "CR Cross-Project B")
+    other_component_id, other_category_id = create_component_and_category(client, admin_token, project_b["id"])
+
+    resp = client.post(
+        f"/api/v1/projects/{project_a['id']}/change-requests",
+        json={
+            "kind": "new_requirement", "proposed_name": "x", "reason": "y",
+            "proposed_component_id": other_component_id, "proposed_category_id": other_category_id,
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+    # The project's own component/category still work normally.
+    own_component_id, own_category_id = create_component_and_category(client, admin_token, project_a["id"])
+    resp = client.post(
+        f"/api/v1/projects/{project_a['id']}/change-requests",
+        json={
+            "kind": "new_requirement", "proposed_name": "x", "reason": "y",
+            "proposed_component_id": own_component_id, "proposed_category_id": own_category_id,
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
