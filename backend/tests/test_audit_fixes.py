@@ -48,6 +48,44 @@ def test_server_admin_can_still_create_org_and_its_initial_user(client, admin_to
     assert resp.status_code == 201, resp.text
 
 
+def test_server_admin_can_make_themselves_org_admin_of_an_org_they_dont_belong_to(client, admin_token):
+    """Self-hosting use case: a server admin who is also the only person
+    running the deployment needs a way to become admin of their own org,
+    not just stand up other people's — `assign_org_role` can't help
+    (it requires the caller to already be an org admin of the target org,
+    the exact chicken-and-egg this closes)."""
+    org = client.post("/api/v1/orgs", json={"name": "Self-Hosted Org"}, headers=auth_headers(admin_token)).json()
+
+    # Blocked beforehand, same as any other org-scoped action (I-M-05).
+    assert client.get(f"/api/v1/orgs/{org['id']}/groups", headers=auth_headers(admin_token)).status_code == 403
+
+    resp = client.post(f"/api/v1/orgs/{org['id']}/join-as-admin", headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+
+    # Now a genuine member — every ordinary org-admin action works.
+    assert client.get(f"/api/v1/orgs/{org['id']}/groups", headers=auth_headers(admin_token)).status_code == 200
+    assert client.post(
+        f"/api/v1/orgs/{org['id']}/groups", json={"name": "Team"}, headers=auth_headers(admin_token)
+    ).status_code == 201
+
+
+def test_cannot_join_as_admin_twice(client, admin_token):
+    org = client.post("/api/v1/orgs", json={"name": "Double Join Org"}, headers=auth_headers(admin_token)).json()
+    assert client.post(f"/api/v1/orgs/{org['id']}/join-as-admin", headers=auth_headers(admin_token)).status_code == 204
+    resp = client.post(f"/api/v1/orgs/{org['id']}/join-as-admin", headers=auth_headers(admin_token))
+    assert resp.status_code == 400
+
+
+def test_non_server_admin_cannot_join_as_admin(client, admin_token, org_id):
+    """A plain org member/admin elsewhere on the deployment must not be
+    able to grant themselves admin of an unrelated organisation."""
+    other_org = client.post("/api/v1/orgs", json={"name": "Unrelated Org"}, headers=auth_headers(admin_token)).json()
+    create_org_user(client, admin_token, org_id, "plain_joiner@example.com", role="member")
+    token = login(client, "plain_joiner@example.com", "Password123!")
+    resp = client.post(f"/api/v1/orgs/{other_org['id']}/join-as-admin", headers=auth_headers(token))
+    assert resp.status_code == 403
+
+
 def test_grant_and_revoke_server_admin_role(client, admin_token, org_id):
     """I-M-06: an existing server admin can promote/demote another user."""
     user_id = create_org_user(client, admin_token, org_id, "future_admin@example.com", role="member")

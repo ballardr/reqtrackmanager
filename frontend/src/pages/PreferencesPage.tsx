@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { t } from "../i18n/strings";
@@ -190,10 +191,10 @@ export function PreferencesPage() {
   }
 
   return (
-    <div className="stack" style={{ maxWidth: 480 }}>
+    <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.preferences.title}</h1>
 
-      <div className="card stack">
+      <CollapsibleSection sectionKey="preferences.profile" title={strings.preferences.profile}>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.avatar}
           <div className="row">
@@ -275,13 +276,10 @@ export function PreferencesPage() {
           {strings.preferences.save}
         </button>
         {saved && <div style={{ color: "var(--color-accent)" }}>{strings.preferences.saved}</div>}
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
-
-        <div className="stack">
-          <strong>{strings.preferences.changePassword}</strong>
+      <CollapsibleSection sectionKey="preferences.security" title={strings.preferences.security}>
+        <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
           <input
             className="input"
             type="password"
@@ -300,15 +298,20 @@ export function PreferencesPage() {
           <button className="btn" onClick={changePassword} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.changePassword}
           </button>
-        </div>
+        </CollapsibleSection>
 
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>{strings.preferences.twoFactor}</strong>
-            <span className="badge">
-              {user?.is_2fa_enabled ? strings.preferences.twoFactorEnabled : strings.preferences.twoFactorDisabled}
+        <CollapsibleSection
+          sectionKey="preferences.security.two_factor"
+          variant="plain"
+          title={
+            <span className="row" style={{ gap: "0.5rem" }}>
+              {strings.preferences.twoFactor}
+              <span className="badge">
+                {user?.is_2fa_enabled ? strings.preferences.twoFactorEnabled : strings.preferences.twoFactorDisabled}
+              </span>
             </span>
-          </div>
+          }
+        >
           {twoFactorError && <div style={{ color: "var(--color-danger)" }}>{twoFactorError}</div>}
 
           {!user?.is_2fa_enabled && !enrollment && (
@@ -354,11 +357,10 @@ export function PreferencesPage() {
               </button>
             </div>
           )}
-        </div>
-      </div>
+        </CollapsibleSection>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
+      <CollapsibleSection sectionKey="preferences.pats" title={strings.preferences.pats}>
         <p className="text-muted">{strings.preferences.patsHint}</p>
 
         {pats.filter((p) => !p.revoked_at).length === 0 ? (
@@ -404,8 +406,7 @@ export function PreferencesPage() {
           </button>
         )}
 
-        <div className="stack">
-          <strong>{strings.common.create}</strong>
+        <CollapsibleSection sectionKey="preferences.pats.create" variant="plain" title={strings.common.create}>
           <input
             className="input"
             placeholder={strings.preferences.patNamePlaceholder}
@@ -441,7 +442,7 @@ export function PreferencesPage() {
           <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.patCreate}
           </button>
-        </div>
+        </CollapsibleSection>
 
         {createdPat && (
           <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: 6, padding: "0.75rem" }}>
@@ -458,10 +459,9 @@ export function PreferencesPage() {
             </button>
           </div>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.notifications.preferencesTitle}</h2>
+      <CollapsibleSection sectionKey="preferences.notifications" title={strings.notifications.preferencesTitle}>
         <table>
           <thead>
             <tr>
@@ -492,7 +492,7 @@ export function PreferencesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }

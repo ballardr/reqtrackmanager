@@ -28,7 +28,14 @@ from app.models.organization import Organization
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.services.files import read_file
-from app.services.rbac import check_pat_scope, check_pat_scope_for_project, get_effective_org_roles, get_effective_project_roles
+from app.services.rbac import (
+    _project_organization_id,
+    _require_org_active,
+    check_pat_scope,
+    check_pat_scope_for_project,
+    get_effective_org_roles,
+    get_effective_project_roles,
+)
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
@@ -82,6 +89,7 @@ def download_file(
             # must be checked explicitly, in addition to (not instead of)
             # the real RBAC role check below.
             check_pat_scope(request, file_asset.organization_id)
+            _require_org_active(db, file_asset.organization_id)
             if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
         else:
@@ -89,6 +97,9 @@ def download_file(
             requirement = db.get(Requirement, link.requirement_id) if link else None
             if requirement is not None:
                 check_pat_scope_for_project(request, db, requirement.project_id)
+                organization_id = _project_organization_id(db, requirement.project_id)
+                if organization_id is not None:
+                    _require_org_active(db, organization_id)
             has_access = requirement is not None and get_effective_project_roles(
                 db, current_user.id, requirement.project_id
             )

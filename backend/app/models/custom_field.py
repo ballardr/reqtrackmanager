@@ -50,7 +50,7 @@ class CustomFieldDefinition(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "custom_field_definitions"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     entity_kind: Mapped[CustomFieldEntityKind] = mapped_column(str_enum(CustomFieldEntityKind, 20))
     name: Mapped[str] = mapped_column(String(255))
     field_type: Mapped[CustomFieldType] = mapped_column(str_enum(CustomFieldType, 20))

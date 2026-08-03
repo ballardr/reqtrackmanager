@@ -15,6 +15,7 @@ from sqlalchemy import and_, exists, select
 from sqlalchemy.orm import Session
 
 from app.models.notification import NotificationType
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementReview, RequirementVersion
 from app.models.user import User
@@ -56,8 +57,28 @@ def get_due_reviews_for_project(db: Session, project_id: UUID) -> list[tuple[Req
 
 def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[RequirementVersion, Requirement]]:
     """Returns (version, requirement) pairs assigned to `user_id` as reviewer,
-    due/overdue, across every project (C-R-09/C-R-10)."""
-    query = _due_versions_query().where(RequirementVersion.reviewer_id == user_id)
+    due/overdue, across every project (C-R-09/C-R-10).
+
+    Unlike `get_due_reviews_for_project`, this spans every project the
+    caller has any role on rather than one specific `project_id`, so its
+    router (`routers/reviews.py`) has no single id to gate behind
+    `require_project_view`/`require_org_role` (whose `_require_org_active`
+    check would otherwise cover this for free) — a hardening-review finding:
+    this query joined straight from `Requirement` to `RequirementVersion`
+    with no `Project`/`Organization` involved at all, so a requirement in a
+    since-disabled organisation kept appearing in a reviewer's due list
+    indefinitely, the one org/project-scoped read in the app that wasn't
+    wired to the disable gate. Joining `Project`/`Organization` here and
+    filtering on `is_active` closes that gap directly, since there's no
+    dependency factory to lean on.
+    """
+    query = (
+        _due_versions_query()
+        .where(RequirementVersion.reviewer_id == user_id)
+        .join(Project, Project.id == Requirement.project_id)
+        .join(Organization, Organization.id == Project.organization_id)
+        .where(Organization.is_active.is_(True))
+    )
     return list(db.execute(query).all())
 
 

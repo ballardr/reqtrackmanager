@@ -35,20 +35,6 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* The left navigation rail is a fixed dark "chrome" in both app themes
-   (matching the product mockups), independent of --color-bg/-surface above —
-   the same pattern as many dark-nav-on-light-canvas products (GitHub,
-   Notion). It is NOT swapped per data-theme. */
-:root {
-  --color-nav-bg: #1a1f2b;
-  --color-nav-text: #e2e5ea;
-  --color-nav-text-muted: #8b93a3;
-  --color-nav-hover-bg: #262d3d;
-  --color-nav-active-bg: #2b6cb0;
-  --color-nav-active-text: #ffffff;
-  --color-nav-border: #2a3040;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -174,20 +160,23 @@ textarea.input {
   color: var(--color-text-muted);
 }
 
-/* Dark left-navigation rail (see --color-nav-* above). */
-.nav-dark {
-  background: var(--color-nav-bg);
-  border: none;
+/* Left navigation rail: same theme-aware surface as every other panel
+   (--color-surface/-border/-text), not a fixed dark "chrome" independent
+   of the active theme — it follows light/dark like the rest of the UI. */
+.nav-rail {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.75rem;
   box-shadow: var(--shadow-sm);
+  transition: min-width 0.15s ease;
 }
 
 .nav-section-label {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--color-nav-text-muted);
+  color: var(--color-text-muted);
   padding: 0.6rem 0.6rem 0.2rem;
 }
 
@@ -197,18 +186,55 @@ textarea.input {
   gap: 0.6rem;
   padding: 0.45rem 0.6rem;
   border-radius: 6px;
-  color: var(--color-nav-text) !important;
+  color: var(--color-text) !important;
   text-decoration: none !important;
   font-size: 0.92rem;
 }
 
 .nav-link:hover {
-  background: var(--color-nav-hover-bg);
+  background: var(--color-surface-alt);
 }
 
 .nav-link.active {
-  background: var(--color-nav-active-bg);
-  color: var(--color-nav-active-text) !important;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast) !important;
+}
+
+/* Icon-only collapsed rail state: hide link labels, centre the icons,
+   shrink the rail's own width (set inline via style, since it's driven by
+   a JS-held boolean rather than a pure-CSS breakpoint). */
+.nav-rail-icons .nav-label {
+  display: none;
+}
+
+.nav-rail-icons .nav-link {
+  justify-content: center;
+}
+
+/* Collapsed section labels ("Project", "Global", "Server Management")
+   become a thin divider line rather than vanishing outright — the text is
+   pushed off-screen (text-indent), not deleted, so it stays available to
+   assistive tech — so the icon rows below don't visibly jump up compared
+   to where they sit when the rail is expanded. */
+.nav-rail-icons .nav-section-label {
+  height: 1px;
+  padding: 0;
+  margin: 0.6rem 0.4rem;
+  overflow: hidden;
+  text-indent: -9999px;
+  background: var(--color-border);
+}
+
+.nav-rail-toggle {
+  width: 100%;
+  justify-content: center;
+  border: none;
+  background: none;
+  margin-top: 0.4rem;
+}
+
+.nav-rail-toggle:hover {
+  background: var(--color-surface-alt);
 }
 
 table {

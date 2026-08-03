@@ -169,8 +169,12 @@ def update_preferences(
     """Updates the current user's preferences and profile fields.
 
     Landing page / theme (U-U-01, U-U-03), pronouns (C-U-18), display name
-    (rejected if an org admin has locked it, C-U-16), and email digest mode
-    (C-N-05).
+    (rejected if an org admin has locked it, C-U-16), email digest mode
+    (C-N-05), and the general-purpose `ui_preferences` bag (e.g. per-list
+    tile/list view mode). `ui_preferences` is shallow-merged into the
+    existing bag by top-level key (a reassignment, not an in-place
+    mutation, so SQLAlchemy's change-tracking picks it up) rather than
+    replaced wholesale, so setting one key never clobbers another.
     """
     if payload.landing_preference is not None:
         current_user.landing_preference = payload.landing_preference
@@ -180,6 +184,8 @@ def update_preferences(
         current_user.pronouns = payload.pronouns
     if payload.email_digest_mode is not None:
         current_user.email_digest_mode = payload.email_digest_mode
+    if payload.ui_preferences is not None:
+        current_user.ui_preferences = {**current_user.ui_preferences, **payload.ui_preferences}
     if payload.display_name is not None:
         if current_user.display_name_locked:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your display name has been locked by an organisation admin.")

@@ -62,6 +62,48 @@ def check_pat_scope(request: Request, organization_id: UUID) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This access token is not scoped to this organisation.")
 
 
+def is_org_active(db: Session, organization_id: UUID) -> bool:
+    """Boolean form of the check `_require_org_active` raises on. Exists for
+    call sites that can't raise an `HTTPException` and need to translate
+    "is this org disabled" into their own failure signal instead — e.g. the
+    WebSocket router, which closes the connection with its own code rather
+    than propagating an HTTP response."""
+    return bool(db.scalar(select(Organization.is_active).where(Organization.id == organization_id)))
+
+
+def _require_org_active(db: Session, organization_id: UUID) -> None:
+    """Blocks every org/project-scoped request against a disabled
+    organisation (`Organization.is_active`), regardless of the caller's
+    role — a suspended org (e.g. non-payment) locks out even its own
+    admins, not just ordinary members. Deliberately checked before the
+    role check in every dependency below, so the failure reason is
+    specific ("this org is disabled") rather than a generic permissions
+    error. Only the disable/enable toggle endpoints themselves
+    (`require_server_admin`, not any of these factories) bypass this.
+
+    Every access path that reads org/project-scoped content must be gated
+    by this (directly, or via one of the five dependency factories below)
+    — a hardening-review pass found and fixed three call sites that read
+    such content through a different mechanism and had silently never been
+    wired to it: the WebSocket endpoint (`routers/ws.py`, its own inline
+    auth check), the file-download endpoint (`routers/files.py`, authorizes
+    via the raw `get_effective_*_roles` helpers rather than a `require_*`
+    dependency, since it needs `?token=` query-param support those don't
+    offer), and the cross-project reviews-due listing (`services/reviews.py`,
+    which has no single `project_id`/`organization_id` to hang a dependency
+    off in the first place). See docs/decisions.md's "Organisation disable
+    and hard delete" hardening-pass follow-up for the full list.
+
+    Raises:
+        HTTPException: 403 if the organisation is disabled or doesn't exist
+            (a nonexistent org is treated the same as a disabled one here —
+            the more specific 404s already live on the endpoints that
+            create/read organisations directly).
+    """
+    if not is_org_active(db, organization_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation has been disabled.")
+
+
 def get_effective_org_roles(db: Session, user_id: UUID, organization_id: UUID) -> set[OrgRole]:
     """Returns the set of organisation roles a user holds in an organisation."""
     rows = db.scalars(
@@ -288,6 +330,7 @@ def require_org_role(*allowed: OrgRole):
     ) -> User:
         """See the enclosing `require_org_role` factory's docstring."""
         check_pat_scope(request, organization_id)
+        _require_org_active(db, organization_id)
         roles = get_effective_org_roles(db, current_user.id, organization_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
@@ -309,12 +352,23 @@ def require_org_admin_or_server_admin(
     endpoint requires a genuine org role via `require_org_role`.
     """
     check_pat_scope(request, organization_id)
+    _require_org_active(db, organization_id)
     if current_user.is_server_admin:
         return current_user
     roles = get_effective_org_roles(db, current_user.id, organization_id)
     if OrgRole.ORG_ADMIN not in roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
     return current_user
+
+
+def _project_organization_id(db: Session, project_id: UUID) -> UUID | None:
+    """Resolves a project's owning organisation id, or None if the project
+    doesn't exist — used to gate project-scoped dependencies on the org's
+    active state without masking a bogus `project_id` behind a misleading
+    "organisation disabled" message (a nonexistent project should still
+    fall through to the normal "not a member"/"insufficient permissions"
+    response below, not this check)."""
+    return db.scalar(select(Project.organization_id).where(Project.id == project_id))
 
 
 def require_project_role(*allowed: ProjectRole):
@@ -332,6 +386,9 @@ def require_project_role(*allowed: ProjectRole):
     ) -> User:
         """See the enclosing `require_project_role` factory's docstring."""
         check_pat_scope_for_project(request, db, project_id)
+        organization_id = _project_organization_id(db, project_id)
+        if organization_id is not None:
+            _require_org_active(db, organization_id)
         roles = get_effective_project_roles(db, current_user.id, project_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
@@ -366,6 +423,9 @@ def require_project_view(
     not bypass this either (I-M-05).
     """
     check_pat_scope_for_project(request, db, project_id)
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is not None:
+        _require_org_active(db, organization_id)
     if not get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
     return current_user
@@ -388,6 +448,7 @@ def require_project_manage(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     check_pat_scope(request, project.organization_id)
+    _require_org_active(db, project.organization_id)
     if not can_manage_project_settings(db, current_user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     return project

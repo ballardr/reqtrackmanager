@@ -45,9 +45,13 @@ class Requirement(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "requirements"
     __table_args__ = (UniqueConstraint("project_id", "unique_code"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
-    component_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_components.id"))
-    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_categories.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    component_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_components.id", ondelete="CASCADE")
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_categories.id", ondelete="CASCADE")
+    )
     unique_code: Mapped[str] = mapped_column(String(64), index=True)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
@@ -80,7 +84,9 @@ class RequirementVersion(UUIDPKMixin, Base):
     __tablename__ = "requirement_versions"
     __table_args__ = (UniqueConstraint("requirement_id", "version_number"),)
 
-    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
     version_number: Mapped[int] = mapped_column(Integer)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -93,7 +99,7 @@ class RequirementVersion(UUIDPKMixin, Base):
     # mandatory or advisory (mock's "Target"/"Level" fields) — display/planning
     # metadata on the version, not gating logic.
     target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_stages.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
     )
     level: Mapped[RequirementLevel] = mapped_column(str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -109,7 +115,7 @@ class RequirementVersion(UUIDPKMixin, Base):
     custom_fields: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     change_request_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("change_requests.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="SET NULL"), nullable=True
     )
     change_note: Mapped[str] = mapped_column(Text, default="")
 
@@ -134,7 +140,9 @@ class RequirementKeyword(UUIDPKMixin, Base):
     __tablename__ = "requirement_keywords"
     __table_args__ = (UniqueConstraint("requirement_id", "keyword"),)
 
-    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
     keyword: Mapped[str] = mapped_column(String(100), index=True)
 
 
@@ -144,8 +152,12 @@ class RequirementLink(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "requirement_links"
     __table_args__ = (UniqueConstraint("source_requirement_id", "target_requirement_id", "link_type"),)
 
-    source_requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
-    target_requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    source_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
+    target_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
     link_type: Mapped[RequirementLinkType] = mapped_column(str_enum(RequirementLinkType), default=RequirementLinkType.RELATES_TO)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
@@ -155,8 +167,10 @@ class Baseline(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "baselines"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
-    stage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_stages.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    stage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE")
+    )
     label: Mapped[str] = mapped_column(String(255))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
@@ -169,10 +183,12 @@ class BaselineItem(UUIDPKMixin, Base):
     __tablename__ = "baseline_items"
     __table_args__ = (UniqueConstraint("baseline_id", "requirement_id"),)
 
-    baseline_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("baselines.id"))
-    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    baseline_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("baselines.id", ondelete="CASCADE"))
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
     requirement_version_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_versions.id")
+        UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="CASCADE")
     )
 
     baseline: Mapped[Baseline] = relationship(back_populates="items")
@@ -190,9 +206,11 @@ class RequirementReview(UUIDPKMixin, Base):
 
     __tablename__ = "requirement_reviews"
 
-    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    )
     requirement_version_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_versions.id")
+        UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="CASCADE")
     )
     reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

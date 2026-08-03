@@ -41,9 +41,9 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "change_requests"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     requirement_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
     )
     kind: Mapped[ChangeRequestKind] = mapped_column(str_enum(ChangeRequestKind))
     status: Mapped[ChangeRequestStatus] = mapped_column(str_enum(ChangeRequestStatus, 20), default=ChangeRequestStatus.DRAFT)
@@ -73,23 +73,25 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     __tablename__ = "change_request_versions"
     __table_args__ = (UniqueConstraint("change_request_id", "version_number"),)
 
-    change_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("change_requests.id"))
+    change_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="CASCADE")
+    )
     version_number: Mapped[int] = mapped_column(Integer)
 
     proposed_name: Mapped[str] = mapped_column(String(500))
     proposed_reasoning: Mapped[str] = mapped_column(Text, default="")
     proposed_clarification: Mapped[str] = mapped_column(Text, default="")
     proposed_component_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_components.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_components.id", ondelete="SET NULL"), nullable=True
     )
     proposed_category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_categories.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_categories.id", ondelete="SET NULL"), nullable=True
     )
     # Mirrors Requirement/RequirementVersion's target_stage_id/level (mock's
     # "Target"/"Level" fields) so a change request can propose changing them,
     # same as it can propose changing name/reasoning/clarification.
     proposed_target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_stages.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
     )
     proposed_level: Mapped[RequirementLevel] = mapped_column(
         str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT
@@ -135,7 +137,9 @@ class ChangeRequestTask(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "change_request_tasks"
 
-    change_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("change_requests.id"))
+    change_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="CASCADE")
+    )
     description: Mapped[str] = mapped_column(Text)
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -155,7 +159,9 @@ class ChangeRequestVote(UUIDPKMixin, Base):
     __tablename__ = "change_request_votes"
     __table_args__ = (UniqueConstraint("change_request_id", "user_id"),)
 
-    change_request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("change_requests.id"))
+    change_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("change_requests.id", ondelete="CASCADE")
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     vote: Mapped[ChangeRequestVoteChoice] = mapped_column(str_enum(ChangeRequestVoteChoice, 20))
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)

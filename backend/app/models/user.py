@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -44,6 +45,16 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         landing_preference: Where the user is sent after login ("auto",
             "overview", or a specific project id) (U-U-03).
         theme_preference: UI theme choice ("light", "dark", or "system").
+        ui_preferences: General-purpose bag for lightweight UI display
+            preferences that don't (yet, or ever) warrant their own typed
+            column — e.g. per-list tile/list view mode, keyed
+            `view_mode:<page>` (`"view_mode:requirements": "tiles"`).
+            Deliberately generic (mirroring `Organization.
+            sso_group_mappings`'s precedent for "structured but open-ended,
+            rarely queried" per-row data) so a future preference of this
+            same low-stakes, display-only shape is just a new key, not a
+            schema change — synced across devices/sessions, unlike
+            equivalent client-only localStorage.
         pronouns: Optional self-set pronouns (C-U-18).
         avatar_file_id: Optional uploaded avatar image (C-U-18). Uses
             `use_alter` since `file_assets` itself references `users`
@@ -107,11 +118,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     landing_preference: Mapped[str] = mapped_column(String(50), default="auto")
     theme_preference: Mapped[str] = mapped_column(String(20), default="system")
+    ui_preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     pronouns: Mapped[str | None] = mapped_column(String(50), nullable=True)
     avatar_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("file_assets.id", use_alter=True, name="fk_users_avatar_file_id"),
+        ForeignKey("file_assets.id", use_alter=True, name="fk_users_avatar_file_id", ondelete="SET NULL"),
         nullable=True,
     )
     display_name_locked: Mapped[bool] = mapped_column(Boolean, default=False)

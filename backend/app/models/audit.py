@@ -39,14 +39,25 @@ class AuditEvent(UUIDPKMixin, Base):
         actor_id: The user who performed the action; null for system
             actions.
         detail: Optional structured detail (e.g. changed fields).
+
+    `organization_id`/`project_id` use `ondelete="SET NULL"`, not CASCADE —
+    unlike everything else scoped to an organisation, the audit trail is
+    meant to survive its subject being gone entirely (including a genuine
+    hard `DELETE /orgs/{id}`): "who did what, when" remains real history
+    even after the organisation it happened in no longer exists, which is
+    exactly the kind of record a disposal/incident-investigation process
+    needs intact. `entity_type`/`entity_id` (and `detail`) already capture
+    the substance of the event, so losing just the FK link costs nothing.
     """
 
     __tablename__ = "audit_events"
 
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(50))

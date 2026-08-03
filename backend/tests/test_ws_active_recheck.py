@@ -23,7 +23,7 @@ def test_user_session_still_valid_true_for_active_user_with_matching_token_versi
         )
         db.add(user)
         db.commit()
-        assert _user_session_still_valid(user.id, token_version=user.token_version) is True
+        assert _user_session_still_valid(user.id, token_version=user.token_version, organization_id=None) is True
     finally:
         db.rollback()
         db.close()
@@ -40,11 +40,11 @@ def test_user_session_still_valid_false_once_deactivated():
         db.commit()
         user.is_active = False
         db.commit()
-        assert _user_session_still_valid(user.id, token_version=user.token_version) is False
+        assert _user_session_still_valid(user.id, token_version=user.token_version, organization_id=None) is False
     finally:
         db.rollback()
         db.close()
 
 
 def test_user_session_still_valid_false_for_unknown_user():
-    assert _user_session_still_valid(uuid.uuid4(), token_version=0) is False
+    assert _user_session_still_valid(uuid.uuid4(), token_version=0, organization_id=None) is False

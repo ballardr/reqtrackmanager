@@ -35,7 +35,9 @@ class CommentReaction(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "comment_reactions"
     __table_args__ = (UniqueConstraint("comment_id", "user_id"),)
 
-    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_comments.id"))
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("review_comments.id", ondelete="CASCADE")
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 

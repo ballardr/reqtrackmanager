@@ -1,23 +1,18 @@
 import { LayoutGrid, List } from "lucide-react";
-import { useState } from "react";
+
+import { useUiPreference } from "../hooks/useUiPreference";
 
 export type ViewMode = "tiles" | "list";
 
-const STORAGE_PREFIX = "view:";
-
-/** Reads/writes a per-page tile-vs-list view preference, persisted in localStorage. */
+/** Reads/writes a per-page tile-vs-list view preference, keyed
+ * `view_mode:<pageKey>` in the user's `ui_preferences` bag — synced
+ * server-side (see `useUiPreference`), not localStorage, so it follows
+ * them across devices/browsers the same way their theme/landing-page
+ * choices already do. */
 export function useViewMode(pageKey: string, defaultMode: ViewMode = "tiles"): [ViewMode, (mode: ViewMode) => void] {
-  const [mode, setModeState] = useState<ViewMode>(() => {
-    const stored = localStorage.getItem(STORAGE_PREFIX + pageKey);
-    return stored === "tiles" || stored === "list" ? stored : defaultMode;
-  });
-
-  function setMode(next: ViewMode) {
-    setModeState(next);
-    localStorage.setItem(STORAGE_PREFIX + pageKey, next);
-  }
-
-  return [mode, setMode];
+  const [stored, setStored] = useUiPreference<string>(`view_mode:${pageKey}`, defaultMode);
+  const mode: ViewMode = stored === "tiles" || stored === "list" ? stored : defaultMode;
+  return [mode, setStored];
 }
 
 export function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {

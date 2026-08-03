@@ -32,6 +32,7 @@ from app.schemas.org import (
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrganizationCreate,
+    OrganizationDeleteConfirm,
     OrganizationOut,
     OrgGroupCreate,
     OrgGroupMemberAdd,
@@ -51,6 +52,7 @@ from app.services import engagement
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
+from app.services.org_deletion import delete_organization_cascade
 from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
     get_effective_org_roles,
@@ -77,6 +79,155 @@ def create_organization(
     db.commit()
     db.refresh(org)
     return org
+
+
+@router.post("/{organization_id}/join-as-admin", status_code=status.HTTP_204_NO_CONTENT)
+def join_organization_as_admin(
+    organization_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Lets a server admin grant *themselves* `org_admin` in an organisation
+    they don't currently belong to (I-M-05's carve-out, made a general,
+    repeatable in-app action rather than only a one-time deployment-startup
+    behaviour — see `server_admin_create_org`/`services/bootstrap.py`).
+
+    Needed for self-hosting deployments where the server admin *is* the
+    only person running the system and also wants to use their own single
+    organisation, not just stand up other people's — `assign_org_role`
+    can't help here since it itself requires the caller to already be an
+    org admin of the target org, which is exactly the chicken-and-egg this
+    closes.
+
+    Deliberately narrow: self-targeting only, and always the `ORG_ADMIN`
+    role. This is not a general "server admin can grant any role to any
+    user in any organisation" capability (which would meaningfully broaden
+    I-M-05's carve-out beyond what's needed) — it only ever lets the
+    platform's single most-trusted actor take on ordinary membership in one
+    specific org, for themselves.
+
+    Raises:
+        HTTPException: 404 if the organisation doesn't exist; 400 if the
+            caller is already an admin of it.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    existing = db.scalar(
+        select(UserOrgRole).where(
+            UserOrgRole.user_id == current_user.id,
+            UserOrgRole.organization_id == organization_id,
+            UserOrgRole.role == OrgRole.ORG_ADMIN,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You are already an admin of this organisation.")
+    db.add(UserOrgRole(user_id=current_user.id, organization_id=organization_id, role=OrgRole.ORG_ADMIN))
+    log_event(
+        db,
+        entity_type="user_org_role",
+        entity_id=current_user.id,
+        action="granted",
+        actor_id=current_user.id,
+        organization_id=organization_id,
+        detail={"role": OrgRole.ORG_ADMIN.value, "self_granted_by_server_admin": True},
+    )
+    db.commit()
+
+
+@router.post("/{organization_id}/disable", response_model=OrganizationOut)
+def disable_organization(
+    organization_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Suspends an organisation (e.g. non-payment): every org/project-scoped
+    request against it is rejected (`services.rbac._require_org_active`),
+    for every user including this org's own admins, until re-enabled. No
+    data is touched or removed — the reversible alternative to
+    `delete_organization` below. Server-admin only; this is tenancy
+    management, not organisation content access (I-M-05).
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if not org.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation is already disabled.")
+    org.is_active = False
+    org.disabled_at = _now()
+    org.disabled_by = current_user.id
+    log_event(db, entity_type="organization", entity_id=org.id, action="disabled", actor_id=current_user.id)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.post("/{organization_id}/enable", response_model=OrganizationOut)
+def enable_organization(
+    organization_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Reverses `disable_organization`, restoring normal access immediately."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation is not disabled.")
+    org.is_active = True
+    org.disabled_at = None
+    org.disabled_by = None
+    log_event(db, entity_type="organization", entity_id=org.id, action="enabled", actor_id=current_user.id)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.delete("/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_organization(
+    organization_id: UUID,
+    payload: OrganizationDeleteConfirm,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Permanently deletes an organisation and everything it owns: every
+    project, requirement (with full version history), change request,
+    group, report template, custom field definition, uploaded file (removed
+    from actual storage, not just its database row), and any Personal
+    Access Token's reach into this org. Irreversible — unlike
+    `disable_organization` above, there is no archive/undo. Server-admin
+    only (I-M-05: tenancy management, not organisation content access).
+
+    Requires `payload.confirm_name` to exactly match the organisation's
+    current name — the same "type the name to confirm" pattern used for
+    other irreversible actions elsewhere, so a stray click alone is never
+    enough to trigger something this destructive.
+
+    Users who were members lose their role in this org (and become
+    "orphaned" if this was their only one, per the existing access-review
+    tooling) but are never themselves deleted — deletion only ever removes
+    what this organisation *owns*, never accounts. The audit trail survives
+    too: matching `AuditEvent` rows lose their `organization_id` link
+    (`ondelete="SET NULL"`) but the rows themselves, including this
+    deletion's own log entry, are kept.
+
+    Raises:
+        HTTPException: 404 if the organisation doesn't exist; 400 if
+            `confirm_name` doesn't match.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if payload.confirm_name != org.name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Confirmation name does not match this organisation's name.")
+
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="deleted",
+        actor_id=current_user.id, detail={"name": org.name},
+    )
+    delete_organization_cascade(db, organization_id)
+    db.delete(org)
+    db.commit()
 
 
 @router.get("", response_model=list[OrganizationOut])

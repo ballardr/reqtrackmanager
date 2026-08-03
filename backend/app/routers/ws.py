@@ -21,6 +21,7 @@ from app.models.project import ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
 from app.security import decode_access_token
 from app.services import pubsub
+from app.services.rbac import _project_organization_id, is_org_active
 
 router = APIRouter(tags=["realtime"])
 
@@ -32,8 +33,9 @@ router = APIRouter(tags=["realtime"])
 _EXPIRY_CHECK_INTERVAL_SECONDS = 60
 
 
-def _user_session_still_valid(user_id: UUID, token_version: int) -> bool:
-    """Re-checks `User.is_active` and `User.token_version` in a fresh,
+def _user_session_still_valid(user_id: UUID, token_version: int, organization_id: UUID | None) -> bool:
+    """Re-checks `User.is_active`, `User.token_version`, and (if the project
+    still resolves to an organisation) `Organization.is_active` in a fresh,
     short-lived session — used by the periodic recheck below rather than
     holding one DB session open for a connection's entire (potentially
     hours-long) lifetime.
@@ -47,11 +49,20 @@ def _user_session_still_valid(user_id: UUID, token_version: int) -> bool:
     (access-control-policy.md) silently did not apply to WebSocket
     connections at all, despite docs/decisions.md claiming this exact gap
     was already closed.
+
+    The `organization_id`/`is_org_active` check was added by a later
+    hardening pass for the same reason: disabling an organisation is
+    documented to lock out access "regardless of the caller's role,
+    including the org's own admins" (`rbac._require_org_active`), and an
+    already-open socket streaming that org's project updates was a full,
+    silent exception to that guarantee until this was added.
     """
     db = SessionLocal()
     try:
         row = db.execute(select(User.is_active, User.token_version).where(User.id == user_id)).first()
-        return row is not None and row.is_active and row.token_version == token_version
+        if row is None or not row.is_active or row.token_version != token_version:
+            return False
+        return organization_id is None or is_org_active(db, organization_id)
     finally:
         db.close()
 
@@ -63,12 +74,13 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
     Message shape: {"type": "requirement" | "change_request", "action": str, "id": str}
 
     Access is checked once at handshake time; token expiry, `token_version`
-    revocation (password change / 2FA disable), and account deactivation
-    are then rechecked every `_EXPIRY_CHECK_INTERVAL_SECONDS` (SOC 2
-    access-control hardening pass — a deactivated or credential-revoked
-    account's already-open socket now closes within one interval, matching
-    the REST API's behaviour of rejecting a stale token / `is_active=False`
-    on every request, rather than only once the token naturally expires).
+    revocation (password change / 2FA disable), account deactivation, and
+    the project's organisation being disabled are then rechecked every
+    `_EXPIRY_CHECK_INTERVAL_SECONDS` (SOC 2 access-control hardening pass —
+    a deactivated/credential-revoked account's or now-disabled org's
+    already-open socket closes within one interval, matching the REST
+    API's behaviour of rejecting a stale token / `is_active=False` on
+    every request, rather than only once the token naturally expires).
     Project *role* changes are still not rechecked mid-connection —
     narrowing, not eliminating, the original exposure window: a role
     downgrade/removal takes effect on the next REST call immediately, but
@@ -94,19 +106,32 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
             user = None
         # No server-admin bypass (I-M-05): live project updates are "data
         # within organisations", same boundary as every REST endpoint.
-        has_access = user is not None and (
-            db.scalar(
-                select(UserProjectRole).where(
-                    UserProjectRole.user_id == user.id, UserProjectRole.project_id == project_id
+        organization_id = _project_organization_id(db, project_id)
+        # A disabled organisation blocks access for everyone, including its
+        # own admins (rbac._require_org_active) — checked here too, since
+        # this handler authorizes inline rather than through one of the
+        # require_* dependency factories that check does automatically. A
+        # nonexistent project (organization_id is None) is left to fall
+        # through to the ordinary "no role" rejection below rather than
+        # being misreported as "organisation disabled".
+        org_active = organization_id is None or is_org_active(db, organization_id)
+        has_access = (
+            user is not None
+            and org_active
+            and (
+                db.scalar(
+                    select(UserProjectRole).where(
+                        UserProjectRole.user_id == user.id, UserProjectRole.project_id == project_id
+                    )
                 )
+                is not None
+                or db.scalar(
+                    select(ProjectGroupMember)
+                    .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+                    .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id == user.id)
+                )
+                is not None
             )
-            is not None
-            or db.scalar(
-                select(ProjectGroupMember)
-                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
-                .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id == user.id)
-            )
-            is not None
         )
     finally:
         db.close()
@@ -127,7 +152,7 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=_EXPIRY_CHECK_INTERVAL_SECONDS)
             except TimeoutError:
-                if not _user_session_still_valid(user.id, token_version):
+                if not _user_session_still_valid(user.id, token_version, organization_id):
                     await websocket.close(code=4401)
                     break
                 continue  # still active and not revoked — loop back to the expiry check

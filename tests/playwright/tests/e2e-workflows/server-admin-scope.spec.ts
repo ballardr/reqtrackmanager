@@ -31,15 +31,19 @@ test.describe("server admin with zero org memberships", () => {
       await expect(page.getByText("No projects to show.")).toBeVisible();
     });
 
-    await test.step("opening an org's admin page does not reveal its content", async () => {
+    await test.step("opening an org's admin page shows a degraded view, not its content", async () => {
       await page.getByRole("link", { name: "Organisations", exact: true }).first().click();
       await page.getByText(ORG_NAMES.alpha).click();
       // Org details alone are server-admin-visible (GET /orgs/{id} has a
-      // documented bypass), but users/groups/resources are not — the page
-      // fetches all of these together and never renders past the loading
-      // spinner once any of them 403s, so Alpha's actual admin content
-      // (user list, groups) never appears.
-      await expect(page.getByText(ORG_NAMES.alpha, { exact: true })).toHaveCount(0);
+      // documented bypass) — the degraded view shows the org's name so the
+      // admin knows which org this is before deciding to join/bootstrap it
+      // — but users/groups/resources are not: the full page's own bundle
+      // of those calls 403s as a whole, so Alpha's actual admin content
+      // (user list, groups) never appears, only the "not a member" carve-out
+      // actions (see docs/decisions.md's "Organisation disable and hard
+      // delete" / earlier OrgAdminPage degraded-view sections).
+      await expect(page.getByRole("heading", { name: ORG_NAMES.alpha, exact: true })).toBeVisible();
+      await expect(page.getByText("You're not a member of this organisation")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
     });
 

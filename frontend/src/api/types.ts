@@ -71,6 +71,11 @@ export interface User {
   display_name_locked: boolean;
   is_2fa_enabled: boolean;
   email_digest_mode: DigestMode;
+  /** General-purpose key/value bag for lightweight UI display preferences
+   * that don't warrant their own dedicated field — e.g. per-list tile/list
+   * view mode, keyed `view_mode:<page>`. Deliberately loosely typed so a
+   * new preference of this kind never needs an API type change. */
+  ui_preferences: Record<string, string | boolean>;
 }
 
 export interface TwoFactorChallenge {
@@ -86,6 +91,8 @@ export interface Organization {
   default_template_project_id: string | null;
   login_background_file_id: string | null;
   slug: string | null;
+  is_active: boolean;
+  disabled_at: string | null;
 }
 
 export interface FileAsset {

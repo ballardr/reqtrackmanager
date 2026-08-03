@@ -12,6 +12,7 @@ interface AuthContextValue {
   verify2fa: (challengeToken: string, code: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  setUiPreference: (key: string, value: string | boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -67,8 +68,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  // Applied optimistically (an instant toggle shouldn't wait on a round
+  // trip) and persisted server-side (U-U-01/U-U-03's existing preference
+  // fields all sync this way) so it follows the user across devices/
+  // sessions rather than living only in this browser's localStorage.
+  const setUiPreference = useCallback((key: string, value: string | boolean) => {
+    setUser((current) => (current ? { ...current, ui_preferences: { ...current.ui_preferences, [key]: value } } : current));
+    api.patch("/api/v1/auth/me/preferences", { ui_preferences: { [key]: value } }).catch(() => {
+      // Best-effort: a failed sync just means this device's next reload
+      // falls back to whatever was last persisted — not worth surfacing
+      // as an error for a low-stakes display preference.
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, verify2fa, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, verify2fa, logout, refreshUser, setUiPreference }}>
       {children}
     </AuthContext.Provider>
   );

@@ -10,9 +10,10 @@ organisation, and every project user must also be an organisation user
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,11 +77,28 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             (`settings.pat_default_max_lifetime_days`). Enforced dynamically
             at PAT auth time, not just at creation — see
             `models.pat.PersonalAccessToken`'s docstring.
+        is_active: Whether this organisation's content is currently
+            reachable at all (e.g. suspended for non-payment). Reversible,
+            unlike deletion: no data is touched, just gated. Deliberately
+            stronger than any per-user role — while disabled, even this
+            org's own admins are locked out of every org/project-scoped
+            request (`services/rbac.py`'s `_require_org_active`), not just
+            ordinary members. Only a server admin can toggle it
+            (`POST /orgs/{id}/disable` / `/enable`), and toggling doesn't
+            itself require org membership (I-M-05's tenancy-management
+            carve-out) — a suspended org's own admin, by definition, is
+            exactly the caller this needs to work without.
+        disabled_at / disabled_by: Set when `is_active` transitions to
+            False, mirroring the `Project.archived_at`/`archived_by`
+            pattern; cleared on re-enable.
     """
 
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("file_assets.id", use_alter=True, name="fk_organizations_logo_file_id"),
@@ -126,7 +144,7 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "report_templates"
     __table_args__ = (UniqueConstraint("organization_id", "name"),)
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     accent_color_hex: Mapped[str] = mapped_column(String(7), default="#2563eb")
     include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -149,7 +167,7 @@ class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id")
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     role: Mapped[OrgRole] = mapped_column(str_enum(OrgRole))
 
@@ -167,7 +185,7 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "org_groups"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id")
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     name: Mapped[str] = mapped_column(String(255))
 
@@ -178,5 +196,5 @@ class OrgGroupMember(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "org_group_members"
     __table_args__ = (UniqueConstraint("org_group_id", "user_id"),)
 
-    org_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("org_groups.id"))
+    org_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"))
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

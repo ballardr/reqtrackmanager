@@ -29,6 +29,41 @@ def test_user_can_update_pronouns_and_theme(client, admin_token):
     assert body["theme_preference"] == "dark"
 
 
+def test_ui_preferences_are_shallow_merged_not_replaced(client, admin_token):
+    """`ui_preferences` (view-mode toggles, nav-rail/section collapse state,
+    etc.) is a general-purpose key/value bag — setting one key must not
+    clobber another already-stored key, since the frontend only ever sends
+    the one key it's currently changing."""
+    resp = client.patch(
+        "/api/v1/auth/me/preferences",
+        json={"ui_preferences": {"view_mode:projects": "list"}},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ui_preferences"] == {"view_mode:projects": "list"}
+
+    resp = client.patch(
+        "/api/v1/auth/me/preferences",
+        json={"ui_preferences": {"nav_rail_collapsed": True}},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ui_preferences"] == {"view_mode:projects": "list", "nav_rail_collapsed": True}
+
+    # Setting an existing key overwrites just that key, not the whole bag.
+    resp = client.patch(
+        "/api/v1/auth/me/preferences",
+        json={"ui_preferences": {"view_mode:projects": "tiles"}},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ui_preferences"] == {"view_mode:projects": "tiles", "nav_rail_collapsed": True}
+
+    # Persists across requests, not just echoed back once.
+    resp = client.get("/api/v1/auth/me", headers=auth_headers(admin_token))
+    assert resp.json()["ui_preferences"] == {"view_mode:projects": "tiles", "nav_rail_collapsed": True}
+
+
 def test_display_name_change_blocked_once_locked(client, admin_token, org_id):
     from tests.conftest import create_org_user
 

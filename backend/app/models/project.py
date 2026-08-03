@@ -34,7 +34,7 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "projects"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id")
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     name: Mapped[str] = mapped_column(String(255))
     summary: Mapped[str] = mapped_column(String(2000), default="")
@@ -83,7 +83,7 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "project_stages"
     __table_args__ = (UniqueConstraint("project_id", "name"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     status: Mapped[StageStatus] = mapped_column(str_enum(StageStatus, 20), default=StageStatus.SCOPING)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -114,7 +114,7 @@ class StageReviewResponse(UUIDPKMixin, Base):
     __tablename__ = "stage_review_responses"
     __table_args__ = (UniqueConstraint("stage_id", "user_id"),)
 
-    stage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_stages.id"))
+    stage_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"))
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     response: Mapped[StageReviewResponseChoice] = mapped_column(str_enum(StageReviewResponseChoice, 20))
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -127,7 +127,7 @@ class ProjectComponent(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "project_components"
     __table_args__ = (UniqueConstraint("project_id", "prefix"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     prefix: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -139,7 +139,7 @@ class ProjectCategory(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "project_categories"
     __table_args__ = (UniqueConstraint("project_id", "prefix"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     prefix: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -157,7 +157,7 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "project_groups"
     __table_args__ = (UniqueConstraint("project_id", "name"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -178,11 +178,11 @@ class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):
     )
 
     project_group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_groups.id")
+        UUID(as_uuid=True), ForeignKey("project_groups.id", ondelete="CASCADE")
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     org_group_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("org_groups.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), nullable=True
     )
 
 
@@ -193,7 +193,7 @@ class UserProjectRole(UUIDPKMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("user_id", "project_id", "role"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
 
 
@@ -204,5 +204,5 @@ class FavoriteProject(UUIDPKMixin, Base):
     __table_args__ = (UniqueConstraint("user_id", "project_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

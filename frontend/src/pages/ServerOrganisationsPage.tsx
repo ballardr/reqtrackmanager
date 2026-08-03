@@ -2,23 +2,35 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { Organization } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { t } from "../i18n/strings";
+
+const strings = t();
 
 /**
  * Server-admin console listing every organisation on the deployment
  * (`GET /orgs` already returns all orgs for a server admin, scoped to the
- * caller's own memberships for everyone else) plus creation. Deletion is
- * intentionally not offered here: an organisation can own an unbounded
- * number of projects/requirements, and there is no archive concept for
- * organisations (unlike projects) to make removal safely reversible.
+ * caller's own memberships for everyone else) plus creation, and the two
+ * lifecycle actions available for an existing one:
+ *
+ * - **Disable/enable**: reversible, no data touched — blocks every org/
+ *   project-scoped request for everyone, including the org's own admins,
+ *   until re-enabled (e.g. a hosting customer stopped paying).
+ * - **Delete**: irreversible, gated behind typing the organisation's exact
+ *   name to confirm — permanently removes everything it owns (projects,
+ *   requirements, files, ...). See docs/decisions.md's "Organisation
+ *   disable and hard delete" section for the full design.
  */
 export function ServerOrganisationsPage() {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   async function reload() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
@@ -40,12 +52,50 @@ export function ServerOrganisationsPage() {
     }
   }
 
+  async function runAction(action: () => Promise<void>) {
+    setActionError(null);
+    try {
+      await action();
+      await reload();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+    }
+  }
+
+  function disableOrg(org: Organization) {
+    if (!window.confirm(strings.serverOrgs.disableConfirm.replace("{name}", org.name))) return;
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/disable`));
+  }
+
+  function enableOrg(org: Organization) {
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/enable`));
+  }
+
+  function startDelete(org: Organization) {
+    setActionError(null);
+    setDeleteConfirmText("");
+    setDeletingOrgId(org.id);
+  }
+
+  function cancelDelete() {
+    setDeletingOrgId(null);
+    setDeleteConfirmText("");
+  }
+
+  async function confirmDelete(org: Organization) {
+    await runAction(async () => {
+      await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: deleteConfirmText });
+    });
+    setDeletingOrgId(null);
+    setDeleteConfirmText("");
+  }
+
   if (!orgs) return <Spinner />;
 
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>Organisations</h1>
+        <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
           <Plus size={16} /> New organisation
         </button>
@@ -61,11 +111,14 @@ export function ServerOrganisationsPage() {
         </div>
       )}
 
+      {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+
       <div className="card" style={{ overflowX: "auto" }}>
         <table>
           <thead>
             <tr>
               <th>Name</th>
+              <th>Status</th>
               <th>Created</th>
               <th />
             </tr>
@@ -74,11 +127,34 @@ export function ServerOrganisationsPage() {
             {orgs.map((o) => (
               <tr key={o.id}>
                 <td>{o.name}</td>
+                <td>
+                  {o.is_active ? (
+                    <span className="badge">{strings.serverOrgs.active}</span>
+                  ) : (
+                    <span className="badge" style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}>
+                      {strings.serverOrgs.disabled}
+                    </span>
+                  )}
+                </td>
                 <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
                 <td>
-                  <Link to={`/orgs/${o.id}/admin`} className="btn">
-                    Edit
-                  </Link>
+                  <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
+                    <Link to={`/orgs/${o.id}/admin`} className="btn">
+                      Edit
+                    </Link>
+                    {o.is_active ? (
+                      <button className="btn" onClick={() => disableOrg(o)}>
+                        {strings.serverOrgs.disable}
+                      </button>
+                    ) : (
+                      <button className="btn" onClick={() => enableOrg(o)}>
+                        {strings.serverOrgs.enable}
+                      </button>
+                    )}
+                    <button className="btn btn-danger" onClick={() => startDelete(o)}>
+                      {strings.serverOrgs.delete}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -86,6 +162,36 @@ export function ServerOrganisationsPage() {
         </table>
         {orgs.length === 0 && <p className="text-muted">No organisations yet.</p>}
       </div>
+
+      {deletingOrgId &&
+        (() => {
+          const org = orgs.find((o) => o.id === deletingOrgId);
+          if (!org) return null;
+          return (
+            <div className="card stack" style={{ borderColor: "var(--color-danger)" }}>
+              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.deleteTitle}</h2>
+              <p className="text-muted">{strings.serverOrgs.deleteHint.replace("{name}", org.name)}</p>
+              <input
+                className="input"
+                placeholder={org.name}
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+              />
+              <div className="row">
+                <button
+                  className="btn btn-danger"
+                  onClick={() => confirmDelete(org)}
+                  disabled={deleteConfirmText !== org.name}
+                >
+                  {strings.serverOrgs.deleteConfirmButton}
+                </button>
+                <button className="btn" onClick={cancelDelete}>
+                  {strings.common.cancel}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }

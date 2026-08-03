@@ -1,8 +1,9 @@
 import { Lock, LogOut, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import type {
   FileAsset,
   OrgAdvancedSettings,
@@ -28,7 +29,19 @@ const strings = t();
 export function OrgAdminPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [org, setOrg] = useState<Organization | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [degradedOrgName, setDegradedOrgName] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [enableError, setEnableError] = useState<string | null>(null);
+  const [enabling, setEnabling] = useState(false);
+  const [bootstrapEmail, setBootstrapEmail] = useState("");
+  const [bootstrapName, setBootstrapName] = useState("");
+  const [bootstrapPassword, setBootstrapPassword] = useState("");
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapCreated, setBootstrapCreated] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [groups, setGroups] = useState<OrgGroup[]>([]);
@@ -92,13 +105,39 @@ export function OrgAdminPage() {
 
   async function reload() {
     if (!orgId) return;
-    const [o, g, r, projects, templates] = await Promise.all([
-      api.get<Organization>(`/api/v1/orgs/${orgId}`),
-      api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
-      api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
-      api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
-      api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
-    ]);
+    // Reaching this page at all doesn't imply membership in this specific
+    // organisation — a server admin can see every org listed under Server
+    // Management without holding any role in most of them (I-M-05: server
+    // admin access is tenancy-wide, not content-wide), and a stale link/
+    // bookmark can point at an org whose membership has since changed.
+    // Every call below requires at least `member`, so this bundle 403s as
+    // a whole for exactly that case — caught here so it surfaces as a
+    // real message instead of leaving `org` unset and the page spinning
+    // forever (its loading gate is just `if (!org) return <Spinner />`).
+    let o: Organization, g: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
+    try {
+      [o, g, r, projects, templates] = await Promise.all([
+        api.get<Organization>(`/api/v1/orgs/${orgId}`),
+        api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
+        api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
+        api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+        api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
+      ]);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : strings.common.error);
+      // `GET /orgs/{id}` alone has its own server-admin bypass (unlike the
+      // group/resource/template calls above, which is exactly why the
+      // bundle as a whole just failed) — best-effort fetch here so the
+      // degraded view below can at least show which org this is.
+      try {
+        setDegradedOrgName((await api.get<Organization>(`/api/v1/orgs/${orgId}`)).name);
+      } catch {
+        setDegradedOrgName(null);
+      }
+      return;
+    }
+    setLoadError(null);
+    setDegradedOrgName(null);
     setOrg(o);
     setGroups(g);
     setResources(r);
@@ -203,6 +242,64 @@ export function OrgAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
+  /** Degraded-view action for a *disabled* org specifically (distinct from
+   * "not a member" below — a server admin might well already be a genuine
+   * member of an org that's since been disabled): re-enables it, then
+   * reloads, which now succeeds fully again for anyone who already had a
+   * role here. */
+  async function enableThisOrg() {
+    if (!orgId) return;
+    setEnableError(null);
+    setEnabling(true);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/enable`);
+      await reload();
+    } catch (err) {
+      setEnableError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setEnabling(false);
+    }
+  }
+
+  /** Degraded-view action (self-hosting use case): a server admin with no
+   * role in this org grants *themselves* org_admin, then reloads — which
+   * now succeeds fully, since they're a genuine member from this point on. */
+  async function joinAsAdmin() {
+    if (!orgId) return;
+    setJoinError(null);
+    setJoining(true);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/join-as-admin`);
+      await reload();
+    } catch (err) {
+      setJoinError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  /** Degraded-view action (hosting-company use case): a server admin
+   * creates an org_admin user in this org for *someone else*, without
+   * becoming a member themselves — the same carve-out `create_org_user`
+   * already grants (regardless of whether this org already has users),
+   * just reachable from here now that the full page can't load. */
+  async function createInitialAdmin() {
+    if (!orgId) return;
+    setBootstrapError(null);
+    setBootstrapCreated(false);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/users`, {
+        email: bootstrapEmail, display_name: bootstrapName, password: bootstrapPassword, role: "org_admin",
+      });
+      setBootstrapEmail("");
+      setBootstrapName("");
+      setBootstrapPassword("");
+      setBootstrapCreated(true);
+    } catch (err) {
+      setBootstrapError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
   async function createUser() {
     await api.post(`/api/v1/orgs/${orgId}/users`, {
       email: newUserEmail, display_name: newUserName, password: newUserPassword, role: "member",
@@ -293,6 +390,94 @@ export function OrgAdminPage() {
     } catch (err) {
       setLeaveError(err instanceof ApiError ? err.message : "Something went wrong.");
     }
+  }
+
+  const orgIsDisabled = loadError?.toLowerCase().includes("disabled") ?? false;
+
+  if (loadError && orgIsDisabled && user?.is_server_admin) {
+    // A server admin hitting a *disabled* org — distinct from "not a
+    // member" below, since they might well already be a genuine member of
+    // an org that's since been disabled. The one useful action here is
+    // re-enabling it, which then reloads as normal for anyone with a
+    // pre-existing role.
+    return (
+      <div className="stack">
+        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations}</h1>
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.disabled}</h2>
+          <p className="text-muted">{loadError}</p>
+          {enableError && <div style={{ color: "var(--color-danger)" }}>{enableError}</div>}
+          <button className="btn btn-primary" onClick={enableThisOrg} disabled={enabling} style={{ alignSelf: "flex-start" }}>
+            {strings.serverOrgs.enable}
+          </button>
+        </div>
+        <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
+          {strings.orgAdmin.backToOrganizations}
+        </Link>
+      </div>
+    );
+  }
+
+  if (loadError && (orgIsDisabled || !user?.is_server_admin)) {
+    // Plain, non-actionable error: a disabled org for a non-server-admin
+    // (nothing they can do here), or any org for a non-server-admin who
+    // simply isn't a member — no carve-out applies to either case.
+    return (
+      <div className="card stack">
+        <p>{loadError}</p>
+        <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
+          {strings.orgAdmin.backToOrganizations}
+        </Link>
+      </div>
+    );
+  }
+
+  if (loadError && user?.is_server_admin) {
+    // I-M-05's carve-out, surfaced here rather than just erroring out: a
+    // server admin has no automatic role in this org, but can still
+    // either become its admin themselves (self-hosting) or create an
+    // admin user in it for someone else (hosting-company use case,
+    // whether or not this org already has users) — both already allowed
+    // server-admin-only at the API layer, just not previously reachable
+    // from this page at all.
+    return (
+      <div className="stack">
+        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations}</h1>
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle}</h2>
+          <p className="text-muted">{strings.orgAdmin.notAMemberHint}</p>
+          {joinError && <div style={{ color: "var(--color-danger)" }}>{joinError}</div>}
+          <button className="btn btn-primary" onClick={joinAsAdmin} disabled={joining} style={{ alignSelf: "flex-start" }}>
+            {strings.orgAdmin.joinAsAdmin}
+          </button>
+        </div>
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.createInitialAdmin}</h2>
+          <input className="input" placeholder={strings.orgAdmin.email} value={bootstrapEmail} onChange={(e) => setBootstrapEmail(e.target.value)} />
+          <input className="input" placeholder={strings.orgAdmin.name} value={bootstrapName} onChange={(e) => setBootstrapName(e.target.value)} />
+          <input
+            className="input"
+            type="password"
+            placeholder={strings.orgAdmin.password}
+            value={bootstrapPassword}
+            onChange={(e) => setBootstrapPassword(e.target.value)}
+          />
+          {bootstrapError && <div style={{ color: "var(--color-danger)" }}>{bootstrapError}</div>}
+          {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated}</div>}
+          <button
+            className="btn btn-primary"
+            onClick={createInitialAdmin}
+            disabled={!bootstrapEmail || !bootstrapName || !bootstrapPassword}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {strings.orgAdmin.newUser}
+          </button>
+        </div>
+        <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
+          {strings.orgAdmin.backToOrganizations}
+        </Link>
+      </div>
+    );
   }
 
   if (!org) return <Spinner />;

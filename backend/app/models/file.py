@@ -38,7 +38,7 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "file_assets"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
     storage_backend: Mapped[str] = mapped_column(String(20))
     storage_key: Mapped[str] = mapped_column(String(500))
     filename: Mapped[str] = mapped_column(String(255))
@@ -54,7 +54,7 @@ class RequirementFile(UUIDPKMixin, Base):
     __tablename__ = "requirement_files"
     __table_args__ = (UniqueConstraint("requirement_id", "file_id"),)
 
-    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id"))
-    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id"))
+    requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

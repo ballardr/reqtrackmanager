@@ -10,13 +10,39 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models.enums import OrgRole
 
 
 class OrganizationCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str) -> str:
+        """Rejects a whitespace-only name (`min_length` alone only blocks a
+        literal empty string). A blank organisation name isn't just a
+        display nit: `DELETE /orgs/{id}`'s "type the exact name to confirm"
+        safety gate (`OrganizationDeleteConfirm`) degenerates to comparing
+        two empty strings for such an org — the "must not be a stray click"
+        guarantee that gate exists for would otherwise hold for every other
+        organisation but this one (a hardening-review finding)."""
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Organisation name cannot be blank.")
+        return stripped
+
+
+class OrganizationDeleteConfirm(BaseModel):
+    """Safety gate for `DELETE /orgs/{id}`: the caller must type the
+    organisation's exact current name, the same "type the name to confirm"
+    pattern used by other tools for irreversible actions — this one
+    permanently destroys every project/requirement/change request/file the
+    organisation owns, with no archive or undo, so a stray click alone must
+    never be enough."""
+
+    confirm_name: str
 
 
 class OrganizationOut(BaseModel):
@@ -29,6 +55,8 @@ class OrganizationOut(BaseModel):
     default_template_project_id: UUID | None = None
     login_background_file_id: UUID | None = None
     slug: str | None = None
+    is_active: bool = True
+    disabled_at: datetime | None = None
 
 
 class DefaultTemplateUpdate(BaseModel):

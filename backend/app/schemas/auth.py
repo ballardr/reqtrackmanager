@@ -8,6 +8,7 @@ and self-service profile fields (C-U-16, C-U-18).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -39,6 +40,7 @@ class UserOut(BaseModel):
     display_name_locked: bool
     is_2fa_enabled: bool
     email_digest_mode: DigestMode
+    ui_preferences: dict[str, Any] = Field(default_factory=dict)
 
 
 class TokenResponse(BaseModel):
@@ -100,3 +102,9 @@ class UserPreferencesUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     pronouns: str | None = Field(default=None, max_length=50)
     email_digest_mode: DigestMode | None = None
+    ui_preferences: dict[str, Any] | None = Field(
+        default=None,
+        description="Partial update, shallow-merged into the existing bag by top-level key rather than "
+        "replacing it wholesale — setting one key (e.g. a single list's tile/list choice) never needs to "
+        "know or resend every other key already stored.",
+    )
