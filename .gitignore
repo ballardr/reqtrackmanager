@@ -195,3 +195,5 @@ frontend/storybook-static/
 # Playwright
 .playwright-mcp
 .playwright-mcp/*
+
+mcp-server/.ruff_cache/*

@@ -120,6 +120,39 @@ test("SSO login: a user in a Keycloak group with no configured mapping gets an a
   expect((await orgResp.json())).toEqual([]);
 });
 
+test("SSO login via mcp-server's own /login page: real Keycloak flow lands on the MCP token page", async ({ page }) => {
+  // Proves mcp-server/server.py's SSO addition end to end, the same way the
+  // tests above prove the frontend's own SSO login: a real browser through
+  // Keycloak's real login form, but started from mcp-server's /login page
+  // (client=mcp) instead of the app's /login/{slug} page, landing on
+  // mcp-server's own /login/oidc/complete with a usable token rather than
+  // in the authenticated app UI.
+  const mcpServerUrl = "http://localhost:8100";
+
+  await page.goto(`${mcpServerUrl}/login?org=${ORG_SLUG}`);
+  await expect(page.getByRole("button", { name: /Sign in with .* via SSO/ })).toBeVisible();
+  await page.getByRole("button", { name: /Sign in with .* via SSO/ }).click();
+
+  await page.waitForURL(/localhost:8080\/realms\/reqtrack\//);
+  await page.getByLabel(/username or email/i).fill(KEYCLOAK_ADMIN_USER);
+  await page.getByLabel("Password", { exact: true }).fill(KEYCLOAK_PASSWORD);
+  await page.getByRole("button", { name: /sign in/i }).click();
+
+  // Keycloak redirects to the backend callback, which — because this login
+  // was started with client=mcp — redirects to mcp-server's own
+  // /login/oidc/complete instead of the frontend's /oidc-complete.
+  await page.waitForURL("**/login/oidc/complete**", { timeout: 15000 });
+  await expect(page.getByText("Signed in")).toBeVisible();
+
+  const tokenText = await page.locator(".token-box").first().textContent();
+  expect(tokenText?.split(".").length).toBe(3); // looks like a JWT (header.payload.signature)
+
+  // The token this real SSO round trip produced is a genuine, usable
+  // ReqTrackManager access token for the Keycloak-provisioned account.
+  const me = await (await page.request.get(`${apiBaseUrl}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${tokenText}` } })).json();
+  expect(me.email).toBe(KEYCLOAK_ADMIN_USER);
+});
+
 async function requireOrgAdminsGroup(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(ADMIN_EMAIL);

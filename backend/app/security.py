@@ -84,7 +84,7 @@ def create_2fa_challenge_token(subject: str) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_oidc_state_token(organization_id: str, client_nonce: str) -> str:
+def create_oidc_state_token(organization_id: str, client_nonce: str, client: str = "app") -> str:
     """Creates a short-lived signed token carrying the organisation id
     (and the browser-generated client nonce, see below) through an OIDC
     authorization-code round trip (E-U-01), used as the `state` parameter.
@@ -107,9 +107,21 @@ def create_oidc_state_token(organization_id: str, client_nonce: str) -> str:
     unrelated to any particular org's flow) and hand a victim a crafted
     `/oidc-complete?token=...` link, silently logging the victim's browser
     into the attacker's account (a login-CSRF / session-fixation pattern).
+
+    `client`: which caller started this login attempt — `"app"` (the
+    frontend, default) or `"mcp"` (`mcp-server`'s own `/login` page). Only
+    ever one of these two literal, server-defined values, embedded in this
+    *signed* token rather than trusted from any redirect-target string
+    supplied by the caller — `routers/auth_oidc.py`'s callback uses it only
+    to pick between two fixed, server-configured redirect base URLs, never
+    to redirect somewhere client-controlled (which would be an open
+    redirect / token-theft vector).
     """
     expire = datetime.now(UTC) + timedelta(minutes=10)
-    payload = {"org_id": organization_id, "client_nonce": client_nonce, "exp": expire, "purpose": "oidc_state"}
+    payload = {
+        "org_id": organization_id, "client_nonce": client_nonce, "client": client,
+        "exp": expire, "purpose": "oidc_state",
+    }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

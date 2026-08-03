@@ -1,0 +1,192 @@
+# MCP server: retrieving requirements from an AI assistant
+
+ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as read-only tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
+
+## What it can do
+
+Fifteen tools, all read-only (no tool can create, edit, or delete anything):
+
+| Tool | Purpose |
+| --- | --- |
+| `list_organizations` | Organisations the caller's account belongs to or administers |
+| `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
+| `get_project` | A single project's detail |
+| `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
+| `get_requirement` | A single requirement's full current detail |
+| `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
+| `list_change_requests` | Change requests in a project, optionally filtered by status |
+| `get_change_request` | A single change request's full current detail |
+| `list_change_request_votes` | A change request's advisory stakeholder vote tally and individual votes (C-R-03) |
+| `list_change_request_tasks` | Follow-up tasks tracked against a change request (C-R-02, C-R-04) |
+| `list_change_request_comments` | The discussion thread on a change request |
+| `list_requirement_comments` | The discussion thread on a requirement |
+| `list_notifications` | The caller's own in-app notifications, optionally unread-only |
+| `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
+| `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
+
+Deliberately scoped to *reading* — no tool can create, edit, delete, vote, comment, decide a change request, or record a review outcome. See [Known limitations](#known-limitations) for what's out of scope and why.
+
+## Authentication model
+
+**This server holds no credentials of its own and performs no authorization itself.** Every tool call requires the *caller* to present their own ReqTrackManager access token — the same JWT a normal login issues — as an `Authorization: Bearer <token>` HTTP header on the MCP connection. The server does nothing more than relay that exact header to the backend API on every request it makes on the caller's behalf; the backend's own existing, already-tested RBAC does 100% of the access-control work.
+
+This was a deliberate choice over the alternative (the MCP server logging in once as a fixed "integration" service account): a shared service account would mean every user of this MCP server sees whatever that one account can see — the opposite of this project's per-user, per-project access model, and a much larger blast radius if that one credential ever leaked. With pass-through auth, an AI assistant using this server can never see anything the person configuring it couldn't already see themselves through the normal UI or API. There is no second permission model to design, audit, or get wrong.
+
+Concretely, this means:
+
+- **No Authorization header at all** → the tool call fails immediately with a clear message telling you to configure one. It never silently returns an empty result.
+- **An expired or otherwise-invalid token** → the backend's own 401 is surfaced as a clear tool error. Native-login access tokens are short-lived (12 hours by default — `ACCESS_TOKEN_EXPIRE_MINUTES`) and there is currently no longer-lived "API token" concept in ReqTrackManager, so a token used here needs periodic refreshing the same way a browser session would. See each client's setup section below for how to make that less painful — Claude Code in particular can refresh it automatically.
+- **A valid token for an account with no access to a given org/project/requirement** → the backend's own 403 (or 404, for something that doesn't exist) is surfaced exactly as calling the REST API directly would produce.
+
+### Getting a token
+
+**The easy way — the server's own `/login` page.** Visit `http://localhost:8100/login` (or wherever `mcp-server` is deployed) in a browser. It's a plain HTML sign-in form served by `mcp-server` itself — no separate service, nothing to install. Enter your ReqTrackManager email and password (and a TOTP code afterward, if your account has 2FA enabled); the page relays those credentials to the backend's own `POST /api/v1/auth/login` (and `/api/v1/auth/2fa/verify` for the 2FA step) on your behalf, one time, and then shows you the resulting access token plus ready-to-paste config snippets for Claude Code and VS Code. This is the recommended way to get a token — it's the same login the backend already does, just without needing to hand-craft a `curl` call.
+
+A few things worth knowing about this page:
+
+- It never authenticates as its own account — it's a convenience wrapper around the same login endpoint you'd otherwise call directly, not a new credential store or a new auth mechanism. Everything in [Authentication model](#authentication-model) above still applies.
+- Your password is sent once, server-side, straight through to the backend's login endpoint, and is never written to a log, a file, or anywhere else.
+- The token is only ever shown in the page's response body — never in a URL — and the response is sent with `Cache-Control: no-store` so it isn't cached anywhere along the way.
+
+**SSO accounts**: if your organisation has SSO enabled, visit `http://localhost:8100/login?org=<your-org-slug>` instead (ask your admin for the slug, same as you would for the app's own org-branded `/login/{slug}` page). This shows a "Sign in with SSO" button that redirects through your identity provider's real login page — if your browser already has an active session there, it comes straight back with a token, no form to fill in at all (the same "already logged in → it just works" experience as tools like VS Code's Azure DevOps MCP server). Under the hood this reuses ReqTrackManager's existing OIDC login flow (`docs/decisions.md`'s "MCP server: expanded tool set..." section has the full design writeup, including why this doesn't require a custom OAuth authorization server) — landing on `/login/oidc/complete` instead of the main app once you're back.
+
+**The manual way — call the login endpoint directly**, useful for scripting or automation:
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"your-password"}'
+```
+
+This returns `{"access_token": "...", ...}` for an account without 2FA. An account with 2FA enabled instead returns a short-lived challenge token that must be exchanged via `POST /api/v1/auth/2fa/verify` with a current TOTP code — fine for a one-off manual token, but not something a non-interactive script (like the `headersHelper` below) can complete on its own; use a 2FA-disabled account for automated setups.
+
+Consider creating a dedicated account for AI-assistant use rather than reusing a real person's login — its access is scoped by whatever real ReqTrackManager role you give it, same as any other account (a project-`stakeholder`-only account, for instance, can only ever retrieve that project's requirements through this server).
+
+## Running it
+
+Part of both Compose stacks already — no extra step beyond the normal `docker compose up`:
+
+```bash
+cd tests/container && docker compose up -d --build   # dev/test; also available in the root docker-compose.yml
+```
+
+It listens on `:8100`, with the MCP endpoint at `http://localhost:8100/mcp` and a plain liveness check at `http://localhost:8100/health`. `REQTRACK_API_URL` (default `http://backend:8000`, the Compose-internal address) points it at the backend.
+
+## Setting up Claude Code
+
+**Quick, static token** (simplest; you'll need to re-run this when the token expires):
+
+```bash
+claude mcp add --transport http reqtrackmanager http://localhost:8100/mcp \
+  --header "Authorization: Bearer <your-access-token>"
+```
+
+Or in `.mcp.json` directly, with environment-variable expansion so the token isn't committed to the repo:
+
+```json
+{
+  "mcpServers": {
+    "reqtrackmanager": {
+      "type": "http",
+      "url": "http://localhost:8100/mcp",
+      "headers": {
+        "Authorization": "Bearer ${REQTRACK_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+**Self-refreshing token (recommended for anything longer than a quick test)**: Claude Code supports a `headersHelper` — a command it runs fresh on every connection and reconnect, and automatically re-runs (retrying the failed call once) if a tool call comes back 401/403. `mcp-server/scripts/get_auth_header.sh` is written exactly for this: it logs in and prints the header JSON `headersHelper` expects.
+
+```json
+{
+  "mcpServers": {
+    "reqtrackmanager": {
+      "type": "http",
+      "url": "http://localhost:8100/mcp",
+      "headersHelper": "REQTRACK_URL=http://localhost:8000 REQTRACK_EMAIL=you@example.com REQTRACK_PASSWORD=your-password mcp-server/scripts/get_auth_header.sh"
+    }
+  }
+}
+```
+
+(Requires a native, 2FA-disabled account — see the script's own docstring.) Check `claude mcp list` afterward; it reports `✔ Connected`, `! Needs authentication`, or `✘ Failed to connect` per server.
+
+## Setting up VS Code (GitHub Copilot Chat)
+
+VS Code's MCP support uses `.vscode/mcp.json` with an `inputs` array so the token is prompted for once and stored securely, rather than committed to the file:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "reqtrack-token",
+      "description": "ReqTrackManager access token (from POST /api/v1/auth/login)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "reqtrackmanager": {
+      "type": "http",
+      "url": "http://localhost:8100/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:reqtrack-token}"
+      }
+    }
+  }
+}
+```
+
+Open the Command Palette → **MCP: Add Server** → **HTTP** as an alternative to hand-writing the file, then paste the URL and let VS Code walk you through the input prompt. Click **Start** at the top of `mcp.json` to connect. There's no `headersHelper` equivalent in VS Code today, so a token configured this way needs manually re-entering (Command Palette → **MCP: Add Server** again, or clear the stored input) once it expires.
+
+## Setting up Microsoft Copilot Studio
+
+Copilot Studio's native MCP wizard supports header-based API-key authentication directly, which lines up with this server's pass-through design:
+
+1. In your agent, go to **Tools → Add a tool → New tool → Model Context Protocol**.
+2. **Server URL**: the publicly-reachable MCP endpoint — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below, since `localhost` won't be reachable from Copilot Studio's own infrastructure.
+3. **Authentication type**: **API key**.
+4. **Type**: **Header**.
+5. **Header name**: `Authorization`.
+6. **Value**: `Bearer <your-access-token>` — type the literal word `Bearer` followed by the token; Copilot Studio sends whatever you enter here as the header's raw value, it doesn't add the scheme prefix for you.
+7. **Create**, then **Add to agent**.
+
+Because Copilot Studio's connection is configured once per connector rather than refreshed per-session the way Claude Code's `headersHelper` can, plan for the token's ~12-hour expiry — either update the connection's stored API key periodically, or run a dedicated account with a deliberately longer `ACCESS_TOKEN_EXPIRE_MINUTES` reserved for this integration (see [Known limitations](#known-limitations)).
+
+## Generic / other MCP clients
+
+Any MCP client that supports the Streamable HTTP transport (the current, non-deprecated transport — SSE is legacy) can use this server with just two things:
+
+- **URL**: `http://<host>:8100/mcp` (or wherever it's deployed/proxied).
+- **Header**: `Authorization: Bearer <a ReqTrackManager access token>`.
+
+No OAuth flow, no client registration, no server-specific SDK — it's a standard MCP server over plain HTTP with one required header. See the [MCP specification](https://modelcontextprotocol.io/specification) for the wire protocol itself.
+
+## Deploying it for remote clients (Copilot Studio, etc.)
+
+A cloud service like Copilot Studio needs a publicly-reachable URL, not `localhost`. The same reverse-proxy pattern documented in [deployment.md](deployment.md#same-origin-subpath-deployment-avoiding-cors) for the REST API applies here — add one more `location` block:
+
+```nginx
+location /mcp/ {
+    proxy_pass http://mcp-server:8100;
+    proxy_set_header Host $host;
+    # Streamable HTTP keeps a connection open for server-initiated
+    # messages — make sure buffering/timeouts don't cut that off:
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
+```
+
+Then the MCP URL you give any remote client is `https://my.website.com/mcp/mcp` (the proxy's own `/mcp/` prefix, plus the server's own `/mcp` endpoint path underneath it) — or adjust the `location` match/`proxy_pass` target if you'd rather it resolve to a cleaner external path.
+
+**Always put this behind TLS in production**, same as the rest of the stack (see deployment.md's "TLS and reverse proxy") — the bearer token travels in a plain HTTP header, exactly like every other authenticated request this app makes, and is only as safe as the transport it rides over.
+
+## Known limitations
+
+- **Read-only.** Voting, commenting, submitting/deciding change requests, recording review outcomes, and every other write operation are deliberately out of scope — letting an AI assistant *read* project data is a much smaller, safer surface than letting it act on the workflow. A natural, larger follow-up if that's ever wanted.
+- **No zero-click "click a button and you're connected" login.** Some MCP servers (Azure DevOps' among them) drive a full OAuth 2.1 flow so a client like VS Code can pop a browser automatically on first connection with no separate step. This server deliberately doesn't do that: building a spec-compliant OAuth 2.1 authorization server (PKCE, dynamic client registration, redirect_uri validation, authorization-code/token storage) is a substantial undertaking to get right, and `fastmcp`'s own documentation for the feature that would provide it explicitly warns "this is an extremely advanced pattern that most users should avoid." The `/login` page above is the deliberately-simpler alternative: one browser visit, a real login form, no new protocol surface — you still have to paste the resulting token into your client's config once, rather than it happening invisibly, but there's no custom authorization-server code to get wrong. See `docs/decisions.md` for the full writeup of this tradeoff.
+- **No long-lived API token mechanism.** This server reuses the same access tokens the web UI does (12-hour default lifetime); there's no separate personal-access-token feature in ReqTrackManager yet to issue something longer-lived and independently revocable. Claude Code's `headersHelper` works around this by refreshing on every connection; other clients need periodic manual token updates (the `/login` page makes re-fetching a token quick), or a dedicated integration account with a longer configured `ACCESS_TOKEN_EXPIRE_MINUTES`.
+- **SSO accounts can't use the automated login helper.** `get_auth_header.sh` does a single non-interactive native-credential login; SSO accounts should use `/login?org=<slug>`'s "Sign in with SSO" button instead (see [Getting a token](#getting-a-token) above).
+- **Third-party data flow.** Once an AI tool (Copilot Studio, or any hosted assistant) is configured against this server, whatever content it retrieves is sent to that tool's own infrastructure as part of normal MCP tool-call responses — the same way it would be if a person pasted that content into the tool's chat window, but worth being deliberate about for any organisation with confidentiality commitments around its data. See [docs/soc2/policies/vendor-and-subprocessor-management-policy.md](soc2/policies/vendor-and-subprocessor-management-policy.md) and [data-classification-and-confidentiality-policy.md](soc2/policies/data-classification-and-confidentiality-policy.md) for how this project's own compliance documentation treats that.

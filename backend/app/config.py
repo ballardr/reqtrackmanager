@@ -66,6 +66,12 @@ class Settings(BaseSettings):
             valid redirect URI on the IdP client.
         frontend_base_url: The frontend's base URL, used to redirect back to
             the UI once an OIDC login completes (E-U-01).
+        mcp_server_public_url: The MCP server's own browser-reachable base
+            URL, used to redirect back there instead of the frontend when an
+            OIDC login was initiated from its `/login` page rather than the
+            main app (see `routers/auth_oidc.py`'s `client` parameter) — lets
+            an SSO user land on `mcp_server`'s token page directly rather
+            than the app UI.
         oidc_internal_base_url_override: Dev/test-only escape hatch for a
             common containerized-IdP problem: an org's `oidc_issuer_url`
             must be the identity provider's browser-reachable public URL
@@ -140,6 +146,7 @@ class Settings(BaseSettings):
 
     public_backend_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
+    mcp_server_public_url: str = "http://localhost:8100"
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
 

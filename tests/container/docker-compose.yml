@@ -115,6 +115,7 @@ services:
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
       PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
       # See keycloak service's comment above: the backend reaches Keycloak
       # over the Docker-internal network, but every org's oidc_issuer_url is
       # configured with Keycloak's browser-facing public URL
@@ -149,6 +150,25 @@ services:
       - "3000:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # See the root docker-compose.yml's mcp-server service for the full
+  # explanation — same service, dev/test defaults.
+  mcp-server:
+    build:
+      context: ../../mcp-server
+    environment:
+      REQTRACK_API_URL: http://backend:8000
+      REQTRACK_PUBLIC_API_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
       interval: 10s
       timeout: 5s
       retries: 10

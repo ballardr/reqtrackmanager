@@ -152,6 +152,10 @@ flowchart TD
 
 This diagram reflects the initial deployment model: one frontend container, one backend container, one database, and a lightweight observability stack.
 
+### AI Integration Layer
+
+**Implementation note (post-Massif, E-U-01-adjacent):** a read-only [Model Context Protocol](https://modelcontextprotocol.io) server (`mcp-server/`, see [mcp-server.md](mcp-server.md)) exposes requirements/projects/organisations to AI assistants (Claude Code, VS Code Copilot Chat, Microsoft Copilot Studio) as a second, independent consumer of the same REST API the frontend uses — not a new API surface or a new permission model. Its one architectural rule, worth stating explicitly since it's the whole reason this component is safe to add without a security review of its own: it holds no credentials and performs no authorization itself, only forwarding whichever caller's own bearer token it was given to the backend on every request, so the backend's existing RBAC remains the single point of enforcement for every code path, human or AI. This mirrors the "Secure-by-default design" principle above (backend enforces business rules; nothing else is trusted to) applied to a client this project didn't originally anticipate, rather than a new principle.
+
 ## Deployment Architecture
 
 ### Initial deployment model

@@ -19,13 +19,14 @@ These two are deliberately kept separate rather than sharing one file with a dev
 
 ## Components
 
-The diagram below shows every container in the production stack and how they depend on each other at startup. Reading top to bottom: `db` and `minio` must be healthy before `backend` starts (the backend runs migrations and talks to storage immediately on boot); `backend` must be healthy before `frontend` starts (the frontend's own health check is independent, but there is no reason to serve the UI before its API is reachable); the backend sends outgoing mail to whatever `SMTP_HOST` points at, which in production is an external provider, not a container in this stack. This matters operationally because it tells you the correct order to check when something won't come up: `db`/`minio` first, then `backend`, then `frontend`.
+The diagram below shows every container in the production stack and how they depend on each other at startup. Reading top to bottom: `db` and `minio` must be healthy before `backend` starts (the backend runs migrations and talks to storage immediately on boot); `backend` must be healthy before `frontend` *or* `mcp-server` start (the frontend's and mcp-server's own health checks are independent, but there is no reason to serve either before the API they both depend on is reachable); the backend sends outgoing mail to whatever `SMTP_HOST` points at, which in production is an external provider, not a container in this stack. This matters operationally because it tells you the correct order to check when something won't come up: `db`/`minio` first, then `backend`, then `frontend`/`mcp-server`.
 
 ```mermaid
 flowchart TD
     DB[(db: PostgreSQL)] --> BE[backend]
     MinIO[(minio: S3-compatible storage)] --> BE
     BE --> FE[frontend]
+    BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
 ```
 
@@ -35,6 +36,7 @@ flowchart TD
 | `backend` | FastAPI application, runs migrations on startup | Yes | Yes |
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `minio` | Bundled S3-compatible file storage | Yes, if `STORAGE_BACKEND=s3` | Yes |
+| `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
@@ -201,3 +203,4 @@ After `docker compose up -d`, confirm:
 2. `curl http://localhost:8000/metrics` returns Prometheus-format metrics.
 3. The frontend loads and you can log in with the bootstrap admin credentials you configured.
 4. If using email notifications, trigger one (e.g. change your password) and confirm it arrives at your configured SMTP provider (or MailHog's UI in non-production environments).
+5. `curl http://localhost:8100/health` returns `ok` — see [mcp-server.md](mcp-server.md) if you intend to use the MCP server, including from a remote client like Copilot Studio.

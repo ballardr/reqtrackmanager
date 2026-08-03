@@ -76,6 +76,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-noreply@example.com}
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
+      PUBLIC_BACKEND_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
     volumes:
       # Only used if STORAGE_BACKEND=local is set (default is s3/MinIO
       # above). Named so it survives container recreation and so
@@ -111,6 +114,29 @@ services:
       - "3000:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Read-only Model Context Protocol server exposing requirements to AI
+  # assistants (Claude Code, VS Code Copilot Chat, Microsoft Copilot Studio,
+  # etc.) via the same REST API everything else uses — see docs/mcp-server.md.
+  # Every MCP tool call requires the caller's own ReqTrackManager access
+  # token; this service holds no credentials of its own and does no
+  # authorization itself, it only forwards the caller's token to `backend`.
+  mcp-server:
+    build:
+      context: ./mcp-server
+    environment:
+      REQTRACK_API_URL: http://backend:8000
+      REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
       interval: 10s
       timeout: 5s
       retries: 10

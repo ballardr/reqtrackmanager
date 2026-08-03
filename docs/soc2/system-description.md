@@ -18,8 +18,10 @@ ReqTrackManager ships as a set of Docker containers, deployed via Docker Compose
 | `frontend` | Static React single-page app, served by nginx |
 | `db` | PostgreSQL — the sole system of record |
 | `minio` (or an external S3-compatible service) | Uploaded file storage |
+| `mcp-server` | Read-only Model Context Protocol server exposing requirements to AI assistants (Claude Code, VS Code Copilot Chat, Microsoft Copilot Studio, etc.); see [mcp-server.md](../mcp-server.md). Holds no credentials of its own — every request forwards the calling user's own access token, so it introduces no new privilege model, only a new *client* of the existing API |
 | External SMTP provider | Outgoing transactional/notification email |
 | Optional: external OIDC identity provider (customer-supplied, e.g. Keycloak, Authentik, Entra ID) | Per-organization SSO, when an org enables it |
+| Optional, customer-configured: a third-party AI assistant/agent platform (e.g. Microsoft Copilot Studio) connected to `mcp-server` | Retrieves requirement content on the connecting user's behalf — see §9 (CUECs) for the confidentiality implication this carries |
 | Optional observability stack (`--profile observability`): Prometheus, Loki, Tempo, Grafana, Grafana Alloy | Metrics, log aggregation, tracing |
 
 **[Company must state]**: the physical/cloud hosting provider (e.g. AWS, GCP, Azure, on-prem), region(s), and whether the deployment is single-tenant infrastructure per customer or one shared multi-tenant deployment serving every customer's organizations from the same containers and database (the application's own tenancy model — see §7 — supports the latter, which is the default assumption of this document).
@@ -107,6 +109,7 @@ Controls the report assumes the *customer* (an organization using ReqTrackManage
 2. If the customer enables SSO, they are responsible for the security of their own identity provider, the accuracy of its group/role claims, and configuring `oidc_required_group` appropriately (see [enterprise-integration.md](../enterprise-integration.md)).
 3. The customer is responsible for the content they enter into requirement/change-request fields, including not entering data classes the product isn't designed to handle (§5).
 4. The customer is responsible for safeguarding their own users' credentials and enabling 2FA where their own policies require it.
+5. If the customer chooses to connect a third-party AI assistant/agent platform (e.g. Microsoft Copilot Studio, or any other MCP client) to `mcp-server`, they are responsible for that decision's data-handling implications — requirement content retrieved through it is sent to that platform's own infrastructure, the same as if a user had pasted it into that platform's chat interface. The customer is also responsible for whom they give the underlying access token to and for that token's own security, since `mcp-server` grants exactly the connecting account's own ReqTrackManager access, nothing more. See [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md).
 
 ## 10. Complementary subservice organization controls (CSOCs)
 

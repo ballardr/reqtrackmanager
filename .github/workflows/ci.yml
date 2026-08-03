@@ -4,12 +4,13 @@
 #   1. frontend          - lint, type-check, and production build (fast, no Docker)
 #   2. backend-and-e2e   - the same dev/test Docker Compose stack developers run
 #                          locally (db, minio, mailhog, keycloak, backend,
-#                          frontend); backend pytest with coverage + JUnit
-#                          reporting, ruff lint, then the full Playwright E2E
-#                          suite against the running containers
-#   3. docker-build      - builds (but does NOT push) the production backend
-#                          and frontend images, gated on the two jobs above
-#                          passing
+#                          frontend, mcp-server); backend pytest with coverage
+#                          + JUnit reporting, ruff lint, the mcp-server's own
+#                          integration test suite, then the full Playwright
+#                          E2E suite against the running containers
+#   3. docker-build      - builds (but does NOT push) the production backend,
+#                          frontend, and mcp-server images, gated on the two
+#                          jobs above passing
 #
 # Test results are published as GitHub check annotations and as downloadable
 # artifacts; a coverage summary is written to the job summary. This exists to
@@ -125,6 +126,10 @@ jobs:
         working-directory: tests/container
         run: docker compose exec -T backend ruff check .
 
+      - name: Lint mcp-server (ruff)
+        working-directory: tests/container
+        run: docker compose exec -T mcp-server ruff check .
+
       - name: Backend coverage summary
         working-directory: tests/container
         run: |
@@ -182,6 +187,14 @@ jobs:
             sleep 3
           done
           docker compose exec -T backend python scripts/seed_e2e_dataset.py
+
+      # Runs after the E2E dataset is seeded so the full-chain test
+      # (list_projects -> list_requirements -> get_requirement ->
+      # get_requirement_history) has real data to exercise instead of
+      # skipping — see mcp-server/tests/test_server.py.
+      - name: Run MCP server tests
+        working-directory: tests/container
+        run: docker compose exec -T mcp-server python -m pytest -q
 
       - name: Install Playwright browsers
         working-directory: tests/playwright
@@ -271,3 +284,14 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
             ghcr.io/${{ github.repository }}-frontend:latest
+
+      - name: Build mcp-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./mcp-server
+          push: false
+          provenance: false
+          sbom: false
+          tags: |
+            ghcr.io/${{ github.repository }}-mcp-server:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-mcp-server:latest
