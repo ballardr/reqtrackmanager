@@ -98,7 +98,12 @@ services:
     build:
       context: ./frontend
     environment:
-      VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
+      # No colon in ${PUBLIC_API_BASE_URL-...} deliberately: with a colon,
+      # an explicitly-empty PUBLIC_API_BASE_URL= (same-origin subpath
+      # deployment — see docs/deployment.md) would be treated as unset and
+      # silently overridden by the default. The no-colon form only falls
+      # back when the variable is truly absent.
+      VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
     depends_on:
       backend:
         condition: service_healthy

@@ -218,6 +218,8 @@ sequenceDiagram
 
 **Implementation note (Massif v3, C-R-05/C-R-08):** date-driven background checks (a requirement's review-due reminder, a project stage's review-deadline auto-approval) run as APScheduler cron jobs in-process in the same backend container (`backend/app/services/scheduler.py`), started from the same FastAPI lifespan handler as the existing `asyncio`-loop background tasks (digest batching, disk monitoring) — additive to that existing pattern, not a replacement, and still consistent with the single-backend-container deployment model described above.
 
+**Implementation note (SOC 2 hardening):** "secure handling of secrets" is enforced at the application layer, not left entirely to infrastructure — a reusable `EncryptedString` SQLAlchemy column type (`backend/app/models/encrypted_type.py`, Fernet-based, keyed from `APP_SECRET_ENCRYPTION_KEY`, distinct from `JWT_SECRET`) encrypts every genuine stored secret (`Organization.oidc_client_secret`, `Organization.smtp_password`, `User.totp_secret`) so a database-only compromise doesn't expose them. The SSO login flow is also hardened against login-CSRF/session-fixation: the frontend generates a nonce that must round-trip through the entire OIDC redirect before a returned token is trusted (`security.create_oidc_state_token`), and the token itself travels in the callback URL's fragment rather than its query string, so it's never logged by an intermediate proxy. This platform's full security control posture — including the items still open, like the absence of login rate limiting — is tracked as an ongoing SOC 2 Security + Confidentiality control matrix in [docs/soc2/](soc2/), not just in this document. A GitHub Actions pipeline (`.github/workflows/ci.yml`) now runs the full backend and Playwright suites, plus lint, on every change — see the README's "Continuous integration" section — closing what that control matrix had flagged as its most consequential single gap.
+
 ## Data and Workflow Model
 
 The platform is centered on a formal workflow for requirements management:
@@ -340,6 +342,8 @@ The architecture allows later addition of features such as:
 - notification workers
 - external file storage
 - multi-tenant enterprise integrations
+
+**Implementation note (Massif v3):** most of this list has since been built, not just left extensible in the abstract — SSO providers (per-org OIDC, tested against Keycloak), external file storage (pluggable local/S3-compatible backend, since Ossa v1), multi-tenant enterprise integrations (multi-org from Ossa v1, plus Massif v3's SSO/access-review/report-branding layer), and advanced reporting (filtered PDF/CSV export with selectable org branding templates) are all implemented today. The one genuinely still-future item is **notification workers**: the notification digest job, the disk-usage monitor, and the review/stage-deadline scheduler all still run in-process in the single backend container (see "Scaling beyond a single backend replica" in [deployment.md](deployment.md)) rather than as a separately-scaled worker service.
 
 ## Recommended Implementation Stack
 

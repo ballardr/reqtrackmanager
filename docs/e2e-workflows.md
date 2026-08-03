@@ -8,15 +8,13 @@ It complements the existing `tests/playwright/tests/{golden-path,pelion-v2,mocku
 
 ```bash
 cd tests/container
-docker compose down -v && docker compose up --build -d   # fresh database
+docker compose down -v && docker compose up --build -d   # fresh database, incl. the Keycloak instance sso.spec.ts needs
 docker compose exec backend python -m pytest -q          # backend unit/integration suite
 
 # re-bootstrap the server admin (pytest truncates all tables, including it)
 docker compose restart backend
 
-docker compose exec backend mkdir -p /app/scripts
-docker compose cp ../../backend/scripts/seed_e2e_dataset.py backend:/app/scripts/seed_e2e_dataset.py
-docker compose exec backend python -m scripts.seed_e2e_dataset
+docker compose exec backend python scripts/seed_e2e_dataset.py   # already baked into the image, no copy step needed
 
 cd ../playwright
 npx playwright test        # runs every spec, including tests/e2e-workflows/
@@ -81,6 +79,13 @@ Each of these is a deliberate attempt to route around a guarantee, followed by c
 - **Decide a change request without the role, via a direct API call.** A project member with no PM role attempts the decide endpoint directly against an existing change request (not just avoiding the button) — 403.
 - **Cross-org ID guessing.** A single-org user (the stakeholder) is handed another org's project id and attempts to open it both via a raw API call and by navigating the browser directly to that URL — 403, and the UI renders nothing for it either way.
 
+### 7. SSO login against a real identity provider
+**Personas:** two Keycloak-native users, not from `seed_e2e_dataset.py` — `sso-admin@example.com` (in the `reqtrack-org-admins` group) and `sso-member@example.com` (in `reqtrack-members`), both seeded directly into the `tests/container/keycloak` realm import (`tests/container/keycloak/realm-export.json`), password `KeycloakPass123!`. **Spec:** `sso.spec.ts` (added Massif v3, E-U-01).
+
+- **Job to be done:** a user authenticating through an organisation's own identity provider, not a password this app ever sees, ends up with exactly the account and role their IdP group says they should have — and an organisation can gate access to a specific group entirely, separate from which role a group maps to.
+- **Steps:** the browser drives the real flow — an org's branded `/login/{slug}` page → click "Sign in with SSO" → redirected to Keycloak's own login form (not this app's UI) → authenticate → redirected back and land in the app already signed in. Four scenarios, each its own top-level `test()` (not `test.step`s sharing one browser context — Keycloak's own SSO session persisted across steps otherwise, silently reusing the first user's login for the second): (1) `sso-admin` provisions an account and gets the `org_admin` role its Keycloak group maps to; (2) a user in an unmapped Keycloak group gets an account but zero organisation role; (3) with `oidc_required_group` set, `sso-member` (outside the required group) is shown "Your organisation has not provisioned you access" and never receives a session token; (4) with the same gate set, `sso-admin` (inside the required group) still gets in.
+- **Expected outcome:** all four confirmed against a real IdP round trip, not mocked — the resulting account's role is checked via the API afterward in each case.
+
 ## Product gaps found
 
 - **No self-service "leave an organisation" existed anywhere in the product — now fixed.** Confirmed by reading every route in `backend/app/routers/orgs.py` — there was no endpoint that removed a `UserOrgRole`. The zero-org server-admin persona above originally had to be constructed by deleting that one row directly via SQL in the seed script. Closed with a new `DELETE /api/v1/orgs/{organization_id}/membership` self-service endpoint plus a "Leave organisation" button on the Org Admin page (`frontend/src/pages/OrgAdminPage.tsx`). It refuses (409) rather than silently reassigning anyone's roles if leaving would strip the org of its last `org_admin`, or leave any of its projects with zero managers — see `backend/tests/test_rbac.py`'s `test_sole_org_admin_cannot_leave` / `test_sole_project_manager_cannot_leave_even_with_a_co_admin` for both guards, and `test_plain_member_can_leave_organization` for the happy path. The seed script now calls this endpoint on itself for the zero-org persona instead of touching SQL at all — the only remaining direct-DB step in the whole suite has been removed.
@@ -94,5 +99,6 @@ Each of these is a deliberate attempt to route around a guarantee, followed by c
 - `backend/scripts/seed_e2e_dataset.py` — the seed script.
 - `tests/playwright/tests/e2e-workflows/helpers.ts` — persona/org/project constants and a shared `loginAs`/`logout`.
 - `tests/playwright/tests/e2e-workflows/*.spec.ts` — one spec per workflow above.
+- `tests/container/keycloak/realm-export.json` — the SSO workflow's own seed data (realm, client, and the two Keycloak-native test users), separate from `seed_e2e_dataset.py` since these users are provisioned by Keycloak itself, not this app's API.
 - `frontend/src/hooks/useMyProjectRoles.ts` — the role-visibility fix used by two of the specs above.
 - `backend/app/routers/orgs.py`'s `leave_organization` + `frontend/src/pages/OrgAdminPage.tsx`'s "Leave organisation" button — the self-service leave-org feature built to close the gap this suite found; tested in `backend/tests/test_rbac.py`.

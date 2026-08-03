@@ -12,8 +12,8 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 
 ReqTrackManager ships **two** Compose files with different purposes — using the wrong one for the wrong purpose is the single most important thing to get right:
 
-- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
-- **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog, with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest) and `tests/playwright/` run against.
+- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
+- **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog and a real Keycloak instance (for testing per-organisation SSO end-to-end, E-U-01), with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest), `tests/playwright/`, and CI (`.github/workflows/ci.yml`) all run against.
 
 These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
 
@@ -36,6 +36,7 @@ flowchart TD
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `minio` | Bundled S3-compatible file storage | Yes, if `STORAGE_BACKEND=s3` | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
+| `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
 ## Local / evaluation deployment
@@ -48,6 +49,8 @@ docker compose up --build
 
 This is sufficient for evaluating the product or for development — see the [README](../README.md#quick-start--local-development--evaluation) for the URLs it exposes. It uses dev-friendly defaults: a fixed bootstrap admin password, MailHog instead of a real mail provider, and MinIO with default credentials, all in an isolated `reqtrack_test` database. **Never point this stack at the internet, and never confuse it with the production stack below.**
 
+For a populated instance to actually evaluate (rather than an empty bootstrap admin with nothing in it), run `docker compose exec backend python scripts/seed_demo_data.py` afterward — see the README's [Demo data](../README.md#demo-data) section.
+
 ## Production deployment
 
 Production deployment uses the root `docker-compose.yml` and the same container images used for local dev; the difference is entirely in configuration, and the compose file itself enforces the important parts — `docker compose up` fails immediately with a clear error naming the missing variable if any of these aren't set, rather than starting with an insecure default. Create a `.env` file next to `docker-compose.yml` (Docker Compose loads it automatically) and set at minimum:
@@ -55,6 +58,7 @@ Production deployment uses the root `docker-compose.yml` and the same container 
 ```bash
 # Secrets — generate strong random values, do not reuse the defaults
 JWT_SECRET=<random 32+ byte secret>
+APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # distinct from JWT_SECRET — see README's Configuration table
 SERVER_ADMIN_PASSWORD=<strong password>
 POSTGRES_PASSWORD=<strong password>
 MINIO_ROOT_PASSWORD=<strong password>          # if using the bundled MinIO
@@ -76,6 +80,8 @@ DEPLOYMENT_NOTIFICATION_EMAIL=ops@your-domain.example
 ```
 
 The full list of backend environment variables, with defaults, is documented in the [README's Configuration section](../README.md#configuration).
+
+CI (`.github/workflows/ci.yml`) builds and tags the production backend/frontend images on every change, proving both Dockerfiles still build, but does not push them anywhere yet (see the README's [Continuous integration](../README.md#continuous-integration) section) — `docker compose up --build -d` above builds them locally instead, the only way to obtain them today.
 
 ### Hardening: scope MinIO credentials
 
@@ -102,6 +108,50 @@ Then set `STORAGE_S3_ACCESS_KEY=reqtrackmanager-app` and `STORAGE_S3_SECRET_KEY=
 ### TLS and reverse proxy
 
 ReqTrackManager's containers serve plain HTTP internally (frontend on 3000, backend on 8000). In production, put a reverse proxy (nginx, Caddy, Traefik, or a cloud load balancer) in front of both that terminates TLS and forwards to the two container ports. Point the reverse proxy's public hostnames at `CORS_ORIGINS` (frontend origin) and `PUBLIC_API_BASE_URL` (backend origin) so the frontend and backend agree on where each other lives.
+
+This is the two-hostname pattern (e.g. `app.example.com` for the UI, `api.example.com` for the backend) and it needs `CORS_ORIGINS` set correctly on the backend, since the browser treats the two as different origins. The alternative below avoids that entirely.
+
+### Same-origin subpath deployment (avoiding CORS)
+
+Instead of two hostnames, the frontend and backend can be served from **one origin** — e.g. the UI at `https://my.website.com/` and the API at `https://my.website.com/api/` — with the reverse proxy routing by path. Because the browser then sees only one origin, this sidesteps CORS entirely rather than configuring around it: same-origin requests never trigger CORS preflight/enforcement, regardless of `CORS_ORIGINS`.
+
+This works with **no backend routing changes** — every REST endpoint the frontend actually calls already lives under `/api/v1/...` (`backend/app/routers/*.py`), so a reverse proxy that passes `/api/` straight through to the backend, unmodified, lines up with the app's own path structure automatically. An nginx example:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name my.website.com;
+    # ... TLS config ...
+
+    location /api/ {
+        proxy_pass http://backend:8000;   # no path on proxy_pass -> forwards the URI unchanged
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Then set, on the backend:
+
+```bash
+CORS_ORIGINS=https://my.website.com   # harmless to leave set; same-origin requests ignore it anyway
+```
+
+and on the frontend:
+
+```bash
+PUBLIC_API_BASE_URL=   # deliberately empty — see below
+```
+
+An **empty** `PUBLIC_API_BASE_URL` (not omitted — actually set to an empty value in your `.env`/orchestrator config) tells the frontend to make API calls as relative paths (`/api/v1/...`) rather than against an absolute URL, so they resolve against whatever origin the page itself was loaded from — exactly what's needed once the UI and API share one origin. Leaving `PUBLIC_API_BASE_URL` completely unset instead falls back to the default (`http://localhost:8000`), which is correct for local development but wrong here — the two are deliberately different, and the frontend's runtime config generator (`frontend/docker/env-config-entrypoint.sh`) is written to preserve that distinction (an explicit empty value is honoured, not silently replaced by the default).
+
+**What this does and doesn't cover:** the `/api/` location above only reaches paths that genuinely start with `/api/` on the backend — every route the frontend calls (`/api/v1/...`) matches, but `/health`, `/metrics`, `/docs`, and `/openapi.json` don't and won't be reachable at `my.website.com/api/health` etc. This is usually the right default — health checks and metrics are typically scraped over the internal Docker network (see [solution-architecture.md](solution-architecture.md)'s observability section), not exposed publicly. If you do want Swagger UI reachable through the public subpath, add matching one-to-one location blocks (`location /api/docs { proxy_pass http://backend:8000/docs; }`, and likewise for `/api/openapi.json` and `/api/metrics`).
+
+This pattern was verified against a real reverse proxy (not just described): an nginx container configured exactly as above, routing to the actual running dev/test backend and frontend containers, correctly proxied both a public API endpoint and an authenticated login request through to identical responses as calling the backend directly.
 
 ### Storage backend
 

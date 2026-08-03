@@ -8,10 +8,31 @@ This build implements the **Ossa (v1)**, **Pelion (v2)**, and most of **Massif (
 
 ## What's included
 
-- **Backend**: Python/FastAPI, PostgreSQL via SQLAlchemy 2.0 + Alembic, JWT auth with a pluggable auth-backend interface and optional TOTP 2FA, RBAC (org + project roles and groups), full requirement version history and stage-approval baselining, change-request workflow, custom requirement/change-request attributes and per-project terminology, project templates, file attachments and organisation shared resources (pluggable local/S3-compatible storage), in-app and email notifications with per-type preferences and daily digest, PDF (ReportLab) and CSV reporting with filters, Prometheus metrics, health checks, optional WebSocket live-update stream, OpenAPI/Swagger docs.
+- **Backend**: Python/FastAPI, PostgreSQL via SQLAlchemy 2.0 + Alembic, JWT auth with a pluggable auth-backend interface (native + per-organisation OIDC/SSO) and optional TOTP 2FA, RBAC (org + project roles and groups), full requirement version history and stage-approval baselining, change-request workflow with tasks and advisory stakeholder voting, custom requirement/change-request attributes and per-project terminology, project templates, file attachments and organisation shared resources (pluggable local/S3-compatible storage), in-app and email notifications with per-type preferences and daily digest, PDF (ReportLab, with selectable org branding templates) and CSV reporting with filters, application-layer encryption for stored secrets (OIDC client secrets, per-org SMTP passwords, TOTP secrets), Prometheus metrics, health checks, optional WebSocket live-update stream, OpenAPI/Swagger docs.
 - **Frontend**: React + TypeScript (Vite), light/dark theming via CSS variables, responsive layout, project list (with favourites/role/stage filters)/overview/requirements/change-requests/history/admin/reports/preferences pages, in-app notification bell.
-- **Infrastructure**: two separate Docker Compose stacks — the root `docker-compose.yml` (production-oriented: Postgres + backend + frontend + MinIO, requiring real secrets/SMTP config, plus an optional observability profile) and `tests/container/docker-compose.yml` (local development and automated testing: the same stack plus MailHog, with dev-friendly defaults and its own isolated test database). See "Quick start" and [docs/deployment.md](docs/deployment.md).
-- **Tests**: backend pytest suite (~90%+ statement coverage — auth, RBAC boundaries and a systematic permission matrix, full resource create/read/remove lifecycles, requirement lifecycle/locking, change-request workflow, files, notifications/digest, custom fields, templates, 2FA, favourites/filters, report generation) and a Playwright end-to-end suite (two specs) that exercises the full golden path and the Pelion v2 feature set in a real browser — both run against `tests/container/docker-compose.yml`, never against a production stack. The frontend has a Storybook component explorer with light/dark theme coverage, run as automated tests via Vitest + Playwright (`npm run test-storybook`).
+- **Infrastructure**: two separate Docker Compose stacks — the root `docker-compose.yml` (production-oriented: Postgres + backend + frontend + MinIO, requiring real secrets/SMTP config, plus an optional observability profile) and `tests/container/docker-compose.yml` (local development and automated testing: the same stack plus MailHog and a real Keycloak instance for SSO testing, with dev-friendly defaults and its own isolated test database). See "Quick start" and [docs/deployment.md](docs/deployment.md).
+- **Tests**: backend pytest suite (~90%+ statement coverage — auth, RBAC boundaries and a systematic permission matrix, full resource create/read/remove lifecycles, requirement lifecycle/locking, change-request workflow, files, notifications/digest, custom fields, templates, 2FA, favourites/filters, report generation) and a Playwright end-to-end suite (10 spec files covering the golden path, the full Pelion v2 and Massif v3 feature sets, multi-org/RBAC-boundary workflows, and SSO login tested against a real Keycloak container) in a real browser — both run against `tests/container/docker-compose.yml`, never against a production stack, and both run automatically in CI (see "Continuous integration" below). The frontend has a Storybook component explorer with light/dark theme coverage, run as automated tests via Vitest + Playwright (`npm run test-storybook`).
+
+## Screenshots
+
+Captured from the seeded demo dataset (see "Demo data" below) — a fictional drone-inspection company with two projects at different lifecycle stages.
+
+|  |  |
+| --- | --- |
+| **Project dashboard** — favourites, role/stage filters, tile or list view | **Project overview** — status breakdown, change-request funnel, stage progress, activity feed |
+| ![Projects dashboard](docs/screenshots/projects-page.png) | ![Project overview](docs/screenshots/project-overview.png) |
+| **Requirements list** — status, target version, category filters | **Requirement detail** — version history, change log, discussion thread |
+| ![Requirements list](docs/screenshots/requirements-list.png) | ![Requirement detail](docs/screenshots/requirement-detail.png) |
+| **Change request** — tasks, advisory stakeholder votes, discussion, approve/reject | **Organisation admin** — members, roles, 2FA status, access-review filters |
+| ![Change request detail](docs/screenshots/change-request-detail.png) | ![Organisation admin](docs/screenshots/org-admin.png) |
+| **Reports** — filtered PDF/CSV export with selectable org branding | **Reviews due** — requirements with a scheduled review date now overdue |
+| ![Reports](docs/screenshots/reports-page.png) | ![Reviews due](docs/screenshots/reviews-due.png) |
+
+<details>
+<summary>Login page</summary>
+
+![Login page](docs/screenshots/login-page.png)
+</details>
 
 ## Quick start — local development / evaluation
 
@@ -35,6 +56,18 @@ Once healthy:
 - **MinIO console** (view uploaded files): http://localhost:9001
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
+
+### Demo data
+
+To populate the running stack with a realistic, presentable dataset (the one used for the screenshots above — a fictional drone-inspection company, two projects at different lifecycle stages, requirements at varied statuses, an approved and a pending change request, discussion threads, custom fields, and a branded report template):
+
+```bash
+cd tests/container && docker compose exec backend python scripts/seed_demo_data.py
+```
+
+Idempotent (skips if already seeded) and API-driven, same as the E2E persona dataset (`scripts/seed_e2e_dataset.py`) — this is a separate script with separate, screenshot-friendly content, not a variant of the E2E fixtures. Login as `demo.admin@example.com` / `DemoDemo123!` afterward; see the script's own docstring for the other seeded personas and their roles.
+
+There's no organisation-deletion endpoint (see [docs/soc2/policies/data-retention-and-disposal-policy.md](docs/soc2/policies/data-retention-and-disposal-policy.md)), so this script only skips rather than resets existing demo data. A future public demo instance that resets nightly would do the reset at the database level instead — `docker compose down -v && docker compose up -d --build` against a dedicated demo compose stack, then re-run the seed script — the same pattern already used throughout local development to get back to a clean slate (see [docs/deployment.md](docs/deployment.md)'s troubleshooting section).
 
 ## Production deployment
 
@@ -85,7 +118,7 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `OIDC_INTERNAL_BASE_URL_OVERRIDE` | unset | — | Dev/test-only escape hatch for a containerized identity provider whose public URL isn't reachable from inside the backend's own container — see [docs/enterprise-integration.md](docs/enterprise-integration.md). Leave unset in production. |
 | `OIDC_ALLOW_PRIVATE_NETWORK_TARGETS` | `false` | — | Set `true` only if every organisation on this deployment runs its own trusted, internally-hosted identity provider with no public IP (e.g. an on-prem Keycloak/Authentik on a corporate LAN or VPC). Disables the SSRF guard that otherwise rejects an org's `oidc_issuer_url` resolving to a private/internal address — see [docs/enterprise-integration.md](docs/enterprise-integration.md). Leave `false` on any deployment serving mutually-untrusted organisations. |
 
-Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild.
+Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild. Set it to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — the setting behind same-origin subpath deployment (UI at `my.website.com/`, API at `my.website.com/api/`, avoiding CORS entirely instead of configuring around it); see [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full reverse-proxy recipe.
 
 ## Development workflow
 
