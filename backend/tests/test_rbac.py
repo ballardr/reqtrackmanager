@@ -206,6 +206,30 @@ def test_sole_org_admin_cannot_leave(client, admin_token):
     assert second_admin_id  # sanity: the second admin was actually created
 
 
+def test_org_admin_cannot_deactivate_own_account(client, admin_token):
+    """Hardening-review regression: deactivating a user via this endpoint
+    sets is_active=False on the whole account (locking them out of every
+    organisation, not just this one) — an org-scoped admin action self-
+    targeting to that effect, with no confirmation step, was previously
+    allowed outright."""
+    org, admin2_token = create_org_admin_in(client, admin_token, "Self Deactivate Org")
+    admin2_id = client.get("/api/v1/auth/me", headers=auth_headers(admin2_token)).json()["id"]
+
+    resp = client.post(f"/api/v1/orgs/{org['id']}/users/{admin2_id}/deactivate", headers=auth_headers(admin2_token))
+    assert resp.status_code == 400
+
+    # A genuinely different admin can still deactivate this one normally.
+    third_admin_id = client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "third_admin@example.com", "display_name": "Third Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin2_token),
+    ).json()["user_id"]
+    third_admin_token = login(client, "third_admin@example.com", "Password123!")
+    resp = client.post(f"/api/v1/orgs/{org['id']}/users/{admin2_id}/deactivate", headers=auth_headers(third_admin_token))
+    assert resp.status_code == 204, resp.text
+    assert third_admin_id  # sanity: the third admin was actually created
+
+
 def test_sole_manager_via_nested_org_group_cannot_leave_and_loses_access_after(client, admin_token, org_id):
     """Regression test: a user whose only project-manager role comes from an
     org group nested into a project group (C-U-12) must be caught by the

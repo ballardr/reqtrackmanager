@@ -119,6 +119,91 @@ def test_project_manager_can_decide_change_request(client, admin_token, org_id):
     assert resp.json()["status"] == "approved"
 
 
+# --- Requirement approval via direct edit: project_manager only, not
+# administrator/stakeholder — hardening-review regression (self-approval) ---
+
+def _create_requirement_for_approval(client, admin_token, project_id, component_id, category_id):
+    return client.post(
+        f"/api/v1/projects/{project_id}/requirements",
+        json={"name": "Needs approval", "component_id": component_id, "category_id": category_id},
+        headers=auth_headers(admin_token),
+    ).json()
+
+
+def test_stakeholder_cannot_approve_requirement_via_direct_edit(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement_for_approval(client, admin_token, project["id"], component_id, category_id)
+    token = _make_project_member(client, admin_token, org_id, project["id"], "stakeholder_approve@example.com", "stakeholder")
+
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
+        json={
+            "name": requirement["name"], "component_id": component_id, "category_id": category_id,
+            "owner_id": requirement["owner_id"], "status": "approved",
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 403
+
+
+def test_project_administrator_cannot_approve_requirement_via_direct_edit(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement_for_approval(client, admin_token, project["id"], component_id, category_id)
+    token = _make_project_member(
+        client, admin_token, org_id, project["id"], "admin_approve@example.com", "project_administrator"
+    )
+
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
+        json={
+            "name": requirement["name"], "component_id": component_id, "category_id": category_id,
+            "owner_id": requirement["owner_id"], "status": "approved",
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 403
+
+
+def test_project_manager_can_approve_requirement_via_direct_edit(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement_for_approval(client, admin_token, project["id"], component_id, category_id)
+    token = _make_project_member(client, admin_token, org_id, project["id"], "pm_approve@example.com", "project_manager")
+
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
+        json={
+            "name": requirement["name"], "component_id": component_id, "category_id": category_id,
+            "owner_id": requirement["owner_id"], "status": "approved",
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "approved"
+
+
+def test_direct_edit_cannot_jump_straight_to_completed(client, admin_token, org_id):
+    """Completion has its own dedicated, precondition-checked endpoint
+    (POST .../complete, requiring the requirement to already be approved)
+    — the general-purpose direct-edit PUT must not be usable to skip that
+    precondition, regardless of the caller's role."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement_for_approval(client, admin_token, project["id"], component_id, category_id)
+
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
+        json={
+            "name": requirement["name"], "component_id": component_id, "category_id": category_id,
+            "owner_id": requirement["owner_id"], "status": "completed",
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
 # --- Custom field definitions: require_project_manage, not just view/edit access ---
 
 def test_stakeholder_cannot_manage_custom_field_definitions(client, admin_token, org_id):

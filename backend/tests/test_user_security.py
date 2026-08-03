@@ -3,8 +3,18 @@ profile edits, org-admin display-name locking (C-U-16), and TOTP 2FA
 (C-U-14)."""
 
 import pyotp
+from sqlalchemy import text
 
+from app.database import engine as app_engine
 from tests.conftest import auth_headers, login
+
+
+def _audit_action_count(entity_id: str, action: str) -> int:
+    with app_engine.begin() as conn:
+        return conn.execute(
+            text("SELECT COUNT(*) FROM audit_events WHERE entity_id = :entity_id AND action = :action"),
+            {"entity_id": entity_id, "action": action},
+        ).scalar_one()
 
 
 def test_user_can_update_pronouns_and_theme(client, admin_token):
@@ -111,6 +121,33 @@ def test_2fa_disable_invalidates_the_old_token(client, admin_token):
     assert resp.status_code == 204
 
     assert client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).status_code == 401
+
+
+def test_password_change_and_2fa_actions_are_audit_logged(client, admin_token):
+    """Hardening-review regression: password changes and 2FA enable/disable
+    are security-critical account events that previously left no audit
+    trail at all — every other sensitive mutation in this codebase calls
+    log_event; these four didn't."""
+    user_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
+
+    resp = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "ChangeMe123!", "new_password": "AuditedPassword123!"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 204
+    assert _audit_action_count(user_id, "password_changed") == 1
+
+    token = login(client, "admin@example.com", "AuditedPassword123!")
+    enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token))
+    secret = enroll.json()["secret"]
+    resp = client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(token))
+    assert resp.status_code == 204
+    assert _audit_action_count(user_id, "2fa_enabled") == 1
+
+    resp = client.post("/api/v1/auth/2fa/disable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(token))
+    assert resp.status_code == 204
+    assert _audit_action_count(user_id, "2fa_disabled") == 1
 
 
 def test_login_error_does_not_distinguish_deactivated_from_wrong_password(client, admin_token, org_id):

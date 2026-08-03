@@ -20,7 +20,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 
 ### Logging
 
-1. Every action that mutates organizational or project structure is written to a structured audit trail (`audit_events`) recording who did it, when, and what changed — not reconstructed after the fact from application logs.
+1. Every action that mutates organizational or project structure is written to a structured audit trail (`audit_events`) recording who did it, when, and what changed — not reconstructed after the fact from application logs. This extends to account-level security state changes (password changes, 2FA enable/disable) — a hardening review found these had been missed, since the user-facing notification a password change also sends isn't itself an admin-visible audit record.
 2. Every authentication attempt (success and failure) is recorded as a `login_events` row, including the source IP.
 3. Sensitive field values (passwords, TOTP secrets, verification codes) are explicitly redacted from error responses and must never appear in application logs.
 4. Logs are aggregated centrally when the observability stack is enabled (see Implementation below), rather than relying on reading individual container logs.

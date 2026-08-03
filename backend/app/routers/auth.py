@@ -37,7 +37,7 @@ from app.schemas.auth import (
 )
 from app.security import create_2fa_challenge_token, create_access_token, decode_access_token, hash_password, verify_password
 from app.services import notifications, totp
-from app.services.audit import log_login
+from app.services.audit import log_event, log_login
 from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
 
@@ -191,6 +191,11 @@ def change_password(
         title="Your password was changed",
         body="If you did not make this change, contact your organisation admin immediately.",
     )
+    # Hardening-review finding: password/2FA changes are security-critical
+    # account events with no other audit trail (the in-app notification
+    # above is user-facing, not an admin-visible record) — every other
+    # sensitive mutation in this codebase calls log_event, this one hadn't.
+    log_event(db, entity_type="user", entity_id=current_user.id, action="password_changed", actor_id=current_user.id)
     db.commit()
 
 
@@ -223,6 +228,7 @@ def confirm_2fa(
     if not totp.verify_code(current_user.totp_secret, payload.code):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
     current_user.is_2fa_enabled = True
+    log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_enabled", actor_id=current_user.id)
     db.commit()
 
 
@@ -242,6 +248,7 @@ def disable_2fa(
     # Same rationale as change_password: a token issued while 2FA was still
     # on shouldn't silently keep working past this point.
     current_user.token_version += 1
+    log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_disabled", actor_id=current_user.id)
     db.commit()
 
 

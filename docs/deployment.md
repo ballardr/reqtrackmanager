@@ -113,6 +113,8 @@ ReqTrackManager's containers serve plain HTTP internally (frontend on 3000, back
 
 This is the two-hostname pattern (e.g. `app.example.com` for the UI, `api.example.com` for the backend) and it needs `CORS_ORIGINS` set correctly on the backend, since the browser treats the two as different origins. The alternative below avoids that entirely.
 
+**Security response headers**: both the backend (`security_headers_middleware`, `backend/app/main.py`) and the frontend's nginx config set `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, and a minimal `Content-Security-Policy: frame-ancestors 'none'` on every response — deliberately just enough to close clickjacking-style UI-redress, not a full CSP. A full `Content-Security-Policy` restricting script/style/font sources would need to be tuned against this SPA's actual bundle (inline styles, any CDN fonts, etc.) to add without risking silently breaking the app, and hasn't been — if your deployment wants one, test it thoroughly against a full pass through the app first, and prefer adding it at the reverse-proxy layer (fronting both containers) so it's configured once, not duplicated between the backend middleware and nginx.conf.
+
 ### Same-origin subpath deployment (avoiding CORS)
 
 Instead of two hostnames, the frontend and backend can be served from **one origin** — e.g. the UI at `https://my.website.com/` and the API at `https://my.website.com/api/` — with the reverse proxy routing by path. Because the browser then sees only one origin, this sidesteps CORS entirely rather than configuring around it: same-origin requests never trigger CORS preflight/enforcement, regardless of `CORS_ORIGINS`.

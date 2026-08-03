@@ -14,13 +14,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, true
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.organization import UserOrgRole
 from app.models.user import User
+from app.schemas.pat import BulkRevokeResult
 from app.services.audit import log_event
+from app.services.pats import revoke_matching
 from app.services.rbac import require_server_admin
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
@@ -124,3 +126,21 @@ def list_system_users(
         )
         for u in users
     ]
+
+
+@router.post("/pats/revoke-all", response_model=BulkRevokeResult)
+def revoke_all_pats_platform_wide(
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Revokes every non-revoked Personal Access Token in the deployment,
+    regardless of scope — an incident-response action, the PAT-level
+    equivalent of the per-user `User.token_version` "kill all my sessions"
+    mechanism, at platform scope. Never reads or exposes any organisation's
+    content or any token secret (hashes aren't reversible), so this is pure
+    security/tenancy administration and doesn't conflict with I-M-05."""
+    count = revoke_matching(db, true())
+    log_event(db, entity_type="system", entity_id="platform", action="system_pats_bulk_revoked",
+              actor_id=current_user.id, detail={"count": count})
+    db.commit()
+    return BulkRevokeResult(revoked_count=count)

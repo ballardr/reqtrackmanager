@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.models.enums import OrgRole
 
@@ -48,14 +48,16 @@ class SsoGroupMapping(BaseModel):
 
 
 class OrgAdvancedSettingsOut(BaseModel):
-    """Per-organisation SMTP override and SSO group-mapping settings — see
-    `Organization` model docstring and docs/decisions.md."""
+    """Per-organisation SMTP override, SSO group-mapping, and Personal
+    Access Token lifetime-cap settings — see `Organization` model
+    docstring and docs/decisions.md."""
 
     smtp_host: str | None = None
     smtp_port: int | None = None
     smtp_username: str | None = None
     smtp_use_tls: bool = True
     sso_group_mappings: list[SsoGroupMapping] = []
+    pat_max_lifetime_days: int | None = None
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -65,6 +67,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_password: str | None = None
     smtp_use_tls: bool = True
     sso_group_mappings: list[SsoGroupMapping] = []
+    pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class OrgUserCreate(BaseModel):

@@ -18,6 +18,7 @@ from app.models.engagement import CommentReaction, Subscription
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
+from app.models.pat import PersonalAccessToken
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -60,6 +61,7 @@ __all__ = [
     "OrgGroupMember",
     "ReportTemplate",
     "UserOrgRole",
+    "PersonalAccessToken",
     "FavoriteProject",
     "Project",
     "ProjectCategory",

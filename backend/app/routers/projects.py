@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -67,6 +67,7 @@ from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
 from app.services.notifications import notify
 from app.services.rbac import (
+    check_pat_scope,
     get_effective_org_roles,
     get_effective_project_roles,
     get_project_managers,
@@ -91,6 +92,7 @@ DEFAULT_GROUPS = [
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -103,7 +105,14 @@ def create_project(
     instead. If that leaves the new project with no manager at all, the
     creator is still added as a fallback so C-U-08 (every project must have
     a manager) can never be violated.
+
+    `organization_id` lives in the request body here (the project doesn't
+    exist yet to have a path segment of its own), so — unlike every other
+    org/project-scoped endpoint — it isn't covered by `require_org_role`'s
+    or `require_project_*`'s built-in PAT-scope check; enforced explicitly
+    here instead.
     """
+    check_pat_scope(request, payload.organization_id)
     org_roles = get_effective_org_roles(db, current_user.id, payload.organization_id)
     if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")

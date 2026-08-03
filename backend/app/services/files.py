@@ -9,6 +9,7 @@ regardless of which backend actually holds the bytes.
 
 from __future__ import annotations
 
+import re
 import uuid
 from functools import lru_cache
 from uuid import UUID
@@ -20,6 +21,39 @@ from app.models.file import FileAsset
 from app.storage_backends import FileStorageBackend, LocalFileStorageBackend, S3CompatibleFileStorageBackend
 
 settings = get_settings()
+
+_UNSAFE_KEY_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _safe_key_component(filename: str) -> str:
+    """Reduces a client-supplied filename to a fragment safe to embed in a
+    storage key path.
+
+    `upload_file` below builds a key as `f"{organization_id}/{uuid4()}_
+    {filename}"`, intending the uuid prefix to make every key
+    collision-proof and, per `storage_backends.local`'s original comment,
+    "never taken directly from user input" — but the raw filename WAS still
+    concatenated in directly. A filename containing `/` or `..` segments
+    (e.g. `../../other-org-id/evil.txt`) reintroduces exactly the kind of
+    attacker-controlled path component the uuid prefix was meant to rule
+    out: the first `..` merges with the uuid prefix into one literal,
+    harmless component (`<uuid>_..`), but any *additional* `../` segments
+    in the filename remain real traversal operators, letting the resolved
+    path pop back out of the uploading organisation's own key prefix and
+    into another organisation's — a cross-tenant storage write, even though
+    `LocalFileStorageBackend._path_for`'s own confinement check (staying
+    inside the shared `storage_local_dir` root) still passes.
+
+    Keeping only the final path segment (discarding directory components
+    entirely, so no `..` can ever reach this function to begin with) and
+    replacing every remaining non-alphanumeric character closes this: the
+    resulting fragment can never contain a `/` or `.`-only component, so it
+    can never be interpreted as a path separator or a traversal operator by
+    any backend that resolves keys hierarchically.
+    """
+    name = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    safe = _UNSAFE_KEY_CHARS.sub("_", name).strip("_.")
+    return safe or "file"
 
 
 @lru_cache
@@ -63,7 +97,7 @@ def upload_file(
         The created FileAsset (not yet committed).
     """
     backend = get_storage_backend()
-    key = f"{organization_id}/{uuid.uuid4()}_{filename}"
+    key = f"{organization_id}/{uuid.uuid4()}_{_safe_key_component(filename)}"
     backend.save(key, data)
 
     file_asset = FileAsset(

@@ -7,6 +7,7 @@ import type {
   FileAsset,
   OrgAdvancedSettings,
   OrgGroup,
+  OrgPersonalAccessToken,
   OrgRole,
   OrgSsoConfig,
   OrgUser,
@@ -50,6 +51,9 @@ export function OrgAdminPage() {
   const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
+  const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
+  const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
+  const [patBulkResult, setPatBulkResult] = useState<string | null>(null);
 
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
@@ -109,6 +113,8 @@ export function OrgAdminPage() {
       setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
       setSmtpUsername(a.smtp_username ?? "");
       setSmtpUseTls(a.smtp_use_tls);
+      setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+      setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
@@ -145,12 +151,32 @@ export function OrgAdminPage() {
         smtp_password: smtpPassword || undefined,
         smtp_use_tls: smtpUseTls,
         sso_group_mappings: advanced?.sso_group_mappings ?? [],
+        pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
       });
       setAdvanced(saved);
       setSmtpPassword("");
     } catch (err) {
       setAdvancedError(err instanceof Error ? err.message : strings.common.error);
     }
+  }
+
+  async function revokeOrgPat(patId: string) {
+    if (!orgId) return;
+    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`);
+    setOrgPats((current) => current.filter((p) => p.id !== patId));
+  }
+
+  async function descopeOrgPat(patId: string) {
+    if (!orgId || !window.confirm(strings.orgAdmin.patDescopeConfirm)) return;
+    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
+    setOrgPats((current) => current.filter((p) => p.id !== patId));
+  }
+
+  async function revokeAllOrgPats() {
+    if (!orgId || !window.confirm(strings.orgAdmin.patRevokeAllConfirm)) return;
+    const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
+    setOrgPats([]);
+    setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
   }
 
   function addMapping() {
@@ -544,6 +570,20 @@ export function OrgAdminPage() {
             {strings.orgAdmin.smtpUseTls}
           </label>
 
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.patMaxLifetime}
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={3650}
+              style={{ maxWidth: 160 }}
+              value={patMaxLifetimeDays}
+              onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
+            />
+            <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint}</span>
+          </label>
+
           <div className="stack">
             <strong>{strings.orgAdmin.ssoMappings}</strong>
             {advanced.sso_group_mappings.map((m, idx) => (
@@ -578,6 +618,69 @@ export function OrgAdminPage() {
           <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
             {strings.orgAdmin.saveAdvanced}
           </button>
+        </div>
+      )}
+
+      {advanced && (
+        <div className="card stack">
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.pats}</h2>
+
+          {orgPats.length === 0 ? (
+            <p className="text-muted">{strings.orgAdmin.patNone}</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>{strings.orgAdmin.patUser}</th>
+                  <th>{strings.orgAdmin.patName}</th>
+                  <th>{strings.orgAdmin.patExpires}</th>
+                  <th>{strings.orgAdmin.patLastUsed}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {orgPats.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      {p.user_display_name} <span className="text-muted">({p.user_email})</span>
+                    </td>
+                    <td>
+                      {p.name}
+                      {p.other_org_count > 0 && (
+                        <div className="text-muted">{strings.orgAdmin.patOtherOrgs.replace("{n}", String(p.other_org_count))}</div>
+                      )}
+                    </td>
+                    <td>{new Date(p.expires_at).toLocaleDateString()}</td>
+                    <td>{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never}</td>
+                    <td>
+                      <div className="row">
+                        {p.other_org_count > 0 && (
+                          <button className="btn" onClick={() => descopeOrgPat(p.id)}>
+                            {strings.orgAdmin.patDescope}
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => {
+                            if (window.confirm(strings.orgAdmin.patRevokeOneConfirm)) revokeOrgPat(p.id);
+                          }}
+                        >
+                          {strings.orgAdmin.patRevoke}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {orgPats.length > 0 && (
+            <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
+              {strings.orgAdmin.patRevokeAll}
+            </button>
+          )}
+          {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
         </div>
       )}
     </div>

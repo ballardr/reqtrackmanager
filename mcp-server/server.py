@@ -44,6 +44,7 @@ import html
 import json
 import os
 import uuid
+from urllib.parse import quote
 
 import httpx
 from fastmcp import FastMCP
@@ -769,8 +770,19 @@ async def _get_org_login_info(slug: str) -> dict | None:
     Returns:
         The `OrgLoginInfoOut` dict, or `None` if no org has this slug.
     """
+    # URL-encoded so a crafted `?org=` value (e.g. containing `/`, `..`, or
+    # `?`) can never reshape which path or query string this request
+    # actually sends — a hardening-review finding: an unencoded slug could
+    # otherwise make httpx's own dot-segment normalization escape the
+    # intended `/orgs/by-slug/` prefix, or split the URL at an embedded `?`
+    # and land the hardcoded `/login-info` suffix in the query string
+    # instead of the path, reaching a different backend endpoint than
+    # intended (confirmed low-impact today: this call is always anonymous
+    # and every unauthenticated GET on the backend is already meant to be
+    # public — but encoding correctly here means that stops being an
+    # invariant this code silently depends on).
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-        response = await client.get(f"{REQTRACK_API_URL}/api/v1/orgs/by-slug/{slug}/login-info")
+        response = await client.get(f"{REQTRACK_API_URL}/api/v1/orgs/by-slug/{quote(slug, safe='')}/login-info")
     if response.status_code == 404:
         return None
     response.raise_for_status()

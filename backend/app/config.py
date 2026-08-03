@@ -72,6 +72,11 @@ class Settings(BaseSettings):
             main app (see `routers/auth_oidc.py`'s `client` parameter) — lets
             an SSO user land on `mcp_server`'s token page directly rather
             than the app UI.
+        pat_default_max_lifetime_days: Fallback maximum lifetime, in days,
+            for a Personal Access Token scoped to an organisation that
+            hasn't set its own `Organization.pat_max_lifetime_days` —
+            guarantees no PAT is ever unboundedly long-lived even if no org
+            admin ever touches that per-org setting.
         oidc_internal_base_url_override: Dev/test-only escape hatch for a
             common containerized-IdP problem: an org's `oidc_issuer_url`
             must be the identity provider's browser-reachable public URL
@@ -147,6 +152,7 @@ class Settings(BaseSettings):
     public_backend_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
     mcp_server_public_url: str = "http://localhost:8100"
+    pat_default_max_lifetime_days: int = 90
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
 

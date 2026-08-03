@@ -32,13 +32,26 @@ router = APIRouter(tags=["realtime"])
 _EXPIRY_CHECK_INTERVAL_SECONDS = 60
 
 
-def _user_still_active(user_id: UUID) -> bool:
-    """Re-checks `User.is_active` in a fresh, short-lived session — used by
-    the periodic recheck below rather than holding one DB session open for
-    a connection's entire (potentially hours-long) lifetime."""
+def _user_session_still_valid(user_id: UUID, token_version: int) -> bool:
+    """Re-checks `User.is_active` and `User.token_version` in a fresh,
+    short-lived session — used by the periodic recheck below rather than
+    holding one DB session open for a connection's entire (potentially
+    hours-long) lifetime.
+
+    The `token_version` comparison is what makes password-change/2FA-disable
+    actually close an already-open socket, the same guarantee
+    `deps._resolve_user_from_token` already provides for every REST
+    request — a hardening-review finding: this function previously checked
+    only `is_active`, so `token_version`'s documented role as "this
+    system's primary technical incident-containment tool"
+    (access-control-policy.md) silently did not apply to WebSocket
+    connections at all, despite docs/decisions.md claiming this exact gap
+    was already closed.
+    """
     db = SessionLocal()
     try:
-        return bool(db.scalar(select(User.is_active).where(User.id == user_id)))
+        row = db.execute(select(User.is_active, User.token_version).where(User.id == user_id)).first()
+        return row is not None and row.is_active and row.token_version == token_version
     finally:
         db.close()
 
@@ -49,27 +62,36 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
 
     Message shape: {"type": "requirement" | "change_request", "action": str, "id": str}
 
-    Access is checked once at handshake time; token expiry and account
-    deactivation are then rechecked every `_EXPIRY_CHECK_INTERVAL_SECONDS`
-    (SOC 2 access-control hardening pass — a deactivated account's already-
-    open socket now closes within one interval, matching the REST API's
-    behaviour of rejecting `is_active=False` on every request, rather than
-    only once the token naturally expires). Project *role* changes are
-    still not rechecked mid-connection — narrowing, not eliminating, the
-    original exposure window: a role downgrade/removal takes effect on the
-    next REST call immediately, but an already-open socket keeps streaming
-    that project's updates until the connection's token expires or the
-    account itself is deactivated/archived.
+    Access is checked once at handshake time; token expiry, `token_version`
+    revocation (password change / 2FA disable), and account deactivation
+    are then rechecked every `_EXPIRY_CHECK_INTERVAL_SECONDS` (SOC 2
+    access-control hardening pass — a deactivated or credential-revoked
+    account's already-open socket now closes within one interval, matching
+    the REST API's behaviour of rejecting a stale token / `is_active=False`
+    on every request, rather than only once the token naturally expires).
+    Project *role* changes are still not rechecked mid-connection —
+    narrowing, not eliminating, the original exposure window: a role
+    downgrade/removal takes effect on the next REST call immediately, but
+    an already-open socket keeps streaming that project's updates until
+    the connection's token expires, is revoked, or the account itself is
+    deactivated/archived.
     """
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
         await websocket.close(code=4401)
         return
+    token_version = claims.get("tv", 0)
     token_expires_at = datetime.fromtimestamp(claims["exp"], tz=UTC) if "exp" in claims else None
 
     db = SessionLocal()
     try:
         user = db.get(User, UUID(claims["sub"]))
+        if user is not None and user.token_version != token_version:
+            # Token was issued before the user's most recent password
+            # change / 2FA disable (see User.token_version) — reject
+            # exactly like deps._resolve_user_from_token does for REST,
+            # even though the signature/expiry are otherwise valid.
+            user = None
         # No server-admin bypass (I-M-05): live project updates are "data
         # within organisations", same boundary as every REST endpoint.
         has_access = user is not None and (
@@ -89,6 +111,9 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
     finally:
         db.close()
 
+    if user is None:
+        await websocket.close(code=4401)
+        return
     if not has_access:
         await websocket.close(code=4403)
         return
@@ -102,10 +127,10 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=_EXPIRY_CHECK_INTERVAL_SECONDS)
             except TimeoutError:
-                if not _user_still_active(user.id):
+                if not _user_session_still_valid(user.id, token_version):
                     await websocket.close(code=4401)
                     break
-                continue  # still active — loop back to the expiry/active check
+                continue  # still active and not revoked — loop back to the expiry check
     except WebSocketDisconnect:
         pass
     finally:

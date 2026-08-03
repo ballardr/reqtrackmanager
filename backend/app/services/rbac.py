@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,6 +38,28 @@ from app.models.enums import OrgRole, ProjectRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
+
+
+def check_pat_scope(request: Request, organization_id: UUID) -> None:
+    """Enforces a Personal Access Token's org scope, on top of the caller's
+    real RBAC roles (checked separately by each dependency below).
+
+    `request.state.pat_allowed_org_ids` is only ever set by
+    `deps._resolve_user_from_pat` — an ordinary session-JWT request never
+    has the attribute at all, so this is a no-op (zero extra queries) for
+    the overwhelming majority of requests. When it *is* set, a PAT is
+    restricted to acting only within the orgs its creator chose for it,
+    regardless of what org/project roles the underlying user otherwise
+    holds — this is a restriction layered on top of RBAC, never a grant
+    beyond it.
+
+    Raises:
+        HTTPException: 403 if the request was authenticated via a PAT not
+            scoped to `organization_id`.
+    """
+    allowed = getattr(request.state, "pat_allowed_org_ids", None)
+    if allowed is not None and organization_id not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This access token is not scoped to this organisation.")
 
 
 def get_effective_org_roles(db: Session, user_id: UUID, organization_id: UUID) -> set[OrgRole]:
@@ -229,8 +251,18 @@ def get_project_member_user_ids(db: Session, project_id: UUID) -> set[UUID]:
     return user_ids
 
 
-def require_server_admin(current_user: User = Depends(get_current_user)) -> User:
-    """FastAPI dependency requiring the cross-tenant server admin role (I-M-05)."""
+def require_server_admin(request: Request, current_user: User = Depends(get_current_user)) -> User:
+    """FastAPI dependency requiring the cross-tenant server admin role (I-M-05).
+
+    Personal Access Tokens can never satisfy this, even for a genuine
+    server admin's own token: a PAT's whole design is "which orgs can it
+    access," which is meaningless for a deployment-wide action — I-M-05's
+    "server admin does not give access to data within organisations"
+    extends naturally to treating a PAT as an inherently org-scoped
+    credential, full stop.
+    """
+    if getattr(request.state, "pat_allowed_org_ids", None) is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Personal access tokens cannot be used for server administration.")
     if not current_user.is_server_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Server admin permission required.")
     return current_user
@@ -250,10 +282,12 @@ def require_org_role(*allowed: OrgRole):
 
     def _dependency(
         organization_id: UUID,
+        request: Request,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_org_role` factory's docstring."""
+        check_pat_scope(request, organization_id)
         roles = get_effective_org_roles(db, current_user.id, organization_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
@@ -264,6 +298,7 @@ def require_org_role(*allowed: OrgRole):
 
 def require_org_admin_or_server_admin(
     organization_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> User:
@@ -273,6 +308,7 @@ def require_org_admin_or_server_admin(
     Used only by the create-org-user endpoint — every other org-scoped
     endpoint requires a genuine org role via `require_org_role`.
     """
+    check_pat_scope(request, organization_id)
     if current_user.is_server_admin:
         return current_user
     roles = get_effective_org_roles(db, current_user.id, organization_id)
@@ -290,10 +326,12 @@ def require_project_role(*allowed: ProjectRole):
 
     def _dependency(
         project_id: UUID,
+        request: Request,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_project_role` factory's docstring."""
+        check_pat_scope_for_project(request, db, project_id)
         roles = get_effective_project_roles(db, current_user.id, project_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
@@ -302,8 +340,21 @@ def require_project_role(*allowed: ProjectRole):
     return _dependency
 
 
+def check_pat_scope_for_project(request: Request, db: Session, project_id: UUID) -> None:
+    """Like `check_pat_scope`, but for a `project_id` path parameter — one
+    extra `Project.organization_id` lookup, only paid when the request is
+    actually PAT-authenticated (a no-op read for ordinary session-JWT
+    requests, which are the overwhelming majority)."""
+    if getattr(request.state, "pat_allowed_org_ids", None) is None:
+        return
+    organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+    if organization_id is not None:
+        check_pat_scope(request, organization_id)
+
+
 def require_project_view(
     project_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> User:
@@ -314,6 +365,7 @@ def require_project_view(
     general content access (see `require_project_manage`). Server admins do
     not bypass this either (I-M-05).
     """
+    check_pat_scope_for_project(request, db, project_id)
     if not get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
     return current_user
@@ -321,6 +373,7 @@ def require_project_view(
 
 def require_project_manage(
     project_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Project:
@@ -334,6 +387,7 @@ def require_project_manage(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    check_pat_scope(request, project.organization_id)
     if not can_manage_project_settings(db, current_user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     return project

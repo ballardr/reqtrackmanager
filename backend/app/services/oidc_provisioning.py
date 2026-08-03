@@ -125,15 +125,27 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     can log in but see no organisation content until an admin either adds a
     mapping or grants them a role directly, same as any other user with no
     role.
+
+    Also syncs *down*: on a login where the IdP does assert a groups/roles
+    claim (even an empty one), any role the user currently holds that came
+    from this org's mapping vocabulary but whose matching group is no
+    longer present is revoked — closing the timely-deprovisioning gap that
+    existed when this function only ever granted. This never touches a
+    role outside `org.sso_group_mappings`' own vocabulary (e.g. one granted
+    manually), and is skipped entirely — neither granting nor revoking
+    anything — when the IdP asserts no groups/roles claim at all, since
+    that's ambiguous with "this provider doesn't send this claim" rather
+    than "this person is in zero groups."
     """
     idp_groups = set(claims.get("groups") or []) | set(claims.get("roles") or [])
-    if not idp_groups:
-        return
 
-    mapped_roles = {
-        OrgRole(m["org_role"]) for m in org.sso_group_mappings if m.get("sso_group") in idp_groups
-    }
-    if not mapped_roles:
+    # Every OrgRole this org's SSO mapping could ever grant — the only
+    # roles this function is allowed to touch in either direction. A role
+    # held outside this vocabulary (e.g. one an admin granted manually,
+    # with no corresponding sso_group entry) is never added *or* removed
+    # here, no matter what the IdP currently asserts.
+    sso_managed_roles = {OrgRole(m["org_role"]) for m in org.sso_group_mappings}
+    if not sso_managed_roles:
         return
 
     existing_roles = set(
@@ -141,5 +153,38 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
             select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
         ).all()
     )
+
+    if not idp_groups:
+        # The IdP asserted no groups/roles claim at all this login. This is
+        # deliberately treated as "unknown," not "empty" — a provider that
+        # simply doesn't include this claim (a config gap, not a genuine
+        # group-membership change) would otherwise cause every SSO-managed
+        # role at this org to be revoked on the very next login, a much
+        # larger and more surprising blast radius than a hardening pass
+        # should introduce without an explicit, deliberate opt-in. Existing
+        # roles are left untouched in this case; nothing new is granted
+        # either, matching the original (grant-only) behaviour.
+        return
+
+    mapped_roles = {OrgRole(m["org_role"]) for m in org.sso_group_mappings if m.get("sso_group") in idp_groups}
     for role in mapped_roles - existing_roles:
         db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=role))
+
+    # Sync down: revoke any SSO-managed role the user currently holds whose
+    # matching IdP group claim is no longer present. Hardening-review
+    # finding — the original version only ever granted, never revoked, so
+    # once granted via a group claim, a role persisted even after the
+    # person was removed from that IdP group, contradicting the timely-
+    # deprovisioning expectation this project's own access-control policy
+    # documents for every other provisioning path (CC6.2/CC6.3). Still
+    # scoped strictly to `sso_managed_roles`, so this can only ever revoke
+    # a role the mapping vocabulary itself covers.
+    roles_to_revoke = (existing_roles & sso_managed_roles) - mapped_roles
+    if roles_to_revoke:
+        db.execute(
+            UserOrgRole.__table__.delete().where(
+                UserOrgRole.user_id == user.id,
+                UserOrgRole.organization_id == org.id,
+                UserOrgRole.role.in_(roles_to_revoke),
+            )
+        )

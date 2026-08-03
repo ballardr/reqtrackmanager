@@ -8,6 +8,7 @@ network calls), and the config API surface."""
 import pytest
 
 from app.database import SessionLocal
+from app.models.enums import OrgRole
 from app.models.organization import Organization
 from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
 from tests.conftest import auth_headers, create_org_admin_in
@@ -142,6 +143,108 @@ def test_sync_org_roles_grants_nothing_when_no_group_matches():
             select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
         ).all()
         assert roles == []
+    finally:
+        db.close()
+
+
+def test_sync_org_roles_revokes_role_once_matching_group_claim_disappears():
+    """Hardening-review regression: sync_org_roles_from_claims used to only
+    ever grant roles, never revoke them — a role granted via a matching
+    IdP group claim persisted forever even after later logins no longer
+    asserted that group."""
+    from sqlalchemy import select
+
+    from app.models.organization import UserOrgRole
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Sync Down Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        db.add(org)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "sync-down-subject", "email": "syncdown@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_roles_from_claims(db, user, org, {"groups": ["admins"]})
+        db.commit()
+        roles = db.scalars(
+            select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
+        ).all()
+        assert "org_admin" in [r.value for r in roles]
+
+        # A later login where the IdP no longer asserts "admins" (but does
+        # assert *some* non-empty groups claim, e.g. the user is still in
+        # some other, unmapped group) revokes the role.
+        sync_org_roles_from_claims(db, user, org, {"groups": ["some-other-group"]})
+        db.commit()
+        roles = db.scalars(
+            select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
+        ).all()
+        assert roles == []
+    finally:
+        db.close()
+
+
+def test_sync_org_roles_never_touches_a_role_outside_the_mapping_vocabulary():
+    """A role granted manually (with no corresponding sso_group entry at
+    all) must survive sync-down regardless of what the IdP asserts —
+    sync_org_roles_from_claims may only manage roles its own org's mapping
+    vocabulary covers."""
+    from sqlalchemy import select
+
+    from app.models.organization import UserOrgRole
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Manual Role Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        db.add(org)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "manual-role-subject", "email": "manualrole@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        # Manually granted, outside any sso_group_mappings entry.
+        db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=OrgRole.PROJECT_CREATOR))
+        db.commit()
+
+        sync_org_roles_from_claims(db, user, org, {"groups": ["unrelated-group"]})
+        db.commit()
+
+        roles = {
+            r.value
+            for r in db.scalars(
+                select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
+            ).all()
+        }
+        assert roles == {"project_creator"}
+    finally:
+        db.close()
+
+
+def test_sync_org_roles_leaves_existing_roles_alone_when_idp_asserts_no_groups_claim_at_all():
+    """An IdP that simply doesn't send a groups/roles claim (a provider
+    configuration gap, not a genuine "zero groups" assertion) must not
+    cause a mass revocation of every SSO-managed role at this org."""
+    from sqlalchemy import select
+
+    from app.models.organization import UserOrgRole
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC No Claim Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        db.add(org)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "no-claim-subject", "email": "noclaim@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_roles_from_claims(db, user, org, {"groups": ["admins"]})
+        db.commit()
+
+        sync_org_roles_from_claims(db, user, org, {})  # no groups/roles claim in this login's token at all
+        db.commit()
+
+        roles = db.scalars(
+            select(UserOrgRole.role).where(UserOrgRole.user_id == user.id, UserOrgRole.organization_id == org.id)
+        ).all()
+        assert "org_admin" in [r.value for r in roles]
     finally:
         db.close()
 

@@ -5,7 +5,14 @@ import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { t } from "../i18n/strings";
-import type { DigestMode, NotificationPreference, ProjectListItem } from "../api/types";
+import type {
+  DigestMode,
+  NotificationPreference,
+  Organization,
+  PersonalAccessToken,
+  PersonalAccessTokenCreateResult,
+  ProjectListItem,
+} from "../api/types";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -48,10 +55,62 @@ export function PreferencesPage() {
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreference[]>([]);
 
+  const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
+  const [pats, setPats] = useState<PersonalAccessToken[]>([]);
+  const [newPatName, setNewPatName] = useState("");
+  const [newPatOrgIds, setNewPatOrgIds] = useState<Set<string>>(new Set());
+  const [newPatExpiry, setNewPatExpiry] = useState("");
+  const [patError, setPatError] = useState<string | null>(null);
+  const [createdPat, setCreatedPat] = useState<PersonalAccessTokenCreateResult | null>(null);
+
   useEffect(() => {
     api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
     api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
+    api.get<Organization[]>("/api/v1/orgs").then(setMyOrgs);
+    api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
   }, []);
+
+  function toggleNewPatOrg(orgId: string) {
+    setNewPatOrgIds((current) => {
+      const next = new Set(current);
+      if (next.has(orgId)) next.delete(orgId);
+      else next.add(orgId);
+      return next;
+    });
+  }
+
+  async function createPat() {
+    setPatError(null);
+    if (newPatOrgIds.size === 0) {
+      setPatError(strings.preferences.patNoOrgsSelected);
+      return;
+    }
+    try {
+      const created = await api.post<PersonalAccessTokenCreateResult>("/api/v1/me/pats", {
+        name: newPatName,
+        allowed_organization_ids: Array.from(newPatOrgIds),
+        requested_expires_at: newPatExpiry ? new Date(newPatExpiry).toISOString() : undefined,
+      });
+      setCreatedPat(created);
+      setNewPatName("");
+      setNewPatOrgIds(new Set());
+      setNewPatExpiry("");
+      api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+    } catch (err) {
+      setPatError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
+  async function revokePat(id: string) {
+    await api.delete(`/api/v1/me/pats/${id}`);
+    setPats((current) => current.map((p) => (p.id === id ? { ...p, revoked_at: new Date().toISOString() } : p)));
+  }
+
+  async function revokeAllPats() {
+    if (!window.confirm(strings.preferences.patRevokeAllConfirm)) return;
+    await api.post("/api/v1/me/pats/revoke-all");
+    api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+  }
 
   async function updateNotificationPref(type: string, field: "ui_enabled" | "email_enabled", value: boolean) {
     const current = notificationPrefs.find((p) => p.type === type);
@@ -296,6 +355,109 @@ export function PreferencesPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
+        <p className="text-muted">{strings.preferences.patsHint}</p>
+
+        {pats.filter((p) => !p.revoked_at).length === 0 ? (
+          <p className="text-muted">{strings.preferences.patNone}</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>{strings.preferences.patName}</th>
+                <th>{strings.orgAdmin.organizations}</th>
+                <th>{strings.preferences.patExpires}</th>
+                <th>{strings.preferences.patLastUsed}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pats
+                .filter((p) => !p.revoked_at)
+                .map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.allowed_organizations.map((o) => o.name).join(", ")}</td>
+                    <td>{new Date(p.expires_at).toLocaleDateString()}</td>
+                    <td>{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.preferences.patNever}</td>
+                    <td>
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => {
+                          if (window.confirm(strings.preferences.patRevokeConfirm)) revokePat(p.id);
+                        }}
+                      >
+                        {strings.preferences.patRevoke}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
+        {pats.filter((p) => !p.revoked_at).length > 0 && (
+          <button className="btn btn-danger" onClick={revokeAllPats} style={{ alignSelf: "flex-start" }}>
+            {strings.preferences.patRevokeAll}
+          </button>
+        )}
+
+        <div className="stack">
+          <strong>{strings.common.create}</strong>
+          <input
+            className="input"
+            placeholder={strings.preferences.patNamePlaceholder}
+            value={newPatName}
+            onChange={(e) => setNewPatName(e.target.value)}
+          />
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.preferences.patOrgs}
+            <div className="stack" style={{ gap: "0.25rem" }}>
+              {myOrgs.map((org) => (
+                <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={newPatOrgIds.has(org.id)}
+                    onChange={() => toggleNewPatOrg(org.id)}
+                  />
+                  {org.name}
+                </label>
+              ))}
+            </div>
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.preferences.patExpiry}
+            <input
+              className="input"
+              type="date"
+              value={newPatExpiry}
+              onChange={(e) => setNewPatExpiry(e.target.value)}
+            />
+            <span className="text-muted">{strings.preferences.patExpiryHint}</span>
+          </label>
+          {patError && <div style={{ color: "var(--color-danger)" }}>{patError}</div>}
+          <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
+            {strings.preferences.patCreate}
+          </button>
+        </div>
+
+        {createdPat && (
+          <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: 6, padding: "0.75rem" }}>
+            <strong>{strings.preferences.patCreatedTitle}</strong>
+            <p className="text-muted">{strings.preferences.patCreatedHint}</p>
+            <code style={{ wordBreak: "break-all", background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 4 }}>
+              {createdPat.token}
+            </code>
+            <button className="btn" onClick={() => navigator.clipboard.writeText(createdPat.token)} style={{ alignSelf: "flex-start" }}>
+              {strings.common.copy}
+            </button>
+            <button className="btn" onClick={() => setCreatedPat(null)} style={{ alignSelf: "flex-start" }}>
+              {strings.common.cancel}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card stack">

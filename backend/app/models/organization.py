@@ -70,6 +70,12 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             deliberately separate checks, so an admin can gate access to a
             specific provisioning group without that group needing to also
             be one of the role-granting entries in `sso_group_mappings`.
+        pat_max_lifetime_days: Optional cap, set by this org's own admin, on
+            how long a Personal Access Token scoped to this org may live.
+            `None` means "use the deployment-wide default"
+            (`settings.pat_default_max_lifetime_days`). Enforced dynamically
+            at PAT auth time, not just at creation — see
+            `models.pat.PersonalAccessToken`'s docstring.
     """
 
     __tablename__ = "organizations"
@@ -105,6 +111,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         ForeignKey("file_assets.id", use_alter=True, name="fk_organizations_login_background_file_id"),
         nullable=True,
     )
+    pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):

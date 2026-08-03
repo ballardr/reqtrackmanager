@@ -10,6 +10,8 @@ elsewhere.
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -21,6 +23,8 @@ from app.config import get_settings
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 settings = get_settings()
+
+PAT_PREFIX = "rtm_pat_"
 
 
 def hash_password(password: str) -> str:
@@ -123,6 +127,48 @@ def create_oidc_state_token(organization_id: str, client_nonce: str, client: str
         "exp": expire, "purpose": "oidc_state",
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def generate_pat() -> tuple[str, str, str]:
+    """Generates a new Personal Access Token secret.
+
+    Deliberately an opaque random secret, not a JWT: unlike a session
+    token, a PAT needs instant, per-token revocation (an org/server admin
+    "revoke now" action must take effect immediately, not wait for a
+    signature-only check to naturally expire), which is a simple hash
+    lookup against a DB row rather than a second revocation-list mechanism
+    bolted onto a supposedly-stateless token. Mirrors how this codebase
+    already treats passwords: only a hash is ever persisted.
+
+    Returns:
+        A 3-tuple of `(raw_token, token_hash, token_prefix)`:
+        - `raw_token`: the full secret, e.g. `rtm_pat_<43 url-safe chars>`.
+          Shown to the caller exactly once, at creation, and never
+          recoverable afterward — only its hash is stored.
+        - `token_hash`: the SHA-256 hex digest to persist and look up by.
+        - `token_prefix`: the first ~14 characters of `raw_token`, safe to
+          store and display in plaintext so a user's token list can help
+          them recognise which token is which without exposing the secret.
+    """
+    raw_token = f"{PAT_PREFIX}{secrets.token_urlsafe(32)}"
+    return raw_token, hash_pat(raw_token), raw_token[: len(PAT_PREFIX) + 6]
+
+
+def hash_pat(raw_token: str) -> str:
+    """Hashes a raw PAT secret for storage/lookup.
+
+    Args:
+        raw_token: The full, plaintext token secret.
+
+    Returns:
+        The SHA-256 hex digest. Unlike password hashing, this is a plain
+        fast hash rather than bcrypt — the input is already a
+        cryptographically random 32-byte secret (not a human-memorable,
+        low-entropy password), so there's no offline brute-force risk a
+        slow hash would need to defend against; a fast hash keeps every
+        authenticated request's lookup cheap.
+    """
+    return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:

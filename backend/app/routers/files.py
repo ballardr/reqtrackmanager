@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,7 @@ from app.models.organization import Organization
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.services.files import read_file
-from app.services.rbac import get_effective_org_roles, get_effective_project_roles
+from app.services.rbac import check_pat_scope, check_pat_scope_for_project, get_effective_org_roles, get_effective_project_roles
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
@@ -51,7 +51,10 @@ _INLINE_SAFE_CONTENT_TYPES = {
 
 @router.get("/{file_id}")
 def download_file(
-    file_id: UUID, current_user: User = Depends(get_current_user_header_or_query), db: Session = Depends(get_db)
+    file_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user_header_or_query),
+    db: Session = Depends(get_db),
 ):
     file_asset = db.get(FileAsset, file_id)
     if file_asset is None:
@@ -60,18 +63,32 @@ def download_file(
     # No server-admin bypass (I-M-05): uploaded files are "data within
     # organisations". Avatars/logos are the one category that's genuinely
     # open to any authenticated user regardless of org membership, since
-    # they're shown in shared UI chrome.
+    # they're shown in shared UI chrome — also deliberately exempt from the
+    # Personal Access Token org-scope check below, for the same reason
+    # /auth/me and other personal, cross-org endpoints are (see
+    # docs/decisions.md's "Personal Access Tokens" section).
     is_avatar_or_logo = (
         db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
         or db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
     )
     if not is_avatar_or_logo:
         if file_asset.is_org_resource:
+            # This endpoint resolves the current user via
+            # get_current_user_header_or_query rather than one of
+            # services.rbac's require_* dependency factories (it needs to
+            # accept a ?token= query param for <img src> use, which those
+            # don't support) — so the Personal Access Token org-scope
+            # restriction those factories apply isn't automatic here and
+            # must be checked explicitly, in addition to (not instead of)
+            # the real RBAC role check below.
+            check_pat_scope(request, file_asset.organization_id)
             if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
         else:
             link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
             requirement = db.get(Requirement, link.requirement_id) if link else None
+            if requirement is not None:
+                check_pat_scope_for_project(request, db, requirement.project_id)
             has_access = requirement is not None and get_effective_project_roles(
                 db, current_user.id, requirement.project_id
             )

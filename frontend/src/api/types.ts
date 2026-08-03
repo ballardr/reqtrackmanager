@@ -405,6 +405,50 @@ export interface OrgAdvancedSettings {
   smtp_username: string | null;
   smtp_use_tls: boolean;
   sso_group_mappings: SsoGroupMapping[];
+  pat_max_lifetime_days: number | null;
+}
+
+export interface PersonalAccessTokenOrgRef {
+  id: string;
+  name: string;
+}
+
+export interface PersonalAccessTokenCreateResult {
+  id: string;
+  name: string;
+  token: string;
+  token_prefix: string;
+  allowed_organizations: PersonalAccessTokenOrgRef[];
+  expires_at: string;
+  created_at: string;
+}
+
+export interface PersonalAccessToken {
+  id: string;
+  name: string;
+  token_prefix: string;
+  allowed_organizations: PersonalAccessTokenOrgRef[];
+  expires_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface OrgPersonalAccessToken {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_display_name: string;
+  name: string;
+  token_prefix: string;
+  expires_at: string;
+  other_org_count: number;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface BulkRevokeResult {
+  revoked_count: number;
 }
 
 export interface ReportTemplate {

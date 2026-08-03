@@ -2,6 +2,9 @@
 shared resources (C-M-03), linking a shared resource to a requirement
 (C-M-04), and avatar/logo upload (C-U-18, U-C-02)."""
 
+from sqlalchemy import text
+
+from app.database import engine as app_engine
 from tests.conftest import auth_headers, create_component_and_category, create_project
 
 
@@ -44,6 +47,46 @@ def test_upload_and_download_requirement_attachment(client, admin_token, org_id)
     assert resp.status_code == 204
     download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
     assert download.status_code == 404
+
+
+def test_uploaded_filename_cannot_escape_its_organisations_storage_key_prefix(client, admin_token, org_id):
+    """Regression test for a hardening-review finding: a crafted filename
+    like `../../other-org/evil.txt` used to reintroduce real path
+    traversal into the generated storage key (the uuid prefix only
+    neutralises the *first* `../` segment by merging with it into one
+    literal component, leaving any additional ones as live traversal
+    operators) — letting an upload resolve into a different organisation's
+    key prefix on the local storage backend while still passing its own
+    confinement check. The storage key itself isn't exposed via the API,
+    so this asserts directly against the DB row that it's confined to
+    `{organization_id}/` with no path separators or `..` from the filename
+    surviving into it, and that the file still round-trips correctly."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    malicious_name = "../../../some-other-org-id/evil.txt"
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": (malicious_name, b"payload", "text/plain")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201
+    file_id = resp.json()["id"]
+    # The original filename is still preserved verbatim for display/download
+    # purposes — only the on-disk storage key is sanitized.
+    assert resp.json()["filename"] == malicious_name
+
+    with app_engine.begin() as conn:
+        storage_key = conn.execute(text("SELECT storage_key FROM file_assets WHERE id = :id"), {"id": file_id}).scalar_one()
+    assert storage_key.startswith(f"{org_id}/")
+    key_suffix = storage_key.removeprefix(f"{org_id}/")
+    assert ".." not in key_suffix
+    assert "/" not in key_suffix
+
+    download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
+    assert download.status_code == 200
+    assert download.content == b"payload"
 
 
 def test_html_attachment_is_forced_to_download_not_rendered_inline(client, admin_token, org_id):

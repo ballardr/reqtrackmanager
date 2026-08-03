@@ -363,6 +363,27 @@ def update_requirement(
     """Direct requirement edit. Rejected once the requirement is locked (C-G-12) —
     at that point, changes must go through a change request instead."""
     _require_edit_role(db, current_user, project_id)
+    if payload.status == RequirementStatus.APPROVED:
+        # C-U-03's clarification is explicit that approving a requirement is
+        # a *Project Manager* capability layered on top of, not shared
+        # with, what administrators/stakeholders can do ("Project Managers
+        # can also provide approvals for change requests and approval of
+        # project requirements") — the same distinction
+        # decide_change_request already enforces for CR approval
+        # specifically ("C-U-03: project manager only"), which this direct-
+        # edit path had not mirrored: any of the three CAN_EDIT_ROLES
+        # (including a plain Stakeholder) could otherwise set
+        # status="approved" here and become the requirement's own
+        # approval_authority, self-approving and locking it.
+        if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
+    if payload.status == RequirementStatus.COMPLETED:
+        # Completion has its own dedicated, precondition-checked endpoint
+        # (POST .../complete, requiring the current status to already be
+        # "approved") — allowing it here too would let a caller jump
+        # straight from draft to completed in one request, skipping that
+        # precondition entirely regardless of role.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use POST .../complete to mark a requirement completed.")
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")

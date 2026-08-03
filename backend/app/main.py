@@ -33,6 +33,7 @@ from app.routers import (
     health,
     notifications,
     orgs,
+    pats,
     projects,
     reports,
     requirements,
@@ -92,7 +93,10 @@ app.add_middleware(
 )
 
 
-_SENSITIVE_FIELD_NAMES = {"password", "current_password", "new_password", "totp_secret", "code"}
+_SENSITIVE_FIELD_NAMES = {
+    "password", "current_password", "new_password", "totp_secret", "code",
+    "smtp_password", "oidc_client_secret",
+}
 
 
 @app.exception_handler(RequestValidationError)
@@ -120,6 +124,28 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
 
 
 @app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Adds baseline security response headers to every request (hardening
+    review finding: none were set anywhere, and it wasn't a documented,
+    deliberate deferral to a reverse-proxy layer either).
+
+    Deliberately conservative: `X-Frame-Options`/`frame-ancestors` close
+    clickjacking-style UI-redress against an authenticated session without
+    touching what scripts/styles/fonts the app is allowed to load — a full
+    `Content-Security-Policy` restricting *those* would need to be tuned
+    against this specific SPA's actual script/style sources to avoid
+    silently breaking it, so it's left as a documented follow-up
+    (docs/deployment.md) rather than shipped unverified here.
+    """
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
+
+
+@app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     """Records request count and latency for every HTTP request (I-M metrics)."""
     start = time.perf_counter()
@@ -143,6 +169,7 @@ app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(notifications.router)
 app.include_router(reviews.router)
+app.include_router(pats.router)
 app.include_router(system.router)
 if settings.websocket_enabled:
     # I-A-04: the WebSocket interface is optional — deployments that can't
