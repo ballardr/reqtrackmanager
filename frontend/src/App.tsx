@@ -5,6 +5,7 @@ import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
+import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyReviewsDuePage } from "./pages/MyReviewsDuePage";
 import { OidcCompletePage } from "./pages/OidcCompletePage";
@@ -22,6 +23,7 @@ import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { ServerAccessReviewPage } from "./pages/ServerAccessReviewPage";
 import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
+import { ServerSettingsPage } from "./pages/ServerSettingsPage";
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
@@ -36,27 +38,27 @@ function ProtectedRoutes() {
 
   return (
     <Layout>
-      <div className="container" style={{ padding: "1.5rem 0" }}>
-        <Routes>
-          <Route path="/projects" element={<ProjectListPage />} />
-          <Route path="/orgs" element={<OrgListPage />} />
-          <Route path="/orgs/:orgId/admin" element={<OrgAdminPage />} />
-          <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
-          <Route path="/server/access-review" element={<ServerAccessReviewPage />} />
-          <Route path="/my-reviews" element={<MyReviewsDuePage />} />
-          <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
-          <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
-          <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementDetailPage />} />
-          <Route path="/projects/:projectId/change-requests" element={<ChangeRequestsPage />} />
-          <Route path="/projects/:projectId/change-requests/:crId" element={<ChangeRequestDetailPage />} />
-          <Route path="/projects/:projectId/admin" element={<ProjectAdminPage />} />
-          <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
-          <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
-          <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
-          <Route path="/preferences" element={<PreferencesPage />} />
-          <Route path="*" element={<Navigate to="/projects" replace />} />
-        </Routes>
-      </div>
+      <Routes>
+        <Route path="/projects" element={<ProjectListPage />} />
+        <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/orgs/:orgId/admin" element={<OrgAdminPage />} />
+        <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
+        <Route path="/server/access-review" element={<ServerAccessReviewPage />} />
+        <Route path="/server/settings" element={<ServerSettingsPage />} />
+        <Route path="/my-reviews" element={<MyReviewsDuePage />} />
+        <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
+        <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
+        <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementDetailPage />} />
+        <Route path="/projects/:projectId/change-requests" element={<ChangeRequestsPage />} />
+        <Route path="/projects/:projectId/change-requests/:crId" element={<ChangeRequestDetailPage />} />
+        <Route path="/projects/:projectId/admin" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
+        <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
+        <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
+        <Route path="/preferences" element={<PreferencesPage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="*" element={<Navigate to="/projects" replace />} />
+      </Routes>
     </Layout>
   );
 }

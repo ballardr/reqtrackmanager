@@ -1,10 +1,12 @@
 """
 Module: routers.system
 
-Server-admin-only system management endpoints that are not scoped to any
-single organisation (I-M-06): granting or revoking the server admin role
-itself on another user, and the system-wide user access-review directory
-(C-A-13) added in Massif (v3).
+System management endpoints that are not scoped to any single organisation
+(I-M-06): granting or revoking the server admin role itself on another
+user, the system-wide user access-review directory (C-A-13), and
+platform-wide UI branding defaults. Most of this router is server-admin
+only; the branding GET is the one exception (readable by any authenticated
+user, since it drives shared app-shell rendering for everyone).
 """
 
 from __future__ import annotations
@@ -12,16 +14,20 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import UserOrgRole
+from app.deps import get_current_user
+from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
+from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.pat import BulkRevokeResult
 from app.services.audit import log_event
+from app.services.branding import get_server_settings
+from app.services.files import upload_file
 from app.services.pats import revoke_matching
 from app.services.rbac import require_server_admin
 
@@ -250,3 +256,66 @@ def revoke_all_pats_platform_wide(
               actor_id=current_user.id, detail={"count": count})
     db.commit()
     return BulkRevokeResult(revoked_count=count)
+
+
+# --- Platform-wide branding defaults ----------------------------------------
+
+
+@router.get("/branding", response_model=ServerSettingsOut)
+def get_branding(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Readable by any authenticated user (not server-admin-gated): the app
+    shell needs these defaults to render its own chrome for every user, not
+    just server admins — same reasoning as why org logos are readable by
+    anyone regardless of org membership (see `routers/files.py`)."""
+    return get_server_settings(db)
+
+
+@router.put("/branding", response_model=ServerSettingsOut)
+def update_branding(
+    payload: ServerSettingsUpdate,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Sets the platform-wide default accent colour and header title, used
+    on any page without a single resolvable organisation context, and as
+    the fallback for any org that hasn't set its own override."""
+    settings = get_server_settings(db)
+    settings.accent_color_hex = payload.accent_color_hex
+    settings.default_header_title = payload.default_header_title
+    log_event(db, entity_type="system", entity_id="platform", action="branding_updated", actor_id=current_user.id)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+@router.post("/branding/logo", response_model=ServerSettingsOut)
+async def upload_branding_logo(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Uploads the platform-wide default logo. `FileAsset.organization_id`
+    is a required column (files are normally organisation-scoped for
+    storage-key namespacing and access control), but a platform-wide asset
+    has no owning organisation — it's stored against whichever organisation
+    happens to exist first, purely for that namespacing, and served to any
+    authenticated user via the same "avatar or logo" bypass already used for
+    org logos and user avatars (`routers/files.py::download_file`), not by
+    organisation membership.
+    """
+    any_org = db.scalar(select(Organization))
+    if any_org is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No organisation exists yet to store this file against.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=any_org.id, uploaded_by=current_user.id,
+        filename=file.filename or "logo", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    settings = get_server_settings(db)
+    settings.default_logo_file_id = asset.id
+    log_event(db, entity_type="system", entity_id="platform", action="branding_logo_updated",
+              actor_id=current_user.id, detail={"file_id": str(asset.id)})
+    db.commit()
+    db.refresh(settings)
+    return settings

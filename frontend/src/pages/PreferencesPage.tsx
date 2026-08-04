@@ -5,6 +5,7 @@ import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
+import { useUiPreference } from "../hooks/useUiPreference";
 import { t } from "../i18n/strings";
 import type {
   DigestMode,
@@ -34,6 +35,7 @@ export function PreferencesPage() {
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
     landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
@@ -237,6 +239,17 @@ export function PreferencesPage() {
             <option value="light">{strings.preferences.light}</option>
             <option value="dark">{strings.preferences.dark}</option>
             <option value="system">{strings.preferences.system}</option>
+          </select>
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.preferences.contentWidth}
+          <select
+            className="input"
+            value={contentBoxed ? "boxed" : "full"}
+            onChange={(e) => setContentBoxed(e.target.value === "boxed")}
+          >
+            <option value="full">{strings.preferences.contentWidthFull}</option>
+            <option value="boxed">{strings.preferences.contentWidthBoxed}</option>
           </select>
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>

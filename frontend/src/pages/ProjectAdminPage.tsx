@@ -15,7 +15,9 @@ import type {
   ProjectStage,
   ReportChapter,
 } from "../api/types";
-import { STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -52,6 +54,11 @@ export function ProjectAdminPage() {
   const [reportIntro, setReportIntro] = useState("");
   const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
   const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
+  const [reportConfigDefaults, setReportConfigDefaults] = useState({
+    intro: false,
+    chapters: false,
+    appendices: false,
+  });
 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
@@ -85,6 +92,11 @@ export function ProjectAdminPage() {
     setReportIntro(rc.intro);
     setReportChapters(rc.chapters);
     setReportAppendices(rc.appendices);
+    setReportConfigDefaults({
+      intro: rc.intro_is_organisation_default,
+      chapters: rc.chapters_is_organisation_default,
+      appendices: rc.appendices_is_organisation_default,
+    });
   }
 
   async function saveReportConfig() {
@@ -92,14 +104,6 @@ export function ProjectAdminPage() {
       intro: reportIntro, chapters: reportChapters, appendices: reportAppendices,
     });
     reload();
-  }
-
-  function moveChapter(list: ReportChapter[], setList: (l: ReportChapter[]) => void, index: number, direction: "up" | "down") {
-    const swapIndex = direction === "up" ? index - 1 : index + 1;
-    if (swapIndex < 0 || swapIndex >= list.length) return;
-    const next = [...list];
-    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-    setList(next);
   }
 
   async function addCustomField() {
@@ -207,55 +211,6 @@ export function ProjectAdminPage() {
     { key: "groups", label: strings.admin.groups },
     { key: "reportSetup", label: "Report Setup" },
   ];
-
-  function renderChapterList(label: string, list: ReportChapter[], setList: (l: ReportChapter[]) => void) {
-    return (
-      <div className="stack">
-        <strong>{label}</strong>
-        {list.map((chapter, idx) => (
-          <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <input
-                className="input"
-                placeholder="Chapter title"
-                value={chapter.title}
-                onChange={(e) => {
-                  const next = [...list];
-                  next[idx] = { ...next[idx], title: e.target.value };
-                  setList(next);
-                }}
-              />
-              <div className="row" style={{ gap: "0.25rem" }}>
-                <button className="btn" disabled={idx === 0} onClick={() => moveChapter(list, setList, idx, "up")}>
-                  <ArrowUp size={14} />
-                </button>
-                <button className="btn" disabled={idx === list.length - 1} onClick={() => moveChapter(list, setList, idx, "down")}>
-                  <ArrowDown size={14} />
-                </button>
-                <button className="btn btn-danger" onClick={() => setList(list.filter((_, i) => i !== idx))}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-            <textarea
-              className="input"
-              rows={2}
-              placeholder="Chapter body (Markdown)"
-              value={chapter.body}
-              onChange={(e) => {
-                const next = [...list];
-                next[idx] = { ...next[idx], body: e.target.value };
-                setList(next);
-              }}
-            />
-          </div>
-        ))}
-        <button className="btn" onClick={() => setList([...list, { title: "", body: "" }])} style={{ alignSelf: "flex-start" }}>
-          <Plus size={14} /> Add chapter
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="stack">
@@ -455,7 +410,7 @@ export function ProjectAdminPage() {
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {f.name} <span className="badge">{f.entity_kind}</span> <span className="badge">{f.field_type}</span>
+              {f.name} <span className="badge">{CUSTOM_FIELD_ENTITY_KIND_LABEL[f.entity_kind]}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
               {f.required && <span className="badge">{strings.admin.required}</span>}
             </span>
             <button className="btn btn-danger" onClick={() => deleteCustomField(f.id)}>
@@ -501,7 +456,7 @@ export function ProjectAdminPage() {
           <div key={g.id} className="stack">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span>
-                {g.name} <span className="badge">{g.role}</span>
+                {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
               </span>
               <span className="text-muted">{g.member_user_ids.length} members</span>
             </div>
@@ -529,12 +484,25 @@ export function ProjectAdminPage() {
           This intro, these chapters, and these appendices are used as the default content when a report is
           generated for this project, unless overridden at generation time.
         </p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          Project intro
-          <textarea className="input" rows={3} value={reportIntro} onChange={(e) => setReportIntro(e.target.value)} />
-        </label>
-        {renderChapterList("Body chapters", reportChapters, setReportChapters)}
-        {renderChapterList("Appendices", reportAppendices, setReportAppendices)}
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>
+            Project intro
+            {reportConfigDefaults.intro && <span className="text-muted"> (organisation default)</span>}
+          </span>
+          <RichTextEditor rows={3} value={reportIntro} onChange={setReportIntro} />
+        </div>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          {reportConfigDefaults.chapters && (
+            <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default body chapters.</span>
+          )}
+          <ReportChapterListEditor label="Body chapters" list={reportChapters} setList={setReportChapters} />
+        </div>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          {reportConfigDefaults.appendices && (
+            <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default appendices.</span>
+          )}
+          <ReportChapterListEditor label="Appendices" list={reportAppendices} setList={setReportAppendices} />
+        </div>
         <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveSettings}
         </button>

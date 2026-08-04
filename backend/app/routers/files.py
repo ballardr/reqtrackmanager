@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user_header_or_query
 from app.models.file import FileAsset, RequirementFile
-from app.models.organization import Organization
+from app.models.organization import Organization, ServerSettings
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.services.files import read_file
@@ -73,10 +73,16 @@ def download_file(
     # they're shown in shared UI chrome — also deliberately exempt from the
     # Personal Access Token org-scope check below, for the same reason
     # /auth/me and other personal, cross-org endpoints are (see
-    # docs/decisions.md's "Personal Access Tokens" section).
+    # docs/decisions.md's "Personal Access Tokens" section). The platform-wide
+    # default logo (`ServerSettings.default_logo_file_id`) belongs in this
+    # same bucket for the same reason, even though its `FileAsset` row is
+    # nominally owned by whichever organisation it happened to be stored
+    # against (see `routers/system.py::upload_branding_logo`) — that
+    # ownership is a storage-key implementation detail, not an access rule.
     is_avatar_or_logo = (
         db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
         or db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
+        or db.scalar(select(ServerSettings).where(ServerSettings.default_logo_file_id == file_id)) is not None
     )
     if not is_avatar_or_logo:
         if file_asset.is_org_resource:

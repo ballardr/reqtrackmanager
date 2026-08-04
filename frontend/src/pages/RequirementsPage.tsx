@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -7,18 +7,24 @@ import type {
   Category,
   Component,
   CustomFieldDefinition,
+  OrgUser,
+  Project,
   ProjectStage,
   Requirement,
   RequirementImportResult,
   RequirementLevel,
   RequirementStatus,
 } from "../api/types";
+import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { CsvImportWizard } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
+import { useAuth } from "../context/AuthContext";
 import { useTerm, useTermPlural } from "../context/TerminologyContext";
+import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -35,11 +41,20 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "c
  */
 export function RequirementsPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const { user } = useAuth();
+  const myRoles = useMyProjectRoles(projectId);
+  const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
+  const canManageProject =
+    myRoles.includes("project_manager") || myRoles.includes("project_administrator") || isOrgAdminOfProject;
   const [requirements, setRequirements] = useState<Requirement[] | null>(null);
   const [total, setTotal] = useState(0);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [newInlineComponentName, setNewInlineComponentName] = useState("");
+  const [newInlineComponentPrefix, setNewInlineComponentPrefix] = useState("");
+  const [newInlineCategoryName, setNewInlineCategoryName] = useState("");
+  const [newInlineCategoryPrefix, setNewInlineCategoryPrefix] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">("");
   const [targetStageFilter, setTargetStageFilter] = useState("");
@@ -103,6 +118,42 @@ export function RequirementsPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, search, statusFilter, targetStageFilter, categoryFilter, hasCommentsOnly, onlyWatched]);
+
+  useEffect(() => {
+    if (!projectId || !user) return;
+    (async () => {
+      try {
+        const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
+        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
+        setIsOrgAdminOfProject(users.some((u) => u.user_id === user.id && u.roles.includes("org_admin")));
+      } catch {
+        // No org role at all (rare) — canManageProject still resolves correctly
+        // from myRoles alone in that case.
+      }
+    })();
+  }, [projectId, user]);
+
+  async function createInlineComponent() {
+    if (!projectId || !newInlineComponentName || !newInlineComponentPrefix) return;
+    await api.post(`/api/v1/projects/${projectId}/components`, {
+      name: newInlineComponentName,
+      prefix: newInlineComponentPrefix,
+    });
+    setNewInlineComponentName("");
+    setNewInlineComponentPrefix("");
+    reload();
+  }
+
+  async function createInlineCategory() {
+    if (!projectId || !newInlineCategoryName || !newInlineCategoryPrefix) return;
+    await api.post(`/api/v1/projects/${projectId}/categories`, {
+      name: newInlineCategoryName,
+      prefix: newInlineCategoryPrefix,
+    });
+    setNewInlineCategoryName("");
+    setNewInlineCategoryPrefix("");
+    reload();
+  }
 
   async function createRequirement() {
     if (!projectId || !newComponentId || !newCategoryId) return;
@@ -180,22 +231,12 @@ export function RequirementsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{requirementsTerm}</h1>
-        <div className="row">
-          <label className="btn" style={{ cursor: importing ? "wait" : "pointer" }}>
-            <Upload size={16} /> {importing ? "Importing…" : "Import CSV"}
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              style={{ display: "none" }}
-              disabled={importing}
-              onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])}
-            />
-          </label>
-          <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
-            <Plus size={16} /> New {requirementTerm}
-          </button>
-        </div>
+        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+          <Plus size={16} /> New {requirementTerm}
+        </button>
       </div>
+
+      <CsvImportWizard components={components} categories={categories} stages={stages} importing={importing} onImport={importCsv} />
 
       {importResult && (
         <div className="card stack" style={{ gap: "0.4rem" }}>
@@ -219,7 +260,69 @@ export function RequirementsPage() {
         </div>
       )}
 
-      {showNewForm && (
+      {showNewForm && (components.length === 0 || categories.length === 0) && (
+        <div className="card stack">
+          <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
+          {canManageProject ? (
+            <div className="stack">
+              {components.length === 0 && (
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder={strings.admin.name}
+                    value={newInlineComponentName}
+                    onChange={(e) => setNewInlineComponentName(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    style={{ maxWidth: 100 }}
+                    placeholder={strings.admin.prefix}
+                    value={newInlineComponentPrefix}
+                    onChange={(e) => setNewInlineComponentPrefix(e.target.value.toUpperCase())}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={createInlineComponent}
+                    disabled={!newInlineComponentName || !newInlineComponentPrefix}
+                  >
+                    <Plus size={14} /> {strings.admin.newComponent}
+                  </button>
+                </div>
+              )}
+              {categories.length === 0 && (
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder={strings.admin.name}
+                    value={newInlineCategoryName}
+                    onChange={(e) => setNewInlineCategoryName(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    style={{ maxWidth: 100 }}
+                    placeholder={strings.admin.prefix}
+                    value={newInlineCategoryPrefix}
+                    onChange={(e) => setNewInlineCategoryPrefix(e.target.value.toUpperCase())}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={createInlineCategory}
+                    disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
+                  >
+                    <Plus size={14} /> {strings.admin.newCategory}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
+              {strings.requirements.configureComponentsFirst}
+            </Link>
+          )}
+        </div>
+      )}
+
+      {showNewForm && components.length > 0 && categories.length > 0 && (
         <div className="card stack">
           <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
           <textarea
@@ -230,20 +333,26 @@ export function RequirementsPage() {
             rows={2}
           />
           <div className="row">
-            <select className="input" value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
-              {components.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.prefix})
-                </option>
-              ))}
-            </select>
-            <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.prefix})
-                </option>
-              ))}
-            </select>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.component}
+              <select className="input" value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
+                {components.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.prefix})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.category}
+              <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.prefix})
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="row">
             <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
@@ -274,7 +383,7 @@ export function RequirementsPage() {
         </div>
       )}
 
-      <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
+      <div className="side-grid">
         <div className="stack">
           <div className="row" style={{ justifyContent: "space-between" }}>
             <input
@@ -288,7 +397,8 @@ export function RequirementsPage() {
           </div>
 
           {!requirements && <Spinner />}
-          {requirements && viewMode === "tiles" && (
+          {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
+          {requirements && requirements.length > 0 && viewMode === "tiles" && (
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
               {requirements.map((r) => (
                 <div key={r.id} className="card stack" style={{ gap: "0.5rem" }}>
@@ -297,10 +407,10 @@ export function RequirementsPage() {
                       {r.unique_code}
                     </span>
                     <div className="row" style={{ gap: "0.25rem" }}>
-                      <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up}>
+                      <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
                         <ArrowUp size={14} />
                       </button>
-                      <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down}>
+                      <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
                         <ArrowDown size={14} />
                       </button>
                     </div>
@@ -315,7 +425,7 @@ export function RequirementsPage() {
                   )}
                   <div className="row" style={{ justifyContent: "space-between" }}>
                     <div className="row" style={{ gap: "0.4rem" }}>
-                      <span className="badge">{r.status}</span>
+                      <span className="badge">{REQUIREMENT_STATUS_LABEL[r.status]}</span>
                       {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                     </div>
                     <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
@@ -324,22 +434,22 @@ export function RequirementsPage() {
                     {componentName(r.component_id)} · {categoryName(r.category_id)}
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    Target: {stageName(r.target_stage_id)} · Level: {r.level}
+                    Target: {stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
                   </div>
                 </div>
               ))}
             </div>
           )}
-          {requirements && viewMode === "list" && (
+          {requirements && requirements.length > 0 && viewMode === "list" && (
             <div className="card" style={{ overflowX: "auto" }}>
               <table>
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Name</th>
+                    <th style={{ width: "9%" }}>ID</th>
+                    <th style={{ width: "38%" }}>Name</th>
                     <th>{strings.changeRequests.status}</th>
-                    <th>Target · Level</th>
-                    <th>Component · Category</th>
+                    <th>Target · level</th>
+                    <th>Component · category</th>
                     <th />
                   </tr>
                 </thead>
@@ -352,23 +462,23 @@ export function RequirementsPage() {
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.4rem" }}>
-                          <span className="badge">{r.status}</span>
+                          <span className="badge">{REQUIREMENT_STATUS_LABEL[r.status]}</span>
                           {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                           {badges(r)}
                         </div>
                       </td>
                       <td className="text-muted">
-                        {stageName(r.target_stage_id)} · {r.level}
+                        {stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
                       </td>
                       <td className="text-muted">
                         {componentName(r.component_id)} · {categoryName(r.category_id)}
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.25rem" }}>
-                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up}>
+                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
                             <ArrowUp size={14} />
                           </button>
-                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down}>
+                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
                             <ArrowDown size={14} />
                           </button>
                         </div>

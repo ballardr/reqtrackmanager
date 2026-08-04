@@ -24,8 +24,40 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, ListFlowable, ListItem, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from app.models.organization import Organization
+from app.models.project import Project
+from app.schemas.report import ProjectReportConfig, ReportChapter
+from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.labels import requirement_status_label
+
 _md = MarkdownIt()
 _styles = getSampleStyleSheet()
+
+
+def resolve_report_config(project: Project, org: Organization) -> ProjectReportConfig:
+    """Resolves a project's *effective* report intro/chapters/appendices —
+    the project's own value if it's set anything, otherwise the owning
+    organisation's default (UI/UX pass), otherwise blank. Used both by the
+    Report Setup editor (so an admin sees what will actually be used, not
+    just what this project has explicitly overridden) and by
+    `routers/reports.py::generate_pdf`'s own fallback when a generation
+    request doesn't supply ad-hoc `pre_markdown`/`post_markdown`.
+
+    Each of the three fields resolves independently — a project can
+    customise just its intro and still inherit the organisation's default
+    chapters, for instance.
+    """
+    intro = project.report_intro or org.default_report_intro or ""
+    chapters = project.report_chapters or org.default_report_chapters or []
+    appendices = project.report_appendices or org.default_report_appendices or []
+    return ProjectReportConfig(
+        intro=intro,
+        chapters=[ReportChapter(**c) for c in chapters],
+        appendices=[ReportChapter(**c) for c in appendices],
+        intro_is_organisation_default=bool(not project.report_intro and org.default_report_intro),
+        chapters_is_organisation_default=bool(not project.report_chapters and org.default_report_chapters),
+        appendices_is_organisation_default=bool(not project.report_appendices and org.default_report_appendices),
+    )
 
 
 @dataclass
@@ -101,7 +133,7 @@ class ReportBranding:
     (R-G-05). `generate_pdf_report` falls back to today's plain, unbranded
     styling when this is omitted entirely."""
 
-    accent_color_hex: str = "#2d3748"
+    accent_color_hex: str = DEFAULT_ACCENT_COLOR_HEX
     include_cover_page: bool = False
     footer_text: str | None = None
     logo_bytes: bytes | None = None
@@ -161,9 +193,13 @@ def generate_pdf_report(
         data.append([
             Paragraph(_safe(row.unique_code), table_style), Paragraph(_safe(row.name), table_style),
             Paragraph(_safe(row.component_name), table_style), Paragraph(_safe(row.category_name), table_style),
-            Paragraph(_safe(row.status), table_style), Paragraph(_safe(row.reasoning), table_style),
+            Paragraph(_safe(requirement_status_label(row.status)), table_style), Paragraph(_safe(row.reasoning), table_style),
         ])
-    table = Table(data, repeatRows=1, colWidths=[2.2 * cm, 3.5 * cm, 2.3 * cm, 2.3 * cm, 2 * cm, 5.2 * cm])
+    # ID (e.g. "AUTH-SEC-001") was wrapping mid-code at 2.2cm — widened to 3cm
+    # (enough for the longest realistic code at this font size) and taken
+    # from Reasoning, the widest column, so the table's total width is
+    # unchanged.
+    table = Table(data, repeatRows=1, colWidths=[3 * cm, 3.5 * cm, 2.3 * cm, 2.3 * cm, 2 * cm, 4.4 * cm])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), accent_color),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -221,7 +257,7 @@ def generate_csv_report(rows: list[ReportRequirementRow]) -> bytes:
     for row in rows:
         writer.writerow([
             _csv_safe(row.unique_code), _csv_safe(row.name), _csv_safe(row.component_name),
-            _csv_safe(row.category_name), _csv_safe(row.status), _csv_safe(row.reasoning),
+            _csv_safe(row.category_name), _csv_safe(requirement_status_label(row.status)), _csv_safe(row.reasoning),
             _csv_safe(row.clarification),
         ])
     return buffer.getvalue().encode("utf-8")

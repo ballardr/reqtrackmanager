@@ -8,12 +8,15 @@ import type {
   Comment,
   CustomFieldDefinition,
   FileAsset,
+  OrgUser,
+  Project,
   ProjectStage,
   Requirement,
   RequirementLevel,
   RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
+import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -58,6 +61,13 @@ export function RequirementDetailPage() {
   const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
+
+  function reviewerName(userId: string | null): string {
+    if (!userId) return strings.reviews.unassigned;
+    return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
+  }
 
   async function reload() {
     if (!projectId || !requirementId) return;
@@ -109,6 +119,22 @@ export function RequirementDetailPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, requirementId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    (async () => {
+      try {
+        const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
+        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
+        setOrgUsers(users);
+      } catch {
+        // Org member directory isn't reachable for this user (e.g. no org
+        // role) — fall back to the plain user-ID input rather than break
+        // the page.
+        setReviewerPickerUnavailable(true);
+      }
+    })();
+  }, [projectId]);
 
   async function save() {
     if (!requirement) return;
@@ -217,7 +243,7 @@ export function RequirementDetailPage() {
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
+      <div className="side-grid">
       <div className="stack">
       {requirement.is_locked || !canEdit ? (
         <div className="card stack">
@@ -237,9 +263,9 @@ export function RequirementDetailPage() {
             </div>
           )}
           <div className="row">
-            <span className="badge">{strings.requirements.status}: {requirement.status}</span>
+            <span className="badge">{strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}</span>
             <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
-            <span className="badge">Level: {requirement.level}</span>
+            <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</span>
             {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}
             {requirement.keywords.map((k) => (
               <span key={k} className="badge">
@@ -317,11 +343,30 @@ export function RequirementDetailPage() {
               />
             </label>
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewer} ({strings.admin.userId})
-              <input
-                className="input" value={form.reviewerId}
-                onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
-              />
+              {strings.requirements.reviewer}
+              {reviewerPickerUnavailable ? (
+                <input
+                  className="input" placeholder={strings.admin.userId} value={form.reviewerId}
+                  onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
+                />
+              ) : (
+                <select
+                  className="input" value={form.reviewerId}
+                  onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
+                >
+                  <option value="">{strings.reviews.unassigned}</option>
+                  {orgUsers.map((u) => (
+                    <option key={u.user_id} value={u.user_id}>
+                      {u.display_name} ({u.email})
+                    </option>
+                  ))}
+                  {form.reviewerId && !orgUsers.some((u) => u.user_id === form.reviewerId) && (
+                    <option value={form.reviewerId}>
+                      {form.reviewerId} ({strings.requirements.reviewerNoLongerMember})
+                    </option>
+                  )}
+                </select>
+              )}
             </label>
           </div>
           <CustomFieldsForm
@@ -347,7 +392,7 @@ export function RequirementDetailPage() {
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
           <div className="row">
             <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
-            <span className="badge">{strings.requirements.reviewer}: {requirement.reviewer_id ?? strings.reviews.unassigned}</span>
+            <span className="badge">{strings.requirements.reviewer}: {reviewerName(requirement.reviewer_id)}</span>
           </div>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.recordReviewOutcome}

@@ -70,7 +70,12 @@ def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, 
     project = _seed_requirement(client, admin_token, org_id)
 
     empty = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert empty == {"intro": "", "chapters": [], "appendices": []}
+    assert empty == {
+        "intro": "", "chapters": [], "appendices": [],
+        "intro_is_organisation_default": False,
+        "chapters_is_organisation_default": False,
+        "appendices_is_organisation_default": False,
+    }
 
     saved = client.put(
         f"/api/v1/projects/{project['id']}/report-config",
@@ -92,5 +97,52 @@ def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, 
     resp = client.post(
         f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token)
     )
+    assert resp.status_code == 200
+    assert resp.content[:5] == b"%PDF-"
+
+
+def test_project_falls_back_to_organisation_report_defaults(client, admin_token, org_id):
+    """A project with no report content of its own (R-G-01/R-G-02) should
+    use the organisation's defaults field-by-field, and the response should
+    say so via the `*_is_organisation_default` flags — the same "narrower
+    scope overrides a broader default" shape used for branding."""
+    project = _seed_requirement(client, admin_token, org_id)
+
+    defaults = client.put(
+        f"/api/v1/orgs/{org_id}/report-defaults",
+        json={
+            "intro": "Org-wide introduction.",
+            "chapters": [{"title": "Standard scope", "body": "Applies to every project."}],
+            "appendices": [],
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert defaults.status_code == 200
+    assert defaults.json()["intro"] == "Org-wide introduction."
+
+    fetched = client.get(f"/api/v1/orgs/{org_id}/report-defaults", headers=auth_headers(admin_token)).json()
+    assert fetched["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
+
+    config = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert config["intro"] == "Org-wide introduction."
+    assert config["intro_is_organisation_default"] is True
+    assert config["chapters_is_organisation_default"] is True
+    # Appendices default is empty, so there's nothing to "use" — not organisation-default.
+    assert config["appendices_is_organisation_default"] is False
+
+    # The project's own intro, once set, takes priority over the org default.
+    client.put(
+        f"/api/v1/projects/{project['id']}/report-config",
+        json={"intro": "Project-specific introduction.", "chapters": [], "appendices": []},
+        headers=auth_headers(admin_token),
+    )
+    overridden = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert overridden["intro"] == "Project-specific introduction."
+    assert overridden["intro_is_organisation_default"] is False
+    # Chapters weren't set on the project (still []), so the org default still applies there.
+    assert overridden["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
+    assert overridden["chapters_is_organisation_default"] is True
+
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"

@@ -9,13 +9,18 @@ import type {
   OrgAdvancedSettings,
   OrgGroup,
   OrgPersonalAccessToken,
+  OrgReportDefaults,
   OrgRole,
   OrgSsoConfig,
   OrgUser,
   Organization,
   ProjectListItem,
+  ReportChapter,
   ReportTemplate,
 } from "../api/types";
+import { ORG_ROLE_LABEL } from "../api/types";
+import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -78,8 +83,22 @@ export function OrgAdminPage() {
   const [oidcRequiredGroup, setOidcRequiredGroup] = useState("");
   const [ssoError, setSsoError] = useState<string | null>(null);
 
+  const [orgReportDefaultsAvailable, setOrgReportDefaultsAvailable] = useState(false);
+  const [orgReportIntro, setOrgReportIntro] = useState("");
+  const [orgReportChapters, setOrgReportChapters] = useState<ReportChapter[]>([]);
+  const [orgReportAppendices, setOrgReportAppendices] = useState<ReportChapter[]>([]);
+
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateAccentColor, setNewTemplateAccentColor] = useState("#475569");
+  const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
+  const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
+  const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
+
+  const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
+  const [accentColorInput, setAccentColorInput] = useState("#475569");
+  const [headerTitleInput, setHeaderTitleInput] = useState("");
+  const [brandingError, setBrandingError] = useState<string | null>(null);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const resourceInputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +158,9 @@ export function OrgAdminPage() {
     setLoadError(null);
     setDegradedOrgName(null);
     setOrg(o);
+    setUseOwnAccentColor(o.accent_color_hex != null);
+    setAccentColorInput(o.accent_color_hex ?? "#475569");
+    setHeaderTitleInput(o.header_title ?? "");
     setGroups(g);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
@@ -171,6 +193,28 @@ export function OrgAdminPage() {
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 403)) throw err;
     }
+
+    try {
+      const rd = await api.get<OrgReportDefaults>(`/api/v1/orgs/${orgId}/report-defaults`);
+      setOrgReportDefaultsAvailable(true);
+      setOrgReportIntro(rd.intro);
+      setOrgReportChapters(rd.chapters);
+      setOrgReportAppendices(rd.appendices);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setOrgReportDefaultsAvailable(false);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  async function saveOrgReportDefaults() {
+    if (!orgId) return;
+    await api.put(`/api/v1/orgs/${orgId}/report-defaults`, {
+      intro: orgReportIntro, chapters: orgReportChapters, appendices: orgReportAppendices,
+    });
+    reload();
   }
 
   function applyUserFilter(filter: typeof userFilter) {
@@ -329,6 +373,19 @@ export function OrgAdminPage() {
     reload();
   }
 
+  async function saveBranding() {
+    setBrandingError(null);
+    try {
+      await api.put<Organization>(`/api/v1/orgs/${orgId}/branding`, {
+        accent_color_hex: useOwnAccentColor ? accentColorInput : null,
+        header_title: headerTitleInput || null,
+      });
+      reload();
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
   async function uploadLoginBackground(file: File) {
     await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
     reload();
@@ -355,8 +412,18 @@ export function OrgAdminPage() {
 
   async function createReportTemplate() {
     if (!newTemplateName) return;
-    await api.post(`/api/v1/orgs/${orgId}/report-templates`, { name: newTemplateName });
+    await api.post(`/api/v1/orgs/${orgId}/report-templates`, {
+      name: newTemplateName,
+      accent_color_hex: newTemplateAccentColor,
+      include_cover_page: newTemplateIncludeCoverPage,
+      include_logo: newTemplateIncludeLogo,
+      footer_text: newTemplateFooterText || null,
+    });
     setNewTemplateName("");
+    setNewTemplateAccentColor("#475569");
+    setNewTemplateIncludeCoverPage(true);
+    setNewTemplateIncludeLogo(true);
+    setNewTemplateFooterText("");
     reload();
   }
 
@@ -498,14 +565,58 @@ export function OrgAdminPage() {
       {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
 
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.logo}</h2>
-        <input
-          ref={logoInputRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-        />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.branding}</h2>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.logo}
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
+          />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.headerTitle}
+          <input
+            className="input" placeholder={strings.appName}
+            value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
+          />
+          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
+        </label>
+        <label className="row">
+          <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
+          {strings.orgAdmin.useOwnAccentColor}
+        </label>
+        {useOwnAccentColor && (
+          <input
+            type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
+            style={{ width: 60, height: 36, padding: 2 }}
+          />
+        )}
+        {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
+        <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
+          {strings.orgAdmin.saveBranding}
+        </button>
       </div>
+
+      {orgReportDefaultsAvailable && (
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Report Defaults</h2>
+        <p className="text-muted" style={{ margin: 0 }}>
+          Used as the default intro, body chapters, and appendices for any project in this organisation that
+          hasn't set its own — see each project's Report Setup tab.
+        </p>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>Default intro</span>
+          <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} />
+        </div>
+        <ReportChapterListEditor label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} />
+        <ReportChapterListEditor label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} />
+        <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
+          {strings.admin.saveSettings}
+        </button>
+      </div>
+      )}
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportTemplates}</h2>
@@ -524,10 +635,37 @@ export function OrgAdminPage() {
             className="input" placeholder={strings.admin.templateName}
             value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
           />
-          <button className="btn btn-primary" onClick={createReportTemplate} disabled={!newTemplateName}>
-            <Plus size={14} /> {strings.admin.newReportTemplate}
-          </button>
+          <label className="row" style={{ gap: "0.4rem" }}>
+            {strings.admin.accentColor}
+            <input
+              type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
+              style={{ width: 44, height: 32, padding: 2 }}
+            />
+          </label>
         </div>
+        <div className="row">
+          <label className="row" style={{ gap: "0.4rem" }}>
+            <input
+              type="checkbox" checked={newTemplateIncludeCoverPage}
+              onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
+            />
+            {strings.admin.includeCoverPage}
+          </label>
+          <label className="row" style={{ gap: "0.4rem" }}>
+            <input
+              type="checkbox" checked={newTemplateIncludeLogo}
+              onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
+            />
+            {strings.admin.includeLogo}
+          </label>
+        </div>
+        <input
+          className="input" placeholder={strings.admin.footerText}
+          value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
+        />
+        <button className="btn btn-primary" onClick={createReportTemplate} disabled={!newTemplateName} style={{ alignSelf: "flex-start" }}>
+          <Plus size={14} /> {strings.admin.newReportTemplate}
+        </button>
       </div>
 
       {ssoConfig && (
@@ -638,8 +776,14 @@ export function OrgAdminPage() {
               <tr key={u.user_id}>
                 <td>{u.email}</td>
                 <td>{u.display_name}</td>
-                <td>{u.roles.join(", ")}</td>
-                <td>{u.is_archived ? "archived" : u.is_active ? "active" : "deactivated"}</td>
+                <td>{u.roles.map((r) => ORG_ROLE_LABEL[r]).join(", ")}</td>
+                <td>
+                  {u.is_archived
+                    ? strings.orgAdmin.statusArchived
+                    : u.is_active
+                      ? strings.orgAdmin.statusActive
+                      : strings.orgAdmin.statusDeactivated}
+                </td>
                 <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
                 <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
                 <td>
@@ -647,6 +791,7 @@ export function OrgAdminPage() {
                     className="btn"
                     onClick={() => toggleDisplayNameLock(u)}
                     title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                    aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
                   >
                     {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
                   </button>
@@ -774,7 +919,7 @@ export function OrgAdminPage() {
             {advanced.sso_group_mappings.map((m, idx) => (
               <div key={idx} className="row" style={{ justifyContent: "space-between" }}>
                 <span>
-                  {m.sso_group} <span className="badge">{m.org_role}</span>
+                  {m.sso_group} <span className="badge">{ORG_ROLE_LABEL[m.org_role]}</span>
                 </span>
                 <button className="btn btn-danger" onClick={() => removeMapping(idx)}>
                   <Trash2 size={14} />
@@ -789,9 +934,9 @@ export function OrgAdminPage() {
                 onChange={(e) => setNewMappingGroup(e.target.value)}
               />
               <select className="input" value={newMappingRole} onChange={(e) => setNewMappingRole(e.target.value as OrgRole)}>
-                <option value="member">member</option>
-                <option value="project_creator">project_creator</option>
-                <option value="org_admin">org_admin</option>
+                <option value="member">{ORG_ROLE_LABEL.member}</option>
+                <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
               </select>
               <button className="btn" onClick={addMapping} disabled={!newMappingGroup}>
                 <Plus size={14} /> {strings.orgAdmin.addMapping}

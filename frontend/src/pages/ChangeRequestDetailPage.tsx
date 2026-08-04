@@ -11,6 +11,7 @@ import type {
   Comment,
   ProjectStage,
 } from "../api/types";
+import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { Spinner } from "../components/Spinner";
@@ -126,13 +127,13 @@ export function ChangeRequestDetailPage() {
         <h1 style={{ margin: 0 }}>{cr.proposed_name}</h1>
         <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
       </div>
-      <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
+      <div className="side-grid">
       <div className="stack">
       <div className="card stack">
         <div className="row">
-          <span className="badge">{cr.status}</span>
+          <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
           <span className="badge">Target: {stageName(cr.proposed_target_stage_id)}</span>
-          <span className="badge">Level: {cr.proposed_level}</span>
+          <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</span>
         </div>
         <p>
           <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}

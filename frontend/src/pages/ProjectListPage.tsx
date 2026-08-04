@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, Project, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
-import { STAGE_STATUS_LABEL } from "../api/types";
+import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -178,10 +178,10 @@ export function ProjectListPage() {
         </button>
         <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
           <option value="">{strings.projects.allRoles}</option>
-          <option value="project_manager">project_manager</option>
-          <option value="project_administrator">project_administrator</option>
-          <option value="stakeholder">stakeholder</option>
-          <option value="member">member</option>
+          <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+          <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+          <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+          <option value="member">{PROJECT_ROLE_LABEL.member}</option>
         </select>
         <select
           className="input"
@@ -226,7 +226,7 @@ export function ProjectListPage() {
                 {p.summary || "—"}
               </p>
               <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {strings.projects.roles}: {p.my_roles.join(", ") || "—"}
+                {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
               </div>
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>
                 {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
@@ -271,7 +271,7 @@ export function ProjectListPage() {
                       <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
                     )}
                   </td>
-                  <td className="text-muted">{p.my_roles.join(", ") || "—"}</td>
+                  <td className="text-muted">{p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
                   <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
                 </tr>
               ))}

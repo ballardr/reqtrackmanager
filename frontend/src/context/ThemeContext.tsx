@@ -9,7 +9,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-function resolveEffectiveTheme(pref: ThemePreference): "light" | "dark" {
+export function resolveEffectiveTheme(pref: ThemePreference): "light" | "dark" {
   if (pref === "system") {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }

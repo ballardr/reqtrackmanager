@@ -66,6 +66,7 @@ from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
 from app.services.notifications import notify
+from app.services.reports import resolve_report_config
 from app.services.rbac import (
     check_pat_scope,
     get_effective_org_roles,
@@ -337,10 +338,11 @@ def update_terminology(
 def get_report_config(
     project_id: UUID, project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
 ):
-    """Returns the project's persisted report structure (mock's "Report Setup")."""
-    return ProjectReportConfig(
-        intro=project.report_intro, chapters=project.report_chapters, appendices=project.report_appendices
-    )
+    """Returns the project's *effective* report structure (mock's "Report
+    Setup") — its own content where set, falling back per-field to the
+    owning organisation's default otherwise (`resolve_report_config`)."""
+    org = db.get(Organization, project.organization_id)
+    return resolve_report_config(project, org)
 
 
 @router.put("/{project_id}/report-config", response_model=ProjectReportConfig)
@@ -349,8 +351,11 @@ def update_report_config(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Saves the project's persisted report structure, used as the default
-    report content on generation unless overridden ad hoc."""
+    """Saves the project's own persisted report structure, used as the
+    default report content on generation unless overridden ad hoc. Saving
+    a blank field here reverts that field to the organisation's default
+    (if one is set), rather than forcing genuinely empty content — see
+    `resolve_report_config`."""
     project.report_intro = payload.intro
     project.report_chapters = [c.model_dump() for c in payload.chapters]
     project.report_appendices = [c.model_dump() for c in payload.appendices]
@@ -358,9 +363,8 @@ def update_report_config(
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
-    return ProjectReportConfig(
-        intro=project.report_intro, chapters=project.report_chapters, appendices=project.report_appendices
-    )
+    org = db.get(Organization, project.organization_id)
+    return resolve_report_config(project, org)
 
 
 @router.post("/{project_id}/archive", response_model=ProjectOut)
@@ -403,13 +407,17 @@ def get_project_changes_endpoint(
     since: datetime | None = None,
     until: datetime | None = None,
     include_comments: bool = False,
+    entity_type: str | None = None,
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
     """Project changes-over-time view (C-A-10): a unified timeline of
     requirement/change-request/audit events, with an optional time range
-    filter. Discussion comments are excluded unless `include_comments=true`."""
-    return get_project_changes(db, project_id, since=since, until=until, include_comments=include_comments)
+    and entity-type filter. Discussion comments are excluded unless
+    `include_comments=true`."""
+    return get_project_changes(
+        db, project_id, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+    )
 
 
 @router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)

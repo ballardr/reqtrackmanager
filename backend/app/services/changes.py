@@ -25,7 +25,8 @@ from app.schemas.changes import ChangeEntryOut
 
 
 def get_project_changes(
-    db: Session, project_id: UUID, *, since: datetime | None, until: datetime | None, include_comments: bool = False
+    db: Session, project_id: UUID, *,
+    since: datetime | None, until: datetime | None, include_comments: bool = False, entity_type: str | None = None,
 ) -> list[ChangeEntryOut]:
     """Returns a unified, time-ordered list of changes for a project.
 
@@ -35,6 +36,14 @@ def get_project_changes(
         since / until: Optional inclusive time range filter.
         include_comments: Whether to include discussion-thread comments
             (excluded by default, per C-A-10's clarification).
+        entity_type: Optional filter to a single entity type (e.g.
+            "requirement", "change_request"). Applied after merging the
+            three/four underlying sources rather than pushed into each
+            query — none of them are large enough per-project for that to
+            matter, and two of the sources (requirement/change-request
+            version history) mint their `entity_type` in Python, not from a
+            literal column, so filtering post-merge is both simpler and
+            uniform across all sources.
 
     Returns:
         Entries sorted newest-first.
@@ -116,6 +125,9 @@ def get_project_changes(
                     detail={"body": comment.body},
                 )
             )
+
+    if entity_type is not None:
+        entries = [e for e in entries if e.entity_type == entity_type]
 
     actor_ids = {e.actor_id for e in entries if e.actor_id is not None}
     display_names = {

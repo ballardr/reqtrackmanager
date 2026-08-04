@@ -91,6 +91,18 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         disabled_at / disabled_by: Set when `is_active` transitions to
             False, mirroring the `Project.archived_at`/`archived_by`
             pattern; cleared on re-enable.
+        accent_color_hex: Optional per-org override of the app's UI accent
+            colour (nav highlight, primary buttons, links). `None` means
+            "use the platform default" (`ServerSettings.accent_color_hex`).
+            Applied identically in light and dark theme — one colour, not
+            two — with contrast text computed automatically rather than
+            also being admin-picked (`services/branding.py::contrast_text`).
+        header_title: Optional per-org override of the app-shell wordmark
+            text shown next to the logo. `None` falls back to the built-in
+            product name. Whether an org's branding (this + `logo_file_id`)
+            actually renders on a given page depends on whether that page
+            is scoped to this specific org — see
+            `frontend/src/hooks/useBranding.ts` for the resolution rules.
     """
 
     __tablename__ = "organizations"
@@ -131,6 +143,57 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Organisation-level default report content (UI/UX pass): a project
+    # falls back to these when its own `report_intro`/`report_chapters`/
+    # `report_appendices` (models/project.py) are blank/empty — the same
+    # "org sets a default, a narrower scope can override" shape as
+    # accent_color_hex/header_title above, just resolved at read time
+    # (`services/reports.py::resolve_report_config`) via plain truthiness
+    # rather than a nullable column on `Project`, since an empty string/
+    # list and "never customised" are treated as the same thing here (no
+    # separate way to force "genuinely blank despite an org default" — a
+    # deliberate simplification, not an oversight).
+    default_report_intro: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_report_chapters: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    default_report_appendices: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+
+
+class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
+    """Platform-wide defaults for UI branding, lazily created as a single
+    row (`services/branding.py::get_server_settings`) rather than enforced
+    by a DB-level singleton constraint — the first read creates it with
+    built-in defaults if no row exists yet.
+
+    Falls back to for any org that hasn't set its own `accent_color_hex`/
+    `header_title`/logo, and for pages that aren't scoped to a specific
+    organisation at all (see `frontend/src/hooks/useBranding.ts`).
+
+    Attributes:
+        accent_color_hex: Platform default UI accent colour. Defaults to a
+            neutral graphite (#475569) rather than a "branded" blue, per an
+            explicit product decision to read as a serious business tool
+            rather than draw attention to the chrome.
+        default_logo_file_id: Optional platform-wide default logo, shown
+            instead of an org's own logo on pages with no resolvable org
+            context. Same upload mechanism as `Organization.logo_file_id`.
+        default_header_title: Optional platform-wide default wordmark text.
+            `None` falls back to the built-in product name, same as an
+            org's own `header_title`.
+    """
+
+    __tablename__ = "server_settings"
+
+    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
+    default_logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("file_assets.id", use_alter=True, name="fk_server_settings_default_logo_file_id"),
+        nullable=True,
+    )
+    default_header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     """A named, reusable PDF report branding preset for an organisation (R-G-05).
@@ -146,7 +209,7 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
 
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
-    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#2563eb")
+    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
     include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
     include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
     footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)

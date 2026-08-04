@@ -2,22 +2,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Project, ProjectMetrics } from "../api/types";
-import { STAGE_STATUS_LABEL } from "../api/types";
+import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "../api/types";
+import { activityEntityLabel, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
 const strings = t();
-
-interface ChangeEntry {
-  timestamp: string;
-  entity_type: string;
-  entity_id: string;
-  action: string;
-  actor_id: string | null;
-  detail: Record<string, unknown> | null;
-}
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. */
@@ -61,7 +52,12 @@ export function ProjectOverviewPage() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-        <DonutChart title={strings.overview.requirementsByStatus} segments={Object.entries(metrics.requirements_by_status)} />
+        <DonutChart
+          title={strings.overview.requirementsByStatus}
+          segments={Object.entries(metrics.requirements_by_status).map(
+            ([status, count]) => [REQUIREMENT_STATUS_LABEL[status as RequirementStatus] ?? status, count] as [string, number]
+          )}
+        />
         <DonutChart
           title={strings.overview.changeRequestsChart}
           segments={[
@@ -104,9 +100,7 @@ export function ProjectOverviewPage() {
             style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
           >
             <span>
-              <span className="badge">{c.entity_type}</span> {c.action}
-              {c.detail && typeof c.detail.unique_code === "string" && ` — ${c.detail.unique_code}`}
-              {c.detail && typeof c.detail.proposed_name === "string" && ` — ${c.detail.proposed_name}`}
+              <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
             </span>
             <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
           </div>

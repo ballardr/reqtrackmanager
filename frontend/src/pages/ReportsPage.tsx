@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Category, Component, FileAsset, Project, ReportTemplate, RequirementStatus } from "../api/types";
+import { REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -38,20 +39,22 @@ export function ReportsPage() {
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [reportTemplateId, setReportTemplateId] = useState("");
+  const [project, setProject] = useState<Project | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
     (async () => {
-      const [comps, cats, project] = await Promise.all([
+      const [comps, cats, proj] = await Promise.all([
         api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
         api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
         api.get<Project>(`/api/v1/projects/${projectId}`),
       ]);
       setComponents(comps);
       setCategories(cats);
+      setProject(proj);
       const [orgResources, templates] = await Promise.all([
-        api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`),
-        api.get<ReportTemplate[]>(`/api/v1/orgs/${project.organization_id}/report-templates`),
+        api.get<FileAsset[]>(`/api/v1/orgs/${proj.organization_id}/resources`),
+        api.get<ReportTemplate[]>(`/api/v1/orgs/${proj.organization_id}/report-templates`),
       ]);
       setResources(orgResources);
       setReportTemplates(templates);
@@ -76,7 +79,8 @@ export function ReportsPage() {
         resource_file_ids: resourceFileIds,
         report_template_id: kind === "pdf" ? reportTemplateId || null : null,
       });
-      downloadBlob(blob, kind === "pdf" ? "requirements.pdf" : "requirements.csv");
+      const projectName = project?.name.replace(/[\\/"\r\n\t]/g, "") || "project";
+      downloadBlob(blob, `${projectName}-requirements.${kind}`);
     } finally {
       setGenerating(null);
     }
@@ -106,11 +110,11 @@ export function ReportsPage() {
           </select>
           <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
             <option value="">{strings.reports.allStatuses}</option>
-            <option value="draft">draft</option>
-            <option value="reviewed">reviewed</option>
-            <option value="approved">approved</option>
-            <option value="completed">completed</option>
-            <option value="archived">archived</option>
+            <option value="draft">{REQUIREMENT_STATUS_LABEL.draft}</option>
+            <option value="reviewed">{REQUIREMENT_STATUS_LABEL.reviewed}</option>
+            <option value="approved">{REQUIREMENT_STATUS_LABEL.approved}</option>
+            <option value="completed">{REQUIREMENT_STATUS_LABEL.completed}</option>
+            <option value="archived">{REQUIREMENT_STATUS_LABEL.archived}</option>
           </select>
           <input className="input" placeholder={strings.reports.keywordFilter} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
         </div>

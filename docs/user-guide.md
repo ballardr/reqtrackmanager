@@ -52,6 +52,7 @@ stateDiagram-v2
 Open a project and go to **Requirements**. From here you can:
 
 - **Create a requirement**: pick a component and category (these determine its ID, e.g. `SW-PERF-014`), give it a name, and fill in any project-specific custom fields your organisation has defined.
+- **Import from CSV**: click **Import CSV**, choose a file, then map its columns to the required fields (name, component, category — matched by prefix, not name — plus optional reasoning, level, and target version). A live preview shows the first few rows under your mapping before anything is uploaded, and required fields are called out so you can tell what's missing; click **Download template** for a starter CSV pre-filled with this project's own component/category prefixes.
 - **Search** by name or ID, and view each requirement's component, category, and status at a glance.
 - **Reorder** requirements within a component/category using the up/down arrows — this is only available while the project's current stage is in scoping.
 - **Open a requirement** to see its full detail: name, reasoning, clarification, custom field values, an editable form (disabled once the requirement is locked), its version history (change log), a discussion thread for informal comments, traceability links to other requirements, and file attachments.
@@ -97,7 +98,8 @@ A project marked **"Usable as a project template"** (in Project Admin → Settin
 
 ## Reports and history
 
-- **Reports**: generate a PDF or CSV export of a project's requirements, filtered by component, category, status, or keyword, with optional custom Markdown introduction/appendix sections and organisation shared resource files appended as extra sections. A PDF export can also use one of your organisation's **report templates** (Organisations → your org → Report templates: an accent colour, an optional cover page, and footer text) for consistent, on-brand output across projects.
+- **Reports**: generate a PDF or CSV export of a project's requirements, filtered by component, category, status, or keyword, with organisation shared resource files appended as extra sections. A PDF export can also use one of your organisation's **report templates** (Organisations → your org → Report templates: an accent colour, an optional cover page, and footer text) for consistent, on-brand output across projects.
+- **Report content** (Project Admin → Report Setup): set the report's introduction and body/appendix chapters, in Markdown or a WYSIWYG rich-text editor — this is saved per project and reused on every report generated for it, rather than typed in fresh each time. A project that leaves any of these blank falls back to that field's organisation-wide default (Organisations → your org → Report Defaults), field by field; the Report Setup tab shows "(organisation default)" wherever that's happening.
 - **Project history**: a unified timeline of everything that happened in the project (requirement and change-request version history, plus other audit events), filterable by date range, with an option to include discussion comments (excluded by default, since they're informal discussion rather than the formal change log).
 
 ## Notifications
@@ -111,3 +113,7 @@ From the settings icon in the top bar:
 - **Profile**: avatar, display name (an organisation admin can lock this), pronouns, theme (light/dark/system), and your landing page after login.
 - **Security**: change your password, and enable/disable two-factor authentication (scan the QR code with an authenticator app, then confirm with a generated code).
 - **Notification preferences**: per-type in-app/email toggles and digest mode, as above.
+
+## Help
+
+The **?** icon in the top bar opens an in-app help page covering how the app is organised, roles, the requirement and change-request lifecycles (with diagrams), and components/categories — a quick reference without leaving the app.

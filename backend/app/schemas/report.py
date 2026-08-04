@@ -53,7 +53,29 @@ class ReportChapter(BaseModel):
 class ProjectReportConfig(BaseModel):
     """Persisted report structure (mock's "Report Setup"), used as the
     default report content when a generation request doesn't override it
-    with ad-hoc pre_markdown/post_markdown."""
+    with ad-hoc pre_markdown/post_markdown.
+
+    `intro`/`chapters`/`appendices` are always the *effective* values on a
+    `GET` (falling back to the organisation's own default per-field when
+    the project hasn't set its own — `services.reports.resolve_report_config`)
+    and the *raw* project-level values on a `PUT` (this schema doubles as
+    the request body; the `*_is_organisation_default` fields are
+    response-only and simply ignored if present on a request).
+    """
+
+    intro: str = ""
+    chapters: list[ReportChapter] = []
+    appendices: list[ReportChapter] = []
+    intro_is_organisation_default: bool = False
+    chapters_is_organisation_default: bool = False
+    appendices_is_organisation_default: bool = False
+
+
+class OrgReportDefaults(BaseModel):
+    """Organisation-level default report content (UI/UX pass) — a project
+    falls back to these per-field when its own is blank/empty. Symmetric
+    with `Project`'s own fields: an empty string/list here means "no
+    organisation default set", not "explicitly blank"."""
 
     intro: str = ""
     chapters: list[ReportChapter] = []

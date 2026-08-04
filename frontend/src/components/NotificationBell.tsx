@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { t } from "../i18n/strings";
+import { Tooltip } from "./Tooltip";
 
 const strings = t();
 
@@ -37,10 +38,12 @@ export function NotificationBell() {
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="btn" onClick={() => setOpen((v) => !v)} title={strings.notifications.title}>
-        <Bell size={16} />
-        {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
-      </button>
+      <Tooltip label={strings.notifications.title}>
+        <button className="btn" onClick={() => setOpen((v) => !v)} aria-label={strings.notifications.title}>
+          <Bell size={16} />
+          {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
+        </button>
+      </Tooltip>
       {open && (
         <div
           className="card stack"

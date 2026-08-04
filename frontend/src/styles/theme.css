@@ -5,19 +5,38 @@
   selected by a `data-theme` attribute on <html>, set from ThemeContext.
 */
 
+/*
+  App-chrome (header) colours. Deliberately outside the [data-theme] blocks
+  below: the top bar is a fixed dark anchor independent of the active
+  light/dark theme (Power Apps/Dynamics/ServiceNow-style shell), not a
+  themed surface — see docs/decisions.md, "Header chrome is theme-
+  independent."
+*/
+:root {
+  --color-header-bg: #14161c;
+  --color-header-text: #ffffff;
+  --color-header-text-muted: #a7adb8;
+  --color-header-hover-bg: rgba(255, 255, 255, 0.08);
+  --color-header-active-bg: rgba(255, 255, 255, 0.16);
+  --color-header-border: rgba(255, 255, 255, 0.08);
+  --header-height: 56px;
+  --nav-rail-width: 220px;
+  --nav-rail-width-collapsed: 56px;
+}
+
 :root[data-theme="light"] {
-  --color-bg: #f7f8fa;
+  --color-bg: #eef1f5;
   --color-surface: #ffffff;
   --color-surface-alt: #eef0f3;
-  --color-border: #d8dce1;
+  --color-border: #c3c9d1;
   --color-text: #1a202c;
   --color-text-muted: #5a6472;
-  --color-primary: #2b6cb0;
+  --color-primary: #475569;
   --color-primary-contrast: #ffffff;
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 :root[data-theme="dark"] {
@@ -27,8 +46,8 @@
   --color-border: #333c4a;
   --color-text: #e6e9ef;
   --color-text-muted: #9aa4b2;
-  --color-primary: #63b3ed;
-  --color-primary-contrast: #0b1220;
+  --color-primary: #94a3b8;
+  --color-primary-contrast: #14181f;
   --color-accent: #68d391;
   --color-danger: #fc8181;
   --color-warning: #f6c667;
@@ -114,6 +133,39 @@ textarea {
   cursor: not-allowed;
 }
 
+/* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
+   surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
+   need their own rule here because their base styles pull --color-surface/
+   -border/-text, which would render as a jarring white chip (light theme)
+   or a near-invisible ~1.1:1 ghost (dark theme) against a black bar. */
+.app-header {
+  background: var(--color-header-bg);
+  color: var(--color-header-text);
+  border-bottom: 1px solid var(--color-header-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-header .btn {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--color-header-text);
+}
+
+.app-header .btn:hover {
+  background: var(--color-header-hover-bg);
+}
+
+.app-header .text-muted {
+  color: var(--color-header-text-muted);
+}
+
 .input,
 select.input,
 textarea.input {
@@ -132,6 +184,30 @@ textarea.input {
   font-size: 0.75rem;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
+}
+
+/* See components/Tooltip.tsx — appears immediately on hover/focus rather
+   than relying on the native `title` attribute's slow, OS-dependent delay.
+   Rendered through a portal into `document.body` with `top`/`left` set
+   inline as viewport-relative pixel coordinates computed in JS (screen-
+   aware: flipped/clamped to stay on-screen near any viewport edge) —
+   `position: fixed` here, not `absolute`, is what lets it escape any
+   scrollable/clipping ancestor (e.g. the collapsed nav rail, whose own
+   `overflow-y: auto` implicitly makes it clip horizontally too — a plain
+   `position: absolute` bubble nested inside it would get cut off at the
+   rail's edge no matter how correctly its left/right were computed). */
+.tooltip-bubble {
+  position: fixed;
+  background: var(--color-header-bg);
+  color: var(--color-header-text);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .grid {
@@ -160,16 +236,152 @@ textarea.input {
   color: var(--color-text-muted);
 }
 
+/* Rendered Markdown on the help page (utils/markdown.ts) — plain h1-h3/p/ul
+   with no classes of their own, styled here to match the rest of the
+   app's typography rather than raw browser defaults. */
+.help-content h1 {
+  font-size: 1.3rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.help-content h1:first-child {
+  margin-top: 0;
+}
+
+.help-content h2 {
+  font-size: 1.05rem;
+  margin: 1.1rem 0 0.4rem;
+}
+
+.help-content p {
+  margin: 0.5rem 0;
+  max-width: 70ch;
+}
+
+.help-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.4rem;
+}
+
+.help-content li {
+  margin-bottom: 0.3rem;
+}
+
+.help-content code {
+  background: var(--color-surface-alt);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.9em;
+}
+
+.help-content .mermaid {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.help-content pre {
+  background: var(--color-surface-alt);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+
+.help-content pre code {
+  background: none;
+  padding: 0;
+}
+
+/* components/RichTextEditor.tsx's WYSIWYG surface — a plain
+   contentEditable div styled as `.input`, with just enough block-level
+   spacing for the headings/lists it can contain to be readable while
+   editing (the same tags renderMarkdown/htmlToMarkdown round-trip). */
+.rich-text-editable {
+  cursor: text;
+}
+
+.rich-text-editable:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.rich-text-editable h1,
+.rich-text-editable h2,
+.rich-text-editable h3 {
+  margin: 0.3rem 0;
+  font-size: 1.05em;
+}
+
+.rich-text-editable ul {
+  margin: 0.3rem 0;
+  padding-left: 1.3rem;
+}
+
+.rich-text-editable p {
+  margin: 0.3rem 0;
+}
+
 /* Left navigation rail: same theme-aware surface as every other panel
    (--color-surface/-border/-text), not a fixed dark "chrome" independent
-   of the active theme — it follows light/dark like the rest of the UI. */
+   of the active theme — it follows light/dark like the rest of the UI.
+   Pinned full-height against the true left edge (position: fixed, not
+   sticky-in-flow) so it stays visible while the content column scrolls,
+   rather than living inside the same centred/padded .container as the
+   page content and floating as a short, inset card. */
 .nav-rail {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
   padding: 0.75rem;
-  box-shadow: var(--shadow-sm);
-  transition: min-width 0.15s ease;
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--nav-rail-width);
+  overflow-y: auto;
+  z-index: 10;
+  transition: width 0.15s ease;
+}
+
+.nav-rail-icons {
+  width: var(--nav-rail-width-collapsed);
+}
+
+/* Main content is pushed clear of the fixed rail by a matching left
+   margin — the two widths above are the single source of truth for both
+   the rail's own width and this offset. */
+.app-content {
+  padding: 1.5rem;
+}
+
+.nav-rail ~ .app-content {
+  margin-left: var(--nav-rail-width);
+}
+
+.nav-rail.nav-rail-icons ~ .app-content {
+  margin-left: var(--nav-rail-width-collapsed);
+}
+
+/* Content-width preference (U-U-01-adjacent display preference, stored
+   like nav-rail-collapsed): "boxed" caps and centres content at the same
+   1200px the app used everywhere before this pass, for readability on
+   very wide monitors. The default is full-bleed — content simply fills
+   the space next to the rail. */
+.app-content.boxed > .content-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Two-column content/sidebar layout shared by the requirements, change
+   requests, and detail pages (filter panel or activity panel on the
+   right). Collapses to one column alongside the nav rail below. */
+.side-grid {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  align-items: start;
+  gap: 1rem;
 }
 
 .nav-section-label {
@@ -247,6 +459,37 @@ td {
   text-align: left;
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Below 860px there isn't room for a full-width nav rail, a content
+   column, and a 240px filter/activity sidebar side by side (confirmed:
+   the page overflows past the viewport at 600px without this) — force the
+   rail into its existing icon-only layout and stack the sidebar under the
+   content, regardless of the user's manual expand/collapse preference. */
+@media (max-width: 860px) {
+  .nav-rail:not(.nav-rail-icons) {
+    width: var(--nav-rail-width-collapsed);
+  }
+  .nav-rail:not(.nav-rail-icons) ~ .app-content {
+    margin-left: var(--nav-rail-width-collapsed);
+  }
+  .nav-rail:not(.nav-rail-icons) .nav-label {
+    display: none;
+  }
+  .nav-rail:not(.nav-rail-icons) .nav-link {
+    justify-content: center;
+  }
+  .nav-rail:not(.nav-rail-icons) .nav-section-label {
+    height: 1px;
+    padding: 0;
+    margin: 0.6rem 0.4rem;
+    overflow: hidden;
+    text-indent: -9999px;
+    background: var(--color-border);
+  }
+  .side-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Responsive layout: single column below 720px (U-P-02). */

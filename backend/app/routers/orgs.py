@@ -31,6 +31,7 @@ from app.schemas.org import (
     DisplayNameLockUpdate,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
+    OrgBrandingUpdate,
     OrganizationCreate,
     OrganizationDeleteConfirm,
     OrganizationOut,
@@ -47,6 +48,7 @@ from app.schemas.org import (
     ReportTemplateOut,
 )
 from app.schemas.pat import BulkRevokeResult, OrgPersonalAccessTokenOut
+from app.schemas.report import OrgReportDefaults
 from app.security import hash_password
 from app.services import engagement
 from app.services.audit import log_event
@@ -914,6 +916,29 @@ async def upload_org_logo(
     return org
 
 
+@router.put("/{organization_id}/branding", response_model=OrganizationOut)
+def update_org_branding(
+    organization_id: UUID, payload: OrgBrandingUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets (or clears, with null values) this organisation's UI accent
+    colour and header wordmark override (U-C-01 override). Both fall back
+    to the platform default (`GET /system/branding`) when null — this
+    endpoint never needs to know what that default is, it just clears its
+    own override."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    org.accent_color_hex = payload.accent_color_hex
+    org.header_title = payload.header_title
+    log_event(db, entity_type="organization", entity_id=organization_id, action="branding_updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
 @router.put("/{organization_id}/default-template", response_model=OrganizationOut)
 def set_default_template(
     organization_id: UUID, payload: DefaultTemplateUpdate,
@@ -1161,6 +1186,52 @@ def delete_report_template(
               actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.delete(template)
     db.commit()
+
+
+@router.get("/{organization_id}/report-defaults", response_model=OrgReportDefaults)
+def get_org_report_defaults(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Returns this organisation's default report intro/chapters/appendices
+    (UI/UX pass) — the content a project falls back to per-field when it
+    hasn't set its own (`services.reports.resolve_report_config`)."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return OrgReportDefaults(
+        intro=org.default_report_intro or "",
+        chapters=org.default_report_chapters or [],
+        appendices=org.default_report_appendices or [],
+    )
+
+
+@router.put("/{organization_id}/report-defaults", response_model=OrgReportDefaults)
+def update_org_report_defaults(
+    organization_id: UUID, payload: OrgReportDefaults,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Saves this organisation's default report content. Saved as `None`
+    rather than an empty string/list when blank, so a project with genuinely
+    no content of its own falls through cleanly to "no default either"
+    instead of storing a meaningless empty-vs-empty distinction."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    org.default_report_intro = payload.intro or None
+    org.default_report_chapters = [c.model_dump() for c in payload.chapters] or None
+    org.default_report_appendices = [c.model_dump() for c in payload.appendices] or None
+    log_event(db, entity_type="organization", entity_id=organization_id, action="report_defaults_updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(org)
+    return OrgReportDefaults(
+        intro=org.default_report_intro or "",
+        chapters=org.default_report_chapters or [],
+        appendices=org.default_report_appendices or [],
+    )
 
 
 # --- Personal Access Tokens (org-admin incident-response actions) -----------

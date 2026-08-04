@@ -13,6 +13,7 @@ import type {
   Requirement,
   RequirementLevel,
 } from "../api/types";
+import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -235,14 +236,15 @@ export function ChangeRequestsPage() {
         </div>
       )}
 
-      <div className="grid" style={{ gridTemplateColumns: "1fr 240px", alignItems: "start", gap: "1rem" }}>
+      <div className="side-grid">
         <div className="stack">
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <ViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
 
           {!crs && <Spinner />}
-          {crs && viewMode === "list" && (
+          {crs && crs.length === 0 && <p className="text-muted">{strings.changeRequests.empty}</p>}
+          {crs && crs.length > 0 && viewMode === "list" && (
             <div className="card" style={{ overflowX: "auto" }}>
               <table>
                 <thead>
@@ -261,10 +263,10 @@ export function ChangeRequestsPage() {
                         <Link to={`/projects/${projectId}/change-requests/${cr.id}`}>{cr.proposed_name}</Link>
                       </td>
                       <td>
-                        <span className="badge">{cr.status}</span>
+                        <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
                       </td>
                       <td className="text-muted">{stageName(cr.proposed_target_stage_id)}</td>
-                      <td className="text-muted">{cr.proposed_level}</td>
+                      <td className="text-muted">{REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</td>
                       <td>{new Date(cr.created_at).toLocaleString()}</td>
                     </tr>
                   ))}
@@ -272,7 +274,7 @@ export function ChangeRequestsPage() {
               </table>
             </div>
           )}
-          {crs && viewMode === "tiles" && (
+          {crs && crs.length > 0 && viewMode === "tiles" && (
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
               {crs.map((cr) => (
                 <div key={cr.id} className="card stack" style={{ gap: "0.5rem" }}>
@@ -280,9 +282,9 @@ export function ChangeRequestsPage() {
                     {cr.proposed_name}
                   </Link>
                   <div className="row" style={{ gap: "0.4rem" }}>
-                    <span className="badge">{cr.status}</span>
+                    <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
                     <span className="badge">{stageName(cr.proposed_target_stage_id)}</span>
-                    <span className="badge">{cr.proposed_level}</span>
+                    <span className="badge">{REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</span>
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {new Date(cr.created_at).toLocaleString()}

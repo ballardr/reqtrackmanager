@@ -9,6 +9,7 @@ rendered as additional report sections (R-G-04).
 
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -24,7 +25,7 @@ from app.models.user import User
 from app.schemas.report import ReportRequest
 from app.services.files import read_file
 from app.services.rbac import require_project_view
-from app.services.reports import ReportBranding, ReportRequirementRow, generate_csv_report, generate_pdf_report
+from app.services.reports import ReportBranding, ReportRequirementRow, generate_csv_report, generate_pdf_report, resolve_report_config
 from app.services.requirements import get_current_version
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
@@ -87,23 +88,33 @@ def _chapters_markdown(chapters: list[dict]) -> str:
     return "\n\n".join(f"# {c['title']}\n\n{c['body']}" for c in chapters if c.get("title"))
 
 
+def _filename_safe(name: str) -> str:
+    """Strips characters that would break a quoted `Content-Disposition`
+    filename (or be awkward on a filesystem) out of a project name before
+    it's used to build a downloaded report's filename."""
+    return re.sub(r'[\\"/\r\n\t]', "", name).strip() or "project"
+
+
 @router.post("/pdf")
 def generate_pdf(
     project_id: UUID, payload: ReportRequest,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Generates a PDF requirements report (R-F-01). Falls back to the
-    project's persisted report structure (intro/chapters/appendices, mock's
-    "Report Setup") when the request doesn't override it with ad-hoc
-    pre_markdown/post_markdown."""
+    project's *effective* report structure (intro/chapters/appendices,
+    mock's "Report Setup" — the project's own content, or the owning
+    organisation's default per-field, see `resolve_report_config`) when
+    the request doesn't override it with ad-hoc pre_markdown/post_markdown."""
     project = db.get(Project, project_id)
+    org = db.get(Organization, project.organization_id)
+    report_config = resolve_report_config(project, org)
     rows = _collect_rows(db, project_id, payload)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
     pre_markdown = payload.pre_markdown or "\n\n".join(
-        s for s in [project.report_intro, _chapters_markdown(project.report_chapters)] if s
+        s for s in [report_config.intro, _chapters_markdown([c.model_dump() for c in report_config.chapters])] if s
     )
-    post_markdown = payload.post_markdown or _chapters_markdown(project.report_appendices)
+    post_markdown = payload.post_markdown or _chapters_markdown([c.model_dump() for c in report_config.appendices])
     post_markdown = f"{post_markdown}\n\n{resource_markdown}".strip()
 
     branding = None
@@ -113,7 +124,6 @@ def generate_pdf(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this project's organisation.")
         logo_bytes = None
         if template.include_logo:
-            org = db.get(Organization, project.organization_id)
             logo_asset = db.get(FileAsset, org.logo_file_id) if org and org.logo_file_id else None
             if logo_asset is not None:
                 logo_bytes = read_file(logo_asset)
@@ -128,7 +138,7 @@ def generate_pdf(
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{project.name}-requirements.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{_filename_safe(project.name)}-requirements.pdf"'},
     )
 
 
@@ -138,9 +148,10 @@ def generate_csv(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Generates a CSV requirements export (R-F-02)."""
+    project = db.get(Project, project_id)
     rows = _collect_rows(db, project_id, payload)
     csv_bytes = generate_csv_report(rows)
     return Response(
         content=csv_bytes, media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="requirements.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{_filename_safe(project.name)}-requirements.csv"'},
     )

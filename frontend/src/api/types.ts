@@ -19,10 +19,121 @@ export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
   archived: "Archived",
 };
 export type RequirementStatus = "draft" | "reviewed" | "approved" | "completed" | "archived";
+export const REQUIREMENT_STATUS_LABEL: Record<RequirementStatus, string> = {
+  draft: "Draft",
+  reviewed: "Reviewed",
+  approved: "Approved",
+  completed: "Completed",
+  archived: "Archived",
+};
 export type RequirementLevel = "requirement" | "recommended";
+export const REQUIREMENT_LEVEL_LABEL: Record<RequirementLevel, string> = {
+  requirement: "Requirement",
+  recommended: "Recommended",
+};
 export type ChangeRequestKind = "new_requirement" | "modify_requirement";
 export type ChangeRequestStatus = "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn";
+export const CHANGE_REQUEST_STATUS_LABEL: Record<ChangeRequestStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  in_review: "In review",
+  approved: "Approved",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+};
 export type LinkType = "relates_to" | "depends_on" | "derived_from";
+
+// Sentence-cased per the Australian Government Style Manual's "minimal
+// capitalisation" rule — see docs/decisions.md. Every raw enum value
+// rendered directly into the UI should go through one of these maps
+// (or ENTITY_TYPE_LABEL/activityActionLabel below) rather than appearing
+// verbatim; `?? value` fallbacks exist only as a safety net, not a design.
+export const PROJECT_ROLE_LABEL: Record<ProjectRole, string> = {
+  project_manager: "Project manager",
+  project_administrator: "Project administrator",
+  stakeholder: "Stakeholder",
+  member: "Member",
+};
+export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
+  org_admin: "Org admin",
+  project_creator: "Project creator",
+  member: "Member",
+};
+export const CUSTOM_FIELD_ENTITY_KIND_LABEL: Record<CustomFieldEntityKind, string> = {
+  requirement: "Requirement",
+  change_request: "Change request",
+};
+export const CUSTOM_FIELD_TYPE_LABEL: Record<CustomFieldType, string> = {
+  short_text: "Short text",
+  long_text: "Long text",
+  checkbox: "Checkbox",
+  list: "List",
+};
+
+// Activity-feed labels (project overview/history, and the requirement/CR
+// side-panel activity list) — shown as a standalone badge next to the
+// actor/action text, so sentence-cased like every other badge in the app.
+// Covers the `entity_type`/`action` values `services/changes.py` can
+// actually surface in a project's activity feed; anything unmapped falls
+// back to a humanised version of the raw value rather than looking broken.
+export const ENTITY_TYPE_LABEL: Record<string, string> = {
+  requirement: "Requirement",
+  change_request: "Change request",
+  change_request_task: "Change request task",
+  change_request_vote: "Change request vote",
+  project: "Project",
+  project_stage: "Project stage",
+  project_component: "Component",
+  project_category: "Category",
+  project_group: "Project group",
+  user_project_role: "Project role",
+  custom_field_definition: "Custom field",
+  requirement_link: "Requirement link",
+  organization: "Organisation",
+  file_asset: "File",
+};
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export function activityEntityLabel(entityType: string): string {
+  return ENTITY_TYPE_LABEL[entityType] ?? capitalize(entityType.replace(/_/g, " "));
+}
+
+const ACTIVITY_ACTION_LABEL: Record<string, string> = {
+  created: "created",
+  updated: "updated",
+  archived: "archived",
+  deleted: "deleted",
+  submitted: "submitted",
+  withdrawn: "withdrew",
+  approved: "approved",
+  rejected: "rejected",
+  cast: "voted",
+  reordered: "reordered",
+  completed: "completed",
+  uncompleted: "reopened",
+  granted: "granted",
+  revoked: "revoked",
+  member_added: "added a member",
+  member_removed: "removed a member",
+  status_changed: "changed status",
+  review_deadline_set: "set a review deadline",
+  review_recorded: "recorded a review",
+  file_attached: "attached a file",
+  file_linked: "linked a file",
+  file_unlinked: "unlinked a file",
+  requirements_imported: "imported requirements",
+  settings_updated: "updated settings",
+  terminology_updated: "updated terminology",
+  report_config_updated: "updated the report configuration",
+  comment_added: "commented on",
+};
+
+export function activityActionLabel(action: string): string {
+  return ACTIVITY_ACTION_LABEL[action] ?? action.replace(/_/g, " ");
+}
 export type DigestMode = "instant" | "daily" | "none";
 export type NotificationType =
   | "project_joined"
@@ -93,6 +204,14 @@ export interface Organization {
   slug: string | null;
   is_active: boolean;
   disabled_at: string | null;
+  accent_color_hex: string | null;
+  header_title: string | null;
+}
+
+export interface ServerSettings {
+  accent_color_hex: string;
+  default_logo_file_id: string | null;
+  default_header_title: string | null;
 }
 
 export interface FileAsset {
@@ -387,6 +506,23 @@ export interface ChangeEntry {
   detail: Record<string, unknown> | null;
 }
 
+/** Actor + action text for one activity entry (the entity-type badge is
+ * rendered separately by the caller) — the one shared description used by
+ * the project overview activity card, the project history page, and the
+ * requirement/change-request side-panel activity list, so the three no
+ * longer describe the same data three different, inconsistent ways. */
+export function describeActivityEntry(entry: ChangeEntry): string {
+  const who = entry.actor_display_name ?? "Someone";
+  const action = activityActionLabel(entry.action);
+  const detail = entry.detail;
+  const suffix =
+    detail && typeof detail.unique_code === "string" ? ` — ${detail.unique_code}` :
+    detail && typeof detail.proposed_name === "string" ? ` — ${detail.proposed_name}` :
+    detail && typeof detail.change_note === "string" ? ` — ${detail.change_note}` :
+    "";
+  return `${who} ${action}${suffix}`;
+}
+
 export interface RequirementImportResult {
   created: number;
   errors: { row: number; message: string }[];
@@ -398,6 +534,15 @@ export interface ReportChapter {
 }
 
 export interface ProjectReportConfig {
+  intro: string;
+  chapters: ReportChapter[];
+  appendices: ReportChapter[];
+  intro_is_organisation_default: boolean;
+  chapters_is_organisation_default: boolean;
+  appendices_is_organisation_default: boolean;
+}
+
+export interface OrgReportDefaults {
   intro: string;
   chapters: ReportChapter[];
   appendices: ReportChapter[];

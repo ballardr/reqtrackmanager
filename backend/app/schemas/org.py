@@ -57,6 +57,27 @@ class OrganizationOut(BaseModel):
     slug: str | None = None
     is_active: bool = True
     disabled_at: datetime | None = None
+    accent_color_hex: str | None = None
+    header_title: str | None = None
+
+
+_HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
+
+
+class OrgBrandingUpdate(BaseModel):
+    """Sets (or clears, with a null value) this organisation's UI accent
+    colour and header wordmark override. Both fall back to the platform
+    default (`ServerSettings`) when null."""
+
+    accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    header_title: str | None = Field(default=None, max_length=100)
+
+    @field_validator("header_title")
+    @classmethod
+    def _blank_title_means_unset(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            return None
+        return value
 
 
 class DefaultTemplateUpdate(BaseModel):
@@ -154,7 +175,7 @@ class OrgLoginInfoOut(BaseModel):
 
 class ReportTemplateCreate(BaseModel):
     name: str
-    accent_color_hex: str = "#2563eb"
+    accent_color_hex: str = Field(default="#475569", pattern=_HEX_COLOR_PATTERN)
     include_cover_page: bool = True
     include_logo: bool = True
     footer_text: str | None = None
