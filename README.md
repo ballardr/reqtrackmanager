@@ -1,6 +1,10 @@
 # ReqTrackManager
 
 [![CI](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml/badge.svg)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Backend tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/tests-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/coverage-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+
+The two badges above are published by the CI pipeline itself (`Publish coverage/test badges` step in [.github/workflows/ci.yml](.github/workflows/ci.yml)) to a dedicated `badges` branch — they'll show "invalid" until the workflow has run at least once against this repository with that step in place.
 
 ReqTrackManager is an open-source engineering requirements management system (ERMS) for product development teams — a formal alternative to IBM DOORS-style tools for teams that can't justify the cost, without falling back to a static requirements document. See [docs/requirements.md](docs/requirements.md) for the full product requirements and [docs/solution-architecture.md](docs/solution-architecture.md) for the architecture.
 

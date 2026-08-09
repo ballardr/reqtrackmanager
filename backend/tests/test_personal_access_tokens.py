@@ -158,7 +158,7 @@ def test_cannot_create_pat_scoped_to_a_project_outside_the_selected_orgs(client,
 
 def test_cannot_create_pat_scoped_to_a_project_with_no_access(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id, "No Access Project")
-    user_id = create_org_user(client, admin_token, org_id, "no-project-access@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "no-project-access@example.com", role="member")
     token = login(client, "no-project-access@example.com", "Password123!")
 
     resp = client.post(

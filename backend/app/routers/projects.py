@@ -71,7 +71,6 @@ from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
 from app.services.notifications import notify
-from app.services.reports import resolve_report_config
 from app.services.rbac import (
     check_pat_scope,
     get_effective_org_roles,
@@ -83,6 +82,7 @@ from app.services.rbac import (
     require_project_view,
     require_project_view_or_manage,
 )
+from app.services.reports import resolve_report_config
 from app.services.stages import complete_stage
 from app.services.templates import clone_project
 
