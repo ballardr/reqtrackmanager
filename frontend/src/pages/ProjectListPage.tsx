@@ -5,9 +5,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Organization, Project, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
 import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { FilterBadge } from "../components/FilterBadge";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
+import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -26,12 +28,14 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
  */
 export function ProjectListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<ProjectRole | "">("");
   const [stageStatusFilter, setStageStatusFilter] = useState<StageStatus | "">("");
+  const [orgFilter, setOrgFilter] = useState("");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -47,6 +51,7 @@ export function ProjectListPage() {
     if (search) params.set("search", search);
     if (roleFilter) params.set("role", roleFilter);
     if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
+    if (orgFilter) params.set("organization_id", orgFilter);
     return params;
   }
 
@@ -63,15 +68,21 @@ export function ProjectListPage() {
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
       loadProjects(0, false),
     ]);
-    setOrgs(orgList);
+    // A disabled org can't hold any (newly) visible projects (the list
+    // endpoint itself now excludes them) and can't accept new ones either
+    // (`rbac._require_org_active`) — filtered out here so it doesn't appear
+    // as a dead option in either the org filter or the "new project" org
+    // picker below.
+    const activeOrgs = orgList.filter((o) => o.is_active);
+    setOrgs(activeOrgs);
     setAllProjects(everyProject);
-    if (!newOrgId && orgList[0]) setNewOrgId(orgList[0].id);
+    if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
   }
 
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showArchived, search, roleFilter, stageStatusFilter]);
+  }, [showArchived, search, roleFilter, stageStatusFilter, orgFilter]);
 
   useEffect(() => {
     // C-E-04: pre-select the organisation's default template project (if
@@ -93,6 +104,12 @@ export function ProjectListPage() {
   }
 
   const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
+  const showOrgColumn = orgs.length > 1 || !!user?.is_server_admin;
+
+  function toggleStageStatusFilter(status: StageStatus | null) {
+    if (!status) return;
+    setStageStatusFilter((current) => (current === status ? "" : status));
+  }
 
   async function createProject() {
     setCreateError(null);
@@ -176,6 +193,14 @@ export function ProjectListPage() {
         <button className={`btn ${showArchived ? "btn-primary" : ""}`} onClick={() => setShowArchived(true)}>
           {strings.projects.archived}
         </button>
+        {orgs.length > 1 && (
+          <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+            <option value="">{strings.projects.allOrganisations}</option>
+            {orgs.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        )}
         <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
           <option value="">{strings.projects.allRoles}</option>
           <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
@@ -204,8 +229,15 @@ export function ProjectListPage() {
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
           {projects.map((p) => (
             <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                <Link to={`/projects/${p.id}`} style={{ fontWeight: 600, fontSize: "1.05rem" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                <Link
+                  to={`/projects/${p.id}`}
+                  style={{
+                    fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}
+                  title={p.name}
+                >
                   {p.name}
                 </Link>
                 <button
@@ -213,20 +245,29 @@ export function ProjectListPage() {
                   onClick={() => toggleFavorite(p)}
                   title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                   aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                  style={{ flexShrink: 0 }}
                 >
                   <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
                 </button>
               </div>
+              {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
               {p.current_stage_name && (
-                <span className="badge" style={{ alignSelf: "flex-start" }}>
+                <FilterBadge
+                  active={stageStatusFilter === p.current_stage_status}
+                  onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                  style={{ alignSelf: "flex-start" }}
+                >
                   {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                </span>
+                </FilterBadge>
               )}
               <p className="text-muted" style={{ margin: 0, flex: 1 }}>
                 {p.summary || "—"}
               </p>
               <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                 {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
+              </div>
+              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                {strings.projects.requirementCount}: {p.requirement_count}
               </div>
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>
                 {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
@@ -242,8 +283,10 @@ export function ProjectListPage() {
               <tr>
                 <th />
                 <th>Name</th>
+                {showOrgColumn && <th>{strings.projects.organisation}</th>}
                 <th>Stage</th>
                 <th>{strings.projects.roles}</th>
+                <th>{strings.projects.requirementCount}</th>
                 <th>{strings.projects.updated}</th>
               </tr>
             </thead>
@@ -266,12 +309,19 @@ export function ProjectListPage() {
                       {p.summary || "—"}
                     </div>
                   </td>
+                  {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
                   <td>
                     {p.current_stage_name && (
-                      <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
+                      <FilterBadge
+                        active={stageStatusFilter === p.current_stage_status}
+                        onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                      >
+                        {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                      </FilterBadge>
                     )}
                   </td>
                   <td className="text-muted">{p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
+                  <td className="text-muted">{p.requirement_count}</td>
                   <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
                 </tr>
               ))}

@@ -92,3 +92,17 @@ export function ensureContrast(hex: string, backgroundHex: string, minRatio: num
   }
   return hslToHex(h, s, lighten ? 1 : 0);
 }
+
+/**
+ * A visibly different hover shade of a solid button's fill colour, shifted
+ * the same direction its own contrast text was picked for (dark text needs
+ * a *lighter* hover; light text needs a *darker* one) so the button never
+ * hovers towards its own text colour and loses contrast.
+ */
+export function hoverShade(hex: string): string {
+  const [h, s, l] = hexToHsl(hex);
+  const towardsLight = contrastTextHex(hex) === "#000000";
+  const delta = 0.1;
+  const newL = towardsLight ? Math.max(0, l - delta) : Math.min(1, l + delta);
+  return hslToHex(h, s, newL);
+}

@@ -61,8 +61,10 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByRole("button", { name: "New component" }).click();
     await expect(page.getByText("Software").first()).toBeVisible();
 
-    await page.getByPlaceholder("Name").nth(1).fill("Performance");
-    await page.getByPlaceholder("Prefix").nth(1).fill("PERF");
+    // Component/category tree: once "Software" exists, its own nested
+    // "add category" form is the first Name/Prefix pair on the page.
+    await page.getByPlaceholder("Name").first().fill("Performance");
+    await page.getByPlaceholder("Prefix").first().fill("PERF");
     await page.getByRole("button", { name: "New category" }).click();
     await expect(page.getByText("Performance").first()).toBeVisible();
 
@@ -107,6 +109,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // revert (and re-login as ADMIN_PASSWORD) must happen even if the
     // notification assertion below fails.
     await page.getByTitle("Preferences").click();
+    await page.getByRole("button", { name: "Security", exact: true }).click();
     await page.getByPlaceholder("Current password").fill(ADMIN_PASSWORD);
     await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
     const changeResponsePromise = page.waitForResponse(
@@ -133,6 +136,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       // ADMIN_PASSWORD afterwards to leave the shared admin account usable
       // for the rest of this spec and every other spec that logs in with it.
       await page.getByTitle("Preferences").click();
+      await page.getByRole("button", { name: "Security", exact: true }).click();
       await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
       await page.getByPlaceholder("New password").fill(ADMIN_PASSWORD);
       const revertResponsePromise = page.waitForResponse(

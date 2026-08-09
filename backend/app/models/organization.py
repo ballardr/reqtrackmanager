@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
-from app.models.enums import OrgRole
+from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole, SignupMode
 
 
 class Organization(UUIDPKMixin, TimestampMixin, Base):
@@ -103,12 +103,46 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             actually renders on a given page depends on whether that page
             is scoped to this specific org — see
             `frontend/src/hooks/useBranding.ts` for the resolution rules.
+        require_2fa: When set, every org/project-scoped request against this
+            organisation from a user without `User.is_2fa_enabled` is
+            blocked (`services/rbac.py::_require_org_2fa`), mirroring
+            `is_active`'s "even this org's own admins" bluntness — with one
+            deliberate difference: unlike a disabled org, the way out is
+            self-service. `/auth/2fa/enroll`/`confirm` aren't org-scoped, so
+            a blocked user can still enroll and immediately regain access,
+            without needing an admin to intervene.
+        allow_self_signup: Whether this org is one of the organisations a
+            public signup under `ServerSettings.signup_mode ==
+            ORG_SPECIFIED` can join, via a domain match against
+            `auto_accept_email_domain` (`routers/auth.py::signup`).
+            Deliberately mutually exclusive with `sso_only` — validated in
+            `update_advanced_settings` — since self-signup is anonymous and
+            un-gated by an admin, unlike every other native-account-creation
+            path (`create_org_user`, an admin-sent invite), so it must never
+            be allowed to hand out a native password credential to an org
+            whose members are supposed to authenticate via SSO only.
+        auto_accept_email_domain: The single email domain (e.g. "acme.com")
+            this org auto-accepts. Serves two independent consumers: (1)
+            `ORG_SPECIFIED`-mode self-signup above, and (2) the domain check
+            for `external_user_policy == ORG_DOMAIN_ONLY` below — one field,
+            documented as doing double duty rather than two separate
+            near-identical settings.
+        external_user_policy: Governs whether/how a project admin may add
+            someone to a project by email who isn't already an org member
+            (`ExternalUserPolicy`; see its docstring in `models/enums.py`).
+            Defaults to DISABLED — an org must opt in to external users.
     """
 
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_accept_email_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_user_policy: Mapped[ExternalUserPolicy] = mapped_column(
+        str_enum(ExternalUserPolicy), default=ExternalUserPolicy.DISABLED
+    )
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -182,6 +216,14 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         default_header_title: Optional platform-wide default wordmark text.
             `None` falls back to the built-in product name, same as an
             org's own `header_title`.
+        default_login_background_file_id: Optional platform-wide default
+            login-page background image, shown on the plain `/login` page
+            (no single org context to brand it) — same upload pattern as
+            `Organization.login_background_file_id`, which only applies to
+            that org's own branded `/login/{slug}` page.
+        signup_mode: Server-wide public self-signup availability
+            (`SignupMode`; see its docstring in `models/enums.py`). Defaults
+            to DISABLED — public signup is opt-in at the deployment level.
     """
 
     __tablename__ = "server_settings"
@@ -193,15 +235,33 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         nullable=True,
     )
     default_header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    default_login_background_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("file_assets.id", use_alter=True, name="fk_server_settings_default_login_background_file_id"),
+        nullable=True,
+    )
+    signup_mode: Mapped[SignupMode] = mapped_column(str_enum(SignupMode), default=SignupMode.DISABLED)
 
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
-    """A named, reusable PDF report branding preset for an organisation (R-G-05).
+    """A named, reusable PDF report preset for an organisation (R-G-05):
+    branding (accent colour, cover page, logo, footer) plus, optionally,
+    its own introduction/body chapters/appendices.
 
     Org-scoped (shared across the org's projects) to match how the org logo
     already works. Selected optionally at report-generation time; when none
     is selected, `services/reports.py` produces today's plain, unbranded
-    output.
+    output with the project's own resolved content.
+
+    Attributes:
+        intro / chapters / appendices: Optional content this template
+            supplies, taking precedence over the project's own resolved
+            content (which itself falls back to the org's default) when
+            this template is selected at generation time — a third,
+            more-specific tier on top of `resolve_report_config`'s
+            project-then-org-default resolution. Empty means "this template
+            doesn't override content", not "explicitly blank" — same
+            per-field independence as the project/org tiers.
     """
 
     __tablename__ = "report_templates"
@@ -213,7 +273,64 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
     include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
     footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intro: Mapped[str] = mapped_column(Text, default="")
+    chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
+    """An email-based invite into an organisation and, optionally, one of
+    its projects — created when a project admin adds a user by email who
+    has no existing account anywhere (`routers/projects.py`'s by-email
+    add-user flow), and `Organization.external_user_policy` permits it.
+
+    Only ever created for organisations with `sso_only=False`. For an
+    `sso_only` org there is no working native-signup path to redeem a
+    token against (native login is blocked outright for an account whose
+    only org requires SSO — `auth_backends.native._all_orgs_sso_only`), so
+    that flow instead provisions the `User` and role rows immediately,
+    skipping this table entirely — see `docs/decisions.md`'s "Self-signup,
+    invites, and SSO" entry.
+
+    Consumed identically from two call sites via
+    `services/invites.py::consume_pending_invites` — native signup
+    (`routers/auth.py::signup`) and OIDC first-login
+    (`routers/auth_oidc.py`), since an invitee to a non-`sso_only` org may
+    reach either path first.
+
+    Attributes:
+        email: Lowercased invitee address; matched against a signing-up or
+            SSO-logging-in user's own (lowercased/verified) email.
+        organization_id: The organisation being granted (always, as
+            `member` — see `services/invites.py`).
+        project_id: The project being granted, if any — `None` for an
+            org-only invite.
+        project_role: The role to grant in `project_id`; `None` iff
+            `project_id` is `None`.
+        invited_by: The user who created this invite.
+        token: Opaque, URL-safe random value embedded in the invite email's
+            signup link (`/signup?invite=<token>`); not used by the SSO
+            consumption path, which matches on email alone.
+        expires_at: After this time the invite can no longer be redeemed.
+        accepted_at: Set once consumed; `None` while still pending. An
+            already-accepted or expired invite is never matched again.
+    """
+
+    __tablename__ = "pending_invites"
+
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    project_role: Mapped[ProjectRole | None] = mapped_column(str_enum(ProjectRole), nullable=True)
+    invited_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):

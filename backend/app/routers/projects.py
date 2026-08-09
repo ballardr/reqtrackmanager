@@ -3,7 +3,10 @@ Module: routers.projects
 
 Project CRUD, stages (with approval -> baseline), components/categories
 (with ordering, C-E-01/C-E-02), project groups and role assignment
-(C-U-10, C-U-11), and the project overview metrics endpoint (U-P-05).
+(C-U-10, C-U-11) — including by-email assignment for a user outside the
+project's organisation, gated by `Organization.external_user_policy` (see
+`assign_project_role_by_email`/`services/invites.py`) — and the project
+overview metrics endpoint (U-P-05).
 """
 
 from __future__ import annotations
@@ -12,16 +15,16 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.change_request import ChangeRequest
-from app.models.enums import ChangeRequestStatus, OrgRole, ProjectRole, RequirementStatus, StageStatus
+from app.models.enums import ChangeRequestStatus, ExternalUserPolicy, OrgRole, ProjectRole, RequirementStatus, StageStatus
 from app.models.file import RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup
+from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -37,6 +40,7 @@ from app.models.requirement import Baseline, BaselineItem, Requirement, Requirem
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.project import (
+    AssignByEmailOut,
     CategoryCreate,
     CategoryOut,
     ComponentCreate,
@@ -59,9 +63,10 @@ from app.schemas.project import (
     StageReviewResponseOut,
     TerminologyUpdate,
     UserProjectRoleAssign,
+    UserProjectRoleAssignByEmail,
 )
 from app.schemas.report import ProjectReportConfig
-from app.services import engagement
+from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
@@ -76,6 +81,7 @@ from app.services.rbac import (
     lock_project_for_update,
     require_project_manage,
     require_project_view,
+    require_project_view_or_manage,
 )
 from app.services.stages import complete_stage
 from app.services.templates import clone_project
@@ -185,6 +191,7 @@ def list_projects(
     search: str | None = None,
     role: ProjectRole | None = None,
     stage_status: StageStatus | None = None,
+    organization_id: UUID | None = None,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -193,10 +200,13 @@ def list_projects(
     """Project list view (U-E-03, U-E-04): active/archived projects the user can access.
 
     Supports an optional `role` filter (only projects where the caller holds
-    the given effective project role) and `stage_status` filter (only
-    projects whose current stage is in the given status) for U-E-05.
-    Results are sorted with the caller's favourited projects (U-U-03) first,
-    then by name. `limit`/`offset` (U-P-06) are optional pagination — see
+    the given effective project role), `stage_status` filter (only projects
+    whose current stage is in the given status) for U-E-05, and
+    `organization_id` (only projects in that organisation — for a user
+    belonging to more than one, this replaces having to visit each
+    organisation separately to see just its projects). Results are sorted
+    with the caller's favourited projects (U-U-03) first, then by name.
+    `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
     """
     # No server-admin bypass here (I-M-05): project listings are "data within
@@ -216,8 +226,21 @@ def list_projects(
     if not accessible_ids:
         projects = []
     else:
+        # Joins to Organization to exclude projects belonging to a disabled
+        # org (`Organization.is_active`) — a disabled org locks out its own
+        # content everywhere else (`rbac._require_org_active`), and this
+        # aggregate cross-org listing had been the one place that check
+        # didn't reach, since it filters by project accessible-ids rather
+        # than going through a per-org `require_org_role` dependency.
+        conditions = [
+            Project.id.in_(accessible_ids),
+            Project.is_archived == archived,
+            Organization.is_active.is_(True),
+        ]
+        if organization_id is not None:
+            conditions.append(Project.organization_id == organization_id)
         projects = db.scalars(
-            select(Project).where(Project.id.in_(accessible_ids), Project.is_archived == archived)
+            select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
         ).all()
 
     if search:
@@ -226,6 +249,20 @@ def list_projects(
 
     favorite_ids = set(
         db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
+    )
+    org_names = dict(
+        db.execute(
+            select(Organization.id, Organization.name).where(
+                Organization.id.in_({p.organization_id for p in projects})
+            )
+        ).all()
+    )
+    requirement_counts = dict(
+        db.execute(
+            select(Requirement.project_id, func.count(Requirement.id))
+            .where(Requirement.project_id.in_({p.id for p in projects}), Requirement.is_archived.is_(False))
+            .group_by(Requirement.project_id)
+        ).all()
     )
 
     out = []
@@ -248,6 +285,8 @@ def list_projects(
                 current_stage_status=stage.status if stage else None,
                 my_roles=list(roles),
                 is_favorite=p.id in favorite_ids,
+                organization_name=org_names.get(p.organization_id, ""),
+                requirement_count=requirement_counts.get(p.id, 0),
             )
         )
     out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
@@ -761,7 +800,7 @@ def move_component(
     db: Session = Depends(get_db)
 ):
     """Moves a component up/down in display order (C-E-01)."""
-    result = _move_ordered(db, ProjectComponent, project.id, component_id, payload.direction)
+    result = _move_ordered(db, ProjectComponent, [ProjectComponent.project_id == project.id], component_id, payload.direction)
     log_event(db, entity_type="project_component", entity_id=component_id, action="reordered",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
               detail={"direction": payload.direction})
@@ -774,8 +813,25 @@ def create_category(
     payload: CategoryCreate, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    count = len(db.scalars(select(ProjectCategory.id).where(ProjectCategory.project_id == project.id)).all())
-    category = ProjectCategory(project_id=project.id, name=payload.name, prefix=payload.prefix, sort_order=count)
+    """Creates a category nested under `payload.component_id` (the
+    component/category tree — C-G-07)."""
+    component = db.get(ProjectComponent, payload.component_id)
+    if component is None or component.project_id != project.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "component_id must belong to this project.")
+    existing = db.scalar(
+        select(ProjectCategory.id).where(
+            ProjectCategory.component_id == payload.component_id, ProjectCategory.prefix == payload.prefix
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "A category with this prefix already exists under this component."
+        )
+    count = len(db.scalars(select(ProjectCategory.id).where(ProjectCategory.component_id == payload.component_id)).all())
+    category = ProjectCategory(
+        project_id=project.id, component_id=payload.component_id, name=payload.name, prefix=payload.prefix,
+        sort_order=count,
+    )
     db.add(category)
     db.flush()
     log_event(db, entity_type="project_category", entity_id=category.id, action="created",
@@ -799,8 +855,12 @@ def move_category(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Moves a category up/down in display order (C-E-02)."""
-    result = _move_ordered(db, ProjectCategory, project.id, category_id, payload.direction)
+    """Moves a category up/down in display order among its siblings under
+    the same parent component (C-E-02) — never reorders across components."""
+    category = db.get(ProjectCategory, category_id)
+    if category is None or category.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found.")
+    result = _move_ordered(db, ProjectCategory, [ProjectCategory.component_id == category.component_id], category_id, payload.direction)
     log_event(db, entity_type="project_category", entity_id=category_id, action="reordered",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
               detail={"direction": payload.direction})
@@ -808,18 +868,24 @@ def move_category(
     return result
 
 
-def _move_ordered(db: Session, model, project_id: UUID, item_id: UUID, direction: str):
+def _move_ordered(db: Session, model, scope_conditions: list, item_id: UUID, direction: str):
     """Swaps `sort_order` between `item_id` and its neighbour (C-E-01/C-E-02).
 
     Shared by component and category reordering, since both are plain
-    project-scoped, sort_order-ordered rows. A no-op (not an error) if the
-    item is already at the boundary in the requested direction.
+    sort_order-ordered rows, just scoped differently: components are
+    ordered within their project; categories are ordered within their
+    parent component (siblings in the tree), not the whole project. A
+    no-op (not an error) if the item is already at the boundary in the
+    requested direction.
 
     Args:
         db: Active database session.
         model: The SQLAlchemy model class (`ProjectComponent` or
             `ProjectCategory`).
-        project_id: The owning project, to scope the ordered list.
+        scope_conditions: SQLAlchemy filter expressions identifying the
+            sibling group `item_id` is ordered within (e.g. same
+            `project_id` for components, same `component_id` for
+            categories).
         item_id: The row being moved.
         direction: "up" or "down".
 
@@ -827,9 +893,9 @@ def _move_ordered(db: Session, model, project_id: UUID, item_id: UUID, direction
         The moved row, refreshed with its (possibly unchanged) sort_order.
 
     Raises:
-        HTTPException: 404 if `item_id` doesn't belong to `project_id`.
+        HTTPException: 404 if `item_id` isn't found among the scoped siblings.
     """
-    items = db.scalars(select(model).where(model.project_id == project_id).order_by(model.sort_order)).all()
+    items = db.scalars(select(model).where(*scope_conditions).order_by(model.sort_order)).all()
     idx = next((i for i, it in enumerate(items) if it.id == item_id), None)
     if idx is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found.")
@@ -877,7 +943,7 @@ def create_project_group(
 
 
 @router.get("/{project_id}/groups", response_model=list[ProjectGroupOut])
-def list_project_groups(project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)):
+def list_project_groups(project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db)):
     groups = db.scalars(select(ProjectGroup).where(ProjectGroup.project_id == project_id)).all()
     out = []
     for g in groups:
@@ -1014,6 +1080,103 @@ def assign_project_role(
                 project_id=project.id,
             )
         db.commit()
+
+
+@router.post("/{project_id}/roles/by-email", response_model=AssignByEmailOut)
+def assign_project_role_by_email(
+    project_id: UUID, payload: UserProjectRoleAssignByEmail,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The by-email counterpart to `assign_project_role`, for a user who
+    isn't (yet) a member of this project's organisation — the project-user
+    picker's "add external user" action (`orgs.py::search_org_users`
+    surfaces the candidate; this endpoint re-validates and acts on it,
+    never trusting the frontend's search-result flags).
+
+    Gated by `Organization.external_user_policy`:
+      - DISABLED: always 403, whether or not an account already exists.
+      - ORG_DOMAIN_ONLY: an *existing* account can always be added; a
+        *new* account can only be invited if the email's domain matches
+        `auto_accept_email_domain`.
+      - ANYONE: both existing and brand-new accounts are allowed.
+
+    For a brand-new account, branches on `Organization.sso_only` (see
+    `services/invites.py`): an SSO-only org gets the account and roles
+    provisioned immediately (`outcome="sso_provisioned"`); otherwise an
+    email invite with a signup link is sent (`outcome="invited"`) and the
+    role is granted once they complete signup.
+    """
+    email = payload.email.lower()
+    org = db.get(Organization, project.organization_id)
+    existing_user = db.scalar(select(User).where(User.email == email))
+
+    if existing_user is not None:
+        already_in_org = bool(get_effective_org_roles(db, existing_user.id, org.id))
+        if not already_in_org:
+            if org.external_user_policy == ExternalUserPolicy.DISABLED:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation does not allow external users.")
+            if existing_user.is_banned:
+                # Same check assign_org_role already enforces for the
+                # ordinary org-role-grant path (routers/orgs.py) — this
+                # endpoint grants org membership too (as a side effect of
+                # adding a project member by email) and must not become a
+                # second, unguarded way back in for a banned account.
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "This user has been banned by a server admin and cannot be granted a role.",
+                )
+            db.add(UserOrgRole(user_id=existing_user.id, organization_id=org.id, role=OrgRole.MEMBER))
+            log_event(
+                db, entity_type="user", entity_id=existing_user.id, action="external_user_added_to_org",
+                actor_id=current_user.id, organization_id=org.id,
+            )
+        existing_role = db.scalar(
+            select(UserProjectRole).where(
+                UserProjectRole.user_id == existing_user.id, UserProjectRole.project_id == project.id,
+                UserProjectRole.role == payload.role,
+            )
+        )
+        if existing_role is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This user already has this role on the project.")
+        db.add(UserProjectRole(user_id=existing_user.id, project_id=project.id, role=payload.role))
+        log_event(
+            db, entity_type="user_project_role", entity_id=existing_user.id, action="granted",
+            actor_id=current_user.id, project_id=project.id, detail={"role": payload.role.value, "via": "email"},
+        )
+        notify(
+            db, existing_user, notification_type=NotificationType.PROJECT_JOINED,
+            title=f"You were added to {project.name}",
+            body=f"You were granted the '{payload.role.value}' role.",
+            project_id=project.id,
+        )
+        db.commit()
+        return AssignByEmailOut(outcome="added")
+
+    # No account exists anywhere yet.
+    if org.external_user_policy == ExternalUserPolicy.DISABLED:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation does not allow external users.")
+    if org.external_user_policy == ExternalUserPolicy.ORG_DOMAIN_ONLY:
+        domain = email.rsplit("@", 1)[-1]
+        if not org.auto_accept_email_domain or org.auto_accept_email_domain.lower() != domain:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "This email's domain is not eligible for an invite in this organisation."
+            )
+
+    if org.sso_only:
+        invites.provision_sso_invite(
+            db, email=email, organization=org, project=project, project_role=payload.role,
+            invited_by=current_user.id,
+        )
+        db.commit()
+        return AssignByEmailOut(outcome="sso_provisioned")
+
+    invites.create_pending_invite(
+        db, email=email, organization=org, project=project, project_role=payload.role, invited_by=current_user.id,
+    )
+    db.commit()
+    return AssignByEmailOut(outcome="invited")
 
 
 @router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)

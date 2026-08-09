@@ -3,10 +3,13 @@ Module: routers.system
 
 System management endpoints that are not scoped to any single organisation
 (I-M-06): granting or revoking the server admin role itself on another
-user, the system-wide user access-review directory (C-A-13), and
-platform-wide UI branding defaults. Most of this router is server-admin
-only; the branding GET is the one exception (readable by any authenticated
-user, since it drives shared app-shell rendering for everyone).
+user, the system-wide user access-review directory (C-A-13), platform-wide
+UI branding defaults, and the server-wide public self-signup mode. Most of
+this router is server-admin only; the branding GET is one exception
+(readable by any authenticated user, since it drives shared app-shell
+rendering for everyone), and `GET /signup-config` is a further exception —
+entirely unauthenticated, since the signup form itself needs it before any
+session exists.
 """
 
 from __future__ import annotations
@@ -19,12 +22,15 @@ from pydantic import BaseModel
 from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.enums import SignupMode
 from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.pat import BulkRevokeResult
+from app.schemas.signup import SelfSignupOrgOut, SignupConfigOut, SignupConfigUpdate
 from app.services.audit import log_event
 from app.services.branding import get_server_settings
 from app.services.files import upload_file
@@ -32,6 +38,7 @@ from app.services.pats import revoke_matching
 from app.services.rbac import require_server_admin
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
+settings = get_settings()
 
 
 class ServerAdminUpdate(BaseModel):
@@ -45,24 +52,30 @@ class ServerAdminUpdate(BaseModel):
 
 
 class SystemUserOut(BaseModel):
-    """Account-level fields only (I-M-05: server admin "does not give access
-    to data within organisations") — deliberately omits *which* organisations
-    a user belongs to, or their role in any of them, which would leak
-    cross-tenant membership if surfaced here. `has_org_membership` is a plain
-    yes/no and doesn't name any organisation, so it doesn't regress that —
-    it's exactly the same information `no_org_membership=true` already lets
-    a caller probe for one user at a time, just returned directly instead of
-    needing to be inferred from filter behaviour."""
+    """Account-level fields, plus organisation-membership visibility for the
+    access review (C-A-13). `organization_count` is always a plain number —
+    no more revealing than `has_org_membership` already was — but
+    `organization_names` is a deliberate, explicit exception to I-M-05's
+    "server admin does not give access to data within organisations": naming
+    actual orgs here does leak cross-tenant membership to a role that's
+    otherwise kept content-blind by design. Gated by
+    `settings.access_review_show_org_names` (default on — a server admin
+    already has direct database access regardless) rather than silently
+    always on; when off, `organization_names` is always `[]` and the UI
+    falls back to `organization_count`."""
 
     user_id: UUID
     email: str
     display_name: str
     is_active: bool
+    is_banned: bool
     last_login_at: datetime | None = None
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
     has_org_membership: bool
+    organization_count: int
+    organization_names: list[str]
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -158,16 +171,28 @@ def list_system_users(
 
     users = db.scalars(query).all()
     user_ids = [u.id for u in users]
-    org_member_ids = (
-        set(db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.user_id.in_(user_ids)).distinct()).all())
-        if user_ids
-        else set()
+    org_ids_by_user: dict[UUID, set[UUID]] = {}
+    if user_ids:
+        for user_id, organization_id in db.execute(
+            select(UserOrgRole.user_id, UserOrgRole.organization_id)
+            .where(UserOrgRole.user_id.in_(user_ids))
+            .distinct()
+        ).all():
+            org_ids_by_user.setdefault(user_id, set()).add(organization_id)
+    all_org_ids = {oid for oids in org_ids_by_user.values() for oid in oids}
+    org_names_by_id = (
+        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).all())
+        if all_org_ids and settings.access_review_show_org_names
+        else {}
     )
     return [
         SystemUserOut(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
+            is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, has_org_membership=u.id in org_member_ids,
+            is_server_admin=u.is_server_admin, has_org_membership=u.id in org_ids_by_user,
+            organization_count=len(org_ids_by_user.get(u.id, ())),
+            organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
         )
         for u in users
     ]
@@ -232,11 +257,69 @@ def reactivate_orphaned_user(
     otherwise) — added alongside `deactivate_orphaned_user` so a server admin
     who deactivates an orphaned account by mistake, or whose owner turns out
     to still need it, isn't left with no way back short of direct database
-    access."""
+    access.
+
+    Raises:
+        HTTPException: 400 if the account is currently banned — `unban`
+            must be called first (a separate, deliberate action, see its
+            docstring); otherwise this endpoint would let a banned account
+            back in without ever going through that step, contradicting
+            `User.is_banned`'s own documented invariant that ban "survives
+            even if something else were to flip `is_active` back on."
+            Hardening-review finding: this was previously unchecked.
+    """
     user = _require_orphaned_user(db, user_id)
+    if user.is_banned:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This account is banned. Unban it before reactivating.")
     user.is_active = True
     user.deactivated_at = None
     log_event(db, entity_type="user", entity_id=user_id, action="reactivated", actor_id=current_user.id)
+    db.commit()
+
+
+@router.post("/users/{user_id}/ban", status_code=status.HTTP_204_NO_CONTENT)
+def ban_orphaned_user(
+    user_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Bans an orphaned account: deactivates it (same effect as
+    `deactivate_orphaned_user`) and also flags it so `assign_org_role`
+    refuses to let any org admin grant it a role again later — closing the
+    gap a plain deactivation leaves open, where the same account could
+    quietly be re-admitted through a different organisation without a
+    server admin ever being asked again. Scoped to orphaned accounts only,
+    same rationale as `deactivate_orphaned_user`: a user who already
+    belongs to an organisation is that organisation's own admin's call.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot ban your own account.")
+    user = _require_orphaned_user(db, user_id)
+    user.is_active = False
+    user.deactivated_at = datetime.now(UTC)
+    user.is_banned = True
+    user.banned_at = datetime.now(UTC)
+    user.banned_by = current_user.id
+    log_event(db, entity_type="user", entity_id=user_id, action="banned", actor_id=current_user.id)
+    db.commit()
+
+
+@router.post("/users/{user_id}/unban", status_code=status.HTTP_204_NO_CONTENT)
+def unban_orphaned_user(
+    user_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Reverses a ban. Deliberately does *not* also reactivate the account
+    (`is_active` stays False) — unbanning just means "this account may be
+    granted org roles again," a separate decision from "this account may
+    log in again," which stays a distinct, explicit `reactivate` action.
+    """
+    user = _require_orphaned_user(db, user_id)
+    user.is_banned = False
+    user.banned_at = None
+    user.banned_by = None
+    log_event(db, entity_type="user", entity_id=user_id, action="unbanned", actor_id=current_user.id)
     db.commit()
 
 
@@ -319,3 +402,73 @@ async def upload_branding_logo(
     db.commit()
     db.refresh(settings)
     return settings
+
+
+@router.post("/branding/login-background", response_model=ServerSettingsOut)
+async def upload_branding_login_background(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Uploads the platform-wide default login-page background image,
+    shown on the plain `/login` page (no single org's branding applies).
+    Same "stored against whichever org happens to exist" namespacing
+    rationale as `upload_branding_logo` above.
+    """
+    any_org = db.scalar(select(Organization))
+    if any_org is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No organisation exists yet to store this file against.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=any_org.id, uploaded_by=current_user.id,
+        filename=file.filename or "login-background",
+        content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    settings = get_server_settings(db)
+    settings.default_login_background_file_id = asset.id
+    log_event(db, entity_type="system", entity_id="platform", action="branding_login_background_updated",
+              actor_id=current_user.id, detail={"file_id": str(asset.id)})
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+# --- Public self-signup mode -------------------------------------------------
+
+
+@router.get("/signup-config", response_model=SignupConfigOut)
+def get_signup_config(db: Session = Depends(get_db)):
+    """Public, unauthenticated (no `current_user` dependency at all — the
+    signup form's first call happens before any session exists, same as
+    `orgs.py::get_org_login_info`). Only lists organisation *names* open to
+    `ORG_SPECIFIED` self-signup, never their configured email domain — see
+    `SelfSignupOrgOut`'s docstring."""
+    server_settings = get_server_settings(db)
+    orgs: list[SelfSignupOrgOut] = []
+    if server_settings.signup_mode == SignupMode.ORG_SPECIFIED:
+        orgs = [
+            SelfSignupOrgOut(id=org.id, name=org.name)
+            for org in db.scalars(
+                select(Organization).where(
+                    Organization.allow_self_signup.is_(True), Organization.is_active.is_(True)
+                )
+            ).all()
+        ]
+    return SignupConfigOut(signup_mode=server_settings.signup_mode, self_signup_organizations=orgs)
+
+
+@router.put("/signup-config", response_model=SignupConfigOut)
+def update_signup_config(
+    payload: SignupConfigUpdate,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Sets the server-wide public self-signup mode (server-admin only)."""
+    server_settings = get_server_settings(db)
+    server_settings.signup_mode = payload.signup_mode
+    log_event(db, entity_type="system", entity_id="platform", action="signup_mode_updated",
+              actor_id=current_user.id, detail={"signup_mode": payload.signup_mode.value})
+    db.commit()
+    db.refresh(server_settings)
+    return get_signup_config(db)

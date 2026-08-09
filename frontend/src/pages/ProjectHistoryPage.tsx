@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import { activityEntityLabel, describeActivityEntry, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
+import { activityEntityLabel, activityEntryLink, describeActivityEntry, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -74,14 +74,23 @@ export function ProjectHistoryPage() {
       {changes && changes.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
       {changes && changes.length > 0 && (
         <div className="card stack">
-          {changes.map((c, idx) => (
-            <div key={idx} className="row" style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-              <span>
-                <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
-              </span>
-              <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-            </div>
-          ))}
+          {changes.map((c, idx) => {
+            const link = projectId ? activityEntryLink(c, projectId) : null;
+            return (
+              <div key={idx} className="row" style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+                <span>
+                  <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
+                  {link && (
+                    <>
+                      {" "}
+                      <Link to={link.to}>{link.label}</Link>
+                    </>
+                  )}
+                </span>
+                <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

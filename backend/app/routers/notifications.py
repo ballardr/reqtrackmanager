@@ -11,8 +11,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -26,12 +26,38 @@ router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 @router.get("", response_model=list[NotificationOut])
 def list_notifications(
-    unread_only: bool = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    response: Response,
+    unread_only: bool = False,
+    search: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
+    """Lists the caller's notifications, newest first.
+
+    `limit`/`offset` (U-P-06) are optional — omitting both preserves the
+    original unbounded-fetch behaviour the dropdown bell still relies on.
+    The dedicated notifications page passes both, plus `search` (matches
+    title or body), for lazy-loaded browsing back through notification
+    history without pulling the whole list up front. When `limit` is
+    given, the total match count is returned in `X-Total-Count`, same
+    convention as `list_requirements`.
+    """
     query = select(Notification).where(Notification.user_id == current_user.id)
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
-    return db.scalars(query.order_by(Notification.created_at.desc())).all()
+    if search:
+        needle = f"%{search.lower()}%"
+        query = query.where(or_(Notification.title.ilike(needle), Notification.body.ilike(needle)))
+    query = query.order_by(Notification.created_at.desc())
+
+    if limit is None:
+        return db.scalars(query).all()
+
+    total = len(db.scalars(query).all())
+    response.headers["X-Total-Count"] = str(total)
+    return db.scalars(query.offset(offset).limit(limit)).all()
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)

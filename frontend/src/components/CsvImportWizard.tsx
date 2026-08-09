@@ -40,10 +40,15 @@ function guessMapping(headers: string[]): Record<CanonicalField, string> {
 }
 
 function buildTemplateCsv(components: Component[], categories: Category[], stages: ProjectStage[]): string {
+  // A category belonging to the example component specifically — the tree
+  // means the first category overall isn't necessarily one of this
+  // component's own, which would produce an inconsistent (though still
+  // server-validated) example row.
+  const exampleCategory = categories.find((c) => c.component_id === components[0]?.id);
   const exampleRow: Record<CanonicalField, string> = {
     name: "Example requirement name",
     component_prefix: components[0]?.prefix ?? "SW",
-    category_prefix: categories[0]?.prefix ?? "PERF",
+    category_prefix: exampleCategory?.prefix ?? "PERF",
     reasoning: "Why this requirement exists",
     level: "requirement",
     target_version: stages[0]?.name ?? "",
@@ -60,7 +65,11 @@ function downloadCsv(filename: string, content: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  // See ReportsPage.tsx's downloadBlob: the anchor must be attached to the
+  // document for `download` (and its filename/suffix) to reliably apply.
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 

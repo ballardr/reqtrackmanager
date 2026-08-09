@@ -15,6 +15,24 @@ Roles are assigned at two levels, and they're independent of each other:
 
 If something you expect to see or edit is missing, it's almost always a role question — check both your organisation role and your role on that specific project.
 
+## Components and categories
+
+Every requirement is filed under a **component** and, within it, a **category** — a two-level tree, not two independent lists. A category belongs to exactly one component; the same category name (e.g. "Performance") can exist under several different components, since each is really that component's own child, not a project-wide label shared across all of them.
+
+```mermaid
+graph TD
+    Software["Component: Software (SW)"]
+    Performance["Category: Performance (PERF)"]
+    Reliability["Category: Reliability (REL)"]
+    Hardware["Component: Hardware (HW)"]
+    Functional["Category: Functional (FN)"]
+    Software --> Performance
+    Software --> Reliability
+    Hardware --> Functional
+```
+
+This diagram shows two components ("Software" and "Hardware"), each with its own categories nested underneath — read top-to-bottom as parent-then-child, the same shape shown in Project Admin's Components/Categories tab. It matters because a requirement's identifier is built from both prefixes together (component first, then its category) — e.g. a "Performance" category under "Software" produces IDs like `SW-PERF-014`, and picking a category in the requirement/change-request forms always narrows to that component's own list rather than every category in the project.
+
 ## Where to start
 
 New to a project? Start on its **overview** page for a dashboard of where things stand, then look at **requirements** to see what's being tracked.

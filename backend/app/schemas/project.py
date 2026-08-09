@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.models.enums import ProjectRole, StageReviewResponseChoice, StageStatus
 
@@ -84,6 +84,8 @@ class ProjectListItemOut(ProjectOut):
     current_stage_status: StageStatus | None = None
     my_roles: list[ProjectRole] = []
     is_favorite: bool = False
+    organization_name: str = ""
+    requirement_count: int = 0
 
 
 class ProjectStageCreate(BaseModel):
@@ -145,6 +147,7 @@ class ComponentOut(BaseModel):
 class CategoryCreate(BaseModel):
     name: str
     prefix: str
+    component_id: UUID
 
 
 class CategoryOut(BaseModel):
@@ -152,6 +155,7 @@ class CategoryOut(BaseModel):
 
     id: UUID
     project_id: UUID
+    component_id: UUID
     name: str
     prefix: str
     sort_order: int
@@ -183,6 +187,30 @@ class ProjectGroupOut(BaseModel):
 class UserProjectRoleAssign(BaseModel):
     user_id: UUID
     role: ProjectRole
+
+
+class UserProjectRoleAssignByEmail(BaseModel):
+    """Adds a project member by email — may resolve to an existing account
+    (in or outside the project's organisation) or, if
+    `Organization.external_user_policy` permits, a brand-new invited
+    account. See `routers/projects.py::assign_project_role_by_email`."""
+
+    email: EmailStr
+    role: ProjectRole
+
+
+class AssignByEmailOut(BaseModel):
+    """Outcome of `assign_project_role_by_email` — the frontend shows a
+    different message for each:
+      - "added": an existing account was granted the role immediately.
+      - "invited": a new account has no account yet; an email with a
+        signup link was sent, and the role is granted once they sign up.
+      - "sso_provisioned": the target org is SSO-only, so the account and
+        role were both created immediately; the invitee just needs to sign
+        in via SSO to start using it.
+    """
+
+    outcome: str
 
 
 class StageProgressOut(BaseModel):

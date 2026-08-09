@@ -29,11 +29,50 @@ export function CollapsibleSection({
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useUiPreference<boolean>(`section_collapsed:${sectionKey}`, defaultCollapsed);
+  const toggle = () => setCollapsed(!collapsed);
+  // Disambiguates this toggle's accessible name from any same-named control
+  // inside its own content (e.g. a "Change password" section containing a
+  // "Change password" submit button) — both for assistive tech and for test
+  // locators that query by role + name.
+  const label = typeof title === "string" ? `${title} section` : undefined;
+
+  const header =
+    variant === "card" ? (
+      <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
+    ) : (
+      <strong>{title}</strong>
+    );
+
+  if (collapsed) {
+    // The whole collapsed bar is the click target (not just the title/arrow
+    // text) — for `variant="card"` that means the entire card, padding
+    // included, since a collapsed section visually reads as one solid bar.
+    return (
+      <div
+        className={variant === "card" ? "card row" : "row"}
+        style={{ justifyContent: "space-between", cursor: "pointer" }}
+        role="button"
+        tabIndex={0}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        aria-expanded={false}
+        aria-label={label}
+      >
+        {header}
+        <ChevronDown size={16} />
+      </div>
+    );
+  }
 
   return (
     <div className={variant === "card" ? "card stack" : "stack"}>
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggle}
         className="row"
         style={{
           justifyContent: "space-between",
@@ -46,21 +85,13 @@ export function CollapsibleSection({
           textAlign: "left",
           color: "inherit",
         }}
-        aria-expanded={!collapsed}
-        // Disambiguates this toggle's accessible name from any same-named
-        // control inside its own content (e.g. a "Change password" section
-        // containing a "Change password" submit button) — both for
-        // assistive tech and for test locators that query by role + name.
-        aria-label={typeof title === "string" ? `${title} section` : undefined}
+        aria-expanded={true}
+        aria-label={label}
       >
-        {variant === "card" ? (
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
-        ) : (
-          <strong>{title}</strong>
-        )}
-        {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        {header}
+        <ChevronUp size={16} />
       </button>
-      {!collapsed && children}
+      {children}
     </div>
   );
 }

@@ -9,6 +9,7 @@ C-U-12).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import OrgRole
+from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
@@ -29,6 +30,7 @@ from app.schemas.file import FileAssetOut
 from app.schemas.org import (
     DefaultTemplateUpdate,
     DisplayNameLockUpdate,
+    ExternalUserMatch,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrgBrandingUpdate,
@@ -39,11 +41,14 @@ from app.schemas.org import (
     OrgGroupMemberAdd,
     OrgGroupOut,
     OrgLoginInfoOut,
+    OrgProjectSummaryOut,
     OrgRoleAssign,
     OrgSsoConfigOut,
     OrgSsoConfigUpdate,
     OrgUserCreate,
     OrgUserOut,
+    OrgUserSearchResult,
+    OutsideDomainUserOut,
     ReportTemplateCreate,
     ReportTemplateOut,
 )
@@ -57,6 +62,7 @@ from app.services.notifications import notify
 from app.services.org_deletion import delete_organization_cascade
 from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
+    can_manage_project_settings,
     get_effective_org_roles,
     get_project_managers,
     require_org_admin_or_server_admin,
@@ -283,6 +289,18 @@ def create_org_user(
     """
     if db.scalar(select(User).where(User.email == payload.email.lower())) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.sso_only:
+        # A brand-new native-credentialed account whose only org membership
+        # is sso_only could never log in (NativeAuthBackend rejects native
+        # login when every one of a user's orgs requires SSO) — same guard
+        # as self-signup's allow_self_signup/sso_only mutual exclusion.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This organisation is SSO-only; native accounts cannot be created for it directly.",
+        )
     user = User(
         email=payload.email.lower(),
         display_name=payload.display_name,
@@ -387,6 +405,111 @@ def list_org_users(
     return results
 
 
+_EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.get("/{organization_id}/users/search", response_model=OrgUserSearchResult)
+def search_org_users(
+    organization_id: UUID,
+    q: str = Query(..., min_length=1),
+    project_id: UUID | None = Query(None),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """Server-backed search for the project user picker: org members
+    matching `q` by name/email, plus — only when `q` is a full email
+    address not already among the org's members and
+    `Organization.external_user_policy` allows it — a synthetic "external"
+    result the caller can then add via
+    `routers/projects.py::assign_project_role_by_email`.
+
+    Whether `q` matches an *existing* account elsewhere in the system is
+    itself a cross-tenant fact (a one-bit "this exact email has an account
+    somewhere" signal) — unlike "no account, would need an invite," which
+    reveals nothing about any real account and is always safe to return.
+    This endpoint is open to any org member (matching `list_org_users`'
+    existing directory precedent), but that's a materially lower bar than
+    `assign_project_role_by_email`'s own `require_project_manage` gate, so
+    the `exists=True` case is withheld from a caller who couldn't actually
+    act on it: an org admin, or a member who passes `project_id` for a
+    project in this org they have manage rights on. Below that bar, a
+    match that would resolve to `exists=True` is omitted entirely rather
+    than downgraded to a misleading `exists=False`.
+    """
+    needle = q.strip().lower()
+    rows = db.execute(
+        select(User, UserOrgRole.role).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
+            UserOrgRole.organization_id == organization_id, User.is_archived.is_(False)
+        )
+    ).all()
+    by_user: dict[UUID, OrgUserOut] = {}
+    for user, role in rows:
+        if needle not in user.display_name.lower() and needle not in user.email.lower():
+            continue
+        if user.id not in by_user:
+            by_user[user.id] = OrgUserOut(
+                user_id=user.id, email=user.email, display_name=user.display_name,
+                is_active=user.is_active, is_archived=user.is_archived, roles=[],
+                display_name_locked=user.display_name_locked,
+            )
+        by_user[user.id].roles.append(role)
+    members = list(by_user.values())[:8]
+
+    external: ExternalUserMatch | None = None
+    if _EMAIL_LIKE.match(needle) and not any(m.email.lower() == needle for m in members):
+        org = db.get(Organization, organization_id)
+        policy = org.external_user_policy if org else ExternalUserPolicy.DISABLED
+        if policy != ExternalUserPolicy.DISABLED:
+            existing = db.scalar(select(User).where(User.email == needle))
+            if existing is not None:
+                may_see_existing = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
+                if not may_see_existing and project_id is not None:
+                    project = db.get(Project, project_id)
+                    if project is not None and project.organization_id == organization_id:
+                        may_see_existing = can_manage_project_settings(db, current_user, project)
+                if may_see_existing:
+                    external = ExternalUserMatch(email=needle, exists=True)
+            else:
+                domain = needle.rsplit("@", 1)[-1]
+                domain_ok = policy == ExternalUserPolicy.ANYONE or (
+                    policy == ExternalUserPolicy.ORG_DOMAIN_ONLY
+                    and org is not None
+                    and org.auto_accept_email_domain
+                    and org.auto_accept_email_domain.lower() == domain
+                )
+                if domain_ok:
+                    external = ExternalUserMatch(email=needle, exists=False)
+    return OrgUserSearchResult(members=members, external=external)
+
+
+@router.get("/{organization_id}/users/outside-domain", response_model=list[OutsideDomainUserOut])
+def list_outside_domain_users(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists existing users (system-wide, not archived) whose email domain
+    matches this org's configured `auto_accept_email_domain` but who are
+    not currently members — lets an org admin see who's eligible to be
+    invited once a domain has been configured (bullet 5 of the
+    self-signup/external-user feature set)."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if not org.auto_accept_email_domain:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation has no email domain configured.")
+    member_ids = set(
+        db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.organization_id == organization_id)).all()
+    )
+    domain_suffix = f"@{org.auto_accept_email_domain.lower()}"
+    candidates = db.scalars(select(User).where(User.is_archived.is_(False))).all()
+    return [
+        OutsideDomainUserOut(user_id=u.id, email=u.email, display_name=u.display_name)
+        for u in candidates
+        if u.id not in member_ids and u.email.lower().endswith(domain_suffix)
+    ]
+
+
 def _org_users_with_project_access(db: Session, organization_id: UUID) -> set[UUID]:
     """User ids with at least one direct project role or direct project-group
     membership on any project in this organisation (used by the
@@ -452,6 +575,11 @@ def assign_org_role(
     than trusted, so the URL a caller is authorized against (and what ends
     up in the audit trail) can never diverge from who is actually affected.
     """
+    target = db.get(User, user_id)
+    if target is not None and target.is_banned:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
+        )
     existing = db.scalar(
         select(UserOrgRole).where(
             UserOrgRole.user_id == user_id,
@@ -742,6 +870,23 @@ def create_org_group(
     return OrgGroupOut(id=group.id, name=group.name, member_user_ids=[])
 
 
+@router.get("/{organization_id}/projects", response_model=list[OrgProjectSummaryOut])
+def list_org_projects(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists every project in this organisation, regardless of whether the
+    calling org admin holds a role in it (unlike `GET /projects`, which
+    only ever returns projects the caller has a genuine role in). Exists so
+    an org admin can find and manage the users/roles on a project they
+    otherwise can't open — see `require_project_view_or_manage` — without
+    granting general content access as a side effect of just being able to
+    see that the project exists.
+    """
+    return db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
+
+
 @router.get("/{organization_id}/groups", response_model=list[OrgGroupOut])
 def list_org_groups(
     organization_id: UUID,
@@ -985,7 +1130,9 @@ def get_advanced_settings(
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
-        pat_max_lifetime_days=org.pat_max_lifetime_days,
+        pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
+        allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
+        external_user_policy=org.external_user_policy,
     )
 
 
@@ -998,6 +1145,16 @@ def update_advanced_settings(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if payload.allow_self_signup and org.sso_only:
+        # Self-signup is anonymous and un-gated by an admin, unlike every
+        # other native-account-creation path (create_org_user, an admin-
+        # sent invite) — letting it hand out a native password credential
+        # to an sso_only org would create an account that can never log in
+        # (NativeAuthBackend rejects native login when every one of a
+        # user's orgs is sso_only). See docs/decisions.md.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Self-signup cannot be enabled for an SSO-only organisation."
+        )
     org.smtp_host = payload.smtp_host
     org.smtp_port = payload.smtp_port
     org.smtp_username = payload.smtp_username
@@ -1008,6 +1165,10 @@ def update_advanced_settings(
     org.smtp_use_tls = payload.smtp_use_tls
     org.sso_group_mappings = [m.model_dump() for m in payload.sso_group_mappings]
     org.pat_max_lifetime_days = payload.pat_max_lifetime_days
+    org.require_2fa = payload.require_2fa
+    org.allow_self_signup = payload.allow_self_signup
+    org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
+    org.external_user_policy = payload.external_user_policy
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
@@ -1017,7 +1178,9 @@ def update_advanced_settings(
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
-        pat_max_lifetime_days=org.pat_max_lifetime_days,
+        pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
+        allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
+        external_user_policy=org.external_user_policy,
     )
 
 
@@ -1076,6 +1239,18 @@ def update_sso_config(
         org.slug = payload.slug
     if payload.sso_enabled and not org.slug:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Set a slug before enabling SSO (needed for the login page URL).")
+    if payload.sso_only and not payload.sso_enabled:
+        # sso_only now has real backend teeth (NativeAuthBackend blocks
+        # native login for a user whose every org is sso_only) — allowing it
+        # to be set without sso_enabled would be a self-inflicted lockout
+        # with no way to sign in at all.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enable SSO before making it the only sign-in method.")
+    if payload.sso_only and org.allow_self_signup:
+        # Same mutual-exclusion as update_advanced_settings, enforced from
+        # this side too since either endpoint can flip the two flags.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Disable self-signup before making this organisation SSO-only."
+        )
     org.sso_enabled = payload.sso_enabled
     org.sso_only = payload.sso_only
     org.oidc_issuer_url = payload.oidc_issuer_url
@@ -1132,6 +1307,8 @@ def create_report_template(
         organization_id=organization_id, name=payload.name, accent_color_hex=payload.accent_color_hex,
         include_cover_page=payload.include_cover_page, include_logo=payload.include_logo,
         footer_text=payload.footer_text, created_by=current_user.id,
+        intro=payload.intro, chapters=[c.model_dump() for c in payload.chapters],
+        appendices=[c.model_dump() for c in payload.appendices],
     )
     db.add(template)
     db.flush()
@@ -1167,6 +1344,9 @@ def update_report_template(
     template.include_cover_page = payload.include_cover_page
     template.include_logo = payload.include_logo
     template.footer_text = payload.footer_text
+    template.intro = payload.intro
+    template.chapters = [c.model_dump() for c in payload.chapters]
+    template.appendices = [c.model_dump() for c in payload.appendices]
     log_event(db, entity_type="report_template", entity_id=template.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.commit()

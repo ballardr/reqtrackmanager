@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
-import { api, loadStoredToken, setAuthToken } from "../api/client";
+import { AUTH_UNAUTHORIZED_EVENT, api, loadStoredToken, setAuthToken } from "../api/client";
 import type { User } from "../api/types";
 
 type LoginResult = { requires2fa: false; user: User } | { requires2fa: true; challengeToken: string };
@@ -9,6 +9,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
+  signup: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<User>;
   verify2fa: (challengeToken: string, code: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -53,6 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { requires2fa: false, user: result.user };
   }, []);
 
+  const signup = useCallback(
+    async (email: string, password: string, displayName: string, inviteToken?: string): Promise<User> => {
+      const result = await api.post<{ access_token: string; user: User }>("/api/v1/auth/signup", {
+        email,
+        password,
+        display_name: displayName,
+        invite_token: inviteToken || undefined,
+      });
+      setAuthToken(result.access_token);
+      setUser(result.user);
+      return result.user;
+    },
+    [],
+  );
+
   const verify2fa = useCallback(async (challengeToken: string, code: string): Promise<User> => {
     const result = await api.post<{ access_token: string; user: User }>("/api/v1/auth/2fa/verify", {
       challenge_token: challengeToken,
@@ -66,6 +82,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setAuthToken(null);
     setUser(null);
+  }, []);
+
+  // A 401 with `WWW-Authenticate` (client.ts's `AUTH_UNAUTHORIZED_EVENT`)
+  // means the session token itself is dead — expired, or invalidated by a
+  // password change/2FA change in another tab. Clearing `user` immediately
+  // (rather than only on the next mount) is what makes `ProtectedRoutes`
+  // (App.tsx) redirect to /login right away instead of leaving the page
+  // rendered on stale data until a hard refresh forces a re-check.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setAuthToken(null);
+      setUser(null);
+    };
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
   // Applied optimistically (an instant toggle shouldn't wait on a round
@@ -82,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, verify2fa, logout, refreshUser, setUiPreference }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, verify2fa, logout, refreshUser, setUiPreference }}>
       {children}
     </AuthContext.Provider>
   );

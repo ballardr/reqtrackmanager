@@ -62,6 +62,27 @@ def check_pat_scope(request: Request, organization_id: UUID) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This access token is not scoped to this organisation.")
 
 
+def check_pat_project_scope(request: Request, project_id: UUID) -> None:
+    """Enforces a Personal Access Token's optional *project*-level scope,
+    on top of `check_pat_scope`'s org-level check — a further restriction
+    a token's creator can optionally add (`PersonalAccessToken.
+    allowed_project_ids`), never a grant beyond the org scope or the
+    user's real RBAC roles.
+
+    `request.state.pat_allowed_project_ids` is `None` for a token with no
+    project restriction (the default) or for a non-PAT request — a no-op
+    in both cases, same shape as `check_pat_scope`.
+
+    Raises:
+        HTTPException: 403 if the request was authenticated via a PAT
+            restricted to a set of projects that doesn't include
+            `project_id`.
+    """
+    allowed = getattr(request.state, "pat_allowed_project_ids", None)
+    if allowed is not None and project_id not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This access token is not scoped to this project.")
+
+
 def is_org_active(db: Session, organization_id: UUID) -> bool:
     """Boolean form of the check `_require_org_active` raises on. Exists for
     call sites that can't raise an `HTTPException` and need to translate
@@ -102,6 +123,29 @@ def _require_org_active(db: Session, organization_id: UUID) -> None:
     """
     if not is_org_active(db, organization_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation has been disabled.")
+
+
+def _require_org_2fa(db: Session, organization_id: UUID, user: User) -> None:
+    """Blocks org/project-scoped requests against an organisation with
+    `Organization.require_2fa` set, for any caller without
+    `User.is_2fa_enabled` — same bluntness as `_require_org_active`
+    (applies to the org's own admins too), but with a self-service way out:
+    `/auth/2fa/enroll`/`confirm` aren't org-scoped, so a blocked user can
+    enroll immediately and regain access without an admin's help. Checked
+    everywhere `_require_org_active` is, right after it, so a disabled org
+    still produces the more specific "disabled" message rather than this
+    one when both are true.
+
+    Raises:
+        HTTPException: 403 if the org requires 2FA and the caller doesn't
+            have it enabled.
+    """
+    requires_2fa = bool(db.scalar(select(Organization.require_2fa).where(Organization.id == organization_id)))
+    if requires_2fa and not user.is_2fa_enabled:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This organisation requires two-factor authentication. Enable it in Preferences to continue.",
+        )
 
 
 def get_effective_org_roles(db: Session, user_id: UUID, organization_id: UUID) -> set[OrgRole]:
@@ -331,6 +375,7 @@ def require_org_role(*allowed: OrgRole):
         """See the enclosing `require_org_role` factory's docstring."""
         check_pat_scope(request, organization_id)
         _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
         roles = get_effective_org_roles(db, current_user.id, organization_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
@@ -353,6 +398,7 @@ def require_org_admin_or_server_admin(
     """
     check_pat_scope(request, organization_id)
     _require_org_active(db, organization_id)
+    _require_org_2fa(db, organization_id, current_user)
     if current_user.is_server_admin:
         return current_user
     roles = get_effective_org_roles(db, current_user.id, organization_id)
@@ -389,6 +435,7 @@ def require_project_role(*allowed: ProjectRole):
         organization_id = _project_organization_id(db, project_id)
         if organization_id is not None:
             _require_org_active(db, organization_id)
+            _require_org_2fa(db, organization_id, current_user)
         roles = get_effective_project_roles(db, current_user.id, project_id)
         if not roles & set(allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
@@ -402,6 +449,7 @@ def check_pat_scope_for_project(request: Request, db: Session, project_id: UUID)
     extra `Project.organization_id` lookup, only paid when the request is
     actually PAT-authenticated (a no-op read for ordinary session-JWT
     requests, which are the overwhelming majority)."""
+    check_pat_project_scope(request, project_id)
     if getattr(request.state, "pat_allowed_org_ids", None) is None:
         return
     organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
@@ -426,9 +474,39 @@ def require_project_view(
     organization_id = _project_organization_id(db, project_id)
     if organization_id is not None:
         _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
     if not get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
     return current_user
+
+
+def require_project_view_or_manage(
+    project_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Dependency requiring either a genuine project role (`require_project_
+    view`) or project-settings-management capability (`require_project_
+    manage`'s `can_manage_project_settings` — org admins of the project's
+    organisation, without needing a role of their own).
+
+    For endpoints that expose role/group *structure* rather than
+    requirement/change-request *content* — e.g. `list_project_groups` — so
+    an org admin can see who's in which group well enough to manage a
+    project's users (C-U-01 clarification) on a project they otherwise
+    can't open, without this becoming a general content-access grant.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    check_pat_scope(request, project.organization_id)
+    check_pat_project_scope(request, project_id)
+    _require_org_active(db, project.organization_id)
+    _require_org_2fa(db, project.organization_id, current_user)
+    if get_effective_project_roles(db, current_user.id, project_id) or can_manage_project_settings(db, current_user, project):
+        return current_user
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this project.")
 
 
 def require_project_manage(
@@ -448,7 +526,9 @@ def require_project_manage(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     check_pat_scope(request, project.organization_id)
+    check_pat_project_scope(request, project.id)
     _require_org_active(db, project.organization_id)
+    _require_org_2fa(db, project.organization_id, current_user)
     if not can_manage_project_settings(db, current_user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     return project

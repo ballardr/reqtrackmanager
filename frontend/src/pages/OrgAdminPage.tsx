@@ -5,23 +5,30 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type {
+  ExternalUserPolicy,
   FileAsset,
   OrgAdvancedSettings,
   OrgGroup,
   OrgPersonalAccessToken,
+  OrgProjectSummary,
   OrgReportDefaults,
   OrgRole,
   OrgSsoConfig,
   OrgUser,
   Organization,
+  OutsideDomainUser,
+  ProjectGroup,
   ProjectListItem,
   ReportChapter,
   ReportTemplate,
 } from "../api/types";
 import { ORG_ROLE_LABEL } from "../api/types";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
+import { ToggleSwitch } from "../components/ToggleSwitch";
+import { UserAutocomplete } from "../components/UserAutocomplete";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -57,7 +64,6 @@ export function OrgAdminPage() {
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
-  const [groupMemberInputs, setGroupMemberInputs] = useState<Record<string, string>>({});
 
   const [advanced, setAdvanced] = useState<OrgAdvancedSettings | null>(null);
   const [smtpHost, setSmtpHost] = useState("");
@@ -70,8 +76,17 @@ export function OrgAdminPage() {
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
+  const [require2fa, setRequire2fa] = useState(false);
+  const [allowSelfSignup, setAllowSelfSignup] = useState(false);
+  const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
+  const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
+  const [outsideDomainUsers, setOutsideDomainUsers] = useState<OutsideDomainUser[] | null>(null);
+  const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
   const [patBulkResult, setPatBulkResult] = useState<string | null>(null);
+  const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [expandedProjectGroups, setExpandedProjectGroups] = useState<ProjectGroup[]>([]);
 
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
@@ -94,6 +109,10 @@ export function OrgAdminPage() {
   const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
   const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
   const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
+  const [newTemplateIntro, setNewTemplateIntro] = useState("");
+  const [newTemplateChapters, setNewTemplateChapters] = useState<ReportChapter[]>([]);
+  const [newTemplateAppendices, setNewTemplateAppendices] = useState<ReportChapter[]>([]);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
@@ -175,7 +194,12 @@ export function OrgAdminPage() {
       setSmtpUsername(a.smtp_username ?? "");
       setSmtpUseTls(a.smtp_use_tls);
       setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+      setRequire2fa(a.require_2fa);
+      setAllowSelfSignup(a.allow_self_signup);
+      setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
+      setExternalUserPolicy(a.external_user_policy);
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
+      setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
@@ -223,6 +247,20 @@ export function OrgAdminPage() {
     loadUsers(next);
   }
 
+  async function toggleOutsideDomainUsers() {
+    if (!orgId) return;
+    if (outsideDomainUsers !== null) {
+      setOutsideDomainUsers(null);
+      return;
+    }
+    setOutsideDomainError(null);
+    try {
+      setOutsideDomainUsers(await api.get<OutsideDomainUser[]>(`/api/v1/orgs/${orgId}/users/outside-domain`));
+    } catch (err) {
+      setOutsideDomainError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
   async function saveAdvanced() {
     if (!orgId) return;
     setAdvancedError(null);
@@ -235,6 +273,10 @@ export function OrgAdminPage() {
         smtp_use_tls: smtpUseTls,
         sso_group_mappings: advanced?.sso_group_mappings ?? [],
         pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
+        require_2fa: require2fa,
+        allow_self_signup: allowSelfSignup,
+        auto_accept_email_domain: autoAcceptEmailDomain || null,
+        external_user_policy: externalUserPolicy,
       });
       setAdvanced(saved);
       setSmtpPassword("");
@@ -279,6 +321,27 @@ export function OrgAdminPage() {
   async function setDefaultTemplate(projectId: string) {
     await api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null });
     reload();
+  }
+
+  async function toggleExpandedProject(projectId: string) {
+    if (expandedProjectId === projectId) {
+      setExpandedProjectId(null);
+      return;
+    }
+    setExpandedProjectId(projectId);
+    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
+  }
+
+  async function addExpandedProjectGroupMember(groupId: string, userId: string) {
+    if (!expandedProjectId) return;
+    await api.post(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members`, { user_id: userId });
+    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  }
+
+  async function removeExpandedProjectGroupMember(groupId: string, userId: string) {
+    if (!expandedProjectId) return;
+    await api.delete(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members/${userId}`);
+    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
   }
 
   useEffect(() => {
@@ -360,17 +423,33 @@ export function OrgAdminPage() {
     reload();
   }
 
-  async function addGroupMember(groupId: string) {
-    const userId = groupMemberInputs[groupId];
-    if (!userId) return;
+  async function addGroupMember(groupId: string, userId: string) {
     await api.post(`/api/v1/orgs/${orgId}/groups/${groupId}/members`, { user_id: userId });
-    setGroupMemberInputs((m) => ({ ...m, [groupId]: "" }));
     reload();
   }
 
-  async function uploadLogo(file: File) {
-    await api.postFile(`/api/v1/orgs/${orgId}/logo`, file);
+  async function removeGroupMember(groupId: string, userId: string) {
+    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`);
     reload();
+  }
+
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoUploaded, setLogoUploaded] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  async function uploadLogo(file: File) {
+    setLogoError(null);
+    setLogoUploaded(false);
+    setLogoUploading(true);
+    try {
+      await api.postFile(`/api/v1/orgs/${orgId}/logo`, file);
+      await reload();
+      setLogoUploaded(true);
+    } catch (err) {
+      setLogoError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   async function saveBranding() {
@@ -386,9 +465,23 @@ export function OrgAdminPage() {
     }
   }
 
+  const [loginBackgroundUploading, setLoginBackgroundUploading] = useState(false);
+  const [loginBackgroundUploaded, setLoginBackgroundUploaded] = useState(false);
+  const [loginBackgroundError, setLoginBackgroundError] = useState<string | null>(null);
+
   async function uploadLoginBackground(file: File) {
-    await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
-    reload();
+    setLoginBackgroundError(null);
+    setLoginBackgroundUploaded(false);
+    setLoginBackgroundUploading(true);
+    try {
+      await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
+      await reload();
+      setLoginBackgroundUploaded(true);
+    } catch (err) {
+      setLoginBackgroundError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setLoginBackgroundUploading(false);
+    }
   }
 
   async function saveSso() {
@@ -410,25 +503,54 @@ export function OrgAdminPage() {
     }
   }
 
-  async function createReportTemplate() {
-    if (!newTemplateName) return;
-    await api.post(`/api/v1/orgs/${orgId}/report-templates`, {
-      name: newTemplateName,
-      accent_color_hex: newTemplateAccentColor,
-      include_cover_page: newTemplateIncludeCoverPage,
-      include_logo: newTemplateIncludeLogo,
-      footer_text: newTemplateFooterText || null,
-    });
+  function resetTemplateForm() {
+    setEditingTemplateId(null);
     setNewTemplateName("");
     setNewTemplateAccentColor("#475569");
     setNewTemplateIncludeCoverPage(true);
     setNewTemplateIncludeLogo(true);
     setNewTemplateFooterText("");
+    setNewTemplateIntro("");
+    setNewTemplateChapters([]);
+    setNewTemplateAppendices([]);
+  }
+
+  function startEditTemplate(tpl: ReportTemplate) {
+    setEditingTemplateId(tpl.id);
+    setNewTemplateName(tpl.name);
+    setNewTemplateAccentColor(tpl.accent_color_hex);
+    setNewTemplateIncludeCoverPage(tpl.include_cover_page);
+    setNewTemplateIncludeLogo(tpl.include_logo);
+    setNewTemplateFooterText(tpl.footer_text ?? "");
+    setNewTemplateIntro(tpl.intro);
+    setNewTemplateChapters(tpl.chapters);
+    setNewTemplateAppendices(tpl.appendices);
+  }
+
+  async function saveReportTemplate() {
+    if (!newTemplateName) return;
+    const payload = {
+      name: newTemplateName,
+      accent_color_hex: newTemplateAccentColor,
+      include_cover_page: newTemplateIncludeCoverPage,
+      include_logo: newTemplateIncludeLogo,
+      footer_text: newTemplateFooterText || null,
+      intro: newTemplateIntro,
+      chapters: newTemplateChapters,
+      appendices: newTemplateAppendices,
+    };
+    if (editingTemplateId) {
+      await api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload);
+    } else {
+      await api.post(`/api/v1/orgs/${orgId}/report-templates`, payload);
+    }
+    resetTemplateForm();
     reload();
   }
 
   async function deleteReportTemplate(templateId: string) {
     await api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`);
+    if (editingTemplateId === templateId) resetTemplateForm();
     reload();
   }
 
@@ -564,185 +686,7 @@ export function OrgAdminPage() {
       </div>
       {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.branding}</h2>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.logo}
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-          />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.headerTitle}
-          <input
-            className="input" placeholder={strings.appName}
-            value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
-          />
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
-        </label>
-        <label className="row">
-          <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
-          {strings.orgAdmin.useOwnAccentColor}
-        </label>
-        {useOwnAccentColor && (
-          <input
-            type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
-            style={{ width: 60, height: 36, padding: 2 }}
-          />
-        )}
-        {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
-        <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
-          {strings.orgAdmin.saveBranding}
-        </button>
-      </div>
-
-      {orgReportDefaultsAvailable && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Report Defaults</h2>
-        <p className="text-muted" style={{ margin: 0 }}>
-          Used as the default intro, body chapters, and appendices for any project in this organisation that
-          hasn't set its own — see each project's Report Setup tab.
-        </p>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Default intro</span>
-          <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} />
-        </div>
-        <ReportChapterListEditor label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} />
-        <ReportChapterListEditor label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} />
-        <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
-          {strings.admin.saveSettings}
-        </button>
-      </div>
-      )}
-
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportTemplates}</h2>
-        {reportTemplates.map((tpl) => (
-          <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span>
-              {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
-            </span>
-            <button className="btn btn-danger" onClick={() => deleteReportTemplate(tpl.id)}>
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.admin.templateName}
-            value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
-          />
-          <label className="row" style={{ gap: "0.4rem" }}>
-            {strings.admin.accentColor}
-            <input
-              type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
-              style={{ width: 44, height: 32, padding: 2 }}
-            />
-          </label>
-        </div>
-        <div className="row">
-          <label className="row" style={{ gap: "0.4rem" }}>
-            <input
-              type="checkbox" checked={newTemplateIncludeCoverPage}
-              onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
-            />
-            {strings.admin.includeCoverPage}
-          </label>
-          <label className="row" style={{ gap: "0.4rem" }}>
-            <input
-              type="checkbox" checked={newTemplateIncludeLogo}
-              onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
-            />
-            {strings.admin.includeLogo}
-          </label>
-        </div>
-        <input
-          className="input" placeholder={strings.admin.footerText}
-          value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
-        />
-        <button className="btn btn-primary" onClick={createReportTemplate} disabled={!newTemplateName} style={{ alignSelf: "flex-start" }}>
-          <Plus size={14} /> {strings.admin.newReportTemplate}
-        </button>
-      </div>
-
-      {ssoConfig && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.ssoConfig}</h2>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.slug}
-            <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              {strings.orgAdmin.slugHint.replace("{slug}", slugInput || "…")}
-            </span>
-          </label>
-          <label className="row">
-            <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
-            {strings.orgAdmin.ssoEnabled}
-          </label>
-          <label className="row">
-            <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
-            {strings.orgAdmin.ssoOnly}
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcIssuerUrl}
-            <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcClientId}
-            <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcClientSecret}
-            <input
-              className="input" type="password" value={oidcClientSecret}
-              onChange={(e) => setOidcClientSecret(e.target.value)}
-            />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcRequiredGroup}
-            <input
-              className="input" value={oidcRequiredGroup}
-              onChange={(e) => setOidcRequiredGroup(e.target.value)}
-            />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.loginBackground}
-            <input
-              ref={loginBackgroundInputRef} type="file" accept="image/*"
-              onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
-            />
-          </label>
-          {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
-          <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
-            {strings.orgAdmin.saveSso}
-          </button>
-        </div>
-      )}
-
-      {templateProjects.length > 0 && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.defaultTemplate}</h2>
-          <select
-            className="input"
-            value={org.default_template_project_id ?? ""}
-            onChange={(e) => setDefaultTemplate(e.target.value)}
-          >
-            <option value="">{strings.projects.noTemplate}</option>
-            {templateProjects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.users}</h2>
+      <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users} defaultCollapsed>
         <div className="row">
           <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
             {strings.orgAdmin.filterStale}
@@ -758,7 +702,42 @@ export function OrgAdminPage() {
               {strings.orgAdmin.filterClear}
             </button>
           )}
+          {advanced?.auto_accept_email_domain && (
+            <button
+              className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
+              onClick={toggleOutsideDomainUsers}
+            >
+              {strings.orgAdmin.showOutsideDomainUsers}
+            </button>
+          )}
         </div>
+        {outsideDomainError && <div style={{ color: "var(--color-danger)" }}>{outsideDomainError}</div>}
+        {outsideDomainUsers !== null && (
+          <div className="card stack">
+            <strong>{strings.orgAdmin.outsideDomainUsers}</strong>
+            <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint}</p>
+            {outsideDomainUsers.length === 0 ? (
+              <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers}</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>{strings.orgAdmin.email}</th>
+                    <th>{strings.orgAdmin.name}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outsideDomainUsers.map((u) => (
+                    <tr key={u.user_id}>
+                      <td>{u.email}</td>
+                      <td>{u.display_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
         <table>
           <thead>
             <tr>
@@ -808,40 +787,324 @@ export function OrgAdminPage() {
             <Plus size={14} /> {strings.orgAdmin.newUser}
           </button>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.groups}</h2>
-        {groups.map((g) => (
-          <div key={g.id} className="stack">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span>{g.name}</span>
-              <span className="text-muted">{g.member_user_ids.length} members</span>
+      {orgProjects && (
+        <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects} defaultCollapsed>
+          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint}</p>
+          {orgProjects.map((p) => (
+            <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span className="row" style={{ gap: "0.5rem" }}>
+                  {p.name}
+                  {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
+                </span>
+                <button className="btn" onClick={() => toggleExpandedProject(p.id)}>
+                  {expandedProjectId === p.id ? strings.common.cancel : strings.orgAdmin.manageUsers}
+                </button>
+              </div>
+              {expandedProjectId === p.id && (
+                <div className="stack" style={{ paddingLeft: "1rem" }}>
+                  {expandedProjectGroups.map((g) => {
+                    const memberIds = new Set(g.member_user_ids);
+                    const members = users.filter((u) => memberIds.has(u.user_id));
+                    const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+                    return (
+                      <div key={g.id} className="stack">
+                        <span>
+                          {g.name} <span className="badge">{g.role}</span>
+                        </span>
+                        {members.length > 0 && (
+                          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                            {members.map((u) => (
+                              <li key={u.user_id} style={{ listStyle: "disc" }}>
+                                <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                                  <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
+                                  <button className="btn" onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}>
+                                    <Trash2 size={14} />
+                                  </button>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <UserAutocomplete
+                          users={nonMembers}
+                          placeholder={strings.admin.addMemberPlaceholder}
+                          onSelect={(userId) => addExpandedProjectGroupMember(g.id, userId)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div className="row">
-              <input
-                className="input"
-                style={{ maxWidth: 280 }}
-                placeholder={strings.admin.userId}
-                value={groupMemberInputs[g.id] ?? ""}
-                onChange={(e) => setGroupMemberInputs((m) => ({ ...m, [g.id]: e.target.value }))}
-              />
-              <button className="btn" onClick={() => addGroupMember(g.id)}>
-                {strings.admin.addMember}
+          ))}
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding} defaultCollapsed>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.logo}
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            disabled={logoUploading}
+            onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
+          />
+        </label>
+        {logoUploading && <Spinner />}
+        {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
+        {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
+        {org.logo_file_id && <img src={fileUrl(org.logo_file_id)} alt="" style={{ height: 40 }} />}
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.headerTitle}
+          <input
+            className="input" placeholder={strings.appName}
+            value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
+          />
+          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
+        </label>
+        <label className="row">
+          <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
+          {strings.orgAdmin.useOwnAccentColor}
+        </label>
+        {useOwnAccentColor && (
+          <input
+            type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
+            style={{ width: 60, height: 36, padding: 2 }}
+          />
+        )}
+        {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
+        <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
+          {strings.orgAdmin.saveBranding}
+        </button>
+      </CollapsibleSection>
+
+      {orgReportDefaultsAvailable && (
+      <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults" defaultCollapsed>
+        <p className="text-muted" style={{ margin: 0 }}>
+          Used as the default intro, body chapters, and appendices for any project in this organisation that
+          hasn't set its own — see each project's Report Setup tab.
+        </p>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>Default intro</span>
+          <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} organizationId={orgId} />
+        </div>
+        <ReportChapterListEditor
+          label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} organizationId={orgId}
+        />
+        <ReportChapterListEditor
+          label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} organizationId={orgId}
+        />
+        <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
+          {strings.admin.saveSettings}
+        </button>
+      </CollapsibleSection>
+      )}
+
+      <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates} defaultCollapsed>
+        {reportTemplates.map((tpl) => (
+          <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
+            <span>
+              {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
+            </span>
+            <div className="row" style={{ gap: "0.4rem" }}>
+              <button className="btn" onClick={() => startEditTemplate(tpl)}>
+                {strings.common.edit}
+              </button>
+              <button className="btn btn-danger" onClick={() => deleteReportTemplate(tpl.id)}>
+                <Trash2 size={14} />
               </button>
             </div>
           </div>
         ))}
+        <CollapsibleSection
+          sectionKey="orgAdmin.reportTemplates.form"
+          variant="plain"
+          title={editingTemplateId ? strings.admin.editReportTemplate : strings.admin.newReportTemplate}
+        >
+          <div className="row">
+            <input
+              className="input" placeholder={strings.admin.templateName}
+              value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
+            />
+            <label className="row" style={{ gap: "0.4rem" }}>
+              {strings.admin.accentColor}
+              <input
+                type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
+                style={{ width: 44, height: 32, padding: 2 }}
+              />
+            </label>
+          </div>
+          <div className="row">
+            <label className="row" style={{ gap: "0.4rem" }}>
+              <input
+                type="checkbox" checked={newTemplateIncludeCoverPage}
+                onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
+              />
+              {strings.admin.includeCoverPage}
+            </label>
+            <label className="row" style={{ gap: "0.4rem" }}>
+              <input
+                type="checkbox" checked={newTemplateIncludeLogo}
+                onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
+              />
+              {strings.admin.includeLogo}
+            </label>
+          </div>
+          <input
+            className="input" placeholder={strings.admin.footerText}
+            value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
+          />
+          <div className="stack" style={{ gap: "0.25rem" }}>
+            <span>{strings.admin.templateIntro}</span>
+            <RichTextEditor rows={3} value={newTemplateIntro} onChange={setNewTemplateIntro} organizationId={orgId} />
+          </div>
+          <ReportChapterListEditor
+            label={strings.admin.templateChapters} list={newTemplateChapters} setList={setNewTemplateChapters}
+            organizationId={orgId}
+          />
+          <ReportChapterListEditor
+            label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
+            organizationId={orgId}
+          />
+          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint}</span>
+          <div className="row">
+            <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
+              <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.admin.newReportTemplate}
+            </button>
+            {editingTemplateId && (
+              <button className="btn" onClick={resetTemplateForm}>
+                {strings.common.cancel}
+              </button>
+            )}
+          </div>
+        </CollapsibleSection>
+      </CollapsibleSection>
+
+      {ssoConfig && (
+        <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig} defaultCollapsed>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.slug}
+            <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+              {strings.orgAdmin.slugHint.replace("{slug}", slugInput || "…")}
+            </span>
+          </label>
+          <label className="row">
+            <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
+            {strings.orgAdmin.ssoEnabled}
+          </label>
+          <label className="row">
+            <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
+            {strings.orgAdmin.ssoOnly}
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcIssuerUrl}
+            <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcClientId}
+            <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcClientSecret}
+            <input
+              className="input" type="password" value={oidcClientSecret}
+              onChange={(e) => setOidcClientSecret(e.target.value)}
+            />
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.oidcRequiredGroup}
+            <input
+              className="input" value={oidcRequiredGroup}
+              onChange={(e) => setOidcRequiredGroup(e.target.value)}
+            />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.loginBackground}
+            <input
+              ref={loginBackgroundInputRef} type="file" accept="image/*"
+              disabled={loginBackgroundUploading}
+              onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
+            />
+          </label>
+          {loginBackgroundUploading && <Spinner />}
+          {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
+          {loginBackgroundUploaded && (
+            <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.loginBackgroundUploaded}</div>
+          )}
+          {org.login_background_file_id && (
+            <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
+          )}
+          {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
+          <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
+            {strings.orgAdmin.saveSso}
+          </button>
+        </CollapsibleSection>
+      )}
+
+      {templateProjects.length > 0 && (
+        <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate} defaultCollapsed>
+          <select
+            className="input"
+            value={org.default_template_project_id ?? ""}
+            onChange={(e) => setDefaultTemplate(e.target.value)}
+          >
+            <option value="">{strings.projects.noTemplate}</option>
+            {templateProjects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups} defaultCollapsed>
+        {groups.map((g) => {
+          const memberIds = new Set(g.member_user_ids);
+          const members = users.filter((u) => memberIds.has(u.user_id));
+          const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+          return (
+            <div key={g.id} className="stack">
+              <span>{g.name}</span>
+              {members.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {members.map((u) => (
+                    <li key={u.user_id} style={{ listStyle: "disc" }}>
+                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                        <span>
+                          {u.display_name} <span className="text-muted">({u.email})</span>
+                        </span>
+                        <button className="btn" onClick={() => removeGroupMember(g.id, u.user_id)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <UserAutocomplete
+                users={nonMembers}
+                placeholder={strings.admin.addMemberPlaceholder}
+                onSelect={(userId) => addGroupMember(g.id, userId)}
+              />
+            </div>
+          );
+        })}
         <div className="row">
           <input className="input" placeholder={strings.admin.name} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
           <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
             <Plus size={14} /> {strings.orgAdmin.newGroup}
           </button>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.resources}</h2>
+      <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed>
         {resources.map((r) => (
           <div key={r.id} className="row" style={{ justifyContent: "space-between" }}>
             <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
@@ -860,11 +1123,10 @@ export function OrgAdminPage() {
         <span className="text-muted row">
           <Upload size={14} /> {strings.orgAdmin.resourcesHint}
         </span>
-      </div>
+      </CollapsibleSection>
 
       {advanced && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.advanced}</h2>
+        <CollapsibleSection sectionKey="orgAdmin.advanced" title={strings.orgAdmin.advanced} defaultCollapsed>
           <div className="row">
             <input
               className="input"
@@ -914,6 +1176,46 @@ export function OrgAdminPage() {
             <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint}</span>
           </label>
 
+          <label className="row" style={{ gap: "0.6rem" }}>
+            <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
+            <span className="stack" style={{ gap: 0 }}>
+              {strings.orgAdmin.require2fa}
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint}</span>
+            </span>
+          </label>
+
+          <label className="row" style={{ gap: "0.6rem" }}>
+            <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
+            <span className="stack" style={{ gap: 0 }}>
+              {strings.orgAdmin.allowSelfSignup}
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint}</span>
+            </span>
+          </label>
+
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.autoAcceptEmailDomain}
+            <input
+              className="input"
+              placeholder="acme.com"
+              value={autoAcceptEmailDomain}
+              onChange={(e) => setAutoAcceptEmailDomain(e.target.value)}
+            />
+            <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
+          </label>
+
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.orgAdmin.externalUserPolicy}
+            <select
+              className="input"
+              value={externalUserPolicy}
+              onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
+            >
+              <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled}</option>
+              <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
+              <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
+            </select>
+          </label>
+
           <div className="stack">
             <strong>{strings.orgAdmin.ssoMappings}</strong>
             {advanced.sso_group_mappings.map((m, idx) => (
@@ -948,13 +1250,11 @@ export function OrgAdminPage() {
           <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
             {strings.orgAdmin.saveAdvanced}
           </button>
-        </div>
+        </CollapsibleSection>
       )}
 
       {advanced && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.pats}</h2>
-
+        <CollapsibleSection sectionKey="orgAdmin.pats" title={strings.orgAdmin.pats} defaultCollapsed>
           {orgPats.length === 0 ? (
             <p className="text-muted">{strings.orgAdmin.patNone}</p>
           ) : (
@@ -1011,7 +1311,7 @@ export function OrgAdminPage() {
             </button>
           )}
           {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
-        </div>
+        </CollapsibleSection>
       )}
     </div>
   );

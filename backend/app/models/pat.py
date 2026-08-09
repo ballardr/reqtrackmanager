@@ -52,6 +52,12 @@ class PersonalAccessToken(UUIDPKMixin, TimestampMixin, Base):
         allowed_organization_ids: The organisations this token may be used
             against, as a list of UUID strings — chosen by the creating
             user from their own org memberships at creation time.
+        allowed_project_ids: Optional further restriction, as a list of UUID
+            strings, to specific projects within the allowed orgs — e.g. an
+            integration that should only ever touch one project. Empty
+            (the default) means no extra restriction: the token reaches
+            every project the user's own RBAC roles grant them within the
+            allowed orgs, same as before this field existed.
         expires_at_ceiling: The expiry computed at creation time from the
             org/system lifetime caps then in effect. See module docstring
             for why the *effective* expiry enforced at auth time can be
@@ -73,6 +79,7 @@ class PersonalAccessToken(UUIDPKMixin, TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     token_prefix: Mapped[str] = mapped_column(String(20))
     allowed_organization_ids: Mapped[list[str]] = mapped_column(JSONB)
+    allowed_project_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
     expires_at_ceiling: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

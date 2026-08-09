@@ -2,13 +2,15 @@ import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type {
+  AssignByEmailOutcome,
   Category,
   Component,
   CustomFieldDefinition,
   CustomFieldEntityKind,
   CustomFieldType,
+  OrgUser,
   Project,
   ProjectGroup,
   ProjectReportConfig,
@@ -19,6 +21,7 @@ import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_L
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
+import { UserAutocomplete } from "../components/UserAutocomplete";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -37,11 +40,13 @@ export function ProjectAdminPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryPrefix, setNewCategoryPrefix] = useState("");
-  const [memberInputs, setMemberInputs] = useState<Record<string, string>>({});
+  // Keyed by component id: each component's own inline "add category" form,
+  // since a category is now created nested under one specific component
+  // (the tree) rather than at project level.
+  const [newCategoryInputs, setNewCategoryInputs] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
   const [cascadeInputs, setCascadeInputs] = useState<Record<string, boolean>>({});
 
@@ -89,6 +94,13 @@ export function ProjectAdminPage() {
     setCategories(cat);
     setGroups(g);
     setCustomFields(cf);
+    // Group membership (below) only stores user ids — resolving those to
+    // an email/display name needs the org's member directory. Any org
+    // role (including plain "member") can call this endpoint unfiltered
+    // (see `routers/orgs.py::list_org_users`), and project access already
+    // implies org membership, so this is safe for whoever can reach this
+    // page at all.
+    setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
     setReportIntro(rc.intro);
     setReportChapters(rc.chapters);
     setReportAppendices(rc.appendices);
@@ -130,6 +142,10 @@ export function ProjectAdminPage() {
       name: settingsName, summary: settingsSummary,
       allow_member_change_requests: allowMemberCr, is_template: isTemplate,
     });
+    reload();
+  }
+
+  async function saveTerminology() {
     await api.put(`/api/v1/projects/${projectId}/terminology`, { terminology });
     reload();
   }
@@ -174,10 +190,13 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  async function addCategory() {
-    await api.post(`/api/v1/projects/${projectId}/categories`, { name: newCategoryName, prefix: newCategoryPrefix });
-    setNewCategoryName("");
-    setNewCategoryPrefix("");
+  async function addCategory(componentId: string) {
+    const input = newCategoryInputs[componentId];
+    if (!input?.name || !input?.prefix) return;
+    await api.post(`/api/v1/projects/${projectId}/categories`, {
+      name: input.name, prefix: input.prefix, component_id: componentId,
+    });
+    setNewCategoryInputs((m) => ({ ...m, [componentId]: { name: "", prefix: "" } }));
     reload();
   }
 
@@ -191,15 +210,54 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  async function addGroupMember(groupId: string) {
-    const userId = memberInputs[groupId];
-    if (!userId) return;
+  async function addGroupMember(groupId: string, userId: string) {
     await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { user_id: userId });
-    setMemberInputs((m) => ({ ...m, [groupId]: "" }));
     reload();
   }
 
-  const [tab, setTab] = useState<"overview" | "stages" | "categories" | "customFields" | "groups" | "reportSetup">("overview");
+  const [externalAddResult, setExternalAddResult] = useState<{ message: string; isError: boolean } | null>(null);
+
+  /** Adds someone found via UserAutocomplete's external-search result (not
+   * yet a member of this project's organisation, possibly no account at
+   * all) directly to the project with `role` — the by-email counterpart to
+   * `addGroupMember`. Grants a *direct* project role rather than group
+   * membership (the group's own `role` is used so the effective access
+   * matches what joining the group would have granted), since the by-email
+   * endpoint has no notion of "this specific group" — see
+   * `routers/projects.py::assign_project_role_by_email`. */
+  async function addExternalMember(email: string, role: string) {
+    setExternalAddResult(null);
+    try {
+      const result = await api.post<{ outcome: AssignByEmailOutcome }>(
+        `/api/v1/projects/${projectId}/roles/by-email`,
+        { email, role },
+      );
+      const messages: Record<AssignByEmailOutcome, string> = {
+        added: strings.admin.externalAddedDirectly,
+        invited: strings.admin.externalInvited,
+        sso_provisioned: strings.admin.externalSsoProvisioned,
+      };
+      setExternalAddResult({
+        message: messages[result.outcome].replace("{email}", email).replace("{role}", role),
+        isError: false,
+      });
+      reload();
+    } catch (err) {
+      setExternalAddResult({
+        message: err instanceof ApiError ? err.message : strings.admin.externalAddError,
+        isError: true,
+      });
+    }
+  }
+
+  async function removeGroupMember(groupId: string, userId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${userId}`);
+    reload();
+  }
+
+  const [tab, setTab] = useState<
+    "overview" | "stages" | "categories" | "customFields" | "groups" | "terminology" | "reportSetup"
+  >("overview");
 
   if (!stages || !project) return <Spinner />;
 
@@ -209,6 +267,7 @@ export function ProjectAdminPage() {
     { key: "categories", label: strings.admin.categories },
     { key: "customFields", label: strings.admin.customFields },
     { key: "groups", label: strings.admin.groups },
+    { key: "terminology", label: strings.admin.terminology },
     { key: "reportSetup", label: "Report Setup" },
   ];
 
@@ -248,22 +307,6 @@ export function ProjectAdminPage() {
           {strings.admin.isTemplate}
         </label>
 
-        <div className="stack">
-          <strong>{strings.admin.terminology}</strong>
-          <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
-          {TERMINOLOGY_KEYS.map((key) => (
-            <div key={key} className="row">
-              <span style={{ minWidth: 140, textTransform: "capitalize" }}>{key.replace("_", " ")}</span>
-              <input
-                className="input"
-                placeholder={key}
-                value={terminology[key] ?? ""}
-                onChange={(e) => setTerminology((t2) => ({ ...t2, [key]: e.target.value }))}
-              />
-            </div>
-          ))}
-        </div>
-
         <div className="row" style={{ justifyContent: "space-between" }}>
           <button className="btn btn-primary" onClick={saveSettings}>
             {strings.admin.saveSettings}
@@ -272,6 +315,27 @@ export function ProjectAdminPage() {
             {project.is_archived ? strings.admin.unarchiveProject : strings.admin.archiveProject}
           </button>
         </div>
+      </div>
+      )}
+
+      {tab === "terminology" && (
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
+        {TERMINOLOGY_KEYS.map((key) => (
+          <div key={key} className="row">
+            <span style={{ minWidth: 140, textTransform: "capitalize" }}>{key.replace("_", " ")}</span>
+            <input
+              className="input"
+              placeholder={key}
+              value={terminology[key] ?? ""}
+              onChange={(e) => setTerminology((t2) => ({ ...t2, [key]: e.target.value }))}
+            />
+          </div>
+        ))}
+        <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
+          {strings.admin.saveSettings}
+        </button>
       </div>
       )}
 
@@ -337,24 +401,75 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "categories" && (
-      <>
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.components}</h2>
-        {components.map((c, idx) => (
-          <div key={c.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span>
-              {c.name} <span className="badge">{c.prefix}</span>
-            </span>
-            <div className="row">
-              <button className="btn" disabled={idx === 0} onClick={() => moveComponent(c.id, "up")}>
-                <ArrowUp size={14} />
-              </button>
-              <button className="btn" disabled={idx === components.length - 1} onClick={() => moveComponent(c.id, "down")}>
-                <ArrowDown size={14} />
-              </button>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.admin.componentTreeHint}</p>
+        {components.map((c, idx) => {
+          const ownCategories = categories.filter((cat) => cat.component_id === c.id);
+          const categoryInput = newCategoryInputs[c.id] ?? { name: "", prefix: "" };
+          return (
+            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span>
+                  {c.name} <span className="badge">{c.prefix}</span>
+                </span>
+                <div className="row">
+                  <button className="btn" disabled={idx === 0} onClick={() => moveComponent(c.id, "up")}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button className="btn" disabled={idx === components.length - 1} onClick={() => moveComponent(c.id, "down")}>
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
+                {ownCategories.map((cat, catIdx) => (
+                  <div key={cat.id} className="row" style={{ justifyContent: "space-between" }}>
+                    <span>
+                      {cat.name} <span className="badge">{cat.prefix}</span>
+                    </span>
+                    <div className="row">
+                      <button className="btn" disabled={catIdx === 0} onClick={() => moveCategory(cat.id, "up")}>
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        className="btn"
+                        disabled={catIdx === ownCategories.length - 1}
+                        onClick={() => moveCategory(cat.id, "down")}
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder={strings.admin.name}
+                    value={categoryInput.name}
+                    onChange={(e) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: e.target.value } }))}
+                  />
+                  <input
+                    className="input"
+                    style={{ maxWidth: 100 }}
+                    placeholder={strings.admin.prefix}
+                    value={categoryInput.prefix}
+                    onChange={(e) =>
+                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: e.target.value.toUpperCase() } }))
+                    }
+                  />
+                  <button
+                    className="btn"
+                    onClick={() => addCategory(c.id)}
+                    disabled={!categoryInput.name || !categoryInput.prefix}
+                  >
+                    <Plus size={14} /> {strings.admin.newCategory}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div className="row">
           <input className="input" placeholder={strings.admin.name} value={newComponentName} onChange={(e) => setNewComponentName(e.target.value)} />
           <input
@@ -369,39 +484,6 @@ export function ProjectAdminPage() {
           </button>
         </div>
       </div>
-
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.categories}</h2>
-        {categories.map((c, idx) => (
-          <div key={c.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span>
-              {c.name} <span className="badge">{c.prefix}</span>
-            </span>
-            <div className="row">
-              <button className="btn" disabled={idx === 0} onClick={() => moveCategory(c.id, "up")}>
-                <ArrowUp size={14} />
-              </button>
-              <button className="btn" disabled={idx === categories.length - 1} onClick={() => moveCategory(c.id, "down")}>
-                <ArrowDown size={14} />
-              </button>
-            </div>
-          </div>
-        ))}
-        <div className="row">
-          <input className="input" placeholder={strings.admin.name} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
-          <input
-            className="input"
-            style={{ maxWidth: 100 }}
-            placeholder={strings.admin.prefix}
-            value={newCategoryPrefix}
-            onChange={(e) => setNewCategoryPrefix(e.target.value.toUpperCase())}
-          />
-          <button className="btn btn-primary" onClick={addCategory} disabled={!newCategoryName || !newCategoryPrefix}>
-            <Plus size={14} /> {strings.admin.newCategory}
-          </button>
-        </div>
-      </div>
-      </>
       )}
 
       {tab === "customFields" && (
@@ -452,28 +534,51 @@ export function ProjectAdminPage() {
       {tab === "groups" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
-        {groups.map((g) => (
-          <div key={g.id} className="stack">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span>
-                {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
-              </span>
-              <span className="text-muted">{g.member_user_ids.length} members</span>
-            </div>
-            <div className="row">
-              <input
-                className="input"
-                style={{ maxWidth: 280 }}
-                placeholder={strings.admin.userId}
-                value={memberInputs[g.id] ?? ""}
-                onChange={(e) => setMemberInputs((m) => ({ ...m, [g.id]: e.target.value }))}
-              />
-              <button className="btn" onClick={() => addGroupMember(g.id)}>
-                {strings.admin.addMember}
-              </button>
-            </div>
+        {externalAddResult && (
+          <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
+            {externalAddResult.message}
           </div>
-        ))}
+        )}
+        {groups.map((g) => {
+          const availableUsers = orgUsers.filter((u) => !g.member_user_ids.includes(u.user_id));
+          return (
+            <div key={g.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span>
+                  {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
+                </span>
+                <span className="text-muted">
+                  {strings.admin.memberCount.replace("{n}", String(g.member_user_ids.length))}
+                  {g.member_org_group_ids.length > 0 &&
+                    ` + ${strings.admin.viaOrgGroups.replace("{n}", String(g.member_org_group_ids.length))}`}
+                </span>
+              </div>
+              {g.member_user_ids.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {g.member_user_ids.map((userId) => {
+                    const u = orgUsers.find((ou) => ou.user_id === userId);
+                    return (
+                      <li key={userId} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
+                        <span>{u ? `${u.display_name} (${u.email})` : userId}</span>
+                        <button className="btn btn-danger" onClick={() => removeGroupMember(g.id, userId)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <UserAutocomplete
+                users={availableUsers}
+                placeholder={strings.admin.addMemberPlaceholder}
+                onSelect={(userId) => addGroupMember(g.id, userId)}
+                organizationId={project?.organization_id}
+                projectId={project?.id}
+                onSelectExternal={(email) => addExternalMember(email, g.role)}
+              />
+            </div>
+          );
+        })}
       </div>
       )}
 
@@ -489,19 +594,25 @@ export function ProjectAdminPage() {
             Project intro
             {reportConfigDefaults.intro && <span className="text-muted"> (organisation default)</span>}
           </span>
-          <RichTextEditor rows={3} value={reportIntro} onChange={setReportIntro} />
+          <RichTextEditor rows={3} value={reportIntro} onChange={setReportIntro} organizationId={project?.organization_id} />
         </div>
         <div className="stack" style={{ gap: "0.25rem" }}>
           {reportConfigDefaults.chapters && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default body chapters.</span>
           )}
-          <ReportChapterListEditor label="Body chapters" list={reportChapters} setList={setReportChapters} />
+          <ReportChapterListEditor
+            label="Body chapters" list={reportChapters} setList={setReportChapters}
+            organizationId={project?.organization_id}
+          />
         </div>
         <div className="stack" style={{ gap: "0.25rem" }}>
           {reportConfigDefaults.appendices && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default appendices.</span>
           )}
-          <ReportChapterListEditor label="Appendices" list={reportAppendices} setList={setReportAppendices} />
+          <ReportChapterListEditor
+            label="Appendices" list={reportAppendices} setList={setReportAppendices}
+            organizationId={project?.organization_id}
+          />
         </div>
         <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveSettings}

@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { ApiError, api } from "../api/client";
-import type { ProjectListItem, User } from "../api/types";
+import { ApiError, api, fileUrl } from "../api/client";
+import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 
@@ -36,6 +36,13 @@ export function LoginPage() {
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loginBackgroundFileId, setLoginBackgroundFileId] = useState<string | null>(null);
+  const [signupAvailable, setSignupAvailable] = useState(false);
+
+  useEffect(() => {
+    api.get<ServerSettings>("/api/v1/system/branding").then((s) => setLoginBackgroundFileId(s.default_login_background_file_id));
+    api.get<SignupConfig>("/api/v1/system/signup-config").then((c) => setSignupAvailable(c.signup_mode !== "disabled"));
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -70,9 +77,19 @@ export function LoginPage() {
     }
   }
 
+  const backgroundStyle = loginBackgroundFileId
+    ? {
+        backgroundImage: `url(${fileUrl(loginBackgroundFileId)})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        minHeight: "100vh",
+      }
+    : { minHeight: "100vh" };
+
   if (challengeToken) {
     return (
-      <div className="container" style={{ maxWidth: 380, marginTop: "4rem" }}>
+      <div style={backgroundStyle}>
+      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
         <form className="card stack" onSubmit={handleVerify2fa}>
           <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.login.twoFactorTitle}</h1>
           <p className="text-muted">{strings.login.twoFactorPrompt}</p>
@@ -93,11 +110,13 @@ export function LoginPage() {
           </button>
         </form>
       </div>
+      </div>
     );
   }
 
   return (
-    <div className="container" style={{ maxWidth: 380, marginTop: "4rem" }}>
+    <div style={backgroundStyle}>
+    <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
       <form className="card stack" onSubmit={handleSubmit}>
         <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.login.title}</h1>
         {reauthMessage && <div className="text-muted">{reauthMessage}</div>}
@@ -126,7 +145,13 @@ export function LoginPage() {
         <button className="btn btn-primary" type="submit" disabled={submitting}>
           {submitting ? "…" : strings.login.submit}
         </button>
+        {signupAvailable && (
+          <div className="text-muted" style={{ textAlign: "center" }}>
+            {strings.login.signUpPrompt} <a href="/signup">{strings.login.signUpLink}</a>
+          </div>
+        )}
       </form>
+    </div>
     </div>
   );
 }

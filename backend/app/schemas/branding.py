@@ -21,6 +21,7 @@ class ServerSettingsOut(BaseModel):
     accent_color_hex: str
     default_logo_file_id: UUID | None = None
     default_header_title: str | None = None
+    default_login_background_file_id: UUID | None = None
 
 
 class ServerSettingsUpdate(BaseModel):

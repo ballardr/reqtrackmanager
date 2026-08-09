@@ -15,10 +15,12 @@ export function ReportChapterListEditor({
   label,
   list,
   setList,
+  organizationId,
 }: {
   label: string;
   list: ReportChapter[];
   setList: (list: ReportChapter[]) => void;
+  organizationId?: string;
 }) {
   function move(index: number, direction: "up" | "down") {
     const swapIndex = direction === "up" ? index - 1 : index + 1;
@@ -60,6 +62,7 @@ export function ReportChapterListEditor({
             rows={2}
             placeholder="Chapter body"
             value={chapter.body}
+            organizationId={organizationId}
             onChange={(body) => {
               const next = [...list];
               next[idx] = { ...next[idx], body };

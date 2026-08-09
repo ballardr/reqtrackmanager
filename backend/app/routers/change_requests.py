@@ -163,6 +163,7 @@ def create_change_request(
         # only re-checked `is None`, not project membership, so an
         # unvalidated cross-project reference would have sailed through
         # approval unchanged and been baked into a real Requirement row.
+        component = None
         if payload.proposed_component_id is not None:
             component = db.get(ProjectComponent, payload.proposed_component_id)
             if component is None or component.project_id != project_id:
@@ -171,6 +172,10 @@ def create_change_request(
             category = db.get(ProjectCategory, payload.proposed_category_id)
             if category is None or category.project_id != project_id:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_category_id.")
+            if component is not None and category.component_id != component.id:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "proposed_category_id does not belong to proposed_component_id."
+                )
 
     # Validated against the *requirement* entity kind, not change_request: these
     # values represent proposed custom-attribute values for the requirement

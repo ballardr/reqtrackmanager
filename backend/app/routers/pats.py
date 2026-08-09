@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.pat import (
     BulkRevokeResult,
@@ -29,11 +30,12 @@ from app.schemas.pat import (
     PersonalAccessTokenCreateOut,
     PersonalAccessTokenOrgRef,
     PersonalAccessTokenOut,
+    PersonalAccessTokenProjectRef,
 )
 from app.security import generate_pat
 from app.services.audit import log_event
 from app.services.pats import compute_expiry_ceiling, effective_expiry, revoke_matching
-from app.services.rbac import get_effective_org_roles
+from app.services.rbac import get_effective_org_roles, get_effective_project_roles
 
 router = APIRouter(prefix="/api/v1/me/pats", tags=["personal-access-tokens"])
 
@@ -41,6 +43,33 @@ router = APIRouter(prefix="/api/v1/me/pats", tags=["personal-access-tokens"])
 def _resolve_org_refs(db: Session, org_id_strs: list[str]) -> list[PersonalAccessTokenOrgRef]:
     orgs = db.scalars(select(Organization).where(Organization.id.in_(UUID(i) for i in org_id_strs))).all()
     return [PersonalAccessTokenOrgRef(id=org.id, name=org.name) for org in orgs]
+
+
+def _resolve_project_refs(db: Session, project_id_strs: list[str]) -> list[PersonalAccessTokenProjectRef]:
+    if not project_id_strs:
+        return []
+    projects = db.scalars(select(Project).where(Project.id.in_(UUID(i) for i in project_id_strs))).all()
+    return [PersonalAccessTokenProjectRef(id=p.id, name=p.name) for p in projects]
+
+
+@router.get("/max-lifetime")
+def get_max_lifetime(
+    organization_ids: list[UUID] = Query(default_factory=list),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Returns the longest expiry currently allowed for a token scoped to
+    the given orgs — the same value `compute_expiry_ceiling` would produce
+    for a creation request with no explicit `requested_expires_at`.
+
+    Lets the create-PAT form show (and pre-fill) this value directly rather
+    than making the user guess at a blank-means-"use the max" convention;
+    an org's `pat_max_lifetime_days` itself is only readable by that org's
+    admin (`GET .../advanced-settings`), but the *resulting date* is
+    harmless to show to any member creating their own token.
+    """
+    max_expires_at = compute_expiry_ceiling(db, organization_ids, None)
+    return {"max_expires_at": max_expires_at}
 
 
 @router.post("", response_model=PersonalAccessTokenCreateOut, status_code=status.HTTP_201_CREATED)
@@ -65,6 +94,16 @@ def create_pat(
         if not get_effective_org_roles(db, current_user.id, org_id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "You do not have a role in one or more selected organisations.")
 
+    allowed_org_ids = set(payload.allowed_organization_ids)
+    for project_id in payload.allowed_project_ids:
+        project = db.get(Project, project_id)
+        if project is None or project.organization_id not in allowed_org_ids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Each selected project must belong to one of the selected organisations."
+            )
+        if not get_effective_project_roles(db, current_user.id, project_id):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "You do not have access to one or more selected projects.")
+
     raw_token, token_hash, token_prefix = generate_pat()
     expires_at = compute_expiry_ceiling(db, payload.allowed_organization_ids, payload.requested_expires_at)
     pat = PersonalAccessToken(
@@ -73,6 +112,7 @@ def create_pat(
         token_hash=token_hash,
         token_prefix=token_prefix,
         allowed_organization_ids=[str(i) for i in payload.allowed_organization_ids],
+        allowed_project_ids=[str(i) for i in payload.allowed_project_ids],
         expires_at_ceiling=expires_at,
     )
     db.add(pat)
@@ -84,6 +124,7 @@ def create_pat(
     return PersonalAccessTokenCreateOut(
         id=pat.id, name=pat.name, token=raw_token, token_prefix=pat.token_prefix,
         allowed_organizations=_resolve_org_refs(db, pat.allowed_organization_ids),
+        allowed_projects=_resolve_project_refs(db, pat.allowed_project_ids),
         expires_at=pat.expires_at_ceiling, created_at=pat.created_at,
     )
 
@@ -101,6 +142,7 @@ def list_my_pats(current_user: User = Depends(get_current_user), db: Session = D
         PersonalAccessTokenOut(
             id=p.id, name=p.name, token_prefix=p.token_prefix,
             allowed_organizations=_resolve_org_refs(db, p.allowed_organization_ids),
+            allowed_projects=_resolve_project_refs(db, p.allowed_project_ids),
             expires_at=effective_expiry(db, p), revoked_at=p.revoked_at,
             last_used_at=p.last_used_at, created_at=p.created_at,
         )

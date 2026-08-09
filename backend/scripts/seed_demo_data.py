@@ -98,10 +98,42 @@ def create_component(headers: dict, project_id: str, name: str, prefix: str) -> 
     return r.json()
 
 
-def create_category(headers: dict, project_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/categories", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
+def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/categories",
+        json={"name": name, "prefix": prefix, "component_id": component_id}, headers=headers, timeout=30,
+    )
     r.raise_for_status()
     return r.json()
+
+
+# Shared category name/prefix vocabulary — reused across components within
+# a project (component/category tree, C-G-07: prefix uniqueness is now
+# per-component, so e.g. "Performance"/"PERF" can exist under more than one
+# component in the same project).
+CATEGORY_DEFS: dict[str, tuple[str, str]] = {
+    "FN": ("Functional", "FN"),
+    "PERF": ("Performance", "PERF"),
+    "SAF": ("Safety", "SAF"),
+    "REG": ("Regulatory", "REG"),
+    "SEC": ("Security", "SEC"),
+    "REL": ("Reliability", "REL"),
+}
+
+
+def create_categories_for_components(
+    headers: dict, project_id: str, components: dict[str, dict], component_categories: dict[str, list[str]]
+) -> dict[str, dict[str, dict]]:
+    """Creates each component's own categories (tree, not a project-wide
+    flat list) — `component_categories` maps a component key to the list of
+    `CATEGORY_DEFS` keys that component actually uses."""
+    return {
+        comp_key: {
+            cat_key: create_category(headers, project_id, components[comp_key]["id"], *CATEGORY_DEFS[cat_key])
+            for cat_key in cat_keys
+        }
+        for comp_key, cat_keys in component_categories.items()
+    }
 
 
 def create_stage(headers: dict, project_id: str, name: str) -> dict:
@@ -340,14 +372,14 @@ CLOUD_REQUIREMENTS = [
 
 
 def seed_project(
-    headers: dict, project: dict, components: dict[str, dict], categories: dict[str, dict],
+    headers: dict, project: dict, components: dict[str, dict], categories: dict[str, dict[str, dict]],
     specs: list[tuple], demo_admin_id: str,
 ) -> dict[str, dict]:
     by_name = {}
     for name, reasoning, comp_key, cat_key, status_value, extra in specs:
         req = create_requirement(
             headers, project["id"], name=name, reasoning=reasoning,
-            component_id=components[comp_key]["id"], category_id=categories[cat_key]["id"],
+            component_id=components[comp_key]["id"], category_id=categories[comp_key][cat_key]["id"],
         )
         if status_value != "draft":
             review_date = None
@@ -407,12 +439,12 @@ def main() -> None:
         "AV": create_component(h_pm, drone["id"], "Avionics", "AV"),
         "FW": create_component(h_pm, drone["id"], "Firmware", "FW"),
     }
-    drone_categories = {
-        "FN": create_category(h_pm, drone["id"], "Functional", "FN"),
-        "PERF": create_category(h_pm, drone["id"], "Performance", "PERF"),
-        "SAF": create_category(h_pm, drone["id"], "Safety", "SAF"),
-        "REG": create_category(h_pm, drone["id"], "Regulatory", "REG"),
-    }
+    # Nested under whichever component each actually appears with in
+    # DRONE_REQUIREMENTS below — a real tree, not a project-wide flat list.
+    drone_categories = create_categories_for_components(
+        h_pm, drone["id"], drone_components,
+        {"AV": ["PERF", "FN", "SAF"], "FW": ["SAF", "REG", "FN"], "PR": ["PERF"], "AF": ["FN"]},
+    )
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
     create_stage(h_pm, drone["id"], "Verification & Validation")
@@ -446,7 +478,7 @@ def main() -> None:
         "the additional draw from the obstacle-avoidance sensor payload added in Rev B.",
         reason="Obstacle-avoidance sensor payload (added post-baseline) draws an additional ~4W, "
         "reducing achievable flight time in verified bench testing from 42 to 38 minutes.",
-        component_id=drone_components["PR"]["id"], category_id=drone_categories["PERF"]["id"],
+        component_id=drone_components["PR"]["id"], category_id=drone_categories["PR"]["PERF"]["id"],
     )
     submit_change_request(h_pm, drone["id"], drone_cr["id"])
     add_cr_comment(h(login("demo.stakeholder@example.com", PASSWORD)), drone["id"], drone_cr["id"],
@@ -468,12 +500,10 @@ def main() -> None:
         "DP": create_component(h_pm, cloud["id"], "Data Pipeline", "DP"),
         "WD": create_component(h_pm, cloud["id"], "Web Dashboard", "WD"),
     }
-    cloud_categories = {
-        "FN": create_category(h_pm, cloud["id"], "Functional", "FN"),
-        "PERF": create_category(h_pm, cloud["id"], "Performance", "PERF"),
-        "SEC": create_category(h_pm, cloud["id"], "Security", "SEC"),
-        "REL": create_category(h_pm, cloud["id"], "Reliability", "REL"),
-    }
+    cloud_categories = create_categories_for_components(
+        h_pm, cloud["id"], cloud_components,
+        {"API": ["SEC", "PERF", "REL"], "DP": ["PERF", "FN", "SEC"], "WD": ["FN", "SEC"]},
+    )
     create_custom_field(h_pm, cloud["id"], "requirement", "Compliance Tag", "short_text")
     cloud_dev = create_stage(h_pm, cloud["id"], "Development")
     create_stage(h_pm, cloud["id"], "Hardening")
@@ -490,7 +520,7 @@ def main() -> None:
         proposed_reasoning=latency_req["reasoning"] + " Tightened from 200ms to 150ms to match the renegotiated enterprise SLA.",
         reason="Customer SLA renegotiation (Contract Amendment 4) commits to a tighter latency guarantee "
         "than the original requirement specified.",
-        component_id=cloud_components["API"]["id"], category_id=cloud_categories["PERF"]["id"],
+        component_id=cloud_components["API"]["id"], category_id=cloud_categories["API"]["PERF"]["id"],
     )
     submit_change_request(h_pm, cloud["id"], cloud_cr["id"])
     decide_change_request(h_pm, cloud["id"], cloud_cr["id"], approve=True,
@@ -504,7 +534,7 @@ def main() -> None:
         "currently lack a dedicated, customer-visible audit trail distinct from internal system logs.",
         reason="Identified during the platform's SOC 2 readiness review as a gap against the access-control "
         "and change-management policies' audit-logging expectations.",
-        component_id=cloud_components["API"]["id"], category_id=cloud_categories["SEC"]["id"],
+        component_id=cloud_components["API"]["id"], category_id=cloud_categories["API"]["SEC"]["id"],
     )
     submit_change_request(h_pm, cloud["id"], audit_cr["id"])
 

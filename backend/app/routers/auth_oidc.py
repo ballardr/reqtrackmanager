@@ -3,12 +3,13 @@ Module: routers.auth_oidc
 
 The OIDC login flow (E-U-01): redirects the browser to an organisation's
 configured identity provider, then on callback verifies the returned ID
-token, provisions/resolves the local user account and syncs their org role
-from IdP claims (services/oidc_provisioning.py), and issues the exact same
-kind of access token the native login flow issues — so once logged in via
-SSO, the resulting session is indistinguishable from a native one to the
-rest of the app (token_version revocation, WebSocket expiry checks, etc. all
-apply unchanged).
+token, provisions/resolves the local user account, redeems any pending
+email-based invite (services/invites.py), and syncs their org role from IdP
+claims (services/oidc_provisioning.py), then issues the exact same kind of
+access token the native login flow issues — so once logged in via SSO, the
+resulting session is indistinguishable from a native one to the rest of the
+app (token_version revocation, WebSocket expiry checks, etc. all apply
+unchanged).
 
 Deliberately not shaped as an `AuthBackend` (app/auth_backends/base.py):
 that protocol's `authenticate(identifier, credential)` is a single
@@ -33,6 +34,7 @@ from app.models.organization import Organization
 from app.security import create_access_token, create_oidc_state_token, decode_access_token
 from app.services import oidc_client
 from app.services.audit import log_event, log_login
+from app.services.invites import consume_pending_invites
 from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
 
 router = APIRouter(prefix="/api/v1/auth/oidc", tags=["auth-oidc"])
@@ -157,6 +159,40 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
         )
 
     user = find_or_provision_user(db, claims, issuer=org.oidc_issuer_url)
+    if not user.is_active or user.is_archived:
+        # Hardening-review finding: this was the one login path that never
+        # checked account status at all — NativeAuthBackend.authenticate
+        # rejects a deactivated/banned/archived user, but OIDC had no
+        # equivalent, so a deactivated or is_banned account (is_banned
+        # implies is_active=False, see models.user.User) could still
+        # complete SSO login. The resulting token happens to be inert
+        # against get_current_user's own is_active check, but that's an
+        # incidental backstop, not a real control: without this check,
+        # consume_pending_invites/sync_org_roles_from_claims below would
+        # still commit brand-new org/project role grants for the account,
+        # which would then sit there silently until the account was
+        # reactivated for an unrelated reason — a live "no new grants while
+        # deactivated/banned" bypass. Checked before either of those runs
+        # so no such grant is ever committed for a rejected login.
+        log_event(db, entity_type="user", entity_id=user.id, action="oidc_login_denied_inactive",
+                  actor_id=None, organization_id=org.id)
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        db.commit()
+        message = "This account has been deactivated."
+        return RedirectResponse(
+            f"{redirect_base}?error=account_inactive&message={quote(message)}&client_nonce={quote(client_nonce)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    # Redeems any PendingInvite created for this email before
+    # sync_org_roles_from_claims runs, so an org's own SSO group-claim
+    # mapping remains the authoritative, later word on any role it also
+    # manages (see services/invites.py's module docstring and
+    # docs/decisions.md's "Self-signup, invites, and SSO" entry). Also
+    # covers the case where this row was pre-provisioned by an sso_only-org
+    # invite (services.invites.provision_sso_invite) and its roles were
+    # already granted — consume_pending_invites finds no PendingInvite row
+    # for that case (none was ever created) and is a no-op.
+    consume_pending_invites(db, user)
     sync_org_roles_from_claims(db, user, org, claims)
     log_event(db, entity_type="user", entity_id=user.id, action="oidc_login",
               actor_id=user.id, organization_id=org.id, detail={"issuer": org.oidc_issuer_url})

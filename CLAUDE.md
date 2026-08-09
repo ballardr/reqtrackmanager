@@ -119,6 +119,16 @@ When making significant changes, update the README to include:
 - Update documentation when changing functionality.
 - Add tests for new functionality.
 
+## Testing Requirements
+
+- Every new UI feature must come with a Playwright end-to-end test covering it — no UI feature is considered done until it has e2e coverage.
+- Every backend change must come with a test that verifies the behaviour matches the request and pins it against future deviation/regression.
+
+## Playwright MCP Usage
+
+- Use the Playwright MCP browser tools (`mcp__playwright__*`) sparingly — driving a live browser through MCP consumes tokens much faster than reading code or running the Playwright test suite directly.
+- Prefer running the existing Playwright spec suite (via the CLI/Docker Compose stack) for verification. Reserve the MCP browser tools for targeted, one-off investigation of something the spec suite and static code reading can't resolve (e.g. confirming an actual rendered UI state or chasing a hard-to-reproduce bug).
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

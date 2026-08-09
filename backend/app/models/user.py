@@ -32,7 +32,15 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         password_hash: Bcrypt hash of the user's password; null for users
             sourced entirely from an external auth backend.
         auth_backend: Identifies which AuthBackend authenticates this user
-            (e.g. "native"), supporting pluggable identity backends (C-U-06).
+            (e.g. "native", "oidc"), supporting pluggable identity backends
+            (C-U-06). A third sentinel, "invited", marks a user pre-provisioned
+            by an admin invite into an `sso_only` organisation
+            (`services/invites.py`) before their first SSO login: it never
+            matches `NativeAuthBackend.name`, so native login is rejected
+            for it even though `password_hash` is also `None` — the row
+            exists purely so `oidc_provisioning.find_or_provision_user`'s
+            existing_by_email match can adopt it (and its already-granted
+            roles) on that first SSO login, flipping this to "oidc".
         external_subject: Opaque subject identifier from an external auth
             backend, when applicable.
         is_active: Whether the user can currently authenticate (C-U-04).
@@ -42,6 +50,17 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         is_server_admin: Grants the cross-tenant server admin role, which can
             create organisations and organisation users but has no access to
             organisation data (I-M-05).
+        is_banned: Set by a server admin from the access review (C-A-13),
+            distinct from an ordinary deactivation: also blocks
+            `assign_org_role` from granting this account a role in any
+            organisation going forward, so a known-bad actor's account
+            can't quietly be let back in through a different org's admin
+            once flagged, without a server admin needing to intervene again
+            per org. Implies `is_active = False`, but is tracked separately
+            so "banned" survives even if something else were to flip
+            `is_active` back on.
+        banned_at / banned_by: Set when `is_banned` transitions to True;
+            cleared on unban.
         landing_preference: Where the user is sent after login ("auto",
             "overview", or a specific project id) (U-U-03).
         theme_preference: UI theme choice ("light", "dark", or "system").
@@ -115,6 +134,9 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_server_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    banned_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     landing_preference: Mapped[str] = mapped_column(String(50), default="auto")
     theme_preference: Mapped[str] = mapped_column(String(20), default="system")

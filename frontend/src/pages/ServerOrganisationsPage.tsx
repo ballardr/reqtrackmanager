@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { Organization } from "../api/types";
+import { FilterBadge } from "../components/FilterBadge";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -23,8 +24,15 @@ const strings = t();
  *   requirements, files, ...). See docs/decisions.md's "Organisation
  *   disable and hard delete" section for the full design.
  */
+type StatusFilter = "active" | "disabled" | "all";
+
 export function ServerOrganisationsPage() {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const [search, setSearch] = useState("");
+  // Defaults to "active" (C-A-13-adjacent hygiene): a deployment that's
+  // been running a while accumulates disabled orgs (non-payment, offboarded
+  // customers, ...) that would otherwise dominate a plain, unfiltered list.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -92,12 +100,38 @@ export function ServerOrganisationsPage() {
 
   if (!orgs) return <Spinner />;
 
+  const filteredOrgs = orgs.filter((o) => {
+    if (statusFilter === "active" && !o.is_active) return false;
+    if (statusFilter === "disabled" && o.is_active) return false;
+    if (search && !o.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
           <Plus size={16} /> New organisation
+        </button>
+      </div>
+
+      <div className="row">
+        <input
+          className="input"
+          style={{ maxWidth: 280 }}
+          placeholder={strings.serverOrgs.search}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button className={`btn ${statusFilter === "active" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("active")}>
+          {strings.serverOrgs.active}
+        </button>
+        <button className={`btn ${statusFilter === "disabled" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("disabled")}>
+          {strings.serverOrgs.disabled}
+        </button>
+        <button className={`btn ${statusFilter === "all" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("all")}>
+          {strings.serverOrgs.filterAll}
         </button>
       </div>
 
@@ -124,16 +158,22 @@ export function ServerOrganisationsPage() {
             </tr>
           </thead>
           <tbody>
-            {orgs.map((o) => (
+            {filteredOrgs.map((o) => (
               <tr key={o.id}>
                 <td>{o.name}</td>
                 <td>
                   {o.is_active ? (
-                    <span className="badge">{strings.serverOrgs.active}</span>
+                    <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+                      {strings.serverOrgs.active}
+                    </FilterBadge>
                   ) : (
-                    <span className="badge" style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}>
+                    <FilterBadge
+                      active={statusFilter === "disabled"}
+                      onClick={() => setStatusFilter("disabled")}
+                      style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                    >
                       {strings.serverOrgs.disabled}
-                    </span>
+                    </FilterBadge>
                   )}
                 </td>
                 <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
@@ -161,6 +201,7 @@ export function ServerOrganisationsPage() {
           </tbody>
         </table>
         {orgs.length === 0 && <p className="text-muted">No organisations yet.</p>}
+        {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty}</p>}
       </div>
 
       {deletingOrgId &&

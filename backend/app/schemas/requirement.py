@@ -159,3 +159,6 @@ class RequirementDueForReviewOut(BaseModel):
     name: str
     review_date: date
     reviewer_id: UUID | None = None
+    reviewer_name: str | None = None
+    component_id: UUID
+    component_name: str

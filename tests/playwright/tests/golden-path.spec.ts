@@ -47,13 +47,18 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
     await page.getByRole("button", { name: "Categories" }).click();
-    await page.getByPlaceholder("Name").first().fill("Software");
-    await page.getByPlaceholder("Prefix").first().fill("SW");
+    // Component/category tree (C-G-07): with no components yet, the only
+    // Name/Prefix inputs on the page are the "add component" form's own.
+    await page.getByPlaceholder("Name").fill("Software");
+    await page.getByPlaceholder("Prefix").fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
     await expect(page.getByText("Software").first()).toBeVisible();
 
-    await page.getByPlaceholder("Name").nth(1).fill("Performance");
-    await page.getByPlaceholder("Prefix").nth(1).fill("PERF");
+    // Once "Software" exists, its own nested "add category" form is the
+    // first Name/Prefix pair on the page (it renders above the "add
+    // component" form at the bottom of the list).
+    await page.getByPlaceholder("Name").first().fill("Performance");
+    await page.getByPlaceholder("Prefix").first().fill("PERF");
     await page.getByRole("button", { name: "New category" }).click();
     await expect(page.getByText("Performance").first()).toBeVisible();
   });
@@ -80,6 +85,10 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("raise and approve a change request", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
+    // The requirement select defaults asynchronously once project data
+    // loads — wait so Create doesn't submit with an empty requirement_id
+    // (same race already worked around in mockup-engagement.spec.ts).
+    await expect(page.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
     await page.getByPlaceholder("Proposed name").fill("Boot in under 3 seconds");
     await page.getByPlaceholder("Proposed reasoning").fill("Tighter UX target");
     await page.getByPlaceholder("Reason for change").fill("Field feedback showed 5s felt slow");
@@ -91,7 +100,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // approve" button, which a loose "Approve" query would ambiguously
     // match alongside the real decision button.
     await page.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(page.getByText("approved", { exact: true })).toBeVisible();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await expect(page.getByText("Boot in under 3 seconds")).toBeVisible();
@@ -104,6 +113,21 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Download PDF" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("requirements.pdf");
+  });
+
+  await test.step("generate a CSV report", async () => {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download CSV" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain("requirements.csv");
+  });
+
+  await test.step("download the CSV import template", async () => {
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download template" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("requirements-import-template.csv");
   });
 
   await test.step("toggle theme", async () => {

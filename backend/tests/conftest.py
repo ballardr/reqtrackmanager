@@ -188,7 +188,8 @@ def create_component_and_category(client, admin_token, project_id) -> tuple[str,
         headers=auth_headers(admin_token),
     ).json()
     category = client.post(
-        f"/api/v1/projects/{project_id}/categories", json={"name": "Performance", "prefix": "PERF"},
+        f"/api/v1/projects/{project_id}/categories",
+        json={"name": "Performance", "prefix": "PERF", "component_id": component["id"]},
         headers=auth_headers(admin_token),
     ).json()
     return component["id"], category["id"]

@@ -23,6 +23,22 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SignupRequest(BaseModel):
+    """Public self-registration request (`routers/auth.py::signup`).
+
+    `invite_token`, when present and valid, bypasses `ServerSettings.
+    signup_mode` entirely — an explicit admin invite is authorization
+    enough regardless of whether public signup is otherwise open. Without
+    it, `signup_mode` and (for `org_specified`) a matching organisation
+    domain gate whether the account is created at all.
+    """
+
+    email: EmailStr
+    password: str = Field(min_length=8)
+    display_name: str = Field(min_length=1, max_length=255)
+    invite_token: str | None = None
+
+
 class UserOut(BaseModel):
     """A user as returned to API clients (never includes password_hash/totp_secret)."""
 

@@ -140,6 +140,8 @@ def create_requirement_endpoint(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid component.")
     if category is None or category.project_id != project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid category.")
+    if category.component_id != component.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
 
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
 
@@ -247,8 +249,9 @@ async def import_requirements(
 
     Expected columns: `name` (required), `reasoning`, `component_prefix`
     (required, must match an existing `ProjectComponent.prefix`),
-    `category_prefix` (required, must match an existing
-    `ProjectCategory.prefix`), `level` ("requirement"/"recommended",
+    `category_prefix` (required, must match an existing `ProjectCategory.
+    prefix` *nested under that same component* — categories are unique per
+    component, not per project), `level` ("requirement"/"recommended",
     optional), `target_version` (optional, must match an existing
     `ProjectStage.name`).
 
@@ -269,7 +272,14 @@ async def import_requirements(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
 
     components = {c.prefix: c for c in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-    categories = {c.prefix: c for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
+    # Keyed by (component_id, prefix), not prefix alone: a category prefix is
+    # only unique within its parent component now (the tree), so two
+    # categories under different components can share a prefix without this
+    # lookup silently colliding on the wrong one.
+    categories_by_key = {
+        (c.component_id, c.prefix): c
+        for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()
+    }
     stages = {s.name: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()}
 
     raw = await file.read()
@@ -293,9 +303,11 @@ async def import_requirements(
         if component is None:
             errors.append(RequirementImportError(row=row_num, message=f"Unknown component_prefix '{component_prefix}'."))
             continue
-        category = categories.get(category_prefix)
+        category = categories_by_key.get((component.id, category_prefix))
         if category is None:
-            errors.append(RequirementImportError(row=row_num, message=f"Unknown category_prefix '{category_prefix}'."))
+            errors.append(RequirementImportError(
+                row=row_num, message=f"Unknown category_prefix '{category_prefix}' for component '{component_prefix}'."
+            ))
             continue
         try:
             level = RequirementLevel(level_raw)
@@ -327,19 +339,46 @@ async def import_requirements(
 
 @router.get("/reviews/due", response_model=list[RequirementDueForReviewOut])
 def list_due_reviews(
-    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+    project_id: UUID,
+    component_id: UUID | None = None,
+    reviewer_id: UUID | None = None,
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
 ):
     """Requirements due/overdue for review in this project, project-basis (C-R-09).
 
     Registered before `GET /{requirement_id}` so this static path isn't
     swallowed by that dynamic route (same reasoning as `/import` above).
+    Supports an optional filter panel (`component_id`/`reviewer_id`) for
+    projects with enough due reviews that a flat list stops being scannable.
     """
+    due = get_due_reviews_for_project(db, project_id)
+    if component_id is not None:
+        due = [(version, req) for version, req in due if req.component_id == component_id]
+    if reviewer_id is not None:
+        due = [(version, req) for version, req in due if version.reviewer_id == reviewer_id]
+
+    reviewer_ids = {version.reviewer_id for version, _ in due if version.reviewer_id is not None}
+    reviewer_names = (
+        dict(db.execute(select(User.id, User.display_name).where(User.id.in_(reviewer_ids))).all())
+        if reviewer_ids
+        else {}
+    )
+    component_ids = {req.component_id for _, req in due}
+    component_names = (
+        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
+        if component_ids
+        else {}
+    )
+
     return [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, unique_code=req.unique_code,
             name=version.name, review_date=version.review_date, reviewer_id=version.reviewer_id,
+            reviewer_name=reviewer_names.get(version.reviewer_id) if version.reviewer_id else None,
+            component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
-        for version, req in get_due_reviews_for_project(db, project_id)
+        for version, req in due
     ]
 
 
@@ -410,6 +449,8 @@ def update_requirement(
         category = db.get(ProjectCategory, payload.category_id)
         if component is None or component.project_id != project_id or category is None or category.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid component or category.")
+        if category.component_id != component.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
         requirement.component_id = payload.component_id
         requirement.category_id = payload.category_id
     set_keywords(db, requirement, payload.keywords)

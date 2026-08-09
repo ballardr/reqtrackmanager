@@ -8,7 +8,11 @@ Before generating, you can narrow the report down by component, category, status
 
 ## Custom content
 
-You can add a Markdown introduction and appendix to a PDF report, and optionally include an organisation's shared resource files as extra sections. The Markdown support is intentionally basic — headings, paragraphs, bold/italic text, links, and bullet lists. Tables, images, and numbered lists aren't rendered.
+You can add a Markdown introduction and appendix to a PDF report, and optionally include an organisation's shared resource files as extra sections. The Markdown support is intentionally basic — headings, paragraphs, bold/italic text, links, bullet lists, and images. Tables and numbered lists aren't rendered.
+
+### Images
+
+Every Markdown editor used for report content (a project's intro/chapters/appendices, an organisation's defaults, and report templates) has an **Insert image** button in its toolbar. It opens a picker over your organisation's already-uploaded shared images, with an option to upload a new one on the spot — the same shared-resource library used elsewhere, just filtered down to images. Picking one inserts it as its own paragraph; an image can't currently be placed inline with surrounding text, and pasting or typing a plain image URL doesn't work — only images added through the picker are supported.
 
 ## Report templates
 

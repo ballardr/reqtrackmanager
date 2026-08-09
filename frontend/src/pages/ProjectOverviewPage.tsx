@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "../api/types";
-import { activityEntityLabel, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
@@ -17,14 +17,21 @@ export function ProjectOverviewPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [activity, setActivity] = useState<ChangeEntry[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
-    api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
-    api.get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics`).then(setMetrics);
-    api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`).then((entries) => setActivity(entries.slice(0, 8)));
+    setLoadError(null);
+    const onError = (err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error);
+    api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject).catch(onError);
+    api.get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics`).then(setMetrics).catch(onError);
+    api
+      .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
+      .then((entries) => setActivity(entries.slice(0, 8)))
+      .catch(onError);
   }, [projectId]);
 
+  if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!project || !metrics) return <Spinner />;
 
   const tiles: Array<[string, string | number]> = [
@@ -93,18 +100,27 @@ export function ProjectOverviewPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.overview.projectActivity}</h2>
         {activity && activity.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
-        {activity?.map((c, idx) => (
-          <div
-            key={idx}
-            className="row"
-            style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
-          >
-            <span>
-              <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
-            </span>
-            <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-          </div>
-        ))}
+        {activity?.map((c, idx) => {
+          const link = projectId ? activityEntryLink(c, projectId) : null;
+          return (
+            <div
+              key={idx}
+              className="row"
+              style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
+            >
+              <span>
+                <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
+                {link && (
+                  <>
+                    {" "}
+                    <Link to={link.to}>{link.label}</Link>
+                  </>
+                )}
+              </span>
+              <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

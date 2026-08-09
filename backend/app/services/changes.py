@@ -129,6 +129,55 @@ def get_project_changes(
     if entity_type is not None:
         entries = [e for e in entries if e.entity_type == entity_type]
 
+    # Guarantees every requirement/change-request entry always carries a
+    # resolvable id + current title (UI/UX pass: "link activity entries to
+    # the item that changed, always showing its id and title") — not just
+    # the entries sourced from version history above, which already had
+    # `unique_code`/`proposed_name` in `detail`, but also the generic
+    # `AuditEvent`-sourced ones (archive, review, file-attach, ...), whose
+    # `detail` only ever contained whatever that specific call site happened
+    # to log. Resolved from *current* state, not the state at the time of
+    # the event, so a since-renamed item shows its current title everywhere
+    # consistently rather than a stale one on some rows and not others.
+    requirement_entries = [e for e in entries if e.entity_type == "requirement"]
+    if requirement_entries:
+        req_ids = {UUID(e.entity_id) for e in requirement_entries}
+        unique_codes = dict(
+            db.execute(select(Requirement.id, Requirement.unique_code).where(Requirement.id.in_(req_ids))).all()
+        )
+        current_names: dict[UUID, tuple[str, int]] = {}
+        for req_id, name, version_number in db.execute(
+            select(RequirementVersion.requirement_id, RequirementVersion.name, RequirementVersion.version_number)
+            .where(RequirementVersion.requirement_id.in_(req_ids))
+        ).all():
+            if req_id not in current_names or version_number > current_names[req_id][1]:
+                current_names[req_id] = (name, version_number)
+        for e in requirement_entries:
+            rid = UUID(e.entity_id)
+            detail = dict(e.detail or {})
+            if rid in unique_codes:
+                detail["unique_code"] = unique_codes[rid]
+            if rid in current_names:
+                detail["name"] = current_names[rid][0]
+            e.detail = detail
+
+    cr_entries = [e for e in entries if e.entity_type == "change_request"]
+    if cr_entries:
+        cr_ids = {UUID(e.entity_id) for e in cr_entries}
+        current_titles: dict[UUID, tuple[str, int]] = {}
+        for cr_id, proposed_name, version_number in db.execute(
+            select(ChangeRequestVersion.change_request_id, ChangeRequestVersion.proposed_name, ChangeRequestVersion.version_number)
+            .where(ChangeRequestVersion.change_request_id.in_(cr_ids))
+        ).all():
+            if cr_id not in current_titles or version_number > current_titles[cr_id][1]:
+                current_titles[cr_id] = (proposed_name, version_number)
+        for e in cr_entries:
+            cid = UUID(e.entity_id)
+            if cid in current_titles:
+                detail = dict(e.detail or {})
+                detail["proposed_name"] = current_titles[cid][0]
+                e.detail = detail
+
     actor_ids = {e.actor_id for e in entries if e.actor_id is not None}
     display_names = {
         u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(actor_ids))).all()

@@ -46,8 +46,14 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await page.getByPlaceholder("Name").first().fill("Web");
     await page.getByPlaceholder("Prefix").first().fill("WEB");
     await page.getByRole("button", { name: "New component" }).click();
-    await page.getByPlaceholder("Name").nth(1).fill("Functional");
-    await page.getByPlaceholder("Prefix").nth(1).fill("FN");
+    // Wait for "Web" (and its own, now-rendered nested "add category" form)
+    // before filling it — otherwise the fill can race ahead of the reload
+    // and land on the wrong (not-yet-replaced) form.
+    await expect(page.getByText("Web").first()).toBeVisible();
+    // Component/category tree: once "Web" exists, its own nested "add
+    // category" form is the first Name/Prefix pair on the page.
+    await page.getByPlaceholder("Name").first().fill("Functional");
+    await page.getByPlaceholder("Prefix").first().fill("FN");
     await page.getByRole("button", { name: "New category" }).click();
     await expect(page.getByText("Functional").first()).toBeVisible();
   });
@@ -74,8 +80,12 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await expect(page.getByText("Server Administrator", { exact: true })).toBeVisible();
     await expect(page.getByText("This looks ready for review.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Like this comment" }).click();
-    await expect(page.getByText("1", { exact: true })).toBeVisible();
+    const likeButton = page.getByRole("button", { name: "Like this comment" });
+    await likeButton.click();
+    // Scoped to the like button itself (its reaction count renders inside
+    // it) rather than a page-wide "1" text match, which now also matches
+    // the notification bell's own unread-count bubble.
+    await expect(likeButton).toContainText("1");
   });
 
   await test.step("raise a change request, subscribe, and comment on it", async () => {
@@ -101,7 +111,10 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("the Project Overview dashboard shows status/CR charts and activity", async () => {
     await page.getByText("Overview").click();
     await expect(page.getByText("Requirements by status")).toBeVisible();
-    await expect(page.getByText("Change requests", { exact: true })).toBeVisible();
+    // Scoped to main: the nav rail's own "Change requests" link (always
+    // present alongside this dashboard once a project is selected) exact-
+    // matches the same text as this chart's legend label.
+    await expect(page.getByRole("main").getByText("Change requests", { exact: true })).toBeVisible();
     await expect(page.getByText("Stage progress")).toBeVisible();
     await expect(page.getByText("Project activity")).toBeVisible();
   });

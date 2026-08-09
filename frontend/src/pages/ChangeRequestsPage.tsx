@@ -15,6 +15,7 @@ import type {
 } from "../api/types";
 import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
@@ -90,8 +91,12 @@ export function ChangeRequestsPage() {
     setCustomFieldDefs(defs);
     setStages(stgs);
     if (!requirementId && reqs[0]) setRequirementId(reqs[0].id);
+    const selectedComponentId = componentId || comps[0]?.id || "";
     if (!componentId && comps[0]) setComponentId(comps[0].id);
-    if (!categoryId && cats[0]) setCategoryId(cats[0].id);
+    if (!categoryId) {
+      const firstOwnCategory = cats.find((c) => c.component_id === selectedComponentId);
+      if (firstOwnCategory) setCategoryId(firstOwnCategory.id);
+    }
   }
 
   useEffect(() => {
@@ -124,6 +129,15 @@ export function ChangeRequestsPage() {
 
   function stageName(id: string | null) {
     return stages.find((s) => s.id === id)?.name ?? "—";
+  }
+
+  function toggleStatusFilter(status: ChangeRequestStatus) {
+    setStatusFilter((current) => (current === status ? "" : status));
+  }
+
+  function toggleTargetStageFilter(stageId: string | null) {
+    if (!stageId) return;
+    setTargetStageFilter((current) => (current === stageId ? "" : stageId));
   }
 
   return (
@@ -161,7 +175,15 @@ export function ChangeRequestsPage() {
             </select>
           ) : (
             <div className="row">
-              <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+              <select
+                className="input"
+                value={componentId}
+                onChange={(e) => {
+                  const nextComponentId = e.target.value;
+                  setComponentId(nextComponentId);
+                  setCategoryId(categories.find((c) => c.component_id === nextComponentId)?.id ?? "");
+                }}
+              >
                 {components.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -169,7 +191,7 @@ export function ChangeRequestsPage() {
                 ))}
               </select>
               <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                {categories.map((c) => (
+                {categories.filter((c) => c.component_id === componentId).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
@@ -263,7 +285,9 @@ export function ChangeRequestsPage() {
                         <Link to={`/projects/${projectId}/change-requests/${cr.id}`}>{cr.proposed_name}</Link>
                       </td>
                       <td>
-                        <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
+                        <FilterBadge active={statusFilter === cr.status} onClick={() => toggleStatusFilter(cr.status)}>
+                          {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+                        </FilterBadge>
                       </td>
                       <td className="text-muted">{stageName(cr.proposed_target_stage_id)}</td>
                       <td className="text-muted">{REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</td>
@@ -282,8 +306,17 @@ export function ChangeRequestsPage() {
                     {cr.proposed_name}
                   </Link>
                   <div className="row" style={{ gap: "0.4rem" }}>
-                    <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
-                    <span className="badge">{stageName(cr.proposed_target_stage_id)}</span>
+                    <FilterBadge active={statusFilter === cr.status} onClick={() => toggleStatusFilter(cr.status)}>
+                      {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+                    </FilterBadge>
+                    {cr.proposed_target_stage_id && (
+                      <FilterBadge
+                        active={targetStageFilter === cr.proposed_target_stage_id}
+                        onClick={() => toggleTargetStageFilter(cr.proposed_target_stage_id)}
+                      >
+                        {stageName(cr.proposed_target_stage_id)}
+                      </FilterBadge>
+                    )}
                     <span className="badge">{REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</span>
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>

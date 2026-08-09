@@ -44,6 +44,7 @@ def test_project_administrator_can_update_project_settings(client, admin_token, 
 
 def test_member_cannot_create_project_stage_component_or_category(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
+    component_id, _ = create_component_and_category(client, admin_token, project["id"])
     token = _make_project_member(client, admin_token, org_id, project["id"], "plain_member@example.com", "member")
 
     assert client.post(
@@ -53,7 +54,8 @@ def test_member_cannot_create_project_stage_component_or_category(client, admin_
         f"/api/v1/projects/{project['id']}/components", json={"name": "X", "prefix": "X"}, headers=auth_headers(token)
     ).status_code == 403
     assert client.post(
-        f"/api/v1/projects/{project['id']}/categories", json={"name": "X", "prefix": "X"}, headers=auth_headers(token)
+        f"/api/v1/projects/{project['id']}/categories",
+        json={"name": "X", "prefix": "X", "component_id": component_id}, headers=auth_headers(token)
     ).status_code == 403
 
 

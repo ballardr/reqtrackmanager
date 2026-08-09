@@ -10,11 +10,41 @@ import pytest
 from app.database import SessionLocal
 from app.models.enums import OrgRole
 from app.models.organization import Organization
+from app.security import create_oidc_state_token
 from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
-from tests.conftest import auth_headers, create_org_admin_in
+from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.test_access_review import _make_orphaned_user
 
 ISSUER_A = "https://idp-a.example.com/realms/tenant"
 ISSUER_B = "https://idp-b.example.com/realms/other-tenant"
+
+
+def _patch_fake_oidc(monkeypatch, *, email: str, subject: str = "fake-subject") -> None:
+    """Stubs the three network-calling steps of the OIDC callback
+    (discovery, code exchange, ID-token verification) so `oidc_callback`
+    can be driven end-to-end through the real HTTP router without a live
+    IdP — the same three functions `oidc_client.py` exposes and
+    `routers/auth_oidc.py::oidc_callback` calls by module attribute."""
+    monkeypatch.setattr("app.services.oidc_client.discover", lambda issuer_url: {})
+    monkeypatch.setattr(
+        "app.services.oidc_client.exchange_code_for_tokens", lambda discovery, **kwargs: {"id_token": "fake"}
+    )
+    monkeypatch.setattr(
+        "app.services.oidc_client.verify_id_token",
+        lambda discovery, id_token, **kwargs: {"sub": subject, "email": email, "email_verified": True},
+    )
+
+
+def _sso_org(client, admin_token, org_id, slug: str) -> None:
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/sso-config",
+        json={
+            "slug": slug, "sso_enabled": True,
+            "oidc_issuer_url": "https://idp.example.com/realms/x", "oidc_client_id": "cid",
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
 
 
 def test_find_or_provision_user_creates_a_new_oidc_user():
@@ -311,3 +341,71 @@ def test_login_info_by_slug_is_public_and_omits_secrets(client, admin_token, org
     assert body["sso_enabled"] is True
     assert "oidc_client_secret" not in body
     assert "super-secret-value" not in resp.text
+
+
+def test_oidc_callback_rejects_a_deactivated_account(client, admin_token, org_id, monkeypatch):
+    """Deeper hardening-review finding: `oidc_callback` never checked
+    account status at all — only `NativeAuthBackend.authenticate` did. A
+    deactivated account could otherwise complete SSO login and receive a
+    (functionally inert, since get_current_user also checks is_active)
+    token, but worse: consume_pending_invites/sync_org_roles_from_claims
+    would still run and commit brand-new role grants before that account
+    was ever reactivated. Driven through the real HTTP callback with the
+    network-calling OIDC steps stubbed out, not just the provisioning
+    helper directly, since the fix lives in the router between those calls."""
+    _sso_org(client, admin_token, org_id, "deactivated-oidc-org")
+    email = "deactivated-oidc@example.com"
+    orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
+    assert client.post(f"/api/v1/system/users/{orphaned_id}/deactivate", headers=auth_headers(admin_token)).status_code == 204
+
+    _patch_fake_oidc(monkeypatch, email=email)
+    state = create_oidc_state_token(org_id, "x" * 16)
+    resp = client.get(f"/api/v1/auth/oidc/callback?code=fake&state={state}", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "error=account_inactive" in resp.headers["location"]
+    assert "token=" not in resp.headers["location"]
+
+
+def test_oidc_callback_rejects_a_banned_account_and_grants_no_pending_invite(client, admin_token, org_id, monkeypatch):
+    """A banned account (is_banned implies is_active=False) must be rejected
+    the same way, and — the concrete exploit this closes — a PendingInvite
+    outstanding for that email at the time of the attempt must NOT be
+    consumed/granted by the rejected login."""
+    _sso_org(client, admin_token, org_id, "banned-oidc-org")
+    email = "banned-oidc@example.com"
+
+    # A PendingInvite outstanding for this email in a *different* org,
+    # created while no account for it exists yet anywhere (assign-by-email's
+    # "no account exists yet" branch — the only one that actually creates a
+    # PendingInvite row rather than checking is_banned against an existing
+    # account, see routers/projects.py::assign_project_role_by_email).
+    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "BannedOidcInviteTargetOrg")
+    resp = client.put(
+        f"/api/v1/orgs/{other_org['id']}/advanced-settings",
+        json={"allow_self_signup": False, "auto_accept_email_domain": None, "external_user_policy": "anyone"},
+        headers=auth_headers(other_org_admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    project = create_project(client, other_org_admin_token, other_org["id"], name="Invite Target Project")
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": email, "role": "member"},
+        headers=auth_headers(other_org_admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["outcome"] == "invited"
+
+    # Unrelated to that invite: this same email separately has a real,
+    # orphaned native account (e.g. it also signed up natively elsewhere
+    # first), which then gets banned.
+    orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
+    assert client.post(f"/api/v1/system/users/{orphaned_id}/ban", headers=auth_headers(admin_token)).status_code == 204
+
+    _patch_fake_oidc(monkeypatch, email=email)
+    state = create_oidc_state_token(org_id, "x" * 16)
+    resp = client.get(f"/api/v1/auth/oidc/callback?code=fake&state={state}", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "error=account_inactive" in resp.headers["location"]
+
+    org_users = client.get(f"/api/v1/orgs/{other_org['id']}/users", headers=auth_headers(other_org_admin_token)).json()
+    assert not any(u["email"] == email for u in org_users), "banned account must not gain the pending invite's org role"

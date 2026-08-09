@@ -99,6 +99,87 @@ def test_review_assigned_to_a_user_appears_on_their_personal_due_list(client, ad
     assert resp.json() == []
 
 
+def test_due_list_includes_reviewer_and_component_names(client, admin_token, org_id):
+    """Regression: the UI showed the raw reviewer UUID instead of a name."""
+    from tests.conftest import create_org_user
+
+    reviewer_id = create_org_user(client, admin_token, org_id, "named_reviewer@example.com", role="member")
+    project = create_project(client, admin_token, org_id)
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": reviewer_id, "role": "stakeholder"}, headers=auth_headers(admin_token),
+    )
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    _create_requirement_with_review(
+        client, admin_token, project["id"], component_id, category_id,
+        str(date.today() - timedelta(days=1)), reviewer_id=reviewer_id,
+    )
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/requirements/reviews/due", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    assert row["reviewer_name"] == "named_reviewer"
+    assert row["reviewer_id"] == reviewer_id
+    assert row["component_id"] == component_id
+    assert row["component_name"]
+
+    reviewer_token = login(client, "named_reviewer@example.com", "Password123!")
+    my_due = client.get("/api/v1/me/reviews/due", headers=auth_headers(reviewer_token)).json()
+    assert my_due[0]["component_name"] == row["component_name"]
+
+
+def test_due_list_filters_by_component_and_reviewer(client, admin_token, org_id):
+    from tests.conftest import create_org_user
+
+    reviewer_id = create_org_user(client, admin_token, org_id, "filter_reviewer@example.com", role="member")
+    project = create_project(client, admin_token, org_id)
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": reviewer_id, "role": "stakeholder"}, headers=auth_headers(admin_token),
+    )
+    component_a, category_a_id = create_component_and_category(client, admin_token, project["id"])
+    component_b = client.post(
+        f"/api/v1/projects/{project['id']}/components", json={"name": "Component B", "prefix": "CB"},
+        headers=auth_headers(admin_token),
+    ).json()["id"]
+    # A category is nested under one component (the tree) — component_b
+    # needs its own, it can't reuse component_a's.
+    category_b_id = client.post(
+        f"/api/v1/projects/{project['id']}/categories",
+        json={"name": "Performance", "prefix": "PERF", "component_id": component_b},
+        headers=auth_headers(admin_token),
+    ).json()["id"]
+
+    req_a = _create_requirement_with_review(
+        client, admin_token, project["id"], component_a, category_a_id,
+        str(date.today() - timedelta(days=1)), reviewer_id=reviewer_id,
+    )
+    req_b = _create_requirement_with_review(
+        client, admin_token, project["id"], component_b, category_b_id, str(date.today() - timedelta(days=1)),
+    )
+
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/reviews/due?component_id={component_a}",
+        headers=auth_headers(admin_token),
+    )
+    ids = {r["requirement_id"] for r in resp.json()}
+    assert ids == {req_a["id"]}
+
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/reviews/due?reviewer_id={reviewer_id}",
+        headers=auth_headers(admin_token),
+    )
+    ids = {r["requirement_id"] for r in resp.json()}
+    assert ids == {req_a["id"]}
+
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/reviews/due?component_id={component_b}",
+        headers=auth_headers(admin_token),
+    )
+    ids = {r["requirement_id"] for r in resp.json()}
+    assert ids == {req_b["id"]}
+
+
 def test_review_date_cannot_be_changed_by_direct_edit_once_requirement_approved(client, admin_token, org_id):
     """C-R-06: review_date can only change on creation or via a change request."""
     project = create_project(client, admin_token, org_id)

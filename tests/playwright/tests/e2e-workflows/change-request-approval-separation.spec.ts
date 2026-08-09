@@ -20,7 +20,7 @@ test("change request submitter cannot approve their own request; the project man
   await test.step("stakeholder submits a change request against the locked requirement", async () => {
     await loginAs(page, PERSONAS.stakeholderAlpha.email);
     await page.getByText(PROJECT_NAMES.alpha1).click();
-    await page.getByRole("link", { name: "Change Requests", exact: true }).click();
+    await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByRole("button", { name: "New change request" }).click();
     // "Modify requirement" is the default radio and the requirement select
     // defaults to the first requirement in the project (the seed script
@@ -38,7 +38,7 @@ test("change request submitter cannot approve their own request; the project man
   await test.step("stakeholder submits it for review and sees no approve/reject controls", async () => {
     await page.getByText(proposedName).click();
     await page.getByRole("button", { name: "Submit" }).click();
-    await expect(page.getByText("submitted", { exact: true })).toBeVisible();
+    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
     // Exact match: a stakeholder can cast an advisory "Vote to approve" /
     // "Vote to reject" (C-R-03, doesn't touch the CR's real status), which
     // would otherwise substring-match a loose "Approve"/"Reject" query —
@@ -46,7 +46,7 @@ test("change request submitter cannot approve their own request; the project man
     // labelled "Approve"/"Reject" buttons gated to project managers.
     await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
-    crStatusAfterSubmit = "submitted";
+    crStatusAfterSubmit = "Submitted";
   });
 
   await test.step("a direct API call to decide it is rejected server-side, not just hidden client-side", async () => {
@@ -67,7 +67,7 @@ test("change request submitter cannot approve their own request; the project man
     await logout(page);
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.alpha1).click();
-    await page.getByRole("link", { name: "Change Requests", exact: true }).click();
+    await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByText(proposedName).click();
     await expect(page.getByText(crStatusAfterSubmit, { exact: true })).toBeVisible();
     await page.getByPlaceholder("Decision note").fill("Approved — matches the new latency budget.");
@@ -75,7 +75,7 @@ test("change request submitter cannot approve their own request; the project man
     // (project managers inherit stakeholder voting rights), which a loose
     // "Approve" query would ambiguously match alongside the real decision button.
     await page.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(page.getByText("approved", { exact: true })).toBeVisible();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
   });
 
   await test.step("the requirement now reflects the approved change", async () => {

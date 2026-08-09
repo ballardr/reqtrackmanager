@@ -1,13 +1,30 @@
+import { fileUrl } from "../api/client";
+
 /**
  * A small, deliberately minimal Markdown-to-HTML renderer — headings,
  * paragraphs, bullet lists, fenced code blocks, and inline
- * bold/italic/code/links. Mirrors the same subset
+ * bold/italic/code/links/images. Mirrors the same subset
  * `backend/app/services/reports.py`'s Markdown-to-flowable renderer
  * supports (plus fenced code blocks, which that renderer doesn't need),
  * and exists for the same reason: enough fidelity for hand-written
- * content (the help page, `frontend/src/help/*.md`) without pulling in a
- * full Markdown/HTML-sanitiser dependency this otherwise dependency-light
- * frontend doesn't have.
+ * content (the help page, `frontend/src/help/*.md`) and report content
+ * (project/org intros, chapters, appendices, report templates) without
+ * pulling in a full Markdown/HTML-sanitiser dependency this otherwise
+ * dependency-light frontend doesn't have.
+ *
+ * `![alt](attachment:<file id>)` — inserted via `RichTextEditor`'s "Insert
+ * image" panel, never hand-typed — is the one image reference form
+ * supported, resolved to `fileUrl(id)` (the same authenticated,
+ * `?token=`-bearing URL pattern used for avatars/logos, since `<img>`
+ * cannot carry an Authorization header). A bare external URL in `![alt]
+ * (url)` is deliberately *not* turned into a live `<img>` fetch — this
+ * content can end up rendered for other users (report intros/chapters are
+ * shared, not personal), and unconditionally fetching an arbitrary
+ * user-supplied URL client-side is the same class of risk
+ * `backend/app/services/reports.py::_safe`'s docstring documents was
+ * deliberately closed off server-side; it renders as plain escaped text
+ * instead, matching that same "resolve from known-safe references only"
+ * posture on the frontend.
  *
  * A ```mermaid fenced block renders as `<div class="mermaid">` (raw,
  * unescaped diagram source) — the exact convention `mermaid.run()` scans
@@ -33,11 +50,28 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const ATTACHMENT_PREFIX = "attachment:";
+
+/** Resolves an `![alt](ref)` image reference to a viewable URL — only
+ * `attachment:<file id>` refs (see module docstring); anything else
+ * returns `null` so the caller falls back to escaped plain text. */
+export function resolveImageRef(ref: string): string | null {
+  if (!ref.startsWith(ATTACHMENT_PREFIX)) return null;
+  return fileUrl(ref.slice(ATTACHMENT_PREFIX.length));
+}
+
 function renderInline(text: string): string {
   return escapeHtml(text)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    // Must run before the link regex below — both share the `[..](..)`
+    // shape, and the leading `!` is what tells them apart. Escaped ref
+    // text can't contain `"`, so the src attribute is always well-formed.
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt: string, ref: string) => {
+      const url = resolveImageRef(ref);
+      return url ? `<img src="${url}" alt="${alt}" style="max-width:100%">` : match;
+    })
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
 }
 
@@ -143,6 +177,16 @@ function serializeInline(node: Node): string {
     }
     case "BR":
       return "\n";
+    case "IMG": {
+      // Reverses resolveImageRef: an <img> only ever originates from this
+      // module's own rendering of an `attachment:` ref (or from
+      // RichTextEditor's insert-image action building the same `fileUrl`
+      // shape directly) — extract the file id back out of the URL's path.
+      const src = el.getAttribute("src") ?? "";
+      const idMatch = src.match(/\/api\/v1\/files\/([^/?]+)/);
+      const alt = el.getAttribute("alt") ?? "";
+      return idMatch ? `![${alt}](${ATTACHMENT_PREFIX}${idMatch[1]})` : "";
+    }
     default:
       return inner;
   }

@@ -16,7 +16,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("PM approves Alpha-1's stage, locking all its requirements", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
-      await page.getByRole("link", { name: "Project Admin", exact: true }).click();
+      await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByRole("button", { name: "Project stages" }).click();
       const approveButton = page.getByRole("button", { name: "Approve stage" });
       if (await approveButton.count()) {

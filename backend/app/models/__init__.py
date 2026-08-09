@@ -17,7 +17,15 @@ from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import Notification, NotificationPreference
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, ServerSettings, UserOrgRole
+from app.models.organization import (
+    Organization,
+    OrgGroup,
+    OrgGroupMember,
+    PendingInvite,
+    ReportTemplate,
+    ServerSettings,
+    UserOrgRole,
+)
 from app.models.pat import PersonalAccessToken
 from app.models.project import (
     FavoriteProject,
@@ -59,6 +67,7 @@ __all__ = [
     "Organization",
     "OrgGroup",
     "OrgGroupMember",
+    "PendingInvite",
     "ReportTemplate",
     "ServerSettings",
     "UserOrgRole",

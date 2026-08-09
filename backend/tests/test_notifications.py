@@ -107,3 +107,55 @@ def test_notification_preferences_default_and_update(client, admin_token):
     updated = next(p for p in prefs if p["type"] == "password_changed")
     assert updated["ui_enabled"] is False
     assert updated["email_enabled"] is False
+
+
+def _trigger_password_changed_notifications(client, admin_token, count: int) -> str:
+    """Password changes are an easy, always-available way to generate N
+    distinct notifications for the same user in these tests without
+    needing a project/org fixture per notification."""
+    password = "ChangeMe123!"
+    token = admin_token
+    for i in range(count):
+        new_password = f"Password{i}123!"
+        client.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": password, "new_password": new_password},
+            headers=auth_headers(token),
+        )
+        token = login(client, "admin@example.com", new_password)
+        password = new_password
+    return token
+
+
+def test_list_notifications_pagination(client, admin_token):
+    token = _trigger_password_changed_notifications(client, admin_token, 3)
+
+    resp = client.get("/api/v1/notifications?limit=2&offset=0", headers=auth_headers(token))
+    assert resp.status_code == 200
+    assert int(resp.headers["x-total-count"]) == 3
+    page1 = resp.json()
+    assert len(page1) == 2
+
+    page2 = client.get("/api/v1/notifications?limit=2&offset=2", headers=auth_headers(token)).json()
+    assert len(page2) == 1
+    assert {n["id"] for n in page1} & {n["id"] for n in page2} == set()
+
+
+def test_list_notifications_search(client, admin_token):
+    token = _trigger_password_changed_notifications(client, admin_token, 1)
+
+    matches = client.get("/api/v1/notifications?search=password", headers=auth_headers(token)).json()
+    assert len(matches) >= 1
+
+    no_matches = client.get(
+        "/api/v1/notifications?search=nonexistent-search-term", headers=auth_headers(token)
+    ).json()
+    assert no_matches == []
+
+
+def test_list_notifications_without_limit_is_unbounded(client, admin_token):
+    token = _trigger_password_changed_notifications(client, admin_token, 2)
+    resp = client.get("/api/v1/notifications", headers=auth_headers(token))
+    assert resp.status_code == 200
+    assert "x-total-count" not in resp.headers
+    assert len(resp.json()) == 2

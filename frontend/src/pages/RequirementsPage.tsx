@@ -18,6 +18,7 @@ import type {
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { CsvImportWizard } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
@@ -50,6 +51,13 @@ export function RequirementsPage() {
   const [total, setTotal] = useState(0);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  // Both start empty before the first fetch resolves, which is
+  // indistinguishable from "this project genuinely has none yet" — without
+  // this flag, opening "New requirement" before that fetch completes
+  // showed the quick-create-component/category inline form (meant only for
+  // a genuinely empty project) at the same time as the real create form,
+  // producing two ambiguous "Name" fields.
+  const [metaLoaded, setMetaLoaded] = useState(false);
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [newInlineComponentName, setNewInlineComponentName] = useState("");
   const [newInlineComponentPrefix, setNewInlineComponentPrefix] = useState("");
@@ -110,8 +118,15 @@ export function RequirementsPage() {
     setCategories(cats);
     setStages(stgs);
     setCustomFieldDefs(defs);
+    const selectedComponentId = newComponentId || comps[0]?.id || "";
     if (!newComponentId && comps[0]) setNewComponentId(comps[0].id);
-    if (!newCategoryId && cats[0]) setNewCategoryId(cats[0].id);
+    // Must belong to the selected component (the tree) — picking any
+    // project-wide first category could silently mismatch it.
+    if (!newCategoryId) {
+      const firstOwnCategory = cats.find((c) => c.component_id === selectedComponentId);
+      if (firstOwnCategory) setNewCategoryId(firstOwnCategory.id);
+    }
+    setMetaLoaded(true);
   }
 
   useEffect(() => {
@@ -145,10 +160,11 @@ export function RequirementsPage() {
   }
 
   async function createInlineCategory() {
-    if (!projectId || !newInlineCategoryName || !newInlineCategoryPrefix) return;
+    if (!projectId || !newInlineCategoryName || !newInlineCategoryPrefix || !newComponentId) return;
     await api.post(`/api/v1/projects/${projectId}/categories`, {
       name: newInlineCategoryName,
       prefix: newInlineCategoryPrefix,
+      component_id: newComponentId,
     });
     setNewInlineCategoryName("");
     setNewInlineCategoryPrefix("");
@@ -203,6 +219,10 @@ export function RequirementsPage() {
   }
   function stageName(id: string | null) {
     return stages.find((s) => s.id === id)?.name ?? "—";
+  }
+
+  function toggleStatusFilter(status: RequirementStatus) {
+    setStatusFilter((current) => (current === status ? "" : status));
   }
 
   function badges(r: Requirement) {
@@ -260,7 +280,7 @@ export function RequirementsPage() {
         </div>
       )}
 
-      {showNewForm && (components.length === 0 || categories.length === 0) && (
+      {showNewForm && metaLoaded && (components.length === 0 || categories.length === 0) && (
         <div className="card stack">
           <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
           {canManageProject ? (
@@ -289,8 +309,15 @@ export function RequirementsPage() {
                   </button>
                 </div>
               )}
-              {categories.length === 0 && (
+              {categories.length === 0 && components.length > 0 && (
                 <div className="row">
+                  {components.length > 1 && (
+                    <select className="input" style={{ maxWidth: 200 }} value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
+                      {components.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     className="input"
                     placeholder={strings.admin.name}
@@ -322,7 +349,7 @@ export function RequirementsPage() {
         </div>
       )}
 
-      {showNewForm && components.length > 0 && categories.length > 0 && (
+      {showNewForm && metaLoaded && components.length > 0 && categories.length > 0 && (
         <div className="card stack">
           <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
           <textarea
@@ -335,7 +362,19 @@ export function RequirementsPage() {
           <div className="row">
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
               {strings.requirements.component}
-              <select className="input" value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
+              <select
+                className="input"
+                value={newComponentId}
+                onChange={(e) => {
+                  const componentId = e.target.value;
+                  setNewComponentId(componentId);
+                  // Category is nested under one component (the tree) — a
+                  // category belonging to the previously-selected component
+                  // is never valid once the component changes.
+                  const firstOwnCategory = categories.find((c) => c.component_id === componentId);
+                  setNewCategoryId(firstOwnCategory?.id ?? "");
+                }}
+              >
                 {components.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.prefix})
@@ -346,7 +385,10 @@ export function RequirementsPage() {
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
               {strings.requirements.category}
               <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
-                {categories.map((c) => (
+                {categories.filter((c) => c.component_id === newComponentId).length === 0 && (
+                  <option value="">{strings.requirements.noCategoriesForComponent}</option>
+                )}
+                {categories.filter((c) => c.component_id === newComponentId).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.prefix})
                   </option>
@@ -425,7 +467,9 @@ export function RequirementsPage() {
                   )}
                   <div className="row" style={{ justifyContent: "space-between" }}>
                     <div className="row" style={{ gap: "0.4rem" }}>
-                      <span className="badge">{REQUIREMENT_STATUS_LABEL[r.status]}</span>
+                      <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
+                        {REQUIREMENT_STATUS_LABEL[r.status]}
+                      </FilterBadge>
                       {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                     </div>
                     <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
@@ -462,7 +506,9 @@ export function RequirementsPage() {
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.4rem" }}>
-                          <span className="badge">{REQUIREMENT_STATUS_LABEL[r.status]}</span>
+                          <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
+                            {REQUIREMENT_STATUS_LABEL[r.status]}
+                          </FilterBadge>
                           {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                           {badges(r)}
                         </div>

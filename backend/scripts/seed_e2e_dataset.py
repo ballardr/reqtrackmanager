@@ -109,8 +109,11 @@ def create_component(headers: dict, project_id: str, name: str, prefix: str) -> 
     return r.json()
 
 
-def create_category(headers: dict, project_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/categories", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
+def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/categories",
+        json={"name": name, "prefix": prefix, "component_id": component_id}, headers=headers, timeout=30,
+    )
     r.raise_for_status()
     return r.json()
 
@@ -129,8 +132,8 @@ def seed_project_content(headers: dict, project: dict, req_count: int) -> list[d
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
     sw = create_component(headers, project["id"], "Software", "SW")
-    fn = create_category(headers, project["id"], "Functional", "FN")
-    perf = create_category(headers, project["id"], "Performance", "PERF")
+    fn = create_category(headers, project["id"], hw["id"], "Functional", "FN")
+    perf = create_category(headers, project["id"], sw["id"], "Performance", "PERF")
     reqs = []
     for i in range(req_count):
         name = REQUIREMENT_NAMES[i % len(REQUIREMENT_NAMES)]

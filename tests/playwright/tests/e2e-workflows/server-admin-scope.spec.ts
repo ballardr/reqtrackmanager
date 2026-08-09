@@ -17,9 +17,9 @@ test.describe("server admin with zero org memberships", () => {
   test("sees Server Management + all orgs, but no project/org content", async ({ page }) => {
     await loginAs(page, PERSONAS.serverAdmin.email);
 
-    await test.step("Server Management section lists every org on the deployment", async () => {
-      await expect(page.getByText("Server Management")).toBeVisible();
-      await page.getByRole("link", { name: "Organisations" }).last().click();
+    await test.step("Administration section lists every org on the deployment", async () => {
+      await expect(page.getByText("Administration")).toBeVisible();
+      await page.getByRole("link", { name: "Organisations", exact: true }).click();
       await expect(page).toHaveURL(/\/server\/organisations$/);
       await expect(page.getByText(ORG_NAMES.alpha)).toBeVisible();
       await expect(page.getByText(ORG_NAMES.beta)).toBeVisible();
@@ -32,8 +32,12 @@ test.describe("server admin with zero org memberships", () => {
     });
 
     await test.step("opening an org's admin page shows a degraded view, not its content", async () => {
-      await page.getByRole("link", { name: "Organisations", exact: true }).first().click();
-      await page.getByText(ORG_NAMES.alpha).click();
+      // /orgs isn't linked from the nav any more (see docs/decisions.md) —
+      // as a server admin with zero memberships, GET /orgs still returns
+      // every org, so navigating there directly still lists Alpha as a
+      // real link to click into, same as before this nav link existed.
+      await page.goto("/orgs");
+      await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
       // Org details alone are server-admin-visible (GET /orgs/{id} has a
       // documented bypass) — the degraded view shows the org's name so the
       // admin knows which org this is before deciding to join/bootstrap it

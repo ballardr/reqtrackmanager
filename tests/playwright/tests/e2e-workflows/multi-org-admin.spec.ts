@@ -60,7 +60,11 @@ test.describe("org admin of two organisations", () => {
     });
 
     await test.step("Gamma's org admin page is not accessible", async () => {
-      await page.getByRole("link", { name: "Organisations", exact: true }).click();
+      // /orgs is no longer linked from the nav (it duplicated the server
+      // admin console for admins who could see both — see
+      // docs/decisions.md) but the route itself is unchanged; this account
+      // belongs to two orgs, so it lists them rather than redirecting.
+      await page.goto("/orgs");
       await expect(page.getByText(ORG_NAMES.gamma)).toHaveCount(0);
     });
   });

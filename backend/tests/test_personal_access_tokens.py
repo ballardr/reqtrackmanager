@@ -12,8 +12,10 @@ from app.database import engine as app_engine
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 
-def _create_pat(client, token, org_ids, requested_expires_at=None, name="test-token"):
+def _create_pat(client, token, org_ids, requested_expires_at=None, name="test-token", project_ids=None):
     payload = {"name": name, "allowed_organization_ids": org_ids}
+    if project_ids is not None:
+        payload["allowed_project_ids"] = project_ids
     if requested_expires_at is not None:
         payload["requested_expires_at"] = requested_expires_at.isoformat()
     resp = client.post("/api/v1/me/pats", json=payload, headers=auth_headers(token))
@@ -106,6 +108,83 @@ def test_pat_scope_enforced_on_project_endpoints_too(client, admin_token, org_id
 
     assert client.get(f"/api/v1/projects/{project_a['id']}/requirements", headers=pat_headers).status_code == 200
     assert client.get(f"/api/v1/projects/{project_b['id']}/requirements", headers=pat_headers).status_code == 403
+
+
+def test_pat_optional_project_scope_restricts_within_allowed_org(client, admin_token, org_id):
+    """`allowed_project_ids` is a *further* restriction layered on top of
+    the org scope, not an alternative to it: both projects are in the same
+    allowed org (so the org-scope check alone would pass either), but only
+    the explicitly-listed one is reachable."""
+    project_a = create_project(client, admin_token, org_id, "Scoped Project A")
+    project_b = create_project(client, admin_token, org_id, "Scoped Project B")
+
+    pat = _create_pat(client, admin_token, [org_id], project_ids=[project_a["id"]])
+    assert pat["allowed_projects"] == [{"id": project_a["id"], "name": "Scoped Project A"}]
+    pat_headers = auth_headers(pat["token"])
+
+    ok = client.get(f"/api/v1/projects/{project_a['id']}/requirements", headers=pat_headers)
+    assert ok.status_code == 200
+
+    blocked = client.get(f"/api/v1/projects/{project_b['id']}/requirements", headers=pat_headers)
+    assert blocked.status_code == 403
+    assert "not scoped to this project" in blocked.json()["detail"].lower()
+
+
+def test_pat_with_no_project_scope_reaches_every_project_in_its_orgs(client, admin_token, org_id):
+    """Empty/omitted `allowed_project_ids` is the default, backward-
+    compatible behaviour: no extra restriction beyond the org scope."""
+    project_a = create_project(client, admin_token, org_id, "Unscoped Project A")
+    project_b = create_project(client, admin_token, org_id, "Unscoped Project B")
+
+    pat = _create_pat(client, admin_token, [org_id])
+    assert pat["allowed_projects"] == []
+    pat_headers = auth_headers(pat["token"])
+
+    assert client.get(f"/api/v1/projects/{project_a['id']}/requirements", headers=pat_headers).status_code == 200
+    assert client.get(f"/api/v1/projects/{project_b['id']}/requirements", headers=pat_headers).status_code == 200
+
+
+def test_cannot_create_pat_scoped_to_a_project_outside_the_selected_orgs(client, admin_token, org_id):
+    org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "PAT Project Cross Org")
+    project_b = create_project(client, org_b_admin_token, org_b["id"], "Cross Org Project")
+
+    resp = client.post(
+        "/api/v1/me/pats",
+        json={"name": "bad-scope", "allowed_organization_ids": [org_id], "allowed_project_ids": [project_b["id"]]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_cannot_create_pat_scoped_to_a_project_with_no_access(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "No Access Project")
+    user_id = create_org_user(client, admin_token, org_id, "no-project-access@example.com", role="member")
+    token = login(client, "no-project-access@example.com", "Password123!")
+
+    resp = client.post(
+        "/api/v1/me/pats",
+        json={"name": "bad-scope", "allowed_organization_ids": [org_id], "allowed_project_ids": [project["id"]]},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 400
+
+
+def test_max_lifetime_endpoint_matches_what_creation_would_produce(client, admin_token, org_id):
+    resp = client.get(f"/api/v1/me/pats/max-lifetime?organization_ids={org_id}", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    max_expires_at = datetime.fromisoformat(resp.json()["max_expires_at"])
+
+    pat = _create_pat(client, admin_token, [org_id])
+    # Both are computed as `now() + shortest cap` a moment apart — same
+    # value in practice, allowing a small tolerance for the two `now()`
+    # calls landing in different milliseconds.
+    assert abs((datetime.fromisoformat(pat["expires_at"]) - max_expires_at).total_seconds()) < 5
+
+
+def test_max_lifetime_endpoint_with_no_orgs_uses_system_default(client, admin_token):
+    resp = client.get("/api/v1/me/pats/max-lifetime", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.json()["max_expires_at"] is not None
 
 
 def test_expiry_defaults_and_org_caps(client, admin_token, org_id):

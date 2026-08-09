@@ -162,6 +162,99 @@ def test_cannot_deactivate_own_account_via_system_endpoint(client, admin_token):
     assert resp.status_code == 400
 
 
+def test_ban_deactivates_and_blocks_future_role_grants(client, admin_token, org_id):
+    banned_id = _make_orphaned_user(client, admin_token, org_id, "to_be_banned@example.com")
+
+    resp = client.post(f"/api/v1/system/users/{banned_id}/ban", headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+    assert client.post(
+        "/api/v1/auth/login", json={"email": "to_be_banned@example.com", "password": "Password123!"}
+    ).status_code == 401
+
+    by_email = {u["email"]: u for u in client.get("/api/v1/system/users", headers=auth_headers(admin_token)).json()}
+    assert by_email["to_be_banned@example.com"]["is_banned"] is True
+    assert by_email["to_be_banned@example.com"]["is_active"] is False
+
+    # A *different* org's admin tries to bring the banned user back in.
+    org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "Org For Ban Regrant Attempt")
+    resp = client.post(
+        f"/api/v1/orgs/{org_b['id']}/users/{banned_id}/roles",
+        json={"user_id": banned_id, "role": "member"},
+        headers=auth_headers(org_b_admin_token),
+    )
+    assert resp.status_code == 403
+    assert "banned" in resp.json()["detail"].lower()
+
+
+def test_unban_allows_role_grants_again_but_does_not_reactivate(client, admin_token, org_id):
+    unbanned_id = _make_orphaned_user(client, admin_token, org_id, "to_be_unbanned@example.com")
+    client.post(f"/api/v1/system/users/{unbanned_id}/ban", headers=auth_headers(admin_token))
+
+    resp = client.post(f"/api/v1/system/users/{unbanned_id}/unban", headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+
+    org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "Org For Unban Regrant")
+    resp = client.post(
+        f"/api/v1/orgs/{org_b['id']}/users/{unbanned_id}/roles",
+        json={"user_id": unbanned_id, "role": "member"},
+        headers=auth_headers(org_b_admin_token),
+    )
+    assert resp.status_code == 204
+
+    # Unban is not reactivation — still can't log in until reactivated separately.
+    assert client.post(
+        "/api/v1/auth/login", json={"email": "to_be_unbanned@example.com", "password": "Password123!"}
+    ).status_code == 401
+
+
+def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):
+    """Deeper hardening-review finding: `reactivate` and `ban` share the same
+    underlying `is_active` flag but `reactivate_orphaned_user` never checked
+    `is_banned` before flipping it back on — letting a banned account back
+    in without ever going through `unban` first, contradicting `is_banned`'s
+    own documented invariant that a ban "survives even if something else
+    were to flip is_active back on" (models/user.py). The correct sequence
+    is unban, then reactivate."""
+    banned_id = _make_orphaned_user(client, admin_token, org_id, "reactivate_bypass@example.com")
+    resp = client.post(f"/api/v1/system/users/{banned_id}/ban", headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+
+    resp = client.post(f"/api/v1/system/users/{banned_id}/reactivate", headers=auth_headers(admin_token))
+    assert resp.status_code == 400
+    assert "banned" in resp.json()["detail"].lower()
+    assert client.post(
+        "/api/v1/auth/login", json={"email": "reactivate_bypass@example.com", "password": "Password123!"}
+    ).status_code == 401
+
+    # Unban first, then reactivate succeeds.
+    assert client.post(f"/api/v1/system/users/{banned_id}/unban", headers=auth_headers(admin_token)).status_code == 204
+    assert client.post(
+        f"/api/v1/system/users/{banned_id}/reactivate", headers=auth_headers(admin_token)
+    ).status_code == 204
+    assert client.post(
+        "/api/v1/auth/login", json={"email": "reactivate_bypass@example.com", "password": "Password123!"}
+    ).status_code == 200
+
+
+def test_cannot_ban_own_account_or_an_org_member(client, admin_token, org_id):
+    self_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
+    assert client.post(f"/api/v1/system/users/{self_id}/ban", headers=auth_headers(admin_token)).status_code == 400
+
+    member_id = create_org_user(client, admin_token, org_id, "member_not_bannable@example.com", role="member")
+    assert client.post(f"/api/v1/system/users/{member_id}/ban", headers=auth_headers(admin_token)).status_code == 400
+
+
+def test_system_users_org_names_reflect_membership(client, admin_token, org_id):
+    """Default config (`access_review_show_org_names=True` in the test
+    stack) — names are shown."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "Org Names Visibility Test")
+    resp = client.get("/api/v1/system/users", headers=auth_headers(admin_token))
+    by_id = {u["user_id"]: u for u in resp.json()}
+    admin_user_id = client.get("/api/v1/auth/me", headers=auth_headers(org_admin_token)).json()["id"]
+    assert org["name"] in by_id[admin_user_id]["organization_names"]
+    assert by_id[admin_user_id]["organization_count"] == 1
+
+
 def test_cannot_revoke_the_deployment_last_active_server_admin(client, admin_token, org_id):
     """Hardening-review finding: revoking the sole remaining active server
     admin would be an unrecoverable lockout — nobody left with the

@@ -1,10 +1,12 @@
 """
 Module: routers.auth
 
-Login (including the optional two-factor second step, C-U-14), current-user
-profile/preferences (C-U-16, C-U-18, C-N-05), password change, and TOTP
-enrollment/disable endpoints. Login attempts are always logged (C-A-07) and
-counted (metrics) regardless of outcome.
+Login (including the optional two-factor second step, C-U-14), public
+self-signup (gated by `ServerSettings.signup_mode`, see `signup` below),
+current-user profile/preferences (C-U-16, C-U-18, C-N-05), password change,
+and TOTP enrollment/disable endpoints. Login attempts (including a
+successful signup, which logs the new user in immediately) are always
+logged (C-A-07) and counted (metrics) regardless of outcome.
 """
 
 from __future__ import annotations
@@ -21,12 +23,14 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_client_ip, get_current_user
 from app.metrics import login_attempts_total
+from app.models.enums import OrgRole, SignupMode
 from app.models.notification import NotificationType
-from app.models.organization import UserOrgRole
+from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
+    SignupRequest,
     TokenResponse,
     TwoFactorChallengeResponse,
     TwoFactorConfirmRequest,
@@ -39,8 +43,10 @@ from app.schemas.auth import (
 from app.security import create_2fa_challenge_token, create_access_token, decode_access_token, hash_password, verify_password
 from app.services import notifications, totp
 from app.services.audit import log_event, log_login
+from app.services.branding import get_server_settings
 from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
+from app.services.invites import consume_pending_invites
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
@@ -91,6 +97,102 @@ def login(
     db.commit()
     token = create_access_token(str(result.user.id), token_version=result.user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(result.user))
+
+
+@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def signup(
+    payload: SignupRequest,
+    background_tasks: BackgroundTasks,
+    request_ip: str = Depends(get_client_ip),
+    db: Session = Depends(get_db),
+):
+    """Public self-registration, gated by `ServerSettings.signup_mode`
+    unless `invite_token` proves an explicit admin invite (which overrides
+    the mode entirely — see `SignupRequest`'s docstring).
+
+    Without a valid invite:
+      - `DISABLED`: rejected (403).
+      - `ALWAYS_ON`: account created with no organisation membership; an
+        admin assigns one afterward, same as any `create_org_user`-style
+        provisioning.
+      - `ORG_SPECIFIED`: the email's domain must match exactly one
+        organisation with `allow_self_signup=True` (which — enforced at
+        write time in `update_advanced_settings` — can never also be
+        `sso_only`, so this can't hand out a native credential an
+        `sso_only` org's login page would reject); that organisation grants
+        `member` immediately. No domain match is a 400, not a silent no-op.
+
+    Logs in immediately on success, same response shape as `/login`.
+
+    Raises:
+        HTTPException: 409 if the email is already registered; 400 if an
+            `invite_token` is supplied but invalid/expired, or (in
+            `ORG_SPECIFIED` mode with no invite) the email's domain doesn't
+            match exactly one self-signup-enabled organisation; 403 if
+            public signup is disabled and no invite was supplied.
+    """
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)) is not None:
+        # Same "already exists" 409 shape as create_org_user — not a new
+        # email-enumeration exposure introduced by adding self-signup.
+        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
+
+    invite: PendingInvite | None = None
+    if payload.invite_token:
+        invite = db.scalar(
+            select(PendingInvite).where(
+                PendingInvite.token == payload.invite_token,
+                PendingInvite.email == email,
+                PendingInvite.accepted_at.is_(None),
+                PendingInvite.expires_at > datetime.now(UTC),
+            )
+        )
+        if invite is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired invite.")
+
+    org_to_join: Organization | None = None
+    if invite is None:
+        server_settings = get_server_settings(db)
+        if server_settings.signup_mode == SignupMode.DISABLED:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Public signup is not available.")
+        if server_settings.signup_mode == SignupMode.ORG_SPECIFIED:
+            domain = email.rsplit("@", 1)[-1]
+            candidates = db.scalars(
+                select(Organization).where(
+                    Organization.allow_self_signup.is_(True),
+                    Organization.is_active.is_(True),
+                    Organization.auto_accept_email_domain.isnot(None),
+                )
+            ).all()
+            matches = [o for o in candidates if o.auto_accept_email_domain.lower() == domain]
+            if len(matches) != 1:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Self-signup is not available for this email address."
+                )
+            org_to_join = matches[0]
+        # ALWAYS_ON: org_to_join stays None — assigned by an admin afterward.
+
+    user = User(
+        email=email, display_name=payload.display_name,
+        password_hash=hash_password(payload.password), auth_backend="native",
+    )
+    db.add(user)
+    db.flush()
+    log_event(db, entity_type="user", entity_id=user.id, action="signed_up", actor_id=user.id)
+    if org_to_join is not None:
+        db.add(UserOrgRole(user_id=user.id, organization_id=org_to_join.id, role=OrgRole.MEMBER))
+        log_event(
+            db, entity_type="user", entity_id=user.id, action="self_signup_joined_org",
+            actor_id=user.id, organization_id=org_to_join.id,
+        )
+    if invite is not None:
+        consume_pending_invites(db, user)
+    login_event = log_login(db, user_id=user.id, email_attempted=email, ip_address=request_ip, success=True)
+    user.last_login_at = datetime.now(UTC)
+    db.commit()
+    background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
+    token = create_access_token(str(user.id), token_version=user.token_version)
+    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
 @router.post("/2fa/verify", response_model=TokenResponse)

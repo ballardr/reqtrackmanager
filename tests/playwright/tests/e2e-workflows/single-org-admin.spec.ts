@@ -40,7 +40,12 @@ test.describe("admin of a separate, non-overlapping org", () => {
       for (const name of [PROJECT_NAMES.alpha1, PROJECT_NAMES.alpha2, PROJECT_NAMES.beta1, PROJECT_NAMES.beta2]) {
         await expect(page.getByText(name)).toHaveCount(0);
       }
-      await page.getByRole("link", { name: "Organisations", exact: true }).click();
+      // Belongs to exactly one org, so /orgs (no longer linked from the nav
+      // — it duplicated the server admin console for admins who could see
+      // it, see docs/decisions.md) redirects straight to Gamma's own admin
+      // page rather than showing a list to choose from.
+      await page.goto("/orgs");
+      await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
       await expect(page.getByText(ORG_NAMES.alpha)).toHaveCount(0);
       await expect(page.getByText(ORG_NAMES.beta)).toHaveCount(0);
     });

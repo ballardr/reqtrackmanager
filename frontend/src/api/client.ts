@@ -33,6 +33,18 @@ export function loadStoredToken(): string | null {
   return authToken;
 }
 
+/**
+ * Fired whenever any request gets a 401 (expired/invalidated token — e.g.
+ * the 12h access token lapsing, or a password change bumping
+ * `User.token_version` server-side). `AuthContext` listens for this and
+ * clears the session immediately, rather than leaving stale UI state up
+ * until a hard reload re-runs the mount-time `/auth/me` check — this was
+ * the actual cause of "the UI looks broken until I force-refresh, then I'm
+ * at the login page": every fetch after expiry was 401ing silently, with
+ * nothing reacting to it in place.
+ */
+export const AUTH_UNAUTHORIZED_EVENT = "reqtrack:unauthorized";
+
 async function rawRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (options.body && !(options.body instanceof FormData)) {
@@ -44,6 +56,18 @@ async function rawRequest(path: string, options: RequestInit = {}): Promise<Resp
 
   const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   if (!response.ok) {
+    // The backend raises 401 for two different reasons: the bearer token
+    // itself being missing/invalid/expired (`deps.py`'s shared
+    // `_UNAUTHORIZED`, always sent with a `WWW-Authenticate: Bearer`
+    // header — the standard signal for "your credentials are bad"), vs. an
+    // ordinary business-logic 401 with a valid token attached (wrong
+    // current password, bad 2FA code). Only the former means the session
+    // itself is dead and should force a logout; treating every 401 the
+    // same would log the user out just for mistyping their current
+    // password on the change-password form.
+    if (response.status === 401 && authToken && response.headers.get("www-authenticate")) {
+      window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
+    }
     let message = response.statusText;
     try {
       const body = await response.json();

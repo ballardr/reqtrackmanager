@@ -5,16 +5,17 @@ import changeRequestsMd from "../help/03-change-requests.md?raw";
 import requirementLifecycleMd from "../help/02-requirement-lifecycle.md?raw";
 import reportsMd from "../help/05-reports.md?raw";
 import rolesMd from "../help/04-roles.md?raw";
+import userAccessMd from "../help/06-user-access.md?raw";
 import overviewMd from "../help/01-overview.md?raw";
 import { renderMarkdown } from "../utils/markdown";
 
-const SECTIONS = [overviewMd, requirementLifecycleMd, changeRequestsMd, rolesMd, reportsMd];
+const SECTIONS = [overviewMd, requirementLifecycleMd, changeRequestsMd, rolesMd, reportsMd, userAccessMd];
 
 /**
  * In-app help: how the app is organised, the requirement lifecycle, change
- * requests, roles/permissions, and reports — aimed at end users, not
- * developers (a plain-language version of the roles this project's own
- * `docs/decisions.md` describes for implementers).
+ * requests, roles/permissions, reports, and self-signup/external users —
+ * aimed at end users, not developers (a plain-language version of the
+ * roles this project's own `docs/decisions.md` describes for implementers).
  *
  * Content lives in `frontend/src/help/*.md` as plain Markdown files, one
  * per section, imported at build time via Vite's `?raw` loader and run

@@ -5,9 +5,20 @@ Generates requirement reports as PDF (R-F-01) and CSV (R-F-02), with support
 for custom Markdown content prepended/appended to the report (R-G-01,
 R-G-02). PDF generation uses ReportLab (pure-Python, no system dependencies)
 driven by a minimal Markdown-to-flowable renderer built on markdown-it-py,
-covering headings, paragraphs, and bullet lists — sufficient for
-introduction/appendix style report sections without pulling in a full HTML
-rendering stack.
+covering headings, paragraphs, bullet lists, and images-on-their-own-line —
+sufficient for introduction/appendix style report sections without pulling
+in a full HTML rendering stack.
+
+Image support (`![alt](attachment:<file id>)`, inserted via the report
+content editor's attachment panel) is deliberately resolved from a
+pre-fetched `images: dict[str, bytes]` mapping passed in by the caller,
+never fetched by this module itself over HTTP or the filesystem — the exact
+same "never let user-supplied markup reach out to a URL server-side"
+reasoning `_safe`'s docstring documents for why raw `<img>`/`<font>` markup
+is escaped rather than interpreted. `routers/reports.py::generate_pdf` is
+responsible for resolving each reference to bytes *with an organisation
+ownership check*, so this module never has to reason about tenant
+isolation itself.
 """
 
 from __future__ import annotations
@@ -24,7 +35,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, ListFlowable, ListItem, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.models.organization import Organization
+from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.schemas.report import ProjectReportConfig, ReportChapter
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
@@ -60,6 +71,30 @@ def resolve_report_config(project: Project, org: Organization) -> ProjectReportC
     )
 
 
+def resolve_report_config_with_template(
+    project: Project, org: Organization, template: ReportTemplate | None
+) -> ProjectReportConfig:
+    """Like `resolve_report_config`, with one more, more-specific tier: a
+    selected report template's own intro/chapters/appendices (if it set
+    any) take precedence over the project/org-resolved content, per field
+    independently — same "falls back if not set" shape as the two tiers
+    below it. `template=None` (no template selected) is identical to
+    calling `resolve_report_config` directly.
+    """
+    base = resolve_report_config(project, org)
+    if template is None:
+        return base
+    intro = template.intro or base.intro
+    chapters = [ReportChapter(**c) for c in template.chapters] if template.chapters else base.chapters
+    appendices = [ReportChapter(**c) for c in template.appendices] if template.appendices else base.appendices
+    return ProjectReportConfig(
+        intro=intro, chapters=chapters, appendices=appendices,
+        intro_is_organisation_default=bool(not template.intro and base.intro_is_organisation_default),
+        chapters_is_organisation_default=bool(not template.chapters and base.chapters_is_organisation_default),
+        appendices_is_organisation_default=bool(not template.appendices and base.appendices_is_organisation_default),
+    )
+
+
 @dataclass
 class ReportRequirementRow:
     """One requirement row included in a generated report."""
@@ -90,11 +125,46 @@ def _safe(text: str) -> str:
     return _xml_escape(text)
 
 
-def _markdown_to_flowables(markdown_text: str) -> list:
-    """Converts a Markdown string into a list of ReportLab flowables."""
+_MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+rightMargin default (2cm each)
+
+
+def _image_flowable(image_bytes: bytes):
+    """Builds a page-width-constrained ReportLab `Image` flowable, or
+    `None` if `image_bytes` isn't a decodable image — the same
+    "a bad image must never break report generation" handling already used
+    for the cover-page logo (see `generate_pdf_report` below)."""
+    try:
+        img = Image(io.BytesIO(image_bytes))
+        if img.imageWidth > _MAX_IMAGE_WIDTH:
+            scale = _MAX_IMAGE_WIDTH / float(img.imageWidth)
+            img.drawWidth = _MAX_IMAGE_WIDTH
+            img.drawHeight = img.imageHeight * scale
+        return img
+    except Exception:  # noqa: BLE001 - malformed/unsupported image content must never break report generation
+        return None
+
+
+def _markdown_to_flowables(markdown_text: str, images: dict[str, bytes] | None = None) -> list:
+    """Converts a Markdown string into a list of ReportLab flowables.
+
+    Args:
+        markdown_text: The Markdown source.
+        images: Maps an image reference (as it appears in
+            `![alt](ref)`, e.g. `"attachment:<uuid>"`) to already-resolved
+            image bytes. A paragraph consisting of *only* an image (the
+            normal "image on its own line" Markdown shape) is rendered as
+            a `reportlab.platypus.Image`; a reference missing from `images`
+            (not resolved, wrong org, not actually an image) is skipped
+            silently rather than failing report generation. Images mixed
+            inline with other paragraph text are not supported — the
+            paragraph falls back to its literal escaped text, matching this
+            renderer's existing "match the supported subset, nothing more"
+            scope (see module docstring).
+    """
     flowables: list = []
     if not markdown_text.strip():
         return flowables
+    images = images or {}
 
     tokens = _md.parse(markdown_text)
     i = 0
@@ -109,9 +179,20 @@ def _markdown_to_flowables(markdown_text: str) -> list:
             flowables.append(Paragraph(text, heading_styles.get(token.tag, _styles["Heading3"])))
             i += 3
         elif token.type == "paragraph_open":
-            text = _safe(tokens[i + 1].content)
-            flowables.append(Paragraph(text, _styles["BodyText"]))
-            flowables.append(Spacer(1, 0.2 * cm))
+            inline = tokens[i + 1]
+            image_children = [c for c in (inline.children or []) if c.type == "image"]
+            if len(image_children) == 1 and len(inline.children) == 1:
+                ref = image_children[0].attrs.get("src", "")
+                image_bytes = images.get(ref)
+                flowable = _image_flowable(image_bytes) if image_bytes else None
+                if flowable is not None:
+                    flowables.append(flowable)
+                    flowables.append(Spacer(1, 0.2 * cm))
+                # Missing/unresolvable reference: skip silently, no placeholder.
+            else:
+                text = _safe(inline.content)
+                flowables.append(Paragraph(text, _styles["BodyText"]))
+                flowables.append(Spacer(1, 0.2 * cm))
             i += 3
         elif token.type == "bullet_list_open":
             items = []
@@ -146,6 +227,7 @@ def generate_pdf_report(
     rows: list[ReportRequirementRow],
     post_markdown: str,
     branding: ReportBranding | None = None,
+    images: dict[str, bytes] | None = None,
 ) -> bytes:
     """Builds a PDF report of a project's requirements.
 
@@ -159,6 +241,9 @@ def generate_pdf_report(
         branding: Optional selected `ReportTemplate` styling (R-G-05) — an
             accent colour applied to the table header, an optional cover
             page (with the org logo if provided), and an optional footer.
+        images: Pre-resolved `attachment:<id>` -> image bytes mapping for
+            any images referenced in `pre_markdown`/`post_markdown` — see
+            `_markdown_to_flowables`'s docstring.
 
     Returns:
         The generated PDF file content as bytes.
@@ -184,7 +269,7 @@ def generate_pdf_report(
         story.append(Paragraph(_safe(project_name), _styles["Title"]))
         story.append(Spacer(1, 0.5 * cm))
 
-    story.extend(_markdown_to_flowables(pre_markdown))
+    story.extend(_markdown_to_flowables(pre_markdown, images))
 
     table_style = ParagraphStyle("cell", parent=_styles["BodyText"], fontSize=8, leading=10)
     header = ["ID", "Name", "Component", "Category", "Status", "Reasoning"]
@@ -208,7 +293,7 @@ def generate_pdf_report(
     ]))
     story.append(table)
     story.append(Spacer(1, 0.5 * cm))
-    story.extend(_markdown_to_flowables(post_markdown))
+    story.extend(_markdown_to_flowables(post_markdown, images))
 
     footer_text = branding.footer_text if branding else None
 

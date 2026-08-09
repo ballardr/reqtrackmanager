@@ -120,6 +120,16 @@ class Settings(BaseSettings):
             endpoints, internal admin APIs, etc.) — appropriate for a
             single-tenant or otherwise fully-trusted-tenant deployment, not a
             deployment serving mutually-untrusted organisations.
+        access_review_show_org_names: Whether the server-admin access review
+            (C-A-13) names the specific organisations each user belongs to,
+            rather than only a count. `SystemUserOut`'s org-membership field
+            is deliberately kept as a plain yes/no elsewhere (I-M-05: a
+            server admin is content-blind by design) — naming actual orgs
+            here is an explicit, opt-out-able exception to that, not an
+            oversight. Defaults to showing names on the reasoning that a
+            server admin already has direct database access regardless;
+            deployments that want the stricter, count-only view for this
+            specific screen can set this to `false`.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -168,6 +178,7 @@ class Settings(BaseSettings):
     two_factor_lockout_minutes: int = 15
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
+    access_review_show_org_names: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

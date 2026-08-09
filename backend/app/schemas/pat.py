@@ -18,10 +18,16 @@ from pydantic import BaseModel
 class PersonalAccessTokenCreate(BaseModel):
     name: str
     allowed_organization_ids: list[UUID]
+    allowed_project_ids: list[UUID] = []
     requested_expires_at: datetime | None = None
 
 
 class PersonalAccessTokenOrgRef(BaseModel):
+    id: UUID
+    name: str
+
+
+class PersonalAccessTokenProjectRef(BaseModel):
     id: UUID
     name: str
 
@@ -35,6 +41,7 @@ class PersonalAccessTokenCreateOut(BaseModel):
     token: str
     token_prefix: str
     allowed_organizations: list[PersonalAccessTokenOrgRef]
+    allowed_projects: list[PersonalAccessTokenProjectRef]
     expires_at: datetime
     created_at: datetime
 
@@ -47,6 +54,7 @@ class PersonalAccessTokenOut(BaseModel):
     name: str
     token_prefix: str
     allowed_organizations: list[PersonalAccessTokenOrgRef]
+    allowed_projects: list[PersonalAccessTokenProjectRef]
     expires_at: datetime
     revoked_at: datetime | None
     last_used_at: datetime | None

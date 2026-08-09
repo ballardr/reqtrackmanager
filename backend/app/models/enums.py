@@ -112,3 +112,44 @@ class StageReviewResponseChoice(str, enum.Enum):
 
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class SignupMode(str, enum.Enum):
+    """Server-wide public self-signup availability (`ServerSettings.signup_mode`).
+
+    DISABLED: No public signup form; every native account is provisioned by
+        an org/server admin (`create_org_user`) or via SSO.
+    ALWAYS_ON: Anyone can self-register a native account. No organisation
+        membership is granted automatically, regardless of email domain — an
+        admin assigns the new account to an organisation afterward.
+    ORG_SPECIFIED: Self-registration succeeds only when the typed email's
+        domain matches exactly one organisation that has both
+        `allow_self_signup=True` and a configured `auto_accept_email_domain`
+        — that organisation's domain configuration *is* the gate, not a
+        separate open-signup mode. See `routers/auth.py::signup`.
+    """
+
+    DISABLED = "disabled"
+    ALWAYS_ON = "always_on"
+    ORG_SPECIFIED = "org_specified"
+
+
+class ExternalUserPolicy(str, enum.Enum):
+    """Whether/how a project admin may add someone to a project by typing an
+    email address that isn't already an organisation member
+    (`Organization.external_user_policy`).
+
+    DISABLED: The project user picker only shows existing org members — no
+        email-based add, no invites. Equivalent to "don't allow external
+        users" (the default).
+    ORG_DOMAIN_ONLY: An email matching an *existing* account anywhere in the
+        system can always be added directly (granting org membership as a
+        side effect, C-U-02). A not-yet-registered email can only be
+        invited if its domain matches `Organization.auto_accept_email_domain`.
+    ANYONE: Same as ORG_DOMAIN_ONLY, but a not-yet-registered email of any
+        domain can be invited.
+    """
+
+    DISABLED = "disabled"
+    ORG_DOMAIN_ONLY = "org_domain_only"
+    ANYONE = "anyone"

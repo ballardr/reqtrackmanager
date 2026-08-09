@@ -42,6 +42,8 @@ export function CommentThread({
             className="btn"
             style={{ alignSelf: "flex-start" }}
             title={strings.requirements.reactionToggle}
+            aria-label={strings.requirements.reactionToggle}
+            aria-pressed={c.reacted_by_me}
             onClick={() => onToggleReaction(c.id, c.reacted_by_me)}
           >
             <Heart size={14} fill={c.reacted_by_me ? "currentColor" : "none"} />

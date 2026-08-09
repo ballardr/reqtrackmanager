@@ -62,7 +62,7 @@ export function Tooltip({ label, children }: { label: string; children: ReactNod
   return (
     <span
       ref={triggerRef}
-      style={{ display: "inline-flex" }}
+      className="tooltip-trigger"
       onMouseEnter={() => setVisible(true)}
       onMouseLeave={() => setVisible(false)}
       onFocus={() => setVisible(true)}

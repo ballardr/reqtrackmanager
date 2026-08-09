@@ -11,10 +11,12 @@ project the caller has any role on, so it gets its own small top-level
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.project import ProjectComponent
 from app.models.user import User
 from app.schemas.requirement import RequirementDueForReviewOut
 from app.services.reviews import get_due_reviews_for_user
@@ -26,10 +28,19 @@ router = APIRouter(prefix="/api/v1/me", tags=["me"])
 def list_my_due_reviews(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Requirements assigned to the current user as reviewer, due/overdue,
     across every project (C-R-09, filtered per C-R-10's assignment)."""
+    due = get_due_reviews_for_user(db, current_user.id)
+    component_ids = {req.component_id for _, req in due}
+    component_names = (
+        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
+        if component_ids
+        else {}
+    )
     return [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, unique_code=req.unique_code,
             name=version.name, review_date=version.review_date, reviewer_id=version.reviewer_id,
+            reviewer_name=current_user.display_name,
+            component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
-        for version, req in get_due_reviews_for_user(db, current_user.id)
+        for version, req in due
     ]

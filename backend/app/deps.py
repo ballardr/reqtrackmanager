@@ -63,11 +63,13 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
 
     Side effects:
         Stamps `request.state.pat_allowed_org_ids` with the token's scoped
-        org ids — `services/rbac.py`'s dependencies read this to restrict
-        org/project access to that set, on top of the user's real RBAC
-        roles. Also stamps `last_used_at` on the token row, throttled to
-        at most once per hour so a busy integration doesn't cause a DB
-        write on every single request.
+        org ids, and `request.state.pat_allowed_project_ids` with its
+        optional further project restriction (`None` if unset) —
+        `services/rbac.py`'s dependencies read both to restrict org/project
+        access to that scope, on top of the user's real RBAC roles. Also
+        stamps `last_used_at` on the token row, throttled to at most once
+        per hour so a busy integration doesn't cause a DB write on every
+        single request.
     """
     pat = db.scalar(select(PersonalAccessToken).where(PersonalAccessToken.token_hash == hash_pat(token)))
     if pat is None or pat.revoked_at is not None:
@@ -83,6 +85,12 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
         db.commit()
 
     request.state.pat_allowed_org_ids = {UUID(org_id) for org_id in pat.allowed_organization_ids}
+    # None (not an empty set) means "no extra project restriction" — an
+    # empty list is this token's default, unrestricted-within-its-orgs
+    # state, not "scoped to zero projects."
+    request.state.pat_allowed_project_ids = (
+        {UUID(project_id) for project_id in pat.allowed_project_ids} if pat.allowed_project_ids else None
+    )
     return user
 
 

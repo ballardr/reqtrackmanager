@@ -212,6 +212,19 @@ export interface ServerSettings {
   accent_color_hex: string;
   default_logo_file_id: string | null;
   default_header_title: string | null;
+  default_login_background_file_id: string | null;
+}
+
+export type SignupMode = "disabled" | "always_on" | "org_specified";
+
+export interface SelfSignupOrg {
+  id: string;
+  name: string;
+}
+
+export interface SignupConfig {
+  signup_mode: SignupMode;
+  self_signup_organizations: SelfSignupOrg[];
 }
 
 export interface FileAsset {
@@ -237,16 +250,42 @@ export interface OrgUser {
   is_2fa_enabled: boolean;
 }
 
+/** A search result for an email not (yet) a member of the searched org —
+ * only present when `Organization.external_user_policy` allows it. */
+export interface ExternalUserMatch {
+  email: string;
+  exists: boolean;
+}
+
+export interface OrgUserSearchResult {
+  members: OrgUser[];
+  external: ExternalUserMatch | null;
+}
+
+export interface OutsideDomainUser {
+  user_id: string;
+  email: string;
+  display_name: string;
+}
+
+/** Outcome of adding a project member by email — see
+ * `AssignByEmailOut`'s docstring in the backend schema for what each
+ * value means. */
+export type AssignByEmailOutcome = "added" | "invited" | "sso_provisioned";
+
 export interface SystemUser {
   user_id: string;
   email: string;
   display_name: string;
   is_active: boolean;
+  is_banned: boolean;
   last_login_at: string | null;
   is_2fa_enabled: boolean;
   created_at: string;
   is_server_admin: boolean;
   has_org_membership: boolean;
+  organization_count: number;
+  organization_names: string[];
 }
 
 export interface OrgGroup {
@@ -273,6 +312,8 @@ export interface ProjectListItem extends Project {
   current_stage_status: StageStatus | null;
   my_roles: ProjectRole[];
   is_favorite: boolean;
+  organization_name: string;
+  requirement_count: number;
 }
 
 export type CustomFieldEntityKind = "requirement" | "change_request";
@@ -324,9 +365,16 @@ export interface Component {
 export interface Category {
   id: string;
   project_id: string;
+  component_id: string;
   name: string;
   prefix: string;
   sort_order: number;
+}
+
+export interface OrgProjectSummary {
+  id: string;
+  name: string;
+  is_archived: boolean;
 }
 
 export interface ProjectGroup {
@@ -405,6 +453,9 @@ export interface RequirementDueForReview {
   name: string;
   review_date: string;
   reviewer_id: string | null;
+  reviewer_name: string | null;
+  component_id: string;
+  component_name: string;
 }
 
 export interface RequirementVersionEntry {
@@ -506,21 +557,43 @@ export interface ChangeEntry {
   detail: Record<string, unknown> | null;
 }
 
-/** Actor + action text for one activity entry (the entity-type badge is
- * rendered separately by the caller) — the one shared description used by
- * the project overview activity card, the project history page, and the
+/** Actor + action text for one activity entry (the entity-type badge, and
+ * the linked item identifier from `activityEntryLink`, are rendered
+ * separately by the caller) — the one shared description used by the
+ * project overview activity card, the project history page, and the
  * requirement/change-request side-panel activity list, so the three no
  * longer describe the same data three different, inconsistent ways. */
 export function describeActivityEntry(entry: ChangeEntry): string {
   const who = entry.actor_display_name ?? "Someone";
   const action = activityActionLabel(entry.action);
+  const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";
+  return `${who} ${action}${changeNote ? ` — ${changeNote}` : ""}`;
+}
+
+/**
+ * The item an activity entry is about, as a link + always-present label —
+ * `services/changes.py::get_project_changes` resolves `detail.unique_code`/
+ * `detail.name` (requirement) and `detail.proposed_name` (change request)
+ * for every entry of that entity type, from current state, regardless of
+ * which of the three underlying sources produced the entry, so this is
+ * never missing for those two types. `null` for entity types with no
+ * per-item page to link to (project structure/role/group events, ...).
+ */
+export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: string; label: string } | null {
   const detail = entry.detail;
-  const suffix =
-    detail && typeof detail.unique_code === "string" ? ` — ${detail.unique_code}` :
-    detail && typeof detail.proposed_name === "string" ? ` — ${detail.proposed_name}` :
-    detail && typeof detail.change_note === "string" ? ` — ${detail.change_note}` :
-    "";
-  return `${who} ${action}${suffix}`;
+  if (entry.entity_type === "requirement") {
+    const code = detail && typeof detail.unique_code === "string" ? detail.unique_code : null;
+    const name = detail && typeof detail.name === "string" ? detail.name : null;
+    return {
+      to: `/projects/${projectId}/requirements/${entry.entity_id}`,
+      label: code && name ? `${code} — ${name}` : code ?? name ?? entry.entity_id,
+    };
+  }
+  if (entry.entity_type === "change_request") {
+    const name = detail && typeof detail.proposed_name === "string" ? detail.proposed_name : null;
+    return { to: `/projects/${projectId}/change-requests/${entry.entity_id}`, label: name ?? entry.entity_id };
+  }
+  return null;
 }
 
 export interface RequirementImportResult {
@@ -553,6 +626,8 @@ export interface SsoGroupMapping {
   org_role: OrgRole;
 }
 
+export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
+
 export interface OrgAdvancedSettings {
   smtp_host: string | null;
   smtp_port: number | null;
@@ -560,9 +635,18 @@ export interface OrgAdvancedSettings {
   smtp_use_tls: boolean;
   sso_group_mappings: SsoGroupMapping[];
   pat_max_lifetime_days: number | null;
+  require_2fa: boolean;
+  allow_self_signup: boolean;
+  auto_accept_email_domain: string | null;
+  external_user_policy: ExternalUserPolicy;
 }
 
 export interface PersonalAccessTokenOrgRef {
+  id: string;
+  name: string;
+}
+
+export interface PersonalAccessTokenProjectRef {
   id: string;
   name: string;
 }
@@ -573,6 +657,7 @@ export interface PersonalAccessTokenCreateResult {
   token: string;
   token_prefix: string;
   allowed_organizations: PersonalAccessTokenOrgRef[];
+  allowed_projects: PersonalAccessTokenProjectRef[];
   expires_at: string;
   created_at: string;
 }
@@ -582,6 +667,7 @@ export interface PersonalAccessToken {
   name: string;
   token_prefix: string;
   allowed_organizations: PersonalAccessTokenOrgRef[];
+  allowed_projects: PersonalAccessTokenProjectRef[];
   expires_at: string;
   revoked_at: string | null;
   last_used_at: string | null;
@@ -613,6 +699,9 @@ export interface ReportTemplate {
   include_cover_page: boolean;
   include_logo: boolean;
   footer_text: string | null;
+  intro: string;
+  chapters: ReportChapter[];
+  appendices: ReportChapter[];
 }
 
 export interface OrgSsoConfig {

@@ -134,12 +134,22 @@ class ProjectComponent(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectCategory(UUIDPKMixin, TimestampMixin, Base):
-    """A requirement category with a settable identifier prefix (C-G-07)."""
+    """A requirement category with a settable identifier prefix (C-G-07),
+    nested under exactly one component — components and categories form a
+    two-level tree (a component has many categories; a category belongs to
+    one component), not two independent flat lists. `sort_order` is scoped
+    per-component (siblings under the same parent), not per-project, to
+    match: reordering categories under one component never touches another
+    component's own category ordering.
+    """
 
     __tablename__ = "project_categories"
-    __table_args__ = (UniqueConstraint("project_id", "prefix"),)
+    __table_args__ = (UniqueConstraint("component_id", "prefix"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    component_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_components.id", ondelete="CASCADE")
+    )
     name: Mapped[str] = mapped_column(String(255))
     prefix: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

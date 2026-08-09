@@ -12,7 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.models.enums import OrgRole
+from app.models.enums import ExternalUserPolicy, OrgRole
+from app.schemas.report import ReportChapter
 
 
 class OrganizationCreate(BaseModel):
@@ -97,9 +98,9 @@ class SsoGroupMapping(BaseModel):
 
 
 class OrgAdvancedSettingsOut(BaseModel):
-    """Per-organisation SMTP override, SSO group-mapping, and Personal
-    Access Token lifetime-cap settings — see `Organization` model
-    docstring and docs/decisions.md."""
+    """Per-organisation SMTP override, SSO group-mapping, Personal
+    Access Token lifetime-cap, self-signup, and external-user settings —
+    see `Organization` model docstring and docs/decisions.md."""
 
     smtp_host: str | None = None
     smtp_port: int | None = None
@@ -107,6 +108,10 @@ class OrgAdvancedSettingsOut(BaseModel):
     smtp_use_tls: bool = True
     sso_group_mappings: list[SsoGroupMapping] = []
     pat_max_lifetime_days: int | None = None
+    require_2fa: bool = False
+    allow_self_signup: bool = False
+    auto_accept_email_domain: str | None = None
+    external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -117,6 +122,10 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_use_tls: bool = True
     sso_group_mappings: list[SsoGroupMapping] = []
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
+    require_2fa: bool = False
+    allow_self_signup: bool = False
+    auto_accept_email_domain: str | None = Field(default=None, max_length=255)
+    external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
 
 
 class OrgUserCreate(BaseModel):
@@ -138,6 +147,33 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
+
+
+class ExternalUserMatch(BaseModel):
+    """A search result for an email that isn't (yet) a member of the
+    searched organisation — surfaced only when `Organization.
+    external_user_policy` allows it (`routers/orgs.py::search_org_users`).
+    """
+
+    email: str
+    exists: bool = Field(description="Whether a User account with this email already exists anywhere in the system.")
+
+
+class OrgUserSearchResult(BaseModel):
+    """Response for the project user picker's org-scoped-by-default search
+    (`routers/orgs.py::search_org_users`)."""
+
+    members: list[OrgUserOut] = []
+    external: ExternalUserMatch | None = None
+
+
+class OutsideDomainUserOut(BaseModel):
+    """A user matching the organisation's configured `auto_accept_email_domain`
+    who is not currently a member (`routers/orgs.py::list_outside_domain_users`)."""
+
+    user_id: UUID
+    email: str
+    display_name: str
 
 
 class OrgSsoConfigUpdate(BaseModel):
@@ -179,6 +215,9 @@ class ReportTemplateCreate(BaseModel):
     include_cover_page: bool = True
     include_logo: bool = True
     footer_text: str | None = None
+    intro: str = ""
+    chapters: list[ReportChapter] = []
+    appendices: list[ReportChapter] = []
 
 
 class ReportTemplateOut(BaseModel):
@@ -189,6 +228,21 @@ class ReportTemplateOut(BaseModel):
     include_cover_page: bool
     include_logo: bool
     footer_text: str | None = None
+    intro: str = ""
+    chapters: list[ReportChapter] = []
+    appendices: list[ReportChapter] = []
+
+
+class OrgProjectSummaryOut(BaseModel):
+    """A minimal, name-only view of a project for the org-admin project
+    directory (`GET /orgs/{id}/projects`) — deliberately excludes anything
+    that would count as project *content* (summary, requirement counts,
+    stage status, ...), since this endpoint exists to let an org admin
+    reach a project's user/role management without content access."""
+
+    id: UUID
+    name: str
+    is_archived: bool
 
 
 class DisplayNameLockUpdate(BaseModel):

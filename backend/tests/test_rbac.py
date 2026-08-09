@@ -76,6 +76,60 @@ def test_non_member_cannot_view_project(client, admin_token, org_id):
     assert resp.status_code == 403
 
 
+def test_org_admin_can_list_every_project_in_org_without_a_role(client, admin_token, org_id):
+    """`GET /orgs/{id}/projects` exists specifically so an org admin can
+    find and manage users on a project they hold no role in (unlike
+    `GET /projects`, which never surfaces such a project at all)."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "Org Projects Admin Reach")
+    create_org_user(client, admin_token, org["id"], "reach_creator@example.com", role="project_creator")
+    creator_token = login(client, "reach_creator@example.com", "Password123!")
+    project = create_project(client, creator_token, org["id"], "No Role Project")
+
+    # The regular project listing doesn't show it to the org admin.
+    projects = client.get("/api/v1/projects?archived=false", headers=auth_headers(org_admin_token)).json()
+    assert project["id"] not in {p["id"] for p in projects}
+
+    # The org-scoped admin listing does.
+    org_projects = client.get(f"/api/v1/orgs/{org['id']}/projects", headers=auth_headers(org_admin_token)).json()
+    assert project["id"] in {p["id"] for p in org_projects}
+
+    # A plain member (not org admin) is rejected.
+    resp = client.get(f"/api/v1/orgs/{org['id']}/projects", headers=auth_headers(creator_token))
+    assert resp.status_code == 403
+
+
+def test_org_admin_can_manage_group_membership_on_a_project_with_no_role(client, admin_token, org_id):
+    org, org_admin_token = create_org_admin_in(client, admin_token, "Org Projects Group Manage")
+    create_org_user(client, admin_token, org["id"], "reach_creator2@example.com", role="project_creator")
+    creator_token = login(client, "reach_creator2@example.com", "Password123!")
+    project = create_project(client, creator_token, org["id"], "Group Manage Project")
+    target_id = create_org_user(client, admin_token, org["id"], "reach_target@example.com", role="member")
+
+    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(org_admin_token)).json()
+    member_group = next(g for g in groups if g["role"] == "member")
+
+    add_resp = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{member_group['id']}/members",
+        json={"user_id": target_id}, headers=auth_headers(org_admin_token),
+    )
+    assert add_resp.status_code == 204, add_resp.text
+
+    groups_after = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(org_admin_token)).json()
+    member_group_after = next(g for g in groups_after if g["id"] == member_group["id"])
+    assert target_id in member_group_after["member_user_ids"]
+
+    remove_resp = client.delete(
+        f"/api/v1/projects/{project['id']}/groups/{member_group['id']}/members/{target_id}",
+        headers=auth_headers(org_admin_token),
+    )
+    assert remove_resp.status_code == 204
+
+    # An unrelated plain member (no role, not org admin) is still rejected.
+    outsider_token = login(client, "reach_target@example.com", "Password123!")
+    resp = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
+
+
 def test_only_project_manager_can_approve_stage(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     create_org_user(client, admin_token, org_id, "admin_role@example.com", role="member")

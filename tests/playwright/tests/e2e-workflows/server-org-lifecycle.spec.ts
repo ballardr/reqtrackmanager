@@ -19,6 +19,10 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.getByRole("link", { name: "Organisations", exact: true }).last().click();
     await expect(page).toHaveURL(/\/server\/organisations$/);
+    // Disabled orgs are hidden by default (UI/UX pass) — this test watches
+    // one org through its whole lifecycle including a disabled state, so
+    // it needs the "All" filter rather than the default "Active" one.
+    await page.getByRole("button", { name: "All", exact: true }).click();
 
     await test.step("create the organisation", async () => {
       await page.getByRole("button", { name: "New organisation" }).click();

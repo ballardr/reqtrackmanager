@@ -5,9 +5,11 @@ import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
+import { FavouritesPage } from "./pages/FavouritesPage";
 import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyReviewsDuePage } from "./pages/MyReviewsDuePage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { OidcCompletePage } from "./pages/OidcCompletePage";
 import { OrgAdminPage } from "./pages/OrgAdminPage";
 import { OrgListPage } from "./pages/OrgListPage";
@@ -21,9 +23,9 @@ import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
-import { ServerAccessReviewPage } from "./pages/ServerAccessReviewPage";
+import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
-import { ServerSettingsPage } from "./pages/ServerSettingsPage";
+import { SignupPage } from "./pages/SignupPage";
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
@@ -40,11 +42,12 @@ function ProtectedRoutes() {
     <Layout>
       <Routes>
         <Route path="/projects" element={<ProjectListPage />} />
+        <Route path="/favourites" element={<FavouritesPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin" element={<OrgAdminPage />} />
         <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
-        <Route path="/server/access-review" element={<ServerAccessReviewPage />} />
-        <Route path="/server/settings" element={<ServerSettingsPage />} />
+        <Route path="/server/management" element={<ServerManagementPage />} />
         <Route path="/my-reviews" element={<MyReviewsDuePage />} />
         <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
         <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
@@ -68,6 +71,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/login/:slug" element={<OrgLoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
       <Route path="/oidc-complete" element={<OidcCompletePage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>

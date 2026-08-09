@@ -68,7 +68,8 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
     category_id_map = {}
     for category in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == source.id)).all():
         new_category = ProjectCategory(
-            project_id=new_project.id, name=category.name, prefix=category.prefix, sort_order=category.sort_order
+            project_id=new_project.id, component_id=component_id_map[category.component_id],
+            name=category.name, prefix=category.prefix, sort_order=category.sort_order,
         )
         db.add(new_category)
         db.flush()

@@ -32,6 +32,7 @@
   --color-text: #1a202c;
   --color-text-muted: #5a6472;
   --color-primary: #475569;
+  --color-primary-hover: #334155;
   --color-primary-contrast: #ffffff;
   --color-accent: #2f855a;
   --color-danger: #c53030;
@@ -47,6 +48,7 @@
   --color-text: #e6e9ef;
   --color-text-muted: #9aa4b2;
   --color-primary: #94a3b8;
+  --color-primary-hover: #a9b6c7;
   --color-primary-contrast: #14181f;
   --color-accent: #68d391;
   --color-danger: #fc8181;
@@ -123,6 +125,17 @@ textarea {
   border-color: var(--color-primary);
 }
 
+/* .btn:hover's var(--color-surface-alt) is right for the plain/default
+   button (its light card-toned background against normal text), but
+   applied to .btn-primary it swapped a solid, high-contrast button for a
+   near-white/near-black chip still using --color-primary-contrast text —
+   unreadable in both themes. Darken/lighten the primary colour itself
+   instead of switching backgrounds. */
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
 .btn-danger {
   color: var(--color-danger);
   border-color: var(--color-danger);
@@ -184,6 +197,32 @@ textarea.input {
   font-size: 0.75rem;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
+}
+
+/* The unread-notification count needs to read as "something needs your
+   attention" at a glance, which the plain `.badge` (a quiet, low-contrast
+   outline chip meant for neutral labels like a status or role) doesn't
+   convey — a small solid red bubble pinned to the bell icon's corner, the
+   conventional shape for this exact kind of count. Uses a fixed vivid red
+   rather than the theme's `--color-danger` (which is tuned to read as
+   text/border against a page background, not as a solid fill behind white
+   text — too pale for that in dark theme) so it reads the same "urgent"
+   way in both themes. */
+.notification-count-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--color-header-bg);
 }
 
 /* See components/Tooltip.tsx — appears immediately on hover/focus rather
@@ -396,11 +435,27 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.45rem 0.6rem;
   border-radius: 6px;
   color: var(--color-text) !important;
   text-decoration: none !important;
   font-size: 0.92rem;
+}
+
+/* Wraps a nav-rail link while the rail is collapsed (see
+   components/Tooltip.tsx) — without this, the tooltip's own shrink-wrapped
+   `inline-flex` box would only cover the icon's own width, not the full
+   row, so the same "click/highlight is full width" fix above needs to
+   apply one level up too whenever a link is Tooltip-wrapped. */
+.tooltip-trigger {
+  display: inline-flex;
+}
+
+.nav-rail .tooltip-trigger {
+  display: flex;
+  width: 100%;
 }
 
 .nav-link:hover {
@@ -435,18 +490,6 @@ textarea.input {
   overflow: hidden;
   text-indent: -9999px;
   background: var(--color-border);
-}
-
-.nav-rail-toggle {
-  width: 100%;
-  justify-content: center;
-  border: none;
-  background: none;
-  margin-top: 0.4rem;
-}
-
-.nav-rail-toggle:hover {
-  background: var(--color-surface-alt);
 }
 
 table {
