@@ -96,7 +96,9 @@ def test_change_request_activity_entries_always_carry_current_title(client, admi
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
-            "kind": "modify_requirement", "requirement_id": requirement["id"], "proposed_name": "The Proposal",
+            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["name", "reasoning", "clarification"],
+            "proposed_name": "The Proposal",
             "proposed_reasoning": "x", "proposed_clarification": "", "reason": "test",
         },
         headers=auth_headers(admin_token),

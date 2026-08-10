@@ -15,7 +15,7 @@ from app.models.change_request import (
 )
 from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
-from app.models.file import FileAsset, RequirementFile
+from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
     Organization,
@@ -62,6 +62,7 @@ __all__ = [
     "Subscription",
     "FileAsset",
     "RequirementFile",
+    "CommentFile",
     "Notification",
     "NotificationPreference",
     "Organization",

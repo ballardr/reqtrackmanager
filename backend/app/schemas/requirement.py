@@ -14,15 +14,24 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.models.enums import RequirementLevel, RequirementLinkType, RequirementReviewOutcome, RequirementStatus
+from app.schemas.file import FileAssetOut
 
 
 class RequirementCreate(BaseModel):
     name: str
     reasoning: str = ""
     clarification: str = ""
+    description: str = ""
     component_id: UUID
     category_id: UUID
     owner_id: UUID | None = None
+    # A requirement must always end up with a real target (it can never be
+    # left unset in the data) — but omitting it here isn't an error: the
+    # router defaults to the project's earliest stage, the same backfill
+    # convention migration 0004 and CSV import use, so a script/API caller
+    # isn't forced to look up a stage id just to create a requirement. The
+    # frontend create form still makes the field a mandatory, pre-filled
+    # dropdown for the human-facing "can't be left unset" UX.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     keywords: list[str] = []
@@ -39,10 +48,15 @@ class RequirementUpdate(BaseModel):
     name: str
     reasoning: str = ""
     clarification: str = ""
+    description: str = ""
     component_id: UUID
     category_id: UUID
     owner_id: UUID
     status: RequirementStatus | None = None
+    # Omitting this means "not changing it" (carries the current value
+    # forward via apply_new_version's own explicitly-set convention) —
+    # never means "clear it": a requirement's target can never become
+    # unset, only omitted-from-this-particular-edit or retargeted.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     keywords: list[str] = []
@@ -60,11 +74,12 @@ class RequirementOut(BaseModel):
     name: str
     reasoning: str
     clarification: str
+    description: str = ""
     status: RequirementStatus
     owner_id: UUID
     component_id: UUID
     category_id: UUID
-    target_stage_id: UUID | None = None
+    target_stage_id: UUID
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     sort_order: int
     creator_id: UUID
@@ -90,9 +105,10 @@ class RequirementVersionOut(BaseModel):
     name: str
     reasoning: str
     clarification: str
+    description: str = ""
     status: RequirementStatus
     owner_id: UUID
-    target_stage_id: UUID | None = None
+    target_stage_id: UUID
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     change_note: str
     change_request_id: UUID | None
@@ -128,14 +144,23 @@ class CommentCreate(BaseModel):
     body: str
 
 
+class CommentUpdate(BaseModel):
+    """Author-only edit of a comment's body (attachments are managed via the
+    separate files endpoints, not this payload)."""
+
+    body: str
+
+
 class CommentOut(BaseModel):
     id: UUID
     author_id: UUID
     author_display_name: str
     body: str
     created_at: datetime
+    edited_at: datetime | None = None
     reaction_count: int = 0
     reacted_by_me: bool = False
+    attachments: list[FileAssetOut] = []
 
 
 class RequirementReviewCreate(BaseModel):

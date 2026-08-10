@@ -58,7 +58,10 @@ def test_change_request_submit_and_decide_notify(client, admin_token, org_id):
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
-        json={"kind": "modify_requirement", "requirement_id": requirement["id"], "proposed_name": "New name", "reason": "x"},
+        json={
+            "kind": "modify_requirement", "requirement_id": requirement["id"], "changed_fields": ["name"],
+            "proposed_name": "New name", "reason": "x",
+        },
         headers=auth_headers(admin_token),
     ).json()
     client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))

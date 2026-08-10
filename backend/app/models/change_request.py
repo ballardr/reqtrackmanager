@@ -68,6 +68,28 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             submissions).
         proposed_component_id / proposed_category_id: Only meaningful for
             NEW_REQUIREMENT change requests.
+        changed_fields: For a MODIFY_REQUIREMENT change request, the
+            explicit list of which requirement fields this change request
+            actually proposes to change (field names matching
+            RequirementVersion's own attribute names, e.g. `"name"`,
+            `"target_stage_id"`, `"attachments"`). A `proposed_*` column not
+            named here is not part of this proposal at all — approval must
+            leave the corresponding requirement field completely untouched,
+            not silently overwrite it with a same-or-stale value (the gap
+            this replaces: every field used to be re-applied unconditionally
+            on approval). Always empty for NEW_REQUIREMENT change requests,
+            where every field is meaningful by definition (there's no
+            "current version" to diff against). See
+            `routers/change_requests.py::decide_change_request` for where
+            this is consulted, and `docs/decisions.md`'s "Change request
+            field-level tracking" entry for the full reasoning.
+        proposed_attachment_file_ids: File ids (already uploaded as an
+            organisation shared resource — the same upload path the report-
+            image picker uses, see `routers/orgs.py::upload_org_resource`)
+            this change request proposes attaching to the requirement.
+            Always additive: approval creates new `RequirementFile` links
+            for these, never removes existing attachments. Meaningful only
+            when `"attachments"` is in `changed_fields`.
     """
 
     __tablename__ = "change_request_versions"
@@ -78,9 +100,15 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     )
     version_number: Mapped[int] = mapped_column(Integer)
 
-    proposed_name: Mapped[str] = mapped_column(String(500))
-    proposed_reasoning: Mapped[str] = mapped_column(Text, default="")
-    proposed_clarification: Mapped[str] = mapped_column(Text, default="")
+    # Nullable at the DB layer even though NEW_REQUIREMENT change requests
+    # always need a real name — that requirement is enforced at the
+    # schema/router layer (ChangeRequestCreate), not here, since a
+    # MODIFY_REQUIREMENT change request that isn't proposing to rename
+    # anything legitimately has no proposed_name at all (see changed_fields).
+    proposed_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    proposed_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_clarification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposed_component_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_components.id", ondelete="SET NULL"), nullable=True
     )
@@ -93,9 +121,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
     )
-    proposed_level: Mapped[RequirementLevel] = mapped_column(
-        str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT
-    )
+    proposed_level: Mapped[RequirementLevel | None] = mapped_column(str_enum(RequirementLevel, 20), nullable=True)
     # Mirrors RequirementVersion's review-scheduling fields (C-R-06/08/10) so
     # a change request can propose setting/changing them, same as any other
     # requirement content — review_date can only change via this path once a
@@ -105,9 +131,13 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    proposed_attachment_file_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    changed_fields: Mapped[list[str]] = mapped_column(JSONB, default=list)
     reason: Mapped[str] = mapped_column(Text)
     # Values for this project's custom change-request attribute definitions
-    # (C-C-01, C-C-02), keyed by CustomFieldDefinition id.
+    # (C-C-01, C-C-02), keyed by CustomFieldDefinition id. Meaningful only
+    # when "custom_fields" is in changed_fields (for MODIFY_REQUIREMENT) or
+    # always for NEW_REQUIREMENT.
     custom_fields: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -130,6 +160,13 @@ class ReviewComment(UUIDPKMixin, TimestampMixin, Base):
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
+    # Set only by PATCH .../comments/{id} (author-only) when the body is
+    # actually changed — null for a never-edited comment. Deliberately its
+    # own column rather than comparing created_at/updated_at: TimestampMixin's
+    # two independent default=utcnow callables can resolve microseconds
+    # apart on the same INSERT, which would make a fresh comment
+    # intermittently read as "edited".
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ChangeRequestTask(UUIDPKMixin, TimestampMixin, Base):

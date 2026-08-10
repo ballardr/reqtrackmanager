@@ -119,3 +119,56 @@ def test_generating_a_report_with_a_foreign_orgs_template_id_is_rejected(client,
         json={"report_template_id": foreign_template["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400
+
+
+def test_report_template_chapters_per_component_round_trips(client, admin_token, org_id):
+    """Defaults to True (chaptered) on creation; explicit False is
+    respected and survives an update."""
+    resp = client.post(
+        f"/api/v1/orgs/{org_id}/report-templates", json={"name": "Default Layout"}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["chapters_per_component"] is True
+
+    resp = client.post(
+        f"/api/v1/orgs/{org_id}/report-templates",
+        json={"name": "Continuous Layout", "chapters_per_component": False}, headers=auth_headers(admin_token),
+    )
+    template = resp.json()
+    assert template["chapters_per_component"] is False
+
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/report-templates/{template['id']}",
+        json={"name": "Continuous Layout", "chapters_per_component": True}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["chapters_per_component"] is True
+
+
+def test_project_default_report_template_round_trips_and_rejects_foreign_org(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    template = client.post(
+        f"/api/v1/orgs/{org_id}/report-templates", json={"name": "House Style"}, headers=auth_headers(admin_token),
+    ).json()
+
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/report-config",
+        json={"intro": "", "chapters": [], "appendices": [], "default_report_template_id": template["id"]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["default_report_template_id"] == template["id"]
+
+    fetched = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
+    assert fetched["default_report_template_id"] == template["id"]
+
+    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Org For Default Template Isolation")
+    foreign_template = client.post(
+        f"/api/v1/orgs/{other_org['id']}/report-templates", json={"name": "Foreign"}, headers=auth_headers(other_admin_token),
+    ).json()
+    resp = client.put(
+        f"/api/v1/projects/{project['id']}/report-config",
+        json={"intro": "", "chapters": [], "appendices": [], "default_report_template_id": foreign_template["id"]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400

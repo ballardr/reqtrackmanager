@@ -77,8 +77,16 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("post a comment and react to it", async () => {
     await page.getByPlaceholder("Add comment").fill("This looks ready for review.");
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
-    await expect(page.getByText("Server Administrator", { exact: true })).toBeVisible();
-    await expect(page.getByText("This looks ready for review.")).toBeVisible();
+    // Scoped to the posted comment's own card: a page-wide exact "Server
+    // Administrator" text match is now ambiguous against both the nav
+    // rail's own "Server Administrator" link and the requirement's Change
+    // log table, which gained a "Changed by" column showing the same name
+    // for the requirement's own creation entry. `.card` is nested (the
+    // Discussion section's own card wraps each individual comment's card),
+    // so `.last()` picks the innermost, most specific match.
+    const postedComment = page.locator(".card", { hasText: "This looks ready for review." }).last();
+    await expect(postedComment.getByText("Server Administrator", { exact: true })).toBeVisible();
+    await expect(postedComment).toBeVisible();
 
     const likeButton = page.getByRole("button", { name: "Like this comment" });
     await likeButton.click();
@@ -94,8 +102,18 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // The requirement select defaults asynchronously once project data
     // loads — wait so Create doesn't submit with an empty requirement_id.
     await expect(page.getByRole("combobox").first()).toContainText("Users can export their data");
-    await page.getByPlaceholder("Proposed name").fill("Export as CSV or JSON");
-    await page.getByPlaceholder("Proposed reasoning").fill("Stakeholders want a choice of format");
+    // Modify-requirement CRs are field-toggle driven: a field's proposed
+    // value is only editable (and only becomes part of `changed_fields`)
+    // once its "Fields to change" checkbox is ticked. Each checkbox and its
+    // (once checked) inline editor live in the same field-row container
+    // (checkbox -> label -> field-row div), so scope the fill to that row
+    // rather than a page-wide input query.
+    const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
+    await nameCheckbox.check();
+    await nameCheckbox.locator("xpath=../..").locator("input.input").fill("Export as CSV or JSON");
+    const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
+    await reasoningCheckbox.check();
+    await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Stakeholders want a choice of format");
     await page.getByPlaceholder("Reason for change").fill("Clarifying the export format options");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 

@@ -1,5 +1,13 @@
 """Tests for report generation: PDF (R-F-01) and CSV (R-F-02) exports."""
 
+from app.models.organization import Organization
+from app.models.project import Project
+from app.services.reports import (
+    ReportRequirementRow,
+    _group_rows_by_component_and_category,
+    default_chapters_per_component,
+    resolve_report_config,
+)
 from tests.conftest import auth_headers, create_component_and_category, create_project
 
 
@@ -12,6 +20,86 @@ def _seed_requirement(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     )
     return project
+
+
+def _row(unique_code, component_name, component_sort_order, category_name, category_sort_order) -> ReportRequirementRow:
+    return ReportRequirementRow(
+        unique_code=unique_code, name=f"Name for {unique_code}", reasoning="Because.", clarification="",
+        status="draft", component_name=component_name, category_name=category_name,
+        component_sort_order=component_sort_order, category_sort_order=category_sort_order,
+    )
+
+
+def test_group_rows_orders_chapters_and_sections_by_sort_order_not_name(client, admin_token, org_id):
+    """Deliberately picks names whose alphabetical order is the *reverse*
+    of their sort_order, so a test that accidentally grouped/ordered by
+    name instead of sort_order (matching the component/category tree UI's
+    own ordering) would fail rather than pass by coincidence."""
+    rows = [
+        _row("A-1-001", "Zeta Component", 1, "Zulu Category", 1),
+        _row("A-2-001", "Zeta Component", 1, "Alpha Category", 0),
+        _row("B-1-001", "Alpha Component", 0, "Solo Category", 0),
+    ]
+    chapters = _group_rows_by_component_and_category(rows)
+    assert [name for name, _ in chapters] == ["Alpha Component", "Zeta Component"]
+
+    alpha_component_sections = chapters[0][1]
+    assert [name for name, _ in alpha_component_sections] == ["Solo Category"]
+
+    zeta_component_sections = chapters[1][1]
+    assert [name for name, _ in zeta_component_sections] == ["Alpha Category", "Zulu Category"]
+
+
+def test_group_rows_orders_requirements_within_a_category_by_unique_code():
+    rows = [
+        _row("SW-PERF-002", "Software", 0, "Performance", 0),
+        _row("SW-PERF-001", "Software", 0, "Performance", 0),
+    ]
+    chapters = _group_rows_by_component_and_category(rows)
+    codes = [r.unique_code for r in chapters[0][1][0][1]]
+    assert codes == ["SW-PERF-001", "SW-PERF-002"]
+
+
+def test_group_rows_keeps_components_separate_even_with_the_same_name():
+    """Component names aren't guaranteed unique (only (project_id, prefix)
+    is) — two same-named components at different sort positions must stay
+    as two distinct chapters, not merge into one."""
+    rows = [
+        _row("A-1-001", "Shared Name", 0, "Cat A", 0),
+        _row("B-1-001", "Shared Name", 1, "Cat B", 0),
+    ]
+    chapters = _group_rows_by_component_and_category(rows)
+    assert len(chapters) == 2
+
+
+def test_pdf_report_generates_valid_pdf_across_multiple_components_and_categories(client, admin_token, org_id):
+    """Router-level smoke test for the chapter-per-component/section-per-
+    category structure — the exact ordering is covered directly (and much
+    more cheaply) by the _group_rows_by_component_and_category unit tests
+    above, since parsing PDF text back out would need a dependency this
+    project's test suite deliberately doesn't add (see test_report_images.py)."""
+    project = create_project(client, admin_token, org_id)
+    sw_id, perf_id = create_component_and_category(client, admin_token, project["id"])
+    hw_component = client.post(
+        f"/api/v1/projects/{project['id']}/components", json={"name": "Hardware", "prefix": "HW"},
+        headers=auth_headers(admin_token),
+    ).json()
+    hw_category = client.post(
+        f"/api/v1/projects/{project['id']}/categories",
+        json={"name": "Reliability", "prefix": "REL", "component_id": hw_component["id"]},
+        headers=auth_headers(admin_token),
+    ).json()
+    for component_id, category_id, name in [
+        (sw_id, perf_id, "Boot fast"), (hw_component["id"], hw_category["id"], "Survive a drop"),
+    ]:
+        client.post(
+            f"/api/v1/projects/{project['id']}/requirements",
+            json={"name": name, "reasoning": "x", "component_id": component_id, "category_id": category_id},
+            headers=auth_headers(admin_token),
+        )
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.content[:5] == b"%PDF-"
 
 
 def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
@@ -75,6 +163,7 @@ def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, 
         "intro_is_organisation_default": False,
         "chapters_is_organisation_default": False,
         "appendices_is_organisation_default": False,
+        "default_report_template_id": None,
     }
 
     saved = client.put(
@@ -146,3 +235,87 @@ def test_project_falls_back_to_organisation_report_defaults(client, admin_token,
     resp = client.post(f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"
+
+
+def test_resolve_report_config_falls_back_to_project_summary_then_org_default_for_intro():
+    """Precedence for intro specifically: project.report_intro (explicit
+    override) > project.summary (project description) > org default >
+    blank. Chapters/appendices have no summary-equivalent fallback."""
+    org = Organization(default_report_intro="org default intro")
+
+    # No report_intro set at all: falls back to the project's description.
+    project = Project(report_intro="", summary="A drone inspection platform.")
+    resolved = resolve_report_config(project, org)
+    assert resolved.intro == "A drone inspection platform."
+    assert resolved.intro_is_organisation_default is False
+
+    # An explicit report_intro still wins over the description.
+    project = Project(report_intro="Explicit intro.", summary="A drone inspection platform.")
+    resolved = resolve_report_config(project, org)
+    assert resolved.intro == "Explicit intro."
+
+    # Neither report_intro nor summary set: falls all the way to the org default.
+    project = Project(report_intro="", summary="")
+    resolved = resolve_report_config(project, org)
+    assert resolved.intro == "org default intro"
+    assert resolved.intro_is_organisation_default is True
+
+
+def test_default_chapters_per_component_heuristic():
+    """Chaptered unless some component in scope has fewer than three
+    requirements — see default_chapters_per_component's docstring."""
+    assert default_chapters_per_component([]) is True  # nothing to chapter
+
+    all_healthy = [
+        _row("A-1-001", "Airframe", 0, "Functional", 0),
+        _row("A-1-002", "Airframe", 0, "Functional", 0),
+        _row("A-1-003", "Airframe", 0, "Functional", 0),
+        _row("B-1-001", "Avionics", 1, "Safety", 0),
+        _row("B-1-002", "Avionics", 1, "Safety", 0),
+        _row("B-1-003", "Avionics", 1, "Safety", 0),
+    ]
+    assert default_chapters_per_component(all_healthy) is True
+
+    one_sparse = [
+        *all_healthy,
+        _row("C-1-001", "Firmware", 2, "Regulatory", 0),  # only 1 requirement in this component
+    ]
+    assert default_chapters_per_component(one_sparse) is False
+
+
+def test_chapters_per_component_precedence_payload_beats_template_beats_heuristic(client, admin_token, org_id):
+    """Router-level: an explicit payload choice wins over the selected
+    template's setting, which wins over the sparse-component heuristic."""
+    project = create_project(client, admin_token, org_id)
+    sw_id, perf_id = create_component_and_category(client, admin_token, project["id"])
+    # Only one requirement in this component -> heuristic alone would pick continuous.
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "Solo requirement", "reasoning": "x", "component_id": sw_id, "category_id": perf_id},
+        headers=auth_headers(admin_token),
+    )
+
+    heuristic_resp = client.post(f"/api/v1/projects/{project['id']}/reports/pdf", json={}, headers=auth_headers(admin_token))
+    assert heuristic_resp.status_code == 200
+
+    template_forces_chapters = client.post(
+        f"/api/v1/orgs/{org_id}/report-templates",
+        json={"name": "Always Chaptered", "chapters_per_component": True}, headers=auth_headers(admin_token),
+    ).json()
+    template_resp = client.post(
+        f"/api/v1/projects/{project['id']}/reports/pdf",
+        json={"report_template_id": template_forces_chapters["id"]}, headers=auth_headers(admin_token),
+    )
+    assert template_resp.status_code == 200
+    # The template forces chaptered (with its page break + heading) despite
+    # the sparse component the heuristic alone would have gone continuous for.
+    assert len(template_resp.content) > len(heuristic_resp.content)
+
+    payload_overrides_template = client.post(
+        f"/api/v1/projects/{project['id']}/reports/pdf",
+        json={"report_template_id": template_forces_chapters["id"], "chapters_per_component": False},
+        headers=auth_headers(admin_token),
+    )
+    assert payload_overrides_template.status_code == 200
+    # Explicit payload choice (continuous) wins over the template's chaptered setting.
+    assert len(payload_overrides_template.content) < len(template_resp.content)

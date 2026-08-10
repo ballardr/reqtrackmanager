@@ -89,8 +89,18 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // loads — wait so Create doesn't submit with an empty requirement_id
     // (same race already worked around in mockup-engagement.spec.ts).
     await expect(page.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
-    await page.getByPlaceholder("Proposed name").fill("Boot in under 3 seconds");
-    await page.getByPlaceholder("Proposed reasoning").fill("Tighter UX target");
+    // Modify-requirement CRs are field-toggle driven: a field's proposed
+    // value is only editable (and only becomes part of `changed_fields`)
+    // once its "Fields to change" checkbox is ticked. Each checkbox and its
+    // (once checked) inline editor live in the same field-row container
+    // (checkbox -> label -> field-row div), so scope the fill to that row
+    // rather than a page-wide input query.
+    const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
+    await nameCheckbox.check();
+    await nameCheckbox.locator("xpath=../..").locator("input.input").fill("Boot in under 3 seconds");
+    const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
+    await reasoningCheckbox.check();
+    await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter UX target");
     await page.getByPlaceholder("Reason for change").fill("Field feedback showed 5s felt slow");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
@@ -110,14 +120,14 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("generate a PDF report", async () => {
     await page.getByText("Reports").click();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF" }).click();
+    await page.getByRole("button", { name: "Generate PDF" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("requirements.pdf");
   });
 
   await test.step("generate a CSV report", async () => {
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download CSV" }).click();
+    await page.getByRole("button", { name: "Generate CSV" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("requirements.csv");
   });

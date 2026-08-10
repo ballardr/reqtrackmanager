@@ -24,9 +24,9 @@ flowchart LR
 
 ## What "locked" means
 
-Once a requirement reaches **approved** or **completed**, it's locked — you can no longer edit it directly. This is deliberate: an approved requirement is a commitment, and silently editing it after the fact would undermine the whole point of tracking it.
+Once a requirement reaches **approved** or **completed**, it's locked — you can no longer edit it directly, and you can no longer attach a file to it directly either. This is deliberate: an approved requirement is a commitment, and silently editing it after the fact (or quietly adding supporting files to it) would undermine the whole point of tracking it.
 
-To change a locked requirement, raise a **change request** instead (see the next section). This keeps a clear record of what changed, why, and who approved it.
+To change a locked requirement, or attach a new file to it, raise a **change request** instead (see the next section). This keeps a clear record of what changed, why, and who approved it. If you just need to share a file informally rather than attach it to the requirement itself, a discussion comment can carry its own attachment at any time, locked or not.
 
 ## Reviews
 

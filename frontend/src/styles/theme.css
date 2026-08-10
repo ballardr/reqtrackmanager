@@ -225,6 +225,33 @@ textarea.input {
   box-shadow: 0 0 0 2px var(--color-header-bg);
 }
 
+/* The notification bell's dropdown (components/NotificationBell.tsx) is a
+   normal light `.card` surface, but it's rendered as a DOM descendant of
+   `.app-header` (the bell lives in the header bar) — so without this reset
+   it inherits `.app-header`'s white `color` and its `.btn`/`.text-muted`
+   overrides (tuned for text sitting directly on the dark header bar), and
+   every bit of text/buttons inside the dropdown render as white-on-white
+   against the card's own light background. This selector is more specific
+   than `.app-header .text-muted`/`.app-header .btn`, so it wins regardless
+   of source order. */
+.app-header .notification-dropdown {
+  color: var(--color-text);
+}
+
+.app-header .notification-dropdown .text-muted {
+  color: var(--color-text-muted);
+}
+
+.app-header .notification-dropdown .btn {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.app-header .notification-dropdown .btn:hover {
+  background: var(--color-surface-alt);
+}
+
 /* See components/Tooltip.tsx — appears immediately on hover/focus rather
    than relying on the native `title` attribute's slow, OS-dependent delay.
    Rendered through a portal into `document.body` with `top`/`left` set

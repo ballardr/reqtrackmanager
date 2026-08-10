@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
@@ -42,6 +42,7 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "c
  */
 export function RequirementsPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
@@ -72,6 +73,7 @@ export function RequirementsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newReasoning, setNewReasoning] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [newComponentId, setNewComponentId] = useState("");
   const [newCategoryId, setNewCategoryId] = useState("");
   const [newTargetStageId, setNewTargetStageId] = useState("");
@@ -118,6 +120,10 @@ export function RequirementsPage() {
     setCategories(cats);
     setStages(stgs);
     setCustomFieldDefs(defs);
+    // Target is mandatory (it can never be left unset) — the select always
+    // has a real stage pre-filled, never a blank "—" option, same as the
+    // backend's own create-time default (routers/requirements.py).
+    if (!newTargetStageId && stgs[0]) setNewTargetStageId(stgs[0].id);
     const selectedComponentId = newComponentId || comps[0]?.id || "";
     if (!newComponentId && comps[0]) setNewComponentId(comps[0].id);
     // Must belong to the selected component (the tree) — picking any
@@ -133,6 +139,20 @@ export function RequirementsPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, search, statusFilter, targetStageFilter, categoryFilter, hasCommentsOnly, onlyWatched]);
+
+  // Deep-linked from the Project Overview page's "New requirement" button
+  // (?new=1) — opened once, then the param is stripped so a later reload
+  // of this page doesn't keep reopening the form.
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setShowNewForm(true);
+      setSearchParams((params) => {
+        params.delete("new");
+        return params;
+      }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     if (!projectId || !user) return;
@@ -172,20 +192,21 @@ export function RequirementsPage() {
   }
 
   async function createRequirement() {
-    if (!projectId || !newComponentId || !newCategoryId) return;
+    if (!projectId || !newComponentId || !newCategoryId || !newTargetStageId) return;
     await api.post(`/api/v1/projects/${projectId}/requirements`, {
       name: newName,
       reasoning: newReasoning,
+      description: newDescription,
       component_id: newComponentId,
       category_id: newCategoryId,
-      target_stage_id: newTargetStageId || null,
+      target_stage_id: newTargetStageId,
       level: newLevel,
       keywords: [],
       custom_fields: customFieldValues,
     });
     setNewName("");
     setNewReasoning("");
-    setNewTargetStageId("");
+    setNewDescription("");
     setNewLevel("requirement");
     setCustomFieldValues({});
     setShowNewForm(false);
@@ -359,6 +380,13 @@ export function RequirementsPage() {
             onChange={(e) => setNewReasoning(e.target.value)}
             rows={2}
           />
+          <textarea
+            className="input"
+            placeholder={strings.requirements.description}
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            rows={2}
+          />
           <div className="row">
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
               {strings.requirements.component}
@@ -397,18 +425,24 @@ export function RequirementsPage() {
             </label>
           </div>
           <div className="row">
-            <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
-              <option value="">Target version —</option>
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
-              <option value="requirement">Requirement</option>
-              <option value="recommended">Recommended</option>
-            </select>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.targetVersion}
+              <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+              {strings.requirements.level}
+              <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
+                <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
+                <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
+                <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
+              </select>
+            </label>
           </div>
           <CustomFieldsForm
             definitions={customFieldDefs}
@@ -418,7 +452,7 @@ export function RequirementsPage() {
           <button
             className="btn btn-primary"
             onClick={createRequirement}
-            disabled={!newName || !newComponentId || !newCategoryId}
+            disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
           >
             {strings.common.create}
           </button>

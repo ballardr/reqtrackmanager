@@ -28,8 +28,18 @@ test("change request submitter cannot approve their own request; the project man
     // data finishes loading — wait for that before filling the rest, or a
     // fast click can submit with an empty requirement_id.
     await expect(page.getByRole("combobox").first()).toContainText("HW-FN-001");
-    await page.getByPlaceholder("Proposed name").fill(proposedName);
-    await page.getByPlaceholder("Proposed reasoning").fill("Tighter latency target after field testing.");
+    // Modify-requirement CRs are field-toggle driven: a field's proposed
+    // value is only editable (and only becomes part of `changed_fields`)
+    // once its "Fields to change" checkbox is ticked. Each checkbox and its
+    // (once checked) inline editor live in the same field-row container
+    // (checkbox -> label -> field-row div), so scope the fill to that row
+    // rather than a page-wide input query.
+    const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
+    await nameCheckbox.check();
+    await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
+    const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
+    await reasoningCheckbox.check();
+    await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter latency target after field testing.");
     await page.getByPlaceholder("Reason for change").fill("Customer escalation on response time.");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText(proposedName)).toBeVisible();

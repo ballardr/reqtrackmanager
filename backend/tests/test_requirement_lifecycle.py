@@ -116,6 +116,7 @@ def test_change_request_modifies_locked_requirement_and_is_logged(client, admin_
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["name", "reasoning"],
             "proposed_name": "Boot even faster", "proposed_reasoning": "New target", "reason": "Customer feedback",
         },
         headers=auth_headers(admin_token),
@@ -196,10 +197,18 @@ def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, a
 
 
 def test_target_stage_and_level_persist_through_create_update_and_change_request(client, admin_token, org_id):
+    """target_stage_id can never become unset (it's mandatory) — this
+    covers create with an explicit target, retargeting to a *different*
+    stage via direct edit (not clearing it), omitting it on an unrelated
+    edit (carries the current value forward unchanged), and retargeting
+    again via an approved change request."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
+    second_stage = client.post(
+        f"/api/v1/projects/{project['id']}/stages", json={"name": "Detailed Design"}, headers=auth_headers(admin_token),
+    ).json()
 
     created = client.post(
         f"/api/v1/projects/{project['id']}/requirements",
@@ -212,22 +221,35 @@ def test_target_stage_and_level_persist_through_create_update_and_change_request
     assert created["target_stage_id"] == stage_id
     assert created["level"] == "recommended"
 
+    # Retargeted to a different stage (not cleared).
     updated = client.put(
         f"/api/v1/projects/{project['id']}/requirements/{created['id']}",
         json={
             "name": created["name"], "component_id": component_id, "category_id": category_id,
-            "owner_id": created["owner_id"], "target_stage_id": None, "level": "requirement",
+            "owner_id": created["owner_id"], "target_stage_id": second_stage["id"], "level": "requirement",
         },
         headers=auth_headers(admin_token),
     ).json()
-    assert updated["target_stage_id"] is None
+    assert updated["target_stage_id"] == second_stage["id"]
     assert updated["level"] == "requirement"
+
+    # Omitted on an unrelated edit: carries the current (retargeted) value forward.
+    unrelated_edit = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{created['id']}",
+        json={
+            "name": "Ship the widget (renamed)", "component_id": component_id, "category_id": category_id,
+            "owner_id": created["owner_id"], "level": "requirement",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    assert unrelated_edit["target_stage_id"] == second_stage["id"]
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
             "kind": "modify_requirement", "requirement_id": created["id"],
-            "proposed_name": created["name"], "proposed_reasoning": "Refined target",
+            "changed_fields": ["reasoning", "target_stage_id", "level"],
+            "proposed_reasoning": "Refined target",
             "proposed_target_stage_id": stage_id, "proposed_level": "recommended",
             "reason": "Rescheduled",
         },

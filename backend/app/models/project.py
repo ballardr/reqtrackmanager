@@ -61,6 +61,13 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     report_intro: Mapped[str] = mapped_column(Text, default="")
     report_chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     report_appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    # Pre-selected (not enforced) on the report generation page — a user can
+    # still pick a different template, or none, for a specific generation.
+    # ON DELETE SET NULL: deleting the referenced template must not break
+    # the project row, just fall back to no default.
+    default_report_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("report_templates.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Massif (v3): default notification lead time (in days) before a
     # requirement's review_date, used when a requirement doesn't set its own

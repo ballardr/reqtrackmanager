@@ -87,7 +87,7 @@ def test_cannot_read_or_write_comments_on_change_request_in_another_project(clie
     cr_b = client.post(
         f"/api/v1/projects/{project_b['id']}/change-requests",
         json={
-            "kind": "modify_requirement", "requirement_id": requirement_b["id"],
+            "kind": "modify_requirement", "requirement_id": requirement_b["id"], "changed_fields": ["name"],
             "proposed_name": "x", "reason": "y",
         },
         headers=auth_headers(admin_token),

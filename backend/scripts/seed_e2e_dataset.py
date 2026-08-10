@@ -235,6 +235,7 @@ def main() -> None:
             f"{BASE}/projects/{project['id']}/change-requests",
             json={
                 "kind": "modify_requirement", "requirement_id": target["id"],
+                "changed_fields": ["name", "reasoning"],
                 "proposed_name": target["name"], "proposed_reasoning": target["reasoning"],
                 "reason": "E2E seed: pre-existing change request for volume.",
             },

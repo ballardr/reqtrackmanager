@@ -10,7 +10,10 @@ file id, so it is unified here with context-sensitive authorization:
 - Avatars and organisation logos are viewable by any authenticated user
   (they're shown in shared UI chrome regardless of org membership).
 - Organisation shared resources require membership in that organisation.
-- Direct requirement attachments require project view access.
+- Direct requirement attachments, and comment attachments (on either a
+  requirement or a change request's discussion thread), require project
+  view access to whichever project the attachment's requirement/change
+  request belongs to.
 """
 
 from __future__ import annotations
@@ -23,7 +26,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user_header_or_query
-from app.models.file import FileAsset, RequirementFile
+from app.models.change_request import ChangeRequest, ReviewComment
+from app.models.enums import ReviewTargetType
+from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.organization import Organization, ServerSettings
 from app.models.requirement import Requirement
 from app.models.user import User
@@ -99,16 +104,31 @@ def download_file(
             if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
         else:
+            project_id = None
             link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
-            requirement = db.get(Requirement, link.requirement_id) if link else None
-            if requirement is not None:
-                check_pat_scope_for_project(request, db, requirement.project_id)
-                organization_id = _project_organization_id(db, requirement.project_id)
+            if link is not None:
+                requirement = db.get(Requirement, link.requirement_id)
+                project_id = requirement.project_id if requirement is not None else None
+            else:
+                # Not a requirement attachment — check whether it's a
+                # comment attachment instead (routers/requirements.py and
+                # routers/change_requests.py's upload_comment_attachment),
+                # which resolves to a project via whichever entity the
+                # comment itself is on.
+                comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
+                comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
+                if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
+                    requirement = db.get(Requirement, comment.target_id)
+                    project_id = requirement.project_id if requirement is not None else None
+                elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
+                    cr = db.get(ChangeRequest, comment.target_id)
+                    project_id = cr.project_id if cr is not None else None
+            if project_id is not None:
+                check_pat_scope_for_project(request, db, project_id)
+                organization_id = _project_organization_id(db, project_id)
                 if organization_id is not None:
                     _require_org_active(db, organization_id)
-            has_access = requirement is not None and get_effective_project_roles(
-                db, current_user.id, requirement.project_id
-            )
+            has_access = project_id is not None and get_effective_project_roles(db, current_user.id, project_id)
             if not has_access:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
 

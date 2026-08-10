@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,14 +38,18 @@ from app.models.enums import (
     ChangeRequestStatus,
     ChangeRequestVoteChoice,
     ProjectRole,
+    RequirementLevel,
     RequirementStatus,
     ReviewTargetType,
 )
+from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
-from app.models.project import Project, ProjectCategory, ProjectComponent
+from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement
 from app.models.user import User
 from app.schemas.change_request import (
+    CHANGEABLE_REQUIREMENT_FIELDS,
+    FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED,
     ChangeRequestCreate,
     ChangeRequestDecision,
     ChangeRequestOut,
@@ -57,11 +61,13 @@ from app.schemas.change_request import (
     ChangeRequestVoteTallyOut,
 )
 from app.schemas.changes import ChangeEntryOut
-from app.schemas.requirement import CommentCreate, CommentOut
+from app.schemas.file import FileAssetOut
+from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement, notifications, pubsub
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.files import upload_file
 from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
@@ -110,9 +116,11 @@ def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, curre
     subscription state (C-N-01) and derived list-view badge indicators."""
     return ChangeRequestOut(
         id=cr.id, project_id=cr.project_id, requirement_id=cr.requirement_id, kind=cr.kind, status=cr.status,
-        creator_id=cr.creator_id, proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
-        proposed_clarification=version.proposed_clarification,
+        creator_id=cr.creator_id, changed_fields=version.changed_fields,
+        proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
+        proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
         proposed_target_stage_id=version.proposed_target_stage_id, proposed_level=version.proposed_level,
+        proposed_attachment_file_ids=version.proposed_attachment_file_ids,
         reason=version.reason,
         custom_fields=version.custom_fields,
         submitted_at=cr.submitted_at, decided_at=cr.decided_at, decided_by=cr.decided_by,
@@ -140,7 +148,15 @@ def create_change_request(
     project_id: UUID, payload: ChangeRequestCreate,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Creates a draft change request (introduction: proposal + reason required)."""
+    """Creates a draft change request (introduction: proposal + reason required).
+
+    For a MODIFY_REQUIREMENT change request, `changed_fields` is the
+    authoritative list of what this change request actually proposes to
+    change — a field's `proposed_*` value is ignored entirely if its name
+    isn't listed (see `ChangeRequestCreate`'s docstring). NEW_REQUIREMENT
+    change requests ignore `changed_fields` and always require `proposed_name`
+    directly, since there's no existing requirement to diff against.
+    """
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -151,7 +167,30 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+        unknown_fields = set(payload.changed_fields) - CHANGEABLE_REQUIREMENT_FIELDS
+        if unknown_fields:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown changed_fields: {sorted(unknown_fields)}.")
+        if not payload.changed_fields:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "At least one field must be selected to change.")
+        for field_name, attr_name in FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED.items():
+            if field_name in payload.changed_fields and getattr(payload, attr_name) is None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"proposed value for '{field_name}' is required since it's listed in changed_fields.",
+                )
+        if "attachments" in payload.changed_fields and not payload.proposed_attachment_file_ids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "proposed_attachment_file_ids is required since 'attachments' is listed in changed_fields."
+            )
     else:
+        # NEW_REQUIREMENT ignores changed_fields entirely (there's no
+        # existing version to diff against) but still needs the fields a
+        # brand-new requirement can never be without.
+        if payload.proposed_name is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_name is required for a new requirement.")
+        # proposed_target_stage_id may be omitted — approval defaults it to
+        # the project's earliest stage, same as a direct create
+        # (routers/requirements.py::create_requirement_endpoint).
         # Hardening-review finding: proposed_component_id/proposed_category_id
         # for a new_requirement change request were never validated against
         # project_id at all — unlike the direct-create path
@@ -176,6 +215,17 @@ def create_change_request(
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, "proposed_category_id does not belong to proposed_component_id."
                 )
+
+    if payload.proposed_attachment_file_ids:
+        # Same cross-org isolation check report images use
+        # (routers/reports.py::_resolve_report_images) — an attachment
+        # proposed here must already be an org shared resource belonging to
+        # this project's own organisation, not an arbitrary file id from
+        # anywhere else in the system.
+        for file_id in payload.proposed_attachment_file_ids:
+            asset = db.get(FileAsset, file_id)
+            if asset is None or asset.organization_id != project.organization_id or not asset.is_org_resource:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid proposed attachment file id: {file_id}.")
 
     # Validated against the *requirement* entity kind, not change_request: these
     # values represent proposed custom-attribute values for the requirement
@@ -203,8 +253,11 @@ def create_change_request(
     version = ChangeRequestVersion(
         change_request_id=cr.id, version_number=1, proposed_name=payload.proposed_name,
         proposed_reasoning=payload.proposed_reasoning, proposed_clarification=payload.proposed_clarification,
+        proposed_description=payload.proposed_description,
         proposed_component_id=payload.proposed_component_id, proposed_category_id=payload.proposed_category_id,
         proposed_target_stage_id=payload.proposed_target_stage_id, proposed_level=payload.proposed_level,
+        proposed_attachment_file_ids=[str(f) for f in payload.proposed_attachment_file_ids],
+        changed_fields=payload.changed_fields if payload.kind == ChangeRequestKind.MODIFY_REQUIREMENT else [],
         reason=payload.reason, custom_fields=custom_fields,
         created_by=current_user.id, created_at=datetime.now(UTC),
         proposed_review_date=payload.proposed_review_date,
@@ -362,30 +415,82 @@ def decide_change_request(
         if cr.kind == ChangeRequestKind.MODIFY_REQUIREMENT:
             requirement = db.get(Requirement, cr.requirement_id)
             current_version = get_current_version(db, requirement.id)
+            # Only fields actually listed in changed_fields are applied —
+            # everything else is left completely untouched (apply_new_version's
+            # own "None/not-explicitly-set carries the current value forward"
+            # convention), not silently re-written with a stale or default
+            # proposed value. See ChangeRequestVersion.changed_fields's
+            # docstring and docs/decisions.md's "Change request field-level
+            # tracking" entry for why this replaced the previous
+            # unconditional-apply-every-field behaviour.
+            changed = set(version.changed_fields)
             apply_new_version(
                 db, requirement, current_version, current_user,
-                name=version.proposed_name, reasoning=version.proposed_reasoning,
-                clarification=version.proposed_clarification, status_value=RequirementStatus.APPROVED,
-                target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set=True,
-                level=version.proposed_level,
+                name=version.proposed_name if "name" in changed else None,
+                reasoning=version.proposed_reasoning if "reasoning" in changed else None,
+                clarification=version.proposed_clarification if "clarification" in changed else None,
+                description=version.proposed_description if "description" in changed else None,
+                status_value=RequirementStatus.APPROVED,
+                target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set="target_stage_id" in changed,
+                level=version.proposed_level if "level" in changed else None,
                 change_note=f"Applied via approved change request: {version.reason}",
-                change_request_id=cr.id, custom_fields=version.custom_fields,
-                review_date=version.proposed_review_date, review_date_explicitly_set=True,
-                review_lead_days=version.proposed_review_lead_days, review_lead_days_explicitly_set=True,
-                reviewer_id=version.proposed_reviewer_id, reviewer_id_explicitly_set=True,
+                change_request_id=cr.id,
+                custom_fields=version.custom_fields if "custom_fields" in changed else None,
+                review_date=version.proposed_review_date, review_date_explicitly_set="review_date" in changed,
+                review_lead_days=version.proposed_review_lead_days, review_lead_days_explicitly_set="review_lead_days" in changed,
+                reviewer_id=version.proposed_reviewer_id, reviewer_id_explicitly_set="reviewer_id" in changed,
             )
+            if "attachments" in changed and version.proposed_attachment_file_ids:
+                project = db.get(Project, project_id)
+                for raw_file_id in version.proposed_attachment_file_ids:
+                    file_id = UUID(raw_file_id) if isinstance(raw_file_id, str) else raw_file_id
+                    asset = db.get(FileAsset, file_id)
+                    # Re-checked here, not just trusted from creation time
+                    # (the same file could theoretically have been deleted
+                    # or changed ownership between CR creation and approval)
+                    # — same "never trust a stale reference" posture as
+                    # report image resolution.
+                    if asset is None or asset.organization_id != project.organization_id or not asset.is_org_resource:
+                        continue
+                    existing = db.scalar(
+                        select(RequirementFile).where(
+                            RequirementFile.requirement_id == requirement.id, RequirementFile.file_id == file_id
+                        )
+                    )
+                    if existing is None:
+                        db.add(RequirementFile(
+                            requirement_id=requirement.id, file_id=file_id, linked_by=cr.creator_id,
+                            created_at=datetime.now(UTC),
+                        ))
+                        log_event(
+                            db, entity_type="requirement", entity_id=requirement.id, action="file_linked",
+                            actor_id=current_user.id, project_id=project_id,
+                            detail={"file_id": str(file_id), "via": "change_request", "change_request_id": str(cr.id)},
+                        )
         else:
             project = db.get(Project, project_id)
             component = db.get(ProjectComponent, version.proposed_component_id)
             category = db.get(ProjectCategory, version.proposed_category_id)
             if component is None or category is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Change request is missing component/category.")
+            target_stage_id = version.proposed_target_stage_id
+            if target_stage_id is None:
+                # Not left unset: default to the project's own earliest
+                # stage, same as a direct create
+                # (routers/requirements.py::create_requirement_endpoint).
+                default_stage = db.scalar(
+                    select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order.asc())
+                )
+                if default_stage is None:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project has no stages; cannot assign a target.")
+                target_stage_id = default_stage.id
             count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
             requirement = create_requirement(
                 db, project, component, category, current_user,
-                name=version.proposed_name, reasoning=version.proposed_reasoning,
-                clarification=version.proposed_clarification, owner_id=None, keywords=[], sort_order=count,
-                target_stage_id=version.proposed_target_stage_id, level=version.proposed_level,
+                name=version.proposed_name, reasoning=version.proposed_reasoning or "",
+                clarification=version.proposed_clarification or "", description=version.proposed_description or "",
+                owner_id=None, keywords=[], sort_order=count,
+                target_stage_id=target_stage_id, level=version.proposed_level or RequirementLevel.REQUIREMENT,
                 custom_fields=version.custom_fields,
                 review_date=version.proposed_review_date, review_lead_days=version.proposed_review_lead_days,
                 reviewer_id=version.proposed_reviewer_id,
@@ -627,6 +732,82 @@ def list_comments(
         .order_by(ReviewComment.created_at)
     ).all()
     return [engagement.comment_to_out(db, c, current_user.id) for c in comments]
+
+
+@router.post("/{cr_id}/comments/{comment_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED)
+async def upload_comment_attachment(
+    project_id: UUID, cr_id: UUID, comment_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Uploads a file attached to a discussion comment on a change request
+    — see `routers/requirements.py::upload_comment_attachment`'s docstring
+    for why this is never subject to a lock (comments aren't governed
+    content), and is author-only (attaching to composing/editing your own
+    comment only)."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    _get_cr_in_project(db, project_id, cr_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.CHANGE_REQUEST or comment.target_id != cr_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=project.organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    db.add(CommentFile(comment_id=comment.id, file_id=asset.id, uploaded_by=current_user.id))
+    log_event(db, entity_type="change_request", entity_id=cr_id, action="comment_file_attached",
+              actor_id=current_user.id, project_id=project_id, detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete("/{cr_id}/comments/{comment_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_comment_attachment(
+    project_id: UUID, cr_id: UUID, comment_id: UUID, file_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Removes a file from a change-request comment — see
+    `routers/requirements.py::remove_comment_attachment`'s docstring."""
+    _get_cr_in_project(db, project_id, cr_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.CHANGE_REQUEST or comment.target_id != cr_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may remove its attachments.")
+    link = db.scalar(select(CommentFile).where(CommentFile.comment_id == comment.id, CommentFile.file_id == file_id))
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this comment.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    if asset is not None:
+        db.delete(asset)
+    db.commit()
+
+
+@router.patch("/{cr_id}/comments/{comment_id}", response_model=CommentOut)
+def edit_comment(
+    project_id: UUID, cr_id: UUID, comment_id: UUID, payload: CommentUpdate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Edits a change-request comment's body — see
+    `routers/requirements.py::edit_comment`'s docstring."""
+    _get_cr_in_project(db, project_id, cr_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.CHANGE_REQUEST or comment.target_id != cr_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
+    comment.body = payload.body
+    comment.edited_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(comment)
+    return engagement.comment_to_out(db, comment, current_user.id)
 
 
 @router.put("/{cr_id}/comments/{comment_id}/reaction", status_code=status.HTTP_204_NO_CONTENT)

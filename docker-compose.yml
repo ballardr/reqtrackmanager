@@ -13,6 +13,18 @@ version: "3.9"
 # APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, MINIO_ROOT_PASSWORD,
 # CORS_ORIGINS, and the SMTP_* variables via a `.env` file — see
 # docs/deployment.md.
+#
+# backend/frontend/mcp-server each declare both `image:` and `build:`.
+# `image:` names the same picture .github/workflows/ci.yml pushes to
+# ghcr.io on every merge to main (tagged with GitVersion's SemVer, the
+# commit SHA, and `latest`) — set IMAGE_TAG in your `.env` to pin a specific
+# released version instead of always tracking `latest`, then
+# `docker compose pull && docker compose up -d` to deploy it without
+# building anything locally. `build:` is what `docker compose up --build`
+# (or a plain `up`/`pull` when no matching image exists yet, e.g. before the
+# first release) falls back to, so this file is still fully self-contained
+# without ever touching ghcr.io. See docs/deployment.md's "Obtaining
+# container images" section.
 services:
   db:
     image: postgres:16-alpine
@@ -53,6 +65,7 @@ services:
       retries: 10
 
   backend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend
     environment:
@@ -98,6 +111,7 @@ services:
       retries: 10
 
   frontend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
     environment:
@@ -125,6 +139,7 @@ services:
   # token; this service holds no credentials of its own and does no
   # authorization itself, it only forwards the caller's token to `backend`.
   mcp-server:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
     build:
       context: ./mcp-server
     environment:

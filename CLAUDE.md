@@ -14,6 +14,7 @@
     - how to read the diagram (key actors, flows, boundaries), and
     - why it matters in the surrounding context
 - Validate Mermaid diagrams before finalising to ensure they render correctly (no broken fences, no malformed syntax, no dangling nodes)
+- Exception: screenshots/images in README.md do not need explanatory text immediately before or after them. The diagram rule above is about Mermaid diagrams conveying structure/flow that needs a reading key; README screenshots are illustrative product shots and a short caption (e.g. a table cell above each image) is sufficient — they must not be padded with "what this shows / why it matters" prose to satisfy the diagram rule.
 
 When writing requirements:
 - every requirement must include explicit reasoning
@@ -110,7 +111,7 @@ When making significant changes, update the README to include:
 - Configuration requirements
 - Usage examples
 - Architecture overview
-- Development workflow
+- Development workflow (a short section is sufficient — a pointer/summary linking to `docs/development.md` for the full local-setup/testing/linting/CI instructions satisfies this; the detailed how-to-hack-on-this-repo content belongs there, not duplicated inline)
 - Known limitations
 - Code Quality Rules
 - Prefer clear, maintainable code over clever solutions.

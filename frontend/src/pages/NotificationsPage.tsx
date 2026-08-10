@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
+import { notificationLink } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
@@ -17,6 +19,7 @@ const PAGE_SIZE = 30;
  * loading every notification ever received up front would be wasteful.
  */
 export function NotificationsPage() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -49,6 +52,12 @@ export function NotificationsPage() {
   async function markAllRead() {
     await api.post("/api/v1/notifications/read-all");
     load(0, false);
+  }
+
+  function openNotification(n: Notification) {
+    if (!n.read_at) markRead(n.id);
+    const link = notificationLink(n);
+    if (link) navigate(link);
   }
 
   const unreadCount = notifications?.filter((n) => !n.read_at).length ?? 0;
@@ -86,8 +95,8 @@ export function NotificationsPage() {
             <div
               key={n.id}
               className="card"
-              style={{ cursor: n.read_at ? "default" : "pointer", opacity: n.read_at ? 0.7 : 1 }}
-              onClick={() => !n.read_at && markRead(n.id)}
+              style={{ cursor: notificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.7 : 1 }}
+              onClick={() => openNotification(n)}
             >
               <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>
               {n.body && <div className="text-muted" style={{ fontSize: "0.85rem" }}>{n.body}</div>}

@@ -1,6 +1,6 @@
-import { Trash2 } from "lucide-react";
+import { GitPullRequest, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
 import type {
@@ -22,6 +22,7 @@ import { CommentThread } from "../components/CommentThread";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
+import { useAuth } from "../context/AuthContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { t } from "../i18n/strings";
 
@@ -35,6 +36,7 @@ const strings = t();
 export function RequirementDetailPage() {
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const myRoles = useMyProjectRoles(projectId);
   const canArchive = myRoles.includes("project_manager") || myRoles.includes("project_administrator");
   const canEdit = canArchive || myRoles.includes("stakeholder");
@@ -45,6 +47,7 @@ export function RequirementDetailPage() {
     name: "",
     reasoning: "",
     clarification: "",
+    description: "",
     changeNote: "",
     targetStageId: "",
     level: "requirement" as RequirementLevel,
@@ -64,7 +67,7 @@ export function RequirementDetailPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
 
-  function reviewerName(userId: string | null): string {
+  function userDisplayName(userId: string | null): string {
     if (!userId) return strings.reviews.unassigned;
     return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
   }
@@ -92,8 +95,9 @@ export function RequirementDetailPage() {
       name: req.name,
       reasoning: req.reasoning,
       clarification: req.clarification,
+      description: req.description,
       changeNote: "",
-      targetStageId: req.target_stage_id ?? "",
+      targetStageId: req.target_stage_id,
       level: req.level,
       reviewDate: req.review_date ?? "",
       reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
@@ -144,10 +148,11 @@ export function RequirementDetailPage() {
         name: form.name,
         reasoning: form.reasoning,
         clarification: form.clarification,
+        description: form.description,
         component_id: requirement.component_id,
         category_id: requirement.category_id,
         owner_id: requirement.owner_id,
-        target_stage_id: form.targetStageId || null,
+        target_stage_id: form.targetStageId,
         level: form.level,
         keywords: requirement.keywords,
         custom_fields: customFieldValues,
@@ -201,8 +206,19 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  async function postComment(body: string) {
-    await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`, { body });
+  async function postComment(body: string): Promise<Comment> {
+    const comment = await api.post<Comment>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`, { body });
+    reload();
+    return comment;
+  }
+
+  async function editComment(commentId: string, body: string) {
+    await api.patch(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}`, { body });
+    reload();
+  }
+
+  async function removeCommentAttachment(commentId: string, fileId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files/${fileId}`);
     reload();
   }
 
@@ -212,6 +228,11 @@ export function RequirementDetailPage() {
     } else {
       await api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`);
     }
+    reload();
+  }
+
+  async function uploadCommentAttachment(commentId: string, file: File) {
+    await api.postFile(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files`, file);
     reload();
   }
 
@@ -225,6 +246,9 @@ export function RequirementDetailPage() {
         </h1>
         <div className="row">
           <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
+          <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
+            <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
+          </Link>
           {canArchive && requirement.status === "approved" && (
             <button className="btn" onClick={markCompleted}>
               {strings.requirements.markCompleted}
@@ -253,13 +277,19 @@ export function RequirementDetailPage() {
             </div>
           )}
           <div>
-            <div className="text-muted">{strings.requirements.description}</div>
+            <div className="text-muted">{strings.requirements.reasoning}</div>
             <p style={{ marginTop: "0.25rem" }}>{requirement.reasoning}</p>
           </div>
           {requirement.clarification && (
             <div>
               <div className="text-muted">{strings.requirements.clarification}</div>
               <p style={{ marginTop: "0.25rem" }}>{requirement.clarification}</p>
+            </div>
+          )}
+          {requirement.description && (
+            <div>
+              <div className="text-muted">{strings.requirements.description}</div>
+              <p style={{ marginTop: "0.25rem" }}>{requirement.description}</p>
             </div>
           )}
           <div className="row">
@@ -299,15 +329,23 @@ export function RequirementDetailPage() {
               onChange={(e) => setForm((f) => ({ ...f, clarification: e.target.value }))}
             />
           </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.requirements.description}
+            <textarea
+              className="input"
+              rows={2}
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </label>
           <div className="row">
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              Target version
+              {strings.requirements.targetVersion}
               <select
                 className="input"
                 value={form.targetStageId}
                 onChange={(e) => setForm((f) => ({ ...f, targetStageId: e.target.value }))}
               >
-                <option value="">—</option>
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -316,14 +354,15 @@ export function RequirementDetailPage() {
               </select>
             </label>
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              Level
+              {strings.requirements.level}
               <select
                 className="input"
                 value={form.level}
                 onChange={(e) => setForm((f) => ({ ...f, level: e.target.value as RequirementLevel }))}
               >
-                <option value="requirement">Requirement</option>
-                <option value="recommended">Recommended</option>
+                <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
+                <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
+                <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
               </select>
             </label>
           </div>
@@ -392,7 +431,7 @@ export function RequirementDetailPage() {
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
           <div className="row">
             <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
-            <span className="badge">{strings.requirements.reviewer}: {reviewerName(requirement.reviewer_id)}</span>
+            <span className="badge">{strings.requirements.reviewer}: {userDisplayName(requirement.reviewer_id)}</span>
           </div>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.recordReviewOutcome}
@@ -428,6 +467,7 @@ export function RequirementDetailPage() {
               <th>#</th>
               <th>{strings.requirements.status}</th>
               <th>{strings.requirements.changeNote}</th>
+              <th>{strings.requirements.changedBy}</th>
               <th>{strings.requirements.when}</th>
             </tr>
           </thead>
@@ -437,6 +477,7 @@ export function RequirementDetailPage() {
                 <td>{h.version_number}</td>
                 <td>{h.status}</td>
                 <td>{h.change_note}</td>
+                <td>{userDisplayName(h.created_by)}</td>
                 <td>{new Date(h.created_at).toLocaleString()}</td>
               </tr>
             ))}
@@ -456,12 +497,26 @@ export function RequirementDetailPage() {
             </button>
           </div>
         ))}
-        <input type="file" onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
+        {requirement.is_locked ? (
+          <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            {strings.requirements.attachmentsLockedNotice}
+          </p>
+        ) : (
+          <input type="file" onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
+        )}
       </div>
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
-        <CommentThread comments={comments} onPost={postComment} onToggleReaction={toggleReaction} />
+        <CommentThread
+          comments={comments}
+          onPost={postComment}
+          onToggleReaction={toggleReaction}
+          onUploadAttachment={uploadCommentAttachment}
+          onRemoveAttachment={removeCommentAttachment}
+          onEdit={editComment}
+          currentUserId={user?.id}
+        />
       </div>
       </div>
 

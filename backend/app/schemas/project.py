@@ -92,6 +92,10 @@ class ProjectStageCreate(BaseModel):
     name: str
 
 
+class ProjectStageUpdate(BaseModel):
+    name: str
+
+
 class ProjectStageOut(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -134,6 +138,11 @@ class ComponentCreate(BaseModel):
     prefix: str
 
 
+class ComponentUpdate(BaseModel):
+    name: str
+    prefix: str
+
+
 class ComponentOut(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -148,6 +157,11 @@ class CategoryCreate(BaseModel):
     name: str
     prefix: str
     component_id: UUID
+
+
+class CategoryUpdate(BaseModel):
+    name: str
+    prefix: str
 
 
 class CategoryOut(BaseModel):

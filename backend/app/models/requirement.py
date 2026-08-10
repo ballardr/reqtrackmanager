@@ -94,12 +94,27 @@ class RequirementVersion(UUIDPKMixin, Base):
     name: Mapped[str] = mapped_column(String(500))
     reasoning: Mapped[str] = mapped_column(Text, default="")
     clarification: Mapped[str] = mapped_column(Text, default="")
+    # Free-text elaboration, distinct from reasoning (why the requirement
+    # exists) and clarification (scope/edge-case notes) — optional, blank by
+    # default. Governed by the same creation-or-change-request-only rule as
+    # every other content field once a requirement is locked (C-G-12).
+    description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[RequirementStatus] = mapped_column(str_enum(RequirementStatus, 20), default=RequirementStatus.DRAFT)
     # Which project stage/release this content is targeted at, and whether it's
     # mandatory or advisory (mock's "Target"/"Level" fields) — display/planning
-    # metadata on the version, not gating logic.
-    target_stage_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
+    # metadata on the version, not gating logic. target_stage_id is mandatory
+    # (a requirement must always be targeted at some stage), so its FK can no
+    # longer be ON DELETE SET NULL (that would itself violate the NOT NULL
+    # constraint). CASCADE instead: there is no API path that ever deletes a
+    # single ProjectStage row on its own (no DELETE /stages/{id} endpoint
+    # exists) — the only way one is ever removed is as part of its whole
+    # project/organisation being deleted, at which point every
+    # RequirementVersion referencing it is being deleted in that same
+    # cascade anyway (see services/org_deletion.py's module docstring for
+    # why this codebase leans on DB-level cascades for exactly this kind of
+    # bulk teardown).
+    target_stage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=False
     )
     level: Mapped[RequirementLevel] = mapped_column(str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

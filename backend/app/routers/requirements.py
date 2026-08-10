@@ -35,7 +35,7 @@ from app.models.enums import (
     ReviewTargetType,
     StageStatus,
 )
-from app.models.file import FileAsset, RequirementFile
+from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementLink, RequirementReview, RequirementVersion
@@ -46,6 +46,7 @@ from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
     CommentCreate,
     CommentOut,
+    CommentUpdate,
     RequirementCreate,
     RequirementDueForReviewOut,
     RequirementImportError,
@@ -112,6 +113,7 @@ def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, 
     return RequirementOut(
         id=requirement.id, project_id=requirement.project_id, unique_code=requirement.unique_code,
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
+        description=version.description,
         status=version.status, owner_id=version.owner_id, component_id=requirement.component_id,
         category_id=requirement.category_id, target_stage_id=version.target_stage_id, level=version.level,
         sort_order=version.sort_order, creator_id=requirement.creator_id,
@@ -143,6 +145,22 @@ def create_requirement_endpoint(
     if category.component_id != component.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
 
+    target_stage_id = payload.target_stage_id
+    if target_stage_id is None:
+        # Not left unset: default to the project's own earliest stage (by
+        # sort_order), the same backfill convention migration 0004 and CSV
+        # import use — see RequirementCreate.target_stage_id's docstring.
+        default_stage = db.scalar(
+            select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order.asc())
+        )
+        if default_stage is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project has no stages; target_stage_id is required.")
+        target_stage_id = default_stage.id
+    else:
+        stage = db.get(ProjectStage, target_stage_id)
+        if stage is None or stage.project_id != project_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid target_stage_id.")
+
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
 
     creator_override_id = None
@@ -156,8 +174,9 @@ def create_requirement_endpoint(
     requirement = create_requirement(
         db, project, component, category, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
+        description=payload.description,
         owner_id=payload.owner_id, keywords=payload.keywords, sort_order=count,
-        target_stage_id=payload.target_stage_id, level=payload.level,
+        target_stage_id=target_stage_id, level=payload.level,
         custom_fields=custom_fields, creator_override_id=creator_override_id,
         review_date=payload.review_date, review_lead_days=payload.review_lead_days, reviewer_id=payload.reviewer_id,
     )
@@ -281,6 +300,11 @@ async def import_requirements(
         for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()
     }
     stages = {s.name: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()}
+    # target_stage_id is mandatory on every requirement — a CSV row that
+    # doesn't specify target_version falls back to the project's own
+    # earliest stage (by sort_order), the same backfill convention
+    # migration 0004 uses for pre-existing rows that had no target at all.
+    default_stage = min(stages.values(), key=lambda s: s.sort_order) if stages else None
 
     raw = await file.read()
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
@@ -314,13 +338,16 @@ async def import_requirements(
         except ValueError:
             errors.append(RequirementImportError(row=row_num, message=f"Invalid level '{level_raw}'."))
             continue
-        target_stage_id = None
+        target_stage_id = default_stage.id if default_stage else None
         if target_version:
             stage = stages.get(target_version)
             if stage is None:
                 errors.append(RequirementImportError(row=row_num, message=f"Unknown target_version '{target_version}'."))
                 continue
             target_stage_id = stage.id
+        if target_stage_id is None:
+            errors.append(RequirementImportError(row=row_num, message="Project has no stages; cannot assign a target."))
+            continue
 
         create_requirement(
             db, project, component, category, current_user,
@@ -436,8 +463,10 @@ def update_requirement(
     new_version = apply_new_version(
         db, requirement, current_version, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
+        description=payload.description,
         status_value=payload.status, owner_id=payload.owner_id,
-        target_stage_id=payload.target_stage_id, target_stage_explicitly_set=True, level=payload.level,
+        target_stage_id=payload.target_stage_id, target_stage_explicitly_set=payload.target_stage_id is not None,
+        level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
         custom_fields=custom_fields,
         review_date=payload.review_date, review_date_explicitly_set=True,
@@ -592,7 +621,7 @@ def requirement_history(
     return [
         RequirementVersionOut(
             version_number=v.version_number, name=v.name, reasoning=v.reasoning,
-            clarification=v.clarification, status=v.status, owner_id=v.owner_id,
+            clarification=v.clarification, description=v.description, status=v.status, owner_id=v.owner_id,
             target_stage_id=v.target_stage_id, level=v.level,
             change_note=v.change_note, change_request_id=v.change_request_id,
             custom_fields=v.custom_fields,
@@ -751,6 +780,28 @@ def list_comments(
     return [engagement.comment_to_out(db, c, current_user.id) for c in comments]
 
 
+@router.patch("/{requirement_id}/comments/{comment_id}", response_model=CommentOut)
+def edit_comment(
+    project_id: UUID, requirement_id: UUID, comment_id: UUID, payload: CommentUpdate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Edits a comment's body — author-only (not even a project manager may
+    edit someone else's words), and always stamps `edited_at` so the
+    discussion thread visibly denotes an edit rather than silently rewriting
+    history."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.REQUIREMENT or comment.target_id != requirement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
+    comment.body = payload.body
+    comment.edited_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(comment)
+    return engagement.comment_to_out(db, comment, current_user.id)
+
+
 @router.put("/{requirement_id}/comments/{comment_id}/reaction", status_code=status.HTTP_204_NO_CONTENT)
 def react_to_comment(
     project_id: UUID, requirement_id: UUID, comment_id: UUID,
@@ -775,6 +826,67 @@ def unreact_to_comment(
     if comment is None or comment.target_id != requirement_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
     engagement.remove_reaction(db, comment_id, current_user.id)
+
+
+@router.post("/{requirement_id}/comments/{comment_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED)
+async def upload_comment_attachment(
+    project_id: UUID, requirement_id: UUID, comment_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Uploads a file attached to a discussion comment. Unlike a direct
+    requirement attachment, this is never subject to the requirement's own
+    lock — a comment thread isn't part of the requirement's governed
+    content (C-G-12 only applies to the requirement's own fields, per
+    `ReviewComment`'s docstring on why comments live outside version
+    history). Author-only, same as editing the comment's body: attaching a
+    file to someone else's comment after the fact isn't "commenting", it's
+    silently altering their post — the frontend only ever calls this while
+    composing a new comment or editing your own existing one."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.REQUIREMENT or comment.target_id != requirement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
+    project = db.get(Project, project_id)
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=project.organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    db.add(CommentFile(comment_id=comment.id, file_id=asset.id, uploaded_by=current_user.id))
+    log_event(db, entity_type="requirement", entity_id=requirement_id, action="comment_file_attached",
+              actor_id=current_user.id, project_id=project_id, detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete("/{requirement_id}/comments/{comment_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_comment_attachment(
+    project_id: UUID, requirement_id: UUID, comment_id: UUID, file_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Removes a file from a comment — author-only, same reasoning as
+    `upload_comment_attachment`. Comment attachments are always direct
+    uploads (never a linked org shared resource, unlike requirement
+    attachments), so the underlying `FileAsset` is deleted outright, not
+    just unlinked."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.target_type != ReviewTargetType.REQUIREMENT or comment.target_id != requirement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may remove its attachments.")
+    link = db.scalar(select(CommentFile).where(CommentFile.comment_id == comment.id, CommentFile.file_id == file_id))
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this comment.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    if asset is not None:
+        db.delete(asset)
+    db.commit()
 
 
 @router.put("/{requirement_id}/subscription", status_code=status.HTTP_204_NO_CONTENT)
@@ -805,9 +917,24 @@ async def upload_requirement_attachment(
     project_id: UUID, requirement_id: UUID, file: UploadFile = File(...),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Uploads and attaches a new file to a requirement (C-M-02)."""
+    """Uploads and attaches a new file to a requirement (C-M-02).
+
+    Governed by the same creation-or-change-request-only rule as every
+    other requirement content field once it's locked (C-G-12) — a direct
+    attachment is only allowed while the requirement is still unlocked
+    (i.e. at/around creation time); once approved, new attachments must go
+    through a change request instead (see `decide_change_request`'s
+    "attachments" handling). Hardening-review finding: this endpoint
+    previously had no lock check at all, unlike every other field, letting
+    attachments bypass the change-request-only rule entirely.
+    """
     _require_edit_role(db, current_user, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved; new attachments must be added via a change request.",
+        )
     project = db.get(Project, project_id)
     data = await file.read()
     asset = upload_file(
@@ -828,9 +955,17 @@ def link_org_resource(
     project_id: UUID, requirement_id: UUID, payload: LinkResourceRequest,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Links an organisation shared resource file to a requirement (C-M-04)."""
+    """Links an organisation shared resource file to a requirement (C-M-04).
+
+    Same creation-or-change-request-only lock rule as
+    `upload_requirement_attachment` — see its docstring."""
     _require_edit_role(db, current_user, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved; new attachments must be added via a change request.",
+        )
     project = db.get(Project, project_id)
     asset = db.get(FileAsset, payload.file_id)
     if asset is None or not asset.is_org_resource or asset.organization_id != project.organization_id:

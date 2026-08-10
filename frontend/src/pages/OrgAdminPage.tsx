@@ -112,6 +112,7 @@ export function OrgAdminPage() {
   const [newTemplateIntro, setNewTemplateIntro] = useState("");
   const [newTemplateChapters, setNewTemplateChapters] = useState<ReportChapter[]>([]);
   const [newTemplateAppendices, setNewTemplateAppendices] = useState<ReportChapter[]>([]);
+  const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
@@ -513,6 +514,7 @@ export function OrgAdminPage() {
     setNewTemplateIntro("");
     setNewTemplateChapters([]);
     setNewTemplateAppendices([]);
+    setNewTemplateChaptersPerComponent(true);
   }
 
   function startEditTemplate(tpl: ReportTemplate) {
@@ -525,6 +527,7 @@ export function OrgAdminPage() {
     setNewTemplateIntro(tpl.intro);
     setNewTemplateChapters(tpl.chapters);
     setNewTemplateAppendices(tpl.appendices);
+    setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
   }
 
   async function saveReportTemplate() {
@@ -538,6 +541,7 @@ export function OrgAdminPage() {
       intro: newTemplateIntro,
       chapters: newTemplateChapters,
       appendices: newTemplateAppendices,
+      chapters_per_component: newTemplateChaptersPerComponent,
     };
     if (editingTemplateId) {
       await api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload);
@@ -971,6 +975,13 @@ export function OrgAdminPage() {
             organizationId={orgId}
           />
           <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint}</span>
+          <label className="row" style={{ gap: "0.4rem" }}>
+            <input
+              type="checkbox" checked={newTemplateChaptersPerComponent}
+              onChange={(e) => setNewTemplateChaptersPerComponent(e.target.checked)}
+            />
+            {strings.admin.templateChaptersPerComponent}
+          </label>
           <div className="row">
             <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
               <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.admin.newReportTemplate}

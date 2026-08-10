@@ -13,7 +13,7 @@ def _submitted_cr(client, admin_token, project_id, component_id, category_id):
     cr = client.post(
         f"/api/v1/projects/{project_id}/change-requests",
         json={
-            "kind": "modify_requirement", "requirement_id": req["id"],
+            "kind": "modify_requirement", "requirement_id": req["id"], "changed_fields": ["name"],
             "proposed_name": "Base req v2", "reason": "testing",
         },
         headers=auth_headers(admin_token),

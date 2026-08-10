@@ -164,18 +164,47 @@ def get_project_changes(
     cr_entries = [e for e in entries if e.entity_type == "change_request"]
     if cr_entries:
         cr_ids = {UUID(e.entity_id) for e in cr_entries}
-        current_titles: dict[UUID, tuple[str, int]] = {}
+        current_titles: dict[UUID, tuple[str | None, int]] = {}
         for cr_id, proposed_name, version_number in db.execute(
             select(ChangeRequestVersion.change_request_id, ChangeRequestVersion.proposed_name, ChangeRequestVersion.version_number)
             .where(ChangeRequestVersion.change_request_id.in_(cr_ids))
         ).all():
             if cr_id not in current_titles or version_number > current_titles[cr_id][1]:
                 current_titles[cr_id] = (proposed_name, version_number)
+        # A MODIFY_REQUIREMENT change request that doesn't propose changing
+        # the name (changed_fields tracking, see docs/decisions.md's
+        # "Change request field-level tracking" entry) has no proposed_name
+        # of its own — fall back to the target requirement's own current
+        # name so the activity feed still shows a real title instead of a
+        # blank one, matching this block's own "always a resolvable
+        # current title" intent. NEW_REQUIREMENT change requests always
+        # have a real proposed_name (validated at creation), so this
+        # fallback never triggers for those.
+        missing_name_cr_ids = {cid for cid, (name, _) in current_titles.items() if name is None}
+        fallback_names: dict[UUID, str] = {}
+        if missing_name_cr_ids:
+            cr_to_requirement = dict(
+                db.execute(
+                    select(ChangeRequest.id, ChangeRequest.requirement_id).where(ChangeRequest.id.in_(missing_name_cr_ids))
+                ).all()
+            )
+            fallback_requirement_ids = {rid for rid in cr_to_requirement.values() if rid is not None}
+            requirement_current_names: dict[UUID, tuple[str, int]] = {}
+            if fallback_requirement_ids:
+                for req_id, name, version_number in db.execute(
+                    select(RequirementVersion.requirement_id, RequirementVersion.name, RequirementVersion.version_number)
+                    .where(RequirementVersion.requirement_id.in_(fallback_requirement_ids))
+                ).all():
+                    if req_id not in requirement_current_names or version_number > requirement_current_names[req_id][1]:
+                        requirement_current_names[req_id] = (name, version_number)
+            for cr_id, requirement_id in cr_to_requirement.items():
+                if requirement_id is not None and requirement_id in requirement_current_names:
+                    fallback_names[cr_id] = requirement_current_names[requirement_id][0]
         for e in cr_entries:
             cid = UUID(e.entity_id)
             if cid in current_titles:
                 detail = dict(e.detail or {})
-                detail["proposed_name"] = current_titles[cid][0]
+                detail["proposed_name"] = current_titles[cid][0] or fallback_names.get(cid)
                 e.detail = detail
 
     actor_ids = {e.actor_id for e in entries if e.actor_id is not None}

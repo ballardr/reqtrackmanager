@@ -30,6 +30,7 @@ from app.services.rbac import require_project_view
 from app.services.reports import (
     ReportBranding,
     ReportRequirementRow,
+    default_chapters_per_component,
     generate_csv_report,
     generate_pdf_report,
     resolve_report_config_with_template,
@@ -63,11 +64,15 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
             ).all()
             if payload.keyword.lower() not in keywords:
                 continue
+        component = components.get(req.component_id)
+        category = categories.get(req.category_id)
         rows.append(ReportRequirementRow(
             unique_code=req.unique_code, name=version.name, reasoning=version.reasoning,
             clarification=version.clarification, status=version.status.value,
-            component_name=components[req.component_id].name if req.component_id in components else "",
-            category_name=categories[req.category_id].name if req.category_id in categories else "",
+            component_name=component.name if component else "",
+            category_name=category.name if category else "",
+            component_sort_order=component.sort_order if component else 0,
+            category_sort_order=category.sort_order if category else 0,
         ))
     rows.sort(key=lambda r: r.unique_code)
     return rows
@@ -202,10 +207,21 @@ def generate_pdf(
             footer_text=template.footer_text, logo_bytes=logo_bytes,
         )
 
+    # Precedence: an explicit per-generation choice always wins; failing
+    # that, a selected template's own setting; failing that (no template),
+    # the sparse-chapter heuristic. See ReportRequest.chapters_per_component
+    # and default_chapters_per_component's docstrings.
+    if payload.chapters_per_component is not None:
+        chapters_per_component = payload.chapters_per_component
+    elif template is not None:
+        chapters_per_component = template.chapters_per_component
+    else:
+        chapters_per_component = default_chapters_per_component(rows)
+
     images = _resolve_report_images(db, project.organization_id, pre_markdown, post_markdown)
     pdf_bytes = generate_pdf_report(
         project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown,
-        branding=branding, images=images,
+        branding=branding, images=images, chapters_per_component=chapters_per_component,
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",

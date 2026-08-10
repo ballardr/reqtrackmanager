@@ -16,17 +16,56 @@ from pydantic import BaseModel
 
 from app.models.enums import ChangeRequestKind, ChangeRequestStatus, ChangeRequestVoteChoice, RequirementLevel
 
+#: Field names a MODIFY_REQUIREMENT change request may list in
+#: `changed_fields` — matching RequirementVersion's own attribute names,
+#: plus the synthetic `"attachments"` entry for proposed file attachments.
+#: The single source of truth both `ChangeRequestCreate`'s validator and
+#: `routers/change_requests.py::decide_change_request`'s approval-
+#: application logic key off of, so the two can never drift apart.
+CHANGEABLE_REQUIREMENT_FIELDS = frozenset({
+    "name", "reasoning", "clarification", "description", "target_stage_id", "level",
+    "review_date", "review_lead_days", "reviewer_id", "custom_fields", "attachments",
+})
+
+#: Maps a changed_fields entry to the ChangeRequestCreate attribute that
+#: must be non-None when that field is listed — only for fields where the
+#: requirement itself can never legitimately hold a null value (so None
+#: unambiguously means "not proposing a change"). review_date/
+#: review_lead_days/reviewer_id/custom_fields/attachments are deliberately
+#: excluded: those genuinely support a null/empty *proposed* value (e.g.
+#: clearing the reviewer), so changed_fields membership alone — not a
+#: non-None check — is what signals they're being touched.
+FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED = {
+    "name": "proposed_name",
+    "reasoning": "proposed_reasoning",
+    "clarification": "proposed_clarification",
+    "description": "proposed_description",
+    "target_stage_id": "proposed_target_stage_id",
+    "level": "proposed_level",
+}
+
 
 class ChangeRequestCreate(BaseModel):
+    """`proposed_*` fields are only meaningful when the corresponding name
+    is listed in `changed_fields` (MODIFY_REQUIREMENT) or always
+    (NEW_REQUIREMENT, which has no "current version" to diff against and so
+    ignores `changed_fields` entirely — every field it sets is meaningful by
+    definition). A field not in `changed_fields` is left completely
+    untouched on approval, not overwritten with a stale/default value — see
+    `docs/decisions.md`'s "Change request field-level tracking" entry."""
+
     kind: ChangeRequestKind
     requirement_id: UUID | None = None
-    proposed_name: str
-    proposed_reasoning: str = ""
-    proposed_clarification: str = ""
+    changed_fields: list[str] = []
+    proposed_name: str | None = None
+    proposed_reasoning: str | None = None
+    proposed_clarification: str | None = None
+    proposed_description: str | None = None
     proposed_component_id: UUID | None = None
     proposed_category_id: UUID | None = None
     proposed_target_stage_id: UUID | None = None
-    proposed_level: RequirementLevel = RequirementLevel.REQUIREMENT
+    proposed_level: RequirementLevel | None = None
+    proposed_attachment_file_ids: list[UUID] = []
     reason: str
     custom_fields: dict[str, Any] = {}
     creator_id: UUID | None = None  # PM-only override (C-A-12)
@@ -42,11 +81,14 @@ class ChangeRequestOut(BaseModel):
     kind: ChangeRequestKind
     status: ChangeRequestStatus
     creator_id: UUID
-    proposed_name: str
-    proposed_reasoning: str
-    proposed_clarification: str
+    changed_fields: list[str] = []
+    proposed_name: str | None = None
+    proposed_reasoning: str | None = None
+    proposed_clarification: str | None = None
+    proposed_description: str | None = None
     proposed_target_stage_id: UUID | None = None
-    proposed_level: RequirementLevel = RequirementLevel.REQUIREMENT
+    proposed_level: RequirementLevel | None = None
+    proposed_attachment_file_ids: list[UUID] = []
     reason: str
     custom_fields: dict[str, Any]
     submitted_at: datetime | None

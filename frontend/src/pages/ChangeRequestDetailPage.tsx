@@ -1,19 +1,25 @@
+import { MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
+  ChangeableRequirementField,
   ChangeEntry,
   ChangeRequest,
   ChangeRequestTask,
   ChangeRequestVoteChoice,
   ChangeRequestVoteTally,
   Comment,
+  OrgUser,
+  Project,
   ProjectStage,
+  Requirement,
 } from "../api/types";
-import { CHANGE_REQUEST_STATUS_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
+import { CHANGE_REQUEST_STATUS_LABEL, CHANGEABLE_FIELD_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
+import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
@@ -22,7 +28,14 @@ import { t } from "../i18n/strings";
 
 const strings = t();
 
-/** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01). */
+/** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
+ *
+ * A MODIFY_REQUIREMENT change request only shows the fields it actually
+ * proposes to change (`cr.changed_fields`) — a field not listed there was
+ * never touched, so its `proposed_*` value (usually null) isn't rendered
+ * at all, rather than showing a misleading "no change" line for every
+ * possible field.
+ */
 export function ChangeRequestDetailPage() {
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
@@ -31,6 +44,8 @@ export function ChangeRequestDetailPage() {
   const canManageTasks = canDecide || myRoles.includes("project_administrator");
   const canVote = myRoles.includes("stakeholder") || canDecide;
   const [cr, setCr] = useState<ChangeRequest | null>(null);
+  const [requirement, setRequirement] = useState<Requirement | null>(null);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [decisionNote, setDecisionNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -40,6 +55,7 @@ export function ChangeRequestDetailPage() {
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
+  const [showVoteComments, setShowVoteComments] = useState(false);
 
   async function reload() {
     if (!projectId || !crId) return;
@@ -57,6 +73,17 @@ export function ChangeRequestDetailPage() {
     setActivity(activityData);
     setTasks(taskData);
     setTally(voteData);
+    if (crData.requirement_id) {
+      setRequirement(await api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${crData.requirement_id}`));
+    } else {
+      setRequirement(null);
+    }
+    try {
+      const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
+      setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`));
+    } catch {
+      // No org role at all (rare) — reviewer names just fall back to raw ids.
+    }
   }
 
   async function addTask() {
@@ -80,6 +107,53 @@ export function ChangeRequestDetailPage() {
     return stages.find((s) => s.id === id)?.name ?? "—";
   }
 
+  function userDisplayName(userId: string | null) {
+    if (!userId) return strings.reviews.unassigned;
+    return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
+  }
+
+  function targetLabel(): string {
+    if (cr?.proposed_target_stage_id) return stageName(cr.proposed_target_stage_id);
+    if (requirement) return stageName(requirement.target_stage_id);
+    return strings.changeRequests.defaultTarget;
+  }
+
+  function levelLabel(): string {
+    if (cr?.proposed_level) return REQUIREMENT_LEVEL_LABEL[cr.proposed_level];
+    if (requirement) return REQUIREMENT_LEVEL_LABEL[requirement.level];
+    return REQUIREMENT_LEVEL_LABEL.requirement;
+  }
+
+  function proposedValueDisplay(field: ChangeableRequirementField): string {
+    if (!cr) return "";
+    switch (field) {
+      case "name":
+        return cr.proposed_name ?? "";
+      case "reasoning":
+        return cr.proposed_reasoning ?? "";
+      case "clarification":
+        return cr.proposed_clarification ?? "";
+      case "description":
+        return cr.proposed_description ?? "";
+      case "target_stage_id":
+        return targetLabel();
+      case "level":
+        return levelLabel();
+      case "review_date":
+        return cr.proposed_review_date ?? strings.requirements.reviewNone;
+      case "review_lead_days":
+        return cr.proposed_review_lead_days != null ? String(cr.proposed_review_lead_days) : "";
+      case "reviewer_id":
+        return userDisplayName(cr.proposed_reviewer_id);
+      case "custom_fields":
+        return Object.keys(cr.custom_fields).length > 0 ? JSON.stringify(cr.custom_fields) : "";
+      case "attachments":
+        return `${cr.proposed_attachment_file_ids.length} file(s)`;
+      default:
+        return "";
+    }
+  }
+
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,8 +169,19 @@ export function ChangeRequestDetailPage() {
     }
   }
 
-  async function postComment(body: string) {
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body });
+  async function postComment(body: string): Promise<Comment> {
+    const comment = await api.post<Comment>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`, { body });
+    reload();
+    return comment;
+  }
+
+  async function editComment(commentId: string, body: string) {
+    await api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}`, { body });
+    reload();
+  }
+
+  async function removeCommentAttachment(commentId: string, fileId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files/${fileId}`);
     reload();
   }
 
@@ -106,6 +191,11 @@ export function ChangeRequestDetailPage() {
     } else {
       await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
     }
+    reload();
+  }
+
+  async function uploadCommentAttachment(commentId: string, file: File) {
+    await api.postFile(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files`, file);
     reload();
   }
 
@@ -121,10 +211,12 @@ export function ChangeRequestDetailPage() {
 
   if (!cr) return <Spinner />;
 
+  const title = cr.proposed_name ?? requirement?.name ?? cr.id;
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{cr.proposed_name}</h1>
+        <h1 style={{ margin: 0 }}>{title}</h1>
         <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
       </div>
       <div className="side-grid">
@@ -132,12 +224,37 @@ export function ChangeRequestDetailPage() {
       <div className="card stack">
         <div className="row">
           <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
-          <span className="badge">Target: {stageName(cr.proposed_target_stage_id)}</span>
-          <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[cr.proposed_level]}</span>
+          <span className="badge">Target: {targetLabel()}</span>
+          <span className="badge">Level: {levelLabel()}</span>
         </div>
-        <p>
-          <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}
-        </p>
+
+        {cr.kind === "modify_requirement" ? (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <strong>{strings.changeRequests.fieldsToChange}</strong>
+            {cr.changed_fields.map((field) => (
+              <div key={field}>
+                <span className="text-muted">{CHANGEABLE_FIELD_LABEL[field]}:</span> {proposedValueDisplay(field)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <p>
+              <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}
+            </p>
+            {cr.proposed_clarification && (
+              <p>
+                <strong>{strings.requirements.clarification}:</strong> {cr.proposed_clarification}
+              </p>
+            )}
+            {cr.proposed_description && (
+              <p>
+                <strong>{strings.requirements.description}:</strong> {cr.proposed_description}
+              </p>
+            )}
+          </div>
+        )}
+
         <p>
           <strong>{strings.changeRequests.reason}:</strong> {cr.reason}
         </p>
@@ -241,6 +358,11 @@ export function ChangeRequestDetailPage() {
             <span className="badge">
               {tally.reject_count} {strings.changeRequests.voteRejectCount}
             </span>
+            {tally.votes.some((v) => v.comment) && (
+              <button className="btn" onClick={() => setShowVoteComments(true)}>
+                <MessageSquare size={14} /> {strings.changeRequests.viewComments}
+              </button>
+            )}
           </div>
         )}
         {canVote && (cr.status === "submitted" || cr.status === "in_review") && (
@@ -259,9 +381,41 @@ export function ChangeRequestDetailPage() {
         )}
       </div>
 
+      {showVoteComments && tally && (
+        <Modal title={strings.changeRequests.voteComments} onClose={() => setShowVoteComments(false)}>
+          <div className="stack">
+            {tally.votes.filter((v) => v.comment).length === 0 && (
+              <p className="text-muted">{strings.changeRequests.noVoteComments}</p>
+            )}
+            {tally.votes.filter((v) => v.comment).map((v) => (
+              <div key={v.id} className="card stack" style={{ gap: "0.35rem" }}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 600 }}>{userDisplayName(v.user_id)}</span>
+                  <span className="badge">
+                    {v.vote === "approve" ? strings.changeRequests.voteApproveCount : strings.changeRequests.voteRejectCount}
+                  </span>
+                </div>
+                <div>{v.comment}</div>
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                  {new Date(v.voted_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
-        <CommentThread comments={comments} onPost={postComment} onToggleReaction={toggleReaction} />
+        <CommentThread
+          comments={comments}
+          onPost={postComment}
+          onToggleReaction={toggleReaction}
+          onUploadAttachment={uploadCommentAttachment}
+          onRemoveAttachment={removeCommentAttachment}
+          onEdit={editComment}
+          currentUserId={user?.id}
+        />
       </div>
       </div>
 

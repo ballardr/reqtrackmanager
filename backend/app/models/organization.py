@@ -262,6 +262,13 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
             project-then-org-default resolution. Empty means "this template
             doesn't override content", not "explicitly blank" — same
             per-field independence as the project/org tiers.
+        chapters_per_component: Whether a PDF generated with this template
+            organises requirements into one chapter per component (each on
+            its own page) with a sub-section per category, or renders
+            continuously (category headings only, no per-component page
+            breaks) — see `services/reports.py::generate_pdf_report`. A
+            per-generation choice on the report page (`ReportRequest.
+            chapters_per_component`) always overrides this when set.
     """
 
     __tablename__ = "report_templates"
@@ -276,6 +283,7 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     intro: Mapped[str] = mapped_column(Text, default="")
     chapters: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     appendices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 

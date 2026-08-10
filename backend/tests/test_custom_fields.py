@@ -65,8 +65,8 @@ def test_change_request_approval_carries_custom_fields_to_requirement(client, ad
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
-            "kind": "modify_requirement", "requirement_id": requirement["id"],
-            "proposed_name": "Req", "reason": "add risk rating",
+            "kind": "modify_requirement", "requirement_id": requirement["id"], "changed_fields": ["custom_fields"],
+            "reason": "add risk rating",
             "custom_fields": {field["id"]: "Medium risk"},
         },
         headers=auth_headers(admin_token),

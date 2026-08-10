@@ -4,23 +4,30 @@
 [![Backend tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/tests-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
 [![Backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/coverage-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
 
-The two badges above are published by the CI pipeline itself (`Publish coverage/test badges` step in [.github/workflows/ci.yml](.github/workflows/ci.yml)) to a dedicated `badges` branch — they'll show "invalid" until the workflow has run at least once against this repository with that step in place.
+ReqTrackManager is an open-source engineering requirements management system (ERMS) — a formal, collaborative alternative to IBM DOORS-style tools for product teams that can't justify that cost, without falling back to a static requirements spreadsheet that nobody trusts by the second review cycle. Requirements get a real identity, a full version history, and a paper trail from first draft to shipped and verified; changes to already-approved requirements go through an actual review workflow instead of a silent edit. It's built to sit at the center of how a hardware, firmware, or regulated-software team actually works day to day — not bolted on as an afterthought.
 
-ReqTrackManager is an open-source engineering requirements management system (ERMS) for product development teams — a formal alternative to IBM DOORS-style tools for teams that can't justify the cost, without falling back to a static requirements document. See [docs/requirements.md](docs/requirements.md) for the full product requirements and [docs/solution-architecture.md](docs/solution-architecture.md) for the architecture.
+See [docs/requirements.md](docs/requirements.md) for the full product requirements and [docs/solution-architecture.md](docs/solution-architecture.md) for the architecture; [docs/decisions.md](docs/decisions.md) records the scoping and implementation decisions made along the way, [docs/enterprise-integration.md](docs/enterprise-integration.md) covers the SSO design and the SCIM/provisioning blueprint, [docs/mcp-server.md](docs/mcp-server.md) covers AI-assistant access to requirements, [docs/deployment.md](docs/deployment.md) covers deploying to production, [docs/development.md](docs/development.md) covers running it locally and the contributor workflow, and [docs/user-guide.md](docs/user-guide.md) is a full walkthrough of using the app.
 
-This build implements the **Ossa (v1)**, **Pelion (v2)**, and most of **Massif (v3)** milestones: a complete requirements management workflow (organisations/projects, role-based access, requirement authoring with full version history, stage approval and baselining, formal change requests, discussion threads, PDF/CSV reporting with images), Pelion v2's customisation, notification, and file-management layer (custom fields, per-project terminology, project templates, file attachments and shared resources, in-app/email notifications, 2FA, project favourites/filters), and Massif v3's enterprise layer (requirement review scheduling with due-date notifications, change-request tasks and advisory stakeholder voting, project-stage review deadlines with assumed-approval, requirement/stage completion tracking, an access-review user directory, selectable report branding, and SSO/OIDC login tested end-to-end against a real Keycloak instance) — plus, beyond the requirements doc, public self-signup (server-admin-controlled mode, org-level email-domain auto-accept), inviting an external user onto a project by email (with a dedicated provisioning path for SSO-only organisations), and real backend enforcement of an organisation's SSO-only setting. See [docs/decisions.md](docs/decisions.md) for the scoping and implementation decisions made along the way, [docs/enterprise-integration.md](docs/enterprise-integration.md) for the SSO design and the SCIM/separate-port-provisioning blueprint, [docs/mcp-server.md](docs/mcp-server.md) for giving an AI assistant read-only access to requirements, [docs/deployment.md](docs/deployment.md) for deploying to production, and [docs/user-guide.md](docs/user-guide.md) for a walkthrough of using the app.
+## The requirements workflow
 
-## What's included
+A requirement is authored, reviewed, and approved — not just typed into a cell. Every edit is versioned, with a full change log per requirement; once a project stage is approved, its requirements are **baselined** and locked, so "what did we actually commit to" stays answerable months later. Formal **change requests** are the only way to modify a baselined requirement: they carry their own reasoning field, an approve/reject decision by a project manager, optional tasks to track follow-up work, and advisory stakeholder voting that surfaces disagreement without silently overriding the decision-maker. Every requirement and change request has a threaded discussion, so the "why" behind a decision lives next to the thing it's about instead of in a separate chat history nobody can find later. On top of that: a two-level component/category tree per project for real organisational structure, scheduled requirement reviews with due-date notifications (and an assumed-approval path for stage deadlines that pass without action), completion tracking at both the requirement and stage level, and CSV bulk-import with a column-mapping wizard for bringing an existing spreadsheet in without hand-retyping it.
 
-- **Backend**: Python/FastAPI, PostgreSQL via SQLAlchemy 2.0 + Alembic, JWT auth with a pluggable auth-backend interface (native + per-organisation OIDC/SSO) and optional TOTP 2FA (an organisation can require it org-wide), RBAC (org + project roles and groups), full requirement version history and stage-approval baselining, a two-level component/category tree per project, change-request workflow with tasks and advisory stakeholder voting, custom requirement/change-request attributes and per-project terminology, project templates, file attachments and organisation shared resources (pluggable local/S3-compatible storage), in-app and email notifications with per-type preferences and daily digest, personal access tokens scopable down to specific organisations and projects, CSV bulk-import of requirements, PDF (ReportLab, with selectable org branding templates and a Markdown-or-WYSIWYG report intro/chapters/appendices that a project can leave to its organisation's default) and CSV reporting with filters, application-layer encryption for stored secrets (OIDC client secrets, per-org SMTP passwords, TOTP secrets), Prometheus metrics, health checks, optional WebSocket live-update stream, OpenAPI/Swagger docs.
-- **Frontend**: React + TypeScript (Vite), light/dark theming via CSS variables, responsive layout, project list (with favourites/role/stage filters, organisation and requirement-count shown per project)/overview/requirements/change-requests/history/admin/reports/preferences pages, click-to-filter status badges, a full notification history page alongside the header's notification bell, an in-app help page (Markdown-driven, with Mermaid workflow diagrams) linked from the header, and a CSV import wizard that maps the file's own column headers onto the required fields with a live preview before anything is uploaded.
-- **MCP server**: a read-only [Model Context Protocol](https://modelcontextprotocol.io) server (`mcp-server/`) exposing requirements/projects/organisations as tools an AI assistant can call directly — Claude Code, VS Code Copilot Chat, and Microsoft Copilot Studio are all documented — authenticated by forwarding the caller's own ReqTrackManager access token, never a shared service account. See [docs/mcp-server.md](docs/mcp-server.md).
-- **Infrastructure**: two separate Docker Compose stacks — the root `docker-compose.yml` (production-oriented: Postgres + backend + frontend + MinIO + the MCP server, requiring real secrets/SMTP config, plus an optional observability profile) and `tests/container/docker-compose.yml` (local development and automated testing: the same stack plus MailHog and a real Keycloak instance for SSO testing, with dev-friendly defaults and its own isolated test database). See "Quick start" and [docs/deployment.md](docs/deployment.md).
-- **Tests**: backend pytest suite (~90%+ statement coverage — auth, RBAC boundaries and a systematic permission matrix, full resource create/read/remove lifecycles, requirement lifecycle/locking, the component/category tree, change-request workflow, files, notifications/digest, custom fields, templates, 2FA (including org-wide enforcement), favourites/filters, report generation and embedded images, self-signup, SSO-only enforcement, and external-user/invite provisioning) and a Playwright end-to-end suite (16 spec files covering the golden path, the full Pelion v2 and Massif v3 feature sets, click-to-filter badges, multi-org/RBAC-boundary workflows, SSO login tested against a real Keycloak container, self-signup across all three modes, an external-user invite completed through a real MailHog email, and a report-image round trip) in a real browser — both run against `tests/container/docker-compose.yml`, never against a production stack, and both run automatically in CI (see "Continuous integration" below). The frontend has a Storybook component explorer with light/dark theme coverage, run as automated tests via Vitest + Playwright (`npm run test-storybook`).
+## Built for how teams actually work
+
+Organisations contain projects; projects have role- and group-based access control, so who can author, review, approve, or just view is enforced server-side, not by convention. Custom fields and per-project terminology let a team's own vocabulary and tracked attributes show up in the UI without a fork. Project templates carry that setup — fields, terminology, categories — into every new project instead of rebuilding it by hand each time. File attachments live on requirements and change requests, plus organisation-wide shared resources for anything that isn't specific to one item. In-app and email notifications (with per-type preferences and a daily digest, so nobody has to choose between "know everything immediately" and "silence") keep people aware of what changed without forcing them to poll the app for it. Reporting turns all of this into a real deliverable: filtered PDF or CSV export, with selectable organisation branding templates and a Markdown-or-WYSIWYG report intro/chapters/appendices a project can inherit from its organisation's default rather than authoring from scratch.
+
+## Enterprise-ready
+
+- **Access & identity**: native email/password auth alongside per-organisation OIDC/SSO (tested end-to-end against a real Keycloak instance), optional org-wide-enforceable TOTP two-factor auth, personal access tokens individually scopable down to specific organisations and projects, and public self-signup with server-admin-controlled modes (invite-only, open, or org-level email-domain auto-accept). An organisation can also invite an external user onto a single project by email, with its own provisioning path for SSO-only organisations.
+- **Data protection**: application-layer encryption (distinct key from the JWT signing secret, independently rotatable) for every genuinely sensitive stored value — OIDC client secrets, per-organisation SMTP passwords, TOTP secrets — so a database-only compromise doesn't expose them in plaintext.
+- **AI-assistant access**: a read-only [Model Context Protocol](https://modelcontextprotocol.io) server (`mcp-server/`) exposes requirements/projects/organisations as tools an AI assistant can call directly — Claude Code, VS Code Copilot Chat, and Microsoft Copilot Studio are all documented — authenticated by forwarding the caller's own access token, never a shared service account. See [docs/mcp-server.md](docs/mcp-server.md).
+- **Operability**: Prometheus metrics, container health checks, an optional WebSocket live-update stream, and a documented Loki/Tempo/Grafana Alloy observability stack — see [Optional observability stack](#optional-observability-stack) below.
+- **Compliance posture**: an adopted SOC 2 policy set and a Security + Confidentiality Trust Services Criteria control matrix live in [docs/soc2/](docs/soc2/), including a candid list of known gaps (e.g. no login rate limiting yet) rather than a claim of a finished audit — useful groundwork if a real SOC 2 engagement is ever in scope, not a substitute for one.
+- **Extensibility blueprint**: SCIM provisioning and a standalone separate-port provisioning API are scoped as implementable designs in [docs/enterprise-integration.md](docs/enterprise-integration.md) rather than built — each is effectively its own project — for a deployment that needs directory-driven user lifecycle management beyond what SSO login alone provides.
 
 ## Screenshots
 
-Captured from the seeded demo dataset (see "Demo data" below) — a fictional drone-inspection company with two projects at different lifecycle stages.
+Captured from the seeded demo dataset (see [docs/development.md](docs/development.md#demo-data)) — a fictional drone-inspection company with two projects at different lifecycle stages.
 
 |  |  |
 | --- | --- |
@@ -39,49 +46,54 @@ Captured from the seeded demo dataset (see "Demo data" below) — a fictional dr
 ![Login page](docs/screenshots/login-page.png)
 </details>
 
-## Quick start — local development / evaluation
-
-Use the dedicated dev/test stack, **not** the root `docker-compose.yml` (that one is production-oriented and requires real secrets — see below):
-
-```bash
-cd tests/container
-docker compose up --build
-```
-
-This starts Postgres (its own `reqtrack_test` database, isolated from any production instance), MinIO (S3-compatible file storage), MailHog (SMTP catcher), the backend, and the frontend. On first boot the backend automatically runs database migrations and creates a bootstrap **server admin** user and default organisation.
-
-Once healthy:
-
-- **Frontend UI**: http://localhost:3000
-- **Backend API / Swagger UI**: http://localhost:8000/docs
-- **Backend OpenAPI schema (JSON)**: http://localhost:8000/openapi.json
-- **Health check**: http://localhost:8000/health
-- **Prometheus metrics**: http://localhost:8000/metrics
-- **MCP server** (AI-assistant access to requirements — see [docs/mcp-server.md](docs/mcp-server.md)): http://localhost:8100/mcp
-- **MailHog UI** (view sent notification emails): http://localhost:8025
-- **MinIO console** (view uploaded files): http://localhost:9001
-
-Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
-
-### Demo data
-
-To populate the running stack with a realistic, presentable dataset (the one used for the screenshots above — a fictional drone-inspection company, two projects at different lifecycle stages, requirements at varied statuses, an approved and a pending change request, discussion threads, custom fields, and a branded report template):
-
-```bash
-cd tests/container && docker compose exec backend python scripts/seed_demo_data.py
-```
-
-Idempotent (skips if already seeded) and API-driven, same as the E2E persona dataset (`scripts/seed_e2e_dataset.py`) — this is a separate script with separate, screenshot-friendly content, not a variant of the E2E fixtures. Login as `demo.admin@example.com` / `DemoDemo123!` afterward; see the script's own docstring for the other seeded personas and their roles.
-
-There's no organisation-deletion endpoint (see [docs/soc2/policies/data-retention-and-disposal-policy.md](docs/soc2/policies/data-retention-and-disposal-policy.md)), so this script only skips rather than resets existing demo data. A future public demo instance that resets nightly would do the reset at the database level instead — `docker compose down -v && docker compose up -d --build` against a dedicated demo compose stack, then re-run the seed script — the same pattern already used throughout local development to get back to a clean slate (see [docs/deployment.md](docs/deployment.md)'s troubleshooting section).
+Want to click through it yourself instead? [docs/development.md](docs/development.md#quick-start--local-development--evaluation) has a one-command local stack with this exact demo dataset.
 
 ## Production deployment
 
-The root `docker-compose.yml` is the production-oriented stack: no MailHog, no baked-in secret defaults (it refuses to start until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST` via environment or a `.env` file), and Postgres isn't exposed to the host. See [docs/deployment.md](docs/deployment.md) for the full guide, including required configuration and a security checklist.
+Production runs from the root [`docker-compose.yml`](docker-compose.yml): Postgres, the backend, the frontend, MinIO, and the MCP server, plus an optional observability profile. It's deliberately strict rather than convenient — no MailHog, no baked-in secret defaults — and refuses to start (`docker compose up` fails fast with a clear error naming the missing variable) until you provide real values via a `.env` file next to the compose file. At minimum:
+
+```bash
+JWT_SECRET=<random 32+ byte secret>              # access token signing
+APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # encrypts stored secrets at rest — distinct from JWT_SECRET
+SERVER_ADMIN_PASSWORD=<strong password>           # bootstrap admin account
+POSTGRES_PASSWORD=<strong password>
+MINIO_ROOT_PASSWORD=<strong password>             # if using the bundled MinIO
+CORS_ORIGINS=https://your-domain.example
+SMTP_HOST=smtp.your-provider.example              # a real provider — MailHog is dev/test-only
+```
+
+Then:
 
 ```bash
 docker compose up --build -d
 ```
+
+The full list of variables, defaults, and which are actually required is in [Configuration](#configuration) below; the complete deployment guide — including a `.env` walkthrough, a MinIO credential-scoping hardening step, backups, migrations, and troubleshooting — is [docs/deployment.md](docs/deployment.md).
+
+**Beyond the two obvious containers**, a full deployment brings a few more pieces together:
+
+- **MinIO** is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store bundled in the compose file so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem (see [Storage backend](docs/deployment.md#storage-backend)).
+- **OAuth/OIDC SSO** is per-organisation, not global: each organisation configures its own identity provider (issuer URL, client ID/secret) under its admin settings, so a single deployment can serve organisations with completely different IdPs — or none, staying on native email/password login. There's no bundled identity provider in the production stack; `tests/container/docker-compose.yml`'s Keycloak instance exists purely so SSO login can be tested end-to-end in dev/CI, and should never be pointed at from a real deployment.
+- **The MCP server** (`mcp-server`, port 8100) is optional but on by default in the compose file — it holds no credentials of its own and does no authorization itself, only forwarding whatever access token the calling AI assistant already has. Leave it running (nothing reaches it without a valid token) or stop the container if you don't want to expose it at all. See [docs/mcp-server.md](docs/mcp-server.md).
+
+**Hosting behind nginx as a reverse proxy**: ReqTrackManager's containers serve plain HTTP internally — TLS termination and a public hostname are the reverse proxy's job, not something the app does itself. Two supported patterns, both documented in full (including the security-header/CSP notes) in [docs/deployment.md](docs/deployment.md#tls-and-reverse-proxy):
+
+1. **Two hostnames** (`app.example.com` for the UI, `api.example.com` for the backend) — simplest to reason about, needs `CORS_ORIGINS` set correctly since the browser treats them as different origins.
+2. **One hostname, routed by path** (`my.website.com/` for the UI, `my.website.com/api/` for the backend) — avoids CORS entirely instead of configuring around it. This needs no backend routing changes, because every route the frontend calls already lives under `/api/v1/...`:
+
+   ```nginx
+   location /api/ {
+       proxy_pass http://backend:8000;   # no path here — forwards the URI unchanged, so
+       proxy_set_header Host $host;      # /api/v1/... in stays /api/v1/... out, matching the backend's own routes
+   }
+
+   location / {
+       proxy_pass http://frontend:3000;
+       proxy_set_header Host $host;
+   }
+   ```
+
+   This exact config was verified against the real running stack (proxied and direct responses byte-identical). The one thing that **will** break it: `PUBLIC_API_BASE_URL` must be left **empty**, not set to `/api` or a full URL containing it. The frontend already prepends `/api/v1/...` to whatever `PUBLIC_API_BASE_URL` is — setting it to `/api` produces requests to `/api/api/v1/...`, which 404s. Leaving it empty makes the frontend call the API via relative paths against its own origin instead, which is the entire point of routing by path in the first place. See [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full recipe, including the extra one-to-one blocks needed if you also want `/docs`/`/metrics`/`/health` reachable through the public subpath.
 
 ### Optional observability stack
 
@@ -89,7 +101,7 @@ docker compose up --build -d
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300, anonymous viewer access enabled for local use). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
+Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300, anonymous viewer access enabled for local use — put it behind auth in production). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
 
 ## Configuration
 
@@ -123,84 +135,9 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `FRONTEND_BASE_URL` | `http://localhost:3000` | Recommended if SSO is used | The frontend's base URL, used to redirect back to the UI once an OIDC login completes (E-U-01) |
 | `OIDC_INTERNAL_BASE_URL_OVERRIDE` | unset | — | Dev/test-only escape hatch for a containerized identity provider whose public URL isn't reachable from inside the backend's own container — see [docs/enterprise-integration.md](docs/enterprise-integration.md). Leave unset in production. |
 | `OIDC_ALLOW_PRIVATE_NETWORK_TARGETS` | `false` | — | Set `true` only if every organisation on this deployment runs its own trusted, internally-hosted identity provider with no public IP (e.g. an on-prem Keycloak/Authentik on a corporate LAN or VPC). Disables the SSRF guard that otherwise rejects an org's `oidc_issuer_url` resolving to a private/internal address — see [docs/enterprise-integration.md](docs/enterprise-integration.md). Leave `false` on any deployment serving mutually-untrusted organisations. |
+| `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](docs/deployment.md#obtaining-container-images) |
 
-Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild. Set it to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — the setting behind same-origin subpath deployment (UI at `my.website.com/`, API at `my.website.com/api/`, avoiding CORS entirely instead of configuring around it); see [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full reverse-proxy recipe.
-
-## Development workflow
-
-### Backend
-
-```bash
-cd tests/container
-docker compose up -d db   # needs the dev/test Postgres running (reqtrack_test)
-
-cd ../../backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test
-uvicorn app.main:app --reload --port 8000
-```
-
-Migrations run automatically on startup. To run them manually: `alembic upgrade head` (from `backend/`).
-
-**Backend tests** must run against a `*_test`-suffixed database — `tests/conftest.py` refuses to start otherwise, since the suite drops and recreates the entire schema at the start of every run (running it against the wrong database would destroy real data):
-
-```bash
-cd tests/container && docker compose up -d db   # provides reqtrack_test
-cd ../../backend && source .venv/bin/activate
-DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -q
-```
-
-Or run them inside the dev/test stack's own backend container, which already has `DATABASE_URL` pointed at `reqtrack_test`:
-
-```bash
-cd tests/container && docker compose exec backend pytest -q
-```
-
-Note: every test truncates all tables, including the bootstrap admin user, so after a pytest run the dev/test stack's own backend/frontend will have no data left to browse — `docker compose restart backend` re-runs migrations and re-creates the bootstrap admin if you also want to use the UI or run Playwright afterward (Playwright itself doesn't need this if you haven't run pytest since the stack last started).
-
-**Linting** (N-E-04): `ruff` is configured in `backend/pyproject.toml` — `ruff check app` (or `tests`) from `backend/`. `B008` (function calls in argument defaults) is deliberately disabled since FastAPI's `Depends(...)` dependency-injection idiom is exactly that pattern.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev      # http://localhost:3000, proxies to VITE_API_BASE_URL (default http://localhost:8000)
-npm run build    # type-checks with tsc, then builds
-npm run lint     # ESLint (N-E-07): TypeScript + React Hooks + Fast Refresh rules
-npm run storybook       # component explorer at http://localhost:6006, with a light/dark theme toggle
-npm run build-storybook # static Storybook build
-npm run test-storybook  # runs every story as an automated test (real Chromium via Playwright), both themes included
-```
-
-### End-to-end tests
-
-Requires the dev/test stack running:
-
-```bash
-cd tests/container && docker compose up --build -d
-
-cd ../playwright
-npm install
-npx playwright install --with-deps chromium
-npm test
-```
-
-### Continuous integration
-
-`.github/workflows/ci.yml` runs on every push/PR to `main`: frontend lint + type-check + build, the full backend pytest suite with coverage (reported as a check, a job-summary percentage, and a downloadable HTML report) plus `ruff` lint against the real dev/test Docker Compose stack, and the full Playwright E2E suite against the running containers — all of it gating. A final job builds the production backend/frontend images (proving both Dockerfiles still build) once the two test jobs pass; it does not publish them yet — see the comments at the top of that job for exactly what to uncomment when ready.
-
-### Backups
-
-Backups target the production stack's `db` service (run from the repo root, with the root stack up):
-
-```bash
-./scripts/backup.sh [output-dir]     # pg_dump, gzip'd, timestamped
-./scripts/restore.sh <backup-file>   # restores into the running db service
-```
-
-If `STORAGE_BACKEND=local`, also back up the storage directory (`STORAGE_LOCAL_DIR`) separately — `scripts/backup.sh` only covers the database. If using the `s3` backend (the default, via MinIO), use MinIO's own backup/replication tooling for the `reqtrack_minio_data` volume.
+Frontend: `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or the container-runtime equivalent `PUBLIC_API_BASE_URL` passed to `docker-compose.yml`, which is injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild. Set it to an **empty** value (not left unset) to make the frontend call the API via relative paths against its own origin, instead of an absolute URL — the setting behind same-origin subpath deployment described above; see [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full reverse-proxy recipe.
 
 ## Architecture overview
 
@@ -224,6 +161,12 @@ The frontend is a single-page app talking to a REST/JSON API (I-A-01, I-A-02), d
 ## Known limitations
 
 Deferred to a follow-up session or later, per `docs/requirements.md`: SCIM provisioning (E-U-02) and the standalone separate-port provisioning API (E-P-02) — each scoped as an implementable blueprint rather than built, since each is effectively its own project (see [docs/enterprise-integration.md](docs/enterprise-integration.md)) — plus Murchison (v4)'s AI-assisted authoring and IBM DOORS import/export. A small number of Ossa/Pelion/Massif-tagged items were implemented with a deliberately scoped-down approach (documented in [docs/decisions.md](docs/decisions.md)): login IP is logged but not geolocated, requirement/component/category ordering is move-up/move-down rather than drag-and-drop, the backend does not yet emit OpenTelemetry traces (the Alloy/Tempo pipeline is wired and ready for it), permission-revocation does not currently send a notification (only grant does), and notification email/digest delivery plus the disk-usage monitor and the review/stage-deadline scheduler run as in-process background tasks rather than a separate worker service. See [docs/soc2/](docs/soc2/) for the fuller, ongoing catalogue of known gaps against a SOC 2 Security + Confidentiality control set (e.g. no login rate limiting, no branch protection enforcing CI) and their remediation status.
+
+## Development workflow
+
+Running it locally, the backend/frontend dev setup, the test suites (backend pytest, Playwright E2E, Storybook), linting, and CI are all covered in [docs/development.md](docs/development.md) — including the exact commands to reproduce everything CI runs.
+
+Briefly, what CI enforces on every push/PR to `main`: frontend lint + type-check + build, the full backend pytest suite with coverage (~90%+ statement coverage — auth, RBAC boundaries, full resource lifecycles, requirement locking, change-request workflow, notifications, 2FA, SSO-only enforcement, and more) plus `ruff` lint, and a 16-spec-file Playwright E2E suite in a real browser — all gating, all against the same dev/test Docker Compose stack developers run locally. See [docs/development.md#continuous-integration](docs/development.md#continuous-integration) for the full breakdown, including how production images get built, version-tagged, and published.
 
 ## Code Quality Rules
 

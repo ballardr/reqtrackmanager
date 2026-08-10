@@ -197,7 +197,7 @@ def test_delete_cascades_through_everything_including_non_fk_references(client, 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
-            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "kind": "modify_requirement", "requirement_id": requirement["id"], "changed_fields": ["name"],
             "proposed_name": "x", "reason": "y",
         },
         headers=auth_headers(org_admin_token),

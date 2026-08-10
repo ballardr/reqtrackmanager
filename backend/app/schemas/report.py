@@ -32,6 +32,12 @@ class ReportRequest(BaseModel):
         report_template_id: An optional selected `ReportTemplate` (R-G-05)
             to brand the PDF with (accent colour, cover page, footer, logo).
             Ignored for CSV exports, which have no branded layout.
+        chapters_per_component: Per-generation override of whether the PDF
+            chapters by component (`True`) or renders continuously
+            (`False`) — `None` (the default) defers to the selected
+            template's own setting, or — with no template — a heuristic
+            (`services.reports.default_chapters_per_component`). Always
+            wins over both when explicitly set. Ignored for CSV exports.
     """
 
     pre_markdown: str = ""
@@ -43,6 +49,7 @@ class ReportRequest(BaseModel):
     keyword: str | None = None
     resource_file_ids: list[UUID] = []
     report_template_id: UUID | None = None
+    chapters_per_component: bool | None = None
 
 
 class ReportChapter(BaseModel):
@@ -69,6 +76,12 @@ class ProjectReportConfig(BaseModel):
     intro_is_organisation_default: bool = False
     chapters_is_organisation_default: bool = False
     appendices_is_organisation_default: bool = False
+    # Not part of the intro/chapters/appendices per-field fallback
+    # resolution above (there's no organisation-level default template to
+    # fall back to) — just the project's own raw setting, read/written
+    # directly, ignored if present on a PUT (matches how the
+    # `*_is_organisation_default` fields are documented above).
+    default_report_template_id: UUID | None = None
 
 
 class OrgReportDefaults(BaseModel):

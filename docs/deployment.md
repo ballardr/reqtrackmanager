@@ -49,9 +49,9 @@ cd reqtrackmanager/tests/container
 docker compose up --build
 ```
 
-This is sufficient for evaluating the product or for development — see the [README](../README.md#quick-start--local-development--evaluation) for the URLs it exposes. It uses dev-friendly defaults: a fixed bootstrap admin password, MailHog instead of a real mail provider, and MinIO with default credentials, all in an isolated `reqtrack_test` database. **Never point this stack at the internet, and never confuse it with the production stack below.**
+This is sufficient for evaluating the product or for development — see [development.md](development.md#quick-start--local-development--evaluation) for the URLs it exposes. It uses dev-friendly defaults: a fixed bootstrap admin password, MailHog instead of a real mail provider, and MinIO with default credentials, all in an isolated `reqtrack_test` database. **Never point this stack at the internet, and never confuse it with the production stack below.**
 
-For a populated instance to actually evaluate (rather than an empty bootstrap admin with nothing in it), run `docker compose exec backend python scripts/seed_demo_data.py` afterward — see the README's [Demo data](../README.md#demo-data) section.
+For a populated instance to actually evaluate (rather than an empty bootstrap admin with nothing in it), run `docker compose exec backend python scripts/seed_demo_data.py` afterward — see [development.md](development.md#demo-data)'s Demo data section.
 
 ## Production deployment
 
@@ -83,7 +83,22 @@ DEPLOYMENT_NOTIFICATION_EMAIL=ops@your-domain.example
 
 The full list of backend environment variables, with defaults, is documented in the [README's Configuration section](../README.md#configuration).
 
-CI (`.github/workflows/ci.yml`) builds and tags the production backend/frontend images on every change, proving both Dockerfiles still build, but does not push them anywhere yet (see the README's [Continuous integration](../README.md#continuous-integration) section) — `docker compose up --build -d` above builds them locally instead, the only way to obtain them today.
+### Obtaining container images
+
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, and `mcp-server` images on every change and, once the `frontend` and `backend-and-e2e` jobs pass on a push to `main`, pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+
+Each image is tagged three ways:
+
+- **`latest`** — always the most recent build from `main`. What `IMAGE_TAG` defaults to below.
+- **`<git sha>`** — the exact commit it was built from, for pinning to a specific build without needing a release version.
+- **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `Mainline` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
+
+`docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`. This means:
+
+- **First run, or after `docker compose up --build -d`**: builds locally, exactly as before — nothing here requires ever touching `ghcr.io`.
+- **To deploy an already-published image instead of building**: set `IMAGE_TAG` in your `.env` (a SemVer to pin a specific release, a commit SHA, or leave it unset/`latest` to track the newest `main` build), then `docker compose pull && docker compose up -d`. This is the faster path for upgrading an existing deployment — no build step, no source checkout needed on the host at all.
+
+If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
 ### Hardening: scope MinIO credentials
 
@@ -153,9 +168,11 @@ PUBLIC_API_BASE_URL=   # deliberately empty — see below
 
 An **empty** `PUBLIC_API_BASE_URL` (not omitted — actually set to an empty value in your `.env`/orchestrator config) tells the frontend to make API calls as relative paths (`/api/v1/...`) rather than against an absolute URL, so they resolve against whatever origin the page itself was loaded from — exactly what's needed once the UI and API share one origin. Leaving `PUBLIC_API_BASE_URL` completely unset instead falls back to the default (`http://localhost:8000`), which is correct for local development but wrong here — the two are deliberately different, and the frontend's runtime config generator (`frontend/docker/env-config-entrypoint.sh`) is written to preserve that distinction (an explicit empty value is honoured, not silently replaced by the default).
 
+> **Common mistake: do not set `PUBLIC_API_BASE_URL=/api` (or any value containing `/api`).** It's a natural-looking choice — it matches the nginx location prefix above — but it's wrong, and it produces exactly the doubled-path failure this pattern is trying to avoid. The frontend's own request paths already start with `/api/v1/...` (that's what `/api/` in the nginx config is matching against); `PUBLIC_API_BASE_URL` is *prepended* to those paths, not merged with them. So `PUBLIC_API_BASE_URL=/api` turns a request for `/api/v1/orgs` into `/api` + `/api/v1/orgs` = `/api/api/v1/orgs`, which 404s — confirmed by actually setting `VITE_API_BASE_URL=/api` on a running frontend container and inspecting the resulting `env-config.js`/request URLs, not just reasoned about. The nginx `/api/` prefix and the frontend's own `/api/v1/...` paths were deliberately chosen to already line up (see "no backend routing changes" above) — that's precisely *why* `PUBLIC_API_BASE_URL` should carry no path at all here, just empty.
+
 **What this does and doesn't cover:** the `/api/` location above only reaches paths that genuinely start with `/api/` on the backend — every route the frontend calls (`/api/v1/...`) matches, but `/health`, `/metrics`, `/docs`, and `/openapi.json` don't and won't be reachable at `my.website.com/api/health` etc. This is usually the right default — health checks and metrics are typically scraped over the internal Docker network (see [solution-architecture.md](solution-architecture.md)'s observability section), not exposed publicly. If you do want Swagger UI reachable through the public subpath, add matching one-to-one location blocks (`location /api/docs { proxy_pass http://backend:8000/docs; }`, and likewise for `/api/openapi.json` and `/api/metrics`).
 
-This pattern was verified against a real reverse proxy (not just described): an nginx container configured exactly as above, routing to the actual running dev/test backend and frontend containers, correctly proxied both a public API endpoint and an authenticated login request through to identical responses as calling the backend directly.
+This pattern was verified against a real reverse proxy (not just described): an nginx container configured exactly as above, routing to the actual running dev/test backend and frontend containers, correctly proxied both a public API endpoint and an authenticated login request through to identical responses as calling the backend directly. Re-verified again later specifically for path-doubling, prompted by a reasonable-sounding suspicion that the `/api/` `proxy_pass` itself might double the path: it doesn't (an `/api/v1/...` request through the proxy and the same request straight to the backend returned byte-identical responses, including the same HTTP status), and the same held for the extra one-to-one `/api/docs`/`/api/openapi.json` blocks. The doubling risk is real, but it lives entirely in `PUBLIC_API_BASE_URL` misconfiguration (see the callout above), not in this nginx config.
 
 ### Storage backend
 

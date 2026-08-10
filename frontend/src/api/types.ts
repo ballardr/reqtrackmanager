@@ -26,10 +26,11 @@ export const REQUIREMENT_STATUS_LABEL: Record<RequirementStatus, string> = {
   completed: "Completed",
   archived: "Archived",
 };
-export type RequirementLevel = "requirement" | "recommended";
+export type RequirementLevel = "requirement" | "recommended" | "optional";
 export const REQUIREMENT_LEVEL_LABEL: Record<RequirementLevel, string> = {
   requirement: "Requirement",
   recommended: "Recommended",
+  optional: "Optional",
 };
 export type ChangeRequestKind = "new_requirement" | "modify_requirement";
 export type ChangeRequestStatus = "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn";
@@ -412,11 +413,12 @@ export interface Requirement {
   name: string;
   reasoning: string;
   clarification: string;
+  description: string;
   status: RequirementStatus;
   owner_id: string;
   component_id: string;
   category_id: string;
-  target_stage_id: string | null;
+  target_stage_id: string;
   level: RequirementLevel;
   sort_order: number;
   creator_id: string;
@@ -463,9 +465,10 @@ export interface RequirementVersionEntry {
   name: string;
   reasoning: string;
   clarification: string;
+  description: string;
   status: RequirementStatus;
   owner_id: string;
-  target_stage_id: string | null;
+  target_stage_id: string;
   level: RequirementLevel;
   change_note: string;
   change_request_id: string | null;
@@ -487,9 +490,44 @@ export interface Comment {
   author_display_name: string;
   body: string;
   created_at: string;
+  edited_at: string | null;
   reaction_count: number;
   reacted_by_me: boolean;
+  attachments: FileAsset[];
 }
+
+/** Field names a MODIFY_REQUIREMENT change request may propose to change —
+ * mirrors backend `CHANGEABLE_REQUIREMENT_FIELDS` (schemas/change_request.py).
+ * A field not listed in `ChangeRequest.changed_fields` means "untouched",
+ * not "cleared" — its `proposed_*` counterpart (if any) must be ignored. */
+export const CHANGEABLE_REQUIREMENT_FIELDS = [
+  "name",
+  "reasoning",
+  "clarification",
+  "description",
+  "target_stage_id",
+  "level",
+  "review_date",
+  "review_lead_days",
+  "reviewer_id",
+  "custom_fields",
+  "attachments",
+] as const;
+export type ChangeableRequirementField = (typeof CHANGEABLE_REQUIREMENT_FIELDS)[number];
+
+export const CHANGEABLE_FIELD_LABEL: Record<ChangeableRequirementField, string> = {
+  name: "Name",
+  reasoning: "Reasoning",
+  clarification: "Clarification",
+  description: "Description",
+  target_stage_id: "Target version",
+  level: "Level",
+  review_date: "Review date",
+  review_lead_days: "Reminder lead time",
+  reviewer_id: "Assigned reviewer",
+  custom_fields: "Custom fields",
+  attachments: "Attachments",
+};
 
 export interface ChangeRequest {
   id: string;
@@ -498,11 +536,12 @@ export interface ChangeRequest {
   kind: ChangeRequestKind;
   status: ChangeRequestStatus;
   creator_id: string;
-  proposed_name: string;
-  proposed_reasoning: string;
-  proposed_clarification: string;
+  proposed_name: string | null;
+  proposed_reasoning: string | null;
+  proposed_clarification: string | null;
+  proposed_description: string | null;
   proposed_target_stage_id: string | null;
-  proposed_level: RequirementLevel;
+  proposed_level: RequirementLevel | null;
   reason: string;
   custom_fields: Record<string, unknown>;
   submitted_at: string | null;
@@ -516,6 +555,11 @@ export interface ChangeRequest {
   proposed_review_date: string | null;
   proposed_review_lead_days: number | null;
   proposed_reviewer_id: string | null;
+  /** Which fields this MODIFY_REQUIREMENT change request actually proposes
+   * to change — empty for NEW_REQUIREMENT change requests, which always
+   * propose every field. See `CHANGEABLE_REQUIREMENT_FIELDS` above. */
+  changed_fields: ChangeableRequirementField[];
+  proposed_attachment_file_ids: string[];
 }
 
 export interface ChangeRequestTask {
@@ -596,6 +640,23 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
   return null;
 }
 
+/**
+ * Where clicking a notification should navigate — `null` means it isn't
+ * navigable (e.g. a password-changed notification about the viewer's own
+ * account). Falls back to the project overview when `entity_type`/
+ * `entity_id` aren't set but `project_id` is (e.g. "you were added to
+ * project X" carries no specific entity, just the project itself).
+ */
+export function notificationLink(n: Notification): string | null {
+  if (n.project_id && n.entity_type && n.entity_id) {
+    if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
+    if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
+    if (n.entity_type === "project_stage") return `/projects/${n.project_id}/admin`;
+  }
+  if (n.project_id) return `/projects/${n.project_id}`;
+  return null;
+}
+
 export interface RequirementImportResult {
   created: number;
   errors: { row: number; message: string }[];
@@ -613,6 +674,7 @@ export interface ProjectReportConfig {
   intro_is_organisation_default: boolean;
   chapters_is_organisation_default: boolean;
   appendices_is_organisation_default: boolean;
+  default_report_template_id: string | null;
 }
 
 export interface OrgReportDefaults {
@@ -702,6 +764,7 @@ export interface ReportTemplate {
   intro: string;
   chapters: ReportChapter[];
   appendices: ReportChapter[];
+  chapters_per_component: boolean;
 }
 
 export interface OrgSsoConfig {

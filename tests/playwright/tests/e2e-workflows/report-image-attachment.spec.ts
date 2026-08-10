@@ -84,7 +84,7 @@ test("insert an image into a project's report intro and generate a PDF", async (
   await test.step("generate a PDF report and confirm a real PDF downloads", async () => {
     await page.goto(`/projects/${project.id}/reports`);
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF" }).click();
+    await page.getByRole("button", { name: "Generate PDF" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.pdf$/);
     const downloadPath = await download.path();

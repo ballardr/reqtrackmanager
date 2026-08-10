@@ -58,3 +58,16 @@ class RequirementFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file directly uploaded as an attachment to a `ReviewComment` — the
+    one place a user may still attach a file to a requirement outside of
+    creation or a change request (C-G-12 governs the requirement's own
+    fields and its direct-attachment endpoint, not its discussion thread)."""
+
+    __tablename__ = "comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_comments.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

@@ -44,10 +44,13 @@ class StageStatus(str, enum.Enum):
 
 
 class RequirementLevel(str, enum.Enum):
-    """Whether a requirement's content is mandatory or advisory."""
+    """How binding a requirement's content is: mandatory, advisory, or
+    purely optional. Distinct from `RequirementStatus`, which tracks
+    lifecycle state, not bindingness."""
 
     REQUIREMENT = "requirement"
     RECOMMENDED = "recommended"
+    OPTIONAL = "optional"
 
 
 class RequirementStatus(str, enum.Enum):

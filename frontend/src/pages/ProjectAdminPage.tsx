@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -16,6 +16,7 @@ import type {
   ProjectReportConfig,
   ProjectStage,
   ReportChapter,
+  ReportTemplate,
 } from "../api/types";
 import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
@@ -50,6 +51,21 @@ export function ProjectAdminPage() {
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
   const [cascadeInputs, setCascadeInputs] = useState<Record<string, boolean>>({});
 
+  // Rename/delete state for stages/components/categories. Each "edits" map
+  // is keyed by item id and only populated once the user actually starts
+  // typing — the input's displayed value falls back to the item's own
+  // current name/prefix until then, so switching tabs never shows a stale
+  // half-typed rename after a reload.
+  const [stageNameEdits, setStageNameEdits] = useState<Record<string, string>>({});
+  const [deletingStageId, setDeletingStageId] = useState<string | null>(null);
+  const [reassignStageTo, setReassignStageTo] = useState("");
+  const [componentEdits, setComponentEdits] = useState<Record<string, { name: string; prefix: string }>>({});
+  const [deletingComponentId, setDeletingComponentId] = useState<string | null>(null);
+  const [categoryEdits, setCategoryEdits] = useState<Record<string, { name: string; prefix: string }>>({});
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [reassignCategoryTo, setReassignCategoryTo] = useState("");
+  const [structureError, setStructureError] = useState<string | null>(null);
+
   const [settingsName, setSettingsName] = useState("");
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
@@ -64,6 +80,8 @@ export function ProjectAdminPage() {
     chapters: false,
     appendices: false,
   });
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
+  const [defaultReportTemplateId, setDefaultReportTemplateId] = useState("");
 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
@@ -101,6 +119,7 @@ export function ProjectAdminPage() {
     // implies org membership, so this is safe for whoever can reach this
     // page at all.
     setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
+    setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
     setReportIntro(rc.intro);
     setReportChapters(rc.chapters);
     setReportAppendices(rc.appendices);
@@ -109,11 +128,13 @@ export function ProjectAdminPage() {
       chapters: rc.chapters_is_organisation_default,
       appendices: rc.appendices_is_organisation_default,
     });
+    setDefaultReportTemplateId(rc.default_report_template_id ?? "");
   }
 
   async function saveReportConfig() {
     await api.put(`/api/v1/projects/${projectId}/report-config`, {
       intro: reportIntro, chapters: reportChapters, appendices: reportAppendices,
+      default_report_template_id: defaultReportTemplateId || null,
     });
     reload();
   }
@@ -208,6 +229,88 @@ export function ProjectAdminPage() {
   async function moveCategory(id: string, direction: "up" | "down") {
     await api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction });
     reload();
+  }
+
+  async function renameStage(stageId: string, name: string) {
+    setStructureError(null);
+    try {
+      await api.patch(`/api/v1/projects/${projectId}/stages/${stageId}`, { name });
+      setStageNameEdits((m) => {
+        const next = { ...m };
+        delete next[stageId];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function deleteStage(stageId: string) {
+    if (!reassignStageTo) return;
+    setStructureError(null);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignStageTo}`);
+      setDeletingStageId(null);
+      setReassignStageTo("");
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function renameComponent(componentId: string, name: string, prefix: string) {
+    setStructureError(null);
+    try {
+      await api.patch(`/api/v1/projects/${projectId}/components/${componentId}`, { name, prefix });
+      setComponentEdits((m) => {
+        const next = { ...m };
+        delete next[componentId];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function deleteComponent(componentId: string) {
+    setStructureError(null);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/components/${componentId}`);
+      setDeletingComponentId(null);
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function renameCategory(categoryId: string, name: string, prefix: string) {
+    setStructureError(null);
+    try {
+      await api.patch(`/api/v1/projects/${projectId}/categories/${categoryId}`, { name, prefix });
+      setCategoryEdits((m) => {
+        const next = { ...m };
+        delete next[categoryId];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function deleteCategory(categoryId: string) {
+    if (!reassignCategoryTo) return;
+    setStructureError(null);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignCategoryTo}`);
+      setDeletingCategoryId(null);
+      setReassignCategoryTo("");
+      reload();
+    } catch (err) {
+      setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
   }
 
   async function addGroupMember(groupId: string, userId: string) {
@@ -342,14 +445,35 @@ export function ProjectAdminPage() {
       {tab === "stages" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.stages}</h2>
-        {stages.map((s) => (
+        {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
+        {stages.map((s) => {
+          const nameEdit = stageNameEdits[s.id] ?? s.name;
+          const otherStages = stages.filter((other) => other.id !== s.id);
+          return (
           <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <span>
-                {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
+              <div className="row">
+                <input
+                  className="input" style={{ maxWidth: 220 }} value={nameEdit}
+                  onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
+                />
+                {nameEdit !== s.name && nameEdit && (
+                  <button className="btn" onClick={() => renameStage(s.id, nameEdit)} title={strings.admin.rename}>
+                    <Pencil size={14} />
+                  </button>
+                )}
+                <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
                 {s.review_deadline && <span className="badge">{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</span>}
                 {s.completed_at && <span className="badge">{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</span>}
-              </span>
+                <button
+                  className="btn btn-danger"
+                  disabled={otherStages.length === 0}
+                  title={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
+                  onClick={() => setDeletingStageId(s.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
               {s.status !== "approved" && s.status !== "completed" && (
                 <button className="btn" onClick={() => approveStage(s.id)}>
                   <Check size={14} /> {strings.admin.approveStage}
@@ -395,8 +519,26 @@ export function ProjectAdminPage() {
                 )}
               </div>
             )}
+            {deletingStageId === s.id && (
+              <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                <span>{strings.admin.reassignExistingTo}</span>
+                <select className="input" style={{ maxWidth: 220 }} value={reassignStageTo} onChange={(e) => setReassignStageTo(e.target.value)}>
+                  <option value="">—</option>
+                  {otherStages.map((other) => (
+                    <option key={other.id} value={other.id}>{other.name}</option>
+                  ))}
+                </select>
+                <button className="btn btn-danger" disabled={!reassignStageTo} onClick={() => deleteStage(s.id)}>
+                  {strings.admin.confirmDelete}
+                </button>
+                <button className="btn" onClick={() => { setDeletingStageId(null); setReassignStageTo(""); }}>
+                  {strings.common.cancel}
+                </button>
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
       )}
 
@@ -404,15 +546,31 @@ export function ProjectAdminPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.components}</h2>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.admin.componentTreeHint}</p>
+        {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         {components.map((c, idx) => {
           const ownCategories = categories.filter((cat) => cat.component_id === c.id);
           const categoryInput = newCategoryInputs[c.id] ?? { name: "", prefix: "" };
+          const componentEdit = componentEdits[c.id] ?? { name: c.name, prefix: c.prefix };
+          const componentDirty = componentEdit.name !== c.name || componentEdit.prefix !== c.prefix;
+          const otherComponents = components.filter((other) => other.id !== c.id);
           return (
             <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
-                <span>
-                  {c.name} <span className="badge">{c.prefix}</span>
-                </span>
+                <div className="row">
+                  <input
+                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name}
+                    onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: e.target.value } }))}
+                  />
+                  <input
+                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix}
+                    onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
+                  />
+                  {componentDirty && componentEdit.name && componentEdit.prefix && (
+                    <button className="btn" title={strings.admin.rename} onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="row">
                   <button className="btn" disabled={idx === 0} onClick={() => moveComponent(c.id, "up")}>
                     <ArrowUp size={14} />
@@ -420,28 +578,102 @@ export function ProjectAdminPage() {
                   <button className="btn" disabled={idx === components.length - 1} onClick={() => moveComponent(c.id, "down")}>
                     <ArrowDown size={14} />
                   </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={ownCategories.length > 0 || otherComponents.length === 0}
+                    title={
+                      ownCategories.length > 0
+                        ? strings.admin.deleteComponentHasCategoriesHint
+                        : otherComponents.length === 0
+                        ? strings.admin.deleteLastOneHint
+                        : strings.admin.deleteComponent
+                    }
+                    onClick={() => setDeletingComponentId(c.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
+              {deletingComponentId === c.id && (
+                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                  <span>{strings.admin.confirmDelete}?</span>
+                  <button className="btn btn-danger" onClick={() => deleteComponent(c.id)}>
+                    {strings.admin.confirmDelete}
+                  </button>
+                  <button className="btn" onClick={() => setDeletingComponentId(null)}>
+                    {strings.common.cancel}
+                  </button>
+                </div>
+              )}
               <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
-                {ownCategories.map((cat, catIdx) => (
-                  <div key={cat.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <span>
-                      {cat.name} <span className="badge">{cat.prefix}</span>
-                    </span>
-                    <div className="row">
-                      <button className="btn" disabled={catIdx === 0} onClick={() => moveCategory(cat.id, "up")}>
-                        <ArrowUp size={14} />
-                      </button>
-                      <button
-                        className="btn"
-                        disabled={catIdx === ownCategories.length - 1}
-                        onClick={() => moveCategory(cat.id, "down")}
-                      >
-                        <ArrowDown size={14} />
-                      </button>
+                {ownCategories.map((cat, catIdx) => {
+                  const categoryEdit = categoryEdits[cat.id] ?? { name: cat.name, prefix: cat.prefix };
+                  const categoryDirty = categoryEdit.name !== cat.name || categoryEdit.prefix !== cat.prefix;
+                  const otherCategories = categories.filter((other) => other.id !== cat.id);
+                  return (
+                  <div key={cat.id} className="stack" style={{ gap: "0.3rem" }}>
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <div className="row">
+                        <input
+                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name}
+                          onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: e.target.value } }))}
+                        />
+                        <input
+                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix}
+                          onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
+                        />
+                        {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
+                          <button className="btn" title={strings.admin.rename} onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}>
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="row">
+                        <button className="btn" disabled={catIdx === 0} onClick={() => moveCategory(cat.id, "up")}>
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          className="btn"
+                          disabled={catIdx === ownCategories.length - 1}
+                          onClick={() => moveCategory(cat.id, "down")}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          disabled={otherCategories.length === 0}
+                          title={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
+                          onClick={() => setDeletingCategoryId(cat.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
+                    {deletingCategoryId === cat.id && (
+                      <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                        <span>{strings.admin.reassignExistingTo}</span>
+                        <select className="input" style={{ maxWidth: 260 }} value={reassignCategoryTo} onChange={(e) => setReassignCategoryTo(e.target.value)}>
+                          <option value="">—</option>
+                          {otherCategories.map((other) => {
+                            const otherComponent = components.find((comp) => comp.id === other.component_id);
+                            return (
+                              <option key={other.id} value={other.id}>
+                                {otherComponent ? `${otherComponent.name} / ` : ""}{other.name}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <button className="btn btn-danger" disabled={!reassignCategoryTo} onClick={() => deleteCategory(cat.id)}>
+                          {strings.admin.confirmDelete}
+                        </button>
+                        <button className="btn" onClick={() => { setDeletingCategoryId(null); setReassignCategoryTo(""); }}>
+                          {strings.common.cancel}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 <div className="row">
                   <input
                     className="input"
@@ -589,6 +821,23 @@ export function ProjectAdminPage() {
           This intro, these chapters, and these appendices are used as the default content when a report is
           generated for this project, unless overridden at generation time.
         </p>
+        {reportTemplates.length > 0 && (
+          <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
+            {strings.admin.defaultReportTemplate}
+            <select
+              className="input" value={defaultReportTemplateId}
+              onChange={(e) => setDefaultReportTemplateId(e.target.value)}
+            >
+              <option value="">{strings.reports.noTemplate}</option>
+              {reportTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.defaultReportTemplateHint}</span>
+          </label>
+        )}
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span>
             Project intro

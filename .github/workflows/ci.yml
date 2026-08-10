@@ -8,9 +8,13 @@
 #                          + JUnit reporting, ruff lint, the mcp-server's own
 #                          integration test suite, then the full Playwright
 #                          E2E suite against the running containers
-#   3. docker-build      - builds (but does NOT push) the production backend,
-#                          frontend, and mcp-server images, gated on the two
-#                          jobs above passing
+#   3. docker-build      - builds the production backend, frontend, and
+#                          mcp-server images, gated on the two jobs above
+#                          passing; tags each with GitVersion's computed
+#                          SemVer plus the commit SHA and `latest`, and
+#                          pushes all three to ghcr.io — except on pull_request
+#                          runs, which still build (proving the Dockerfiles
+#                          work) but never push
 #
 # Test results are published as GitHub check annotations and as downloadable
 # artifacts; a coverage summary is written to the job summary. This exists to
@@ -343,65 +347,77 @@ jobs:
         run: docker compose down -v
 
   docker-build:
-    name: Build production container images (not published)
+    name: Build, version, and push production container images
     runs-on: ubuntu-latest
     needs: [frontend, backend-and-e2e]
-    # Deliberately builds and tags but does not push, per explicit
-    # instruction: the system hasn't been through enough real-world
-    # (developer) usage yet to trust an automated publish. This job still
-    # proves both production Dockerfiles build cleanly on every change.
+    # Builds and tags on every run (proving all three production Dockerfiles
+    # still build cleanly), but only pushes to ghcr.io when this isn't a
+    # pull_request run — a same-repo PR's GITHUB_TOKEN could technically
+    # push, but a feature branch has no business publishing `:latest` (or
+    # any tag) to the registry a real deployment pulls from. No extra secret
+    # is needed to push: GITHUB_TOKEN already has `packages: write` (granted
+    # below) and ghcr.io accepts it directly.
     permissions:
       contents: read
       packages: write
     steps:
+      # fetch-depth: 0 (full history, including tags) is required for
+      # GitVersion below to compute a version from the repo's actual commit
+      # graph rather than the single shallow commit Actions checks out by
+      # default.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: "6.x"
+
+      # GitVersion.yml (repo root) sets `mode: Mainline` — every commit on
+      # main is treated as a release, so the version bumps automatically
+      # with each merge instead of requiring a manually pushed git tag. No
+      # tags exist yet, so this starts at 0.1.0 and increments from there.
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v3
 
       - uses: docker/setup-buildx-action@v4
 
-      # --- To actually publish once the system has been sufficiently
-      # user-tested: uncomment this login step, and change `push: false` to
-      # `push: true` on both build steps below. No extra secret is needed —
-      # GITHUB_TOKEN already has `packages: write` (granted above) and is
-      # accepted by ghcr.io directly.
-      # - uses: docker/login-action@v4
-      #   with:
-      #     registry: ghcr.io
-      #     username: ${{ github.actor }}
-      #     password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build backend image
+      - name: Build and push backend image
         uses: docker/build-push-action@v7
         with:
           context: ./backend
-          push: false
-          # Provenance/SBOM attestations need an image reference to attach
-          # to, which only exists once something is actually pushed —
-          # disabled here since push is off; re-enable (or just drop these
-          # two lines to accept the action's defaults) once push: true.
-          provenance: false
-          sbom: false
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
+            ghcr.io/${{ github.repository }}-backend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
             ghcr.io/${{ github.repository }}-backend:latest
 
-      - name: Build frontend image
+      - name: Build and push frontend image
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
-          push: false
-          provenance: false
-          sbom: false
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
+            ghcr.io/${{ github.repository }}-frontend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
             ghcr.io/${{ github.repository }}-frontend:latest
 
-      - name: Build mcp-server image
+      - name: Build and push mcp-server image
         uses: docker/build-push-action@v7
         with:
           context: ./mcp-server
-          push: false
-          provenance: false
-          sbom: false
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
+            ghcr.io/${{ github.repository }}-mcp-server:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-mcp-server:${{ github.sha }}
             ghcr.io/${{ github.repository }}-mcp-server:latest

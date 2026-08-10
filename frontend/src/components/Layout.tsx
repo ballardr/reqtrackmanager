@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
 import type { ProjectListItem } from "../api/types";
+import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding } from "../context/BrandingContext";
 import { TerminologyProvider, useTermPlural } from "../context/TerminologyContext";
@@ -111,8 +112,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
         >
           {/* U-C-02: resolved org/platform branding (BrandingContext) — an
               org's own logo/title, falling back to the platform default,
-              falling back again to the built-in wordmark. */}
-          {branding.logoFileId && <img src={fileUrl(branding.logoFileId)} alt="" style={{ height: 24 }} />}
+              falling back again to the built-in logo mark. */}
+          <img
+            src={branding.logoFileId ? fileUrl(branding.logoFileId) : builtInLogo}
+            alt=""
+            style={{ height: 24 }}
+          />
           {branding.headerTitle}
         </Link>
         {user && (

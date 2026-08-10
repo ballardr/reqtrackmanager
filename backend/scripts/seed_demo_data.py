@@ -220,6 +220,13 @@ def create_change_request(
         "kind": kind, "requirement_id": requirement_id, "proposed_name": proposed_name,
         "proposed_reasoning": proposed_reasoning, "reason": reason,
     }
+    if kind == "modify_requirement":
+        # changed_fields is the explicit record of what a MODIFY_REQUIREMENT
+        # change request actually proposes to change (see
+        # docs/decisions.md's "Change request field-level tracking" entry) —
+        # ignored entirely for NEW_REQUIREMENT, which has no existing
+        # version to diff against.
+        body["changed_fields"] = ["name", "reasoning"]
     if component_id:
         body["proposed_component_id"] = component_id
     if category_id:

@@ -218,6 +218,7 @@ class ReportTemplateCreate(BaseModel):
     intro: str = ""
     chapters: list[ReportChapter] = []
     appendices: list[ReportChapter] = []
+    chapters_per_component: bool = True
 
 
 class ReportTemplateOut(BaseModel):
@@ -231,6 +232,7 @@ class ReportTemplateOut(BaseModel):
     intro: str = ""
     chapters: list[ReportChapter] = []
     appendices: list[ReportChapter] = []
+    chapters_per_component: bool = True
 
 
 class OrgProjectSummaryOut(BaseModel):

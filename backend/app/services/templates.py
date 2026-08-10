@@ -54,7 +54,11 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
     db.add(new_project)
     db.flush()
 
-    db.add(ProjectStage(project_id=new_project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
+    new_scoping_stage = ProjectStage(
+        project_id=new_project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True
+    )
+    db.add(new_scoping_stage)
+    db.flush()
 
     component_id_map = {}
     for component in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == source.id)).all():
@@ -128,7 +132,15 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
             RequirementVersion(
                 requirement_id=new_requirement.id, version_number=1, valid_from=now, valid_to=None,
                 name=current_version.name, reasoning=current_version.reasoning,
-                clarification=current_version.clarification, status=RequirementStatus.DRAFT,
+                clarification=current_version.clarification, description=current_version.description,
+                status=RequirementStatus.DRAFT,
+                # The source's own target_stage_id belongs to the *template*
+                # project's stages, which are never copied (see this
+                # module's docstring) — every cloned requirement targets
+                # the new project's own single starting stage instead;
+                # level, unlike target, has no such cross-project ambiguity
+                # and copies straight across.
+                target_stage_id=new_scoping_stage.id, level=current_version.level,
                 owner_id=current_version.owner_id, sort_order=current_version.sort_order,
                 created_by=creator.id, created_at=now, change_note=f"Copied from template project '{source.name}'.",
                 custom_fields=remapped_custom_fields,

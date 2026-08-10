@@ -1309,6 +1309,7 @@ def create_report_template(
         footer_text=payload.footer_text, created_by=current_user.id,
         intro=payload.intro, chapters=[c.model_dump() for c in payload.chapters],
         appendices=[c.model_dump() for c in payload.appendices],
+        chapters_per_component=payload.chapters_per_component,
     )
     db.add(template)
     db.flush()
@@ -1347,6 +1348,7 @@ def update_report_template(
     template.intro = payload.intro
     template.chapters = [c.model_dump() for c in payload.chapters]
     template.appendices = [c.model_dump() for c in payload.appendices]
+    template.chapters_per_component = payload.chapters_per_component
     log_event(db, entity_type="report_template", entity_id=template.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
     db.commit()

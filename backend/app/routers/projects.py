@@ -20,11 +20,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.change_request import ChangeRequest
+from app.models.change_request import ChangeRequest, ChangeRequestVersion
 from app.models.enums import ChangeRequestStatus, ExternalUserPolicy, OrgRole, ProjectRole, RequirementStatus, StageStatus
 from app.models.file import RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup, UserOrgRole
+from app.models.organization import Organization, OrgGroup, ReportTemplate, UserOrgRole
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -43,8 +43,10 @@ from app.schemas.project import (
     AssignByEmailOut,
     CategoryCreate,
     CategoryOut,
+    CategoryUpdate,
     ComponentCreate,
     ComponentOut,
+    ComponentUpdate,
     MoveDirection,
     ProjectCreate,
     ProjectGroupCreate,
@@ -55,6 +57,7 @@ from app.schemas.project import (
     ProjectOut,
     ProjectStageCreate,
     ProjectStageOut,
+    ProjectStageUpdate,
     ProjectUpdate,
     StageCompleteRequest,
     StageProgressOut,
@@ -394,10 +397,19 @@ def update_report_config(
     default report content on generation unless overridden ad hoc. Saving
     a blank field here reverts that field to the organisation's default
     (if one is set), rather than forcing genuinely empty content — see
-    `resolve_report_config`."""
+    `resolve_report_config`.
+
+    `default_report_template_id`, if set, must be a template belonging to
+    this project's own organisation (400 otherwise) — the same cross-org
+    check `generate_pdf` already applies to an ad-hoc `report_template_id`."""
+    if payload.default_report_template_id is not None:
+        template = db.get(ReportTemplate, payload.default_report_template_id)
+        if template is None or template.organization_id != project.organization_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid default_report_template_id for this project's organisation.")
     project.report_intro = payload.intro
     project.report_chapters = [c.model_dump() for c in payload.chapters]
     project.report_appendices = [c.model_dump() for c in payload.appendices]
+    project.default_report_template_id = payload.default_report_template_id
     log_event(db, entity_type="project", entity_id=project_id, action="report_config_updated",
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
@@ -611,6 +623,83 @@ def list_stages(project_id: UUID, current_user: User = Depends(require_project_v
     ).all()
 
 
+@router.patch("/{project_id}/stages/{stage_id}", response_model=ProjectStageOut)
+def rename_stage(
+    project_id: UUID, stage_id: UUID, payload: ProjectStageUpdate,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    existing = db.scalar(
+        select(ProjectStage.id).where(
+            ProjectStage.project_id == project.id, ProjectStage.name == payload.name, ProjectStage.id != stage_id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A stage with this name already exists.")
+    stage.name = payload.name
+    log_event(db, entity_type="project_stage", entity_id=stage.id, action="renamed",
+              actor_id=current_user.id, project_id=project.id)
+    db.commit()
+    db.refresh(stage)
+    return stage
+
+
+@router.delete("/{project_id}/stages/{stage_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_stage(
+    project_id: UUID, stage_id: UUID, reassign_to: UUID,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Deletes a stage, reassigning every requirement version and
+    change-request proposal that ever targeted it to `reassign_to` first —
+    `RequirementVersion.target_stage_id` is mandatory (never null), so this
+    isn't optional the way unlinking a file is.
+
+    Refuses to delete a stage any approved baseline snapshots (C-G-10):
+    a `Baseline` is documented as an *immutable* record of what a specific
+    stage's approved requirements looked like, and silently repointing it
+    at a different stage would quietly rewrite what that snapshot means.
+    Archiving/renaming is always available instead; only a stage with no
+    baseline history can be removed outright. `reassign_to` must be a
+    different, existing stage in the same project — if this is the
+    project's only stage, no valid target exists and deletion is refused
+    (a project must always have at least one stage).
+    """
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    if reassign_to == stage_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be a different stage.")
+    target = db.get(ProjectStage, reassign_to)
+    if target is None or target.project_id != project.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be an existing stage in this project.")
+    has_baseline = db.scalar(select(Baseline.id).where(Baseline.stage_id == stage_id)) is not None
+    if has_baseline:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This stage has an approved baseline and can't be deleted — baselines are immutable history.",
+        )
+    db.execute(
+        RequirementVersion.__table__.update()
+        .where(RequirementVersion.target_stage_id == stage_id)
+        .values(target_stage_id=reassign_to)
+    )
+    db.execute(
+        ChangeRequestVersion.__table__.update()
+        .where(ChangeRequestVersion.proposed_target_stage_id == stage_id)
+        .values(proposed_target_stage_id=reassign_to)
+    )
+    if stage.is_current:
+        target.is_current = True
+    log_event(db, entity_type="project_stage", entity_id=stage_id, action="deleted",
+              actor_id=current_user.id, project_id=project.id, detail={"reassigned_to": str(reassign_to)})
+    db.delete(stage)
+    db.commit()
+
+
 @router.post("/{project_id}/stages/{stage_id}/transition", response_model=ProjectStageOut)
 def transition_stage(
     project_id: UUID,
@@ -808,6 +897,65 @@ def move_component(
     return result
 
 
+@router.patch("/{project_id}/components/{component_id}", response_model=ComponentOut)
+def rename_component(
+    project_id: UUID, component_id: UUID, payload: ComponentUpdate,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Renames a component and/or changes its prefix. Existing requirements'
+    `unique_code` values (e.g. `SW-PERF-014`) are generated once at creation
+    and never retroactively rewritten (see `Requirement.unique_code`'s
+    docstring) — a prefix change only affects codes assigned to requirements
+    created after the change."""
+    component = db.get(ProjectComponent, component_id)
+    if component is None or component.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Component not found.")
+    existing = db.scalar(
+        select(ProjectComponent.id).where(
+            ProjectComponent.project_id == project.id, ProjectComponent.prefix == payload.prefix,
+            ProjectComponent.id != component_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A component with this prefix already exists.")
+    component.name = payload.name
+    component.prefix = payload.prefix
+    log_event(db, entity_type="project_component", entity_id=component.id, action="renamed",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id)
+    db.commit()
+    db.refresh(component)
+    return component
+
+
+@router.delete("/{project_id}/components/{component_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_component(
+    project_id: UUID, component_id: UUID,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Deletes a component. Only possible once it has no categories left —
+    a category is where requirements actually attach (every
+    `Requirement.category_id` implies a matching `component_id`, enforced
+    at creation), so emptying a component of its categories first (deleting
+    or reassigning each one via `delete_category`, which can target a
+    category under a *different* component) always empties it of
+    requirements too, making this a simple, unconditional delete rather
+    than needing its own reassignment step."""
+    component = db.get(ProjectComponent, component_id)
+    if component is None or component.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Component not found.")
+    has_categories = db.scalar(select(ProjectCategory.id).where(ProjectCategory.component_id == component_id)) is not None
+    if has_categories:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This component still has categories — delete or reassign them first."
+        )
+    log_event(db, entity_type="project_component", entity_id=component_id, action="deleted",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id)
+    db.delete(component)
+    db.commit()
+
+
 @router.post("/{project_id}/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
 def create_category(
     payload: CategoryCreate, project: Project = Depends(require_project_manage),
@@ -866,6 +1014,72 @@ def move_category(
               detail={"direction": payload.direction})
     db.commit()
     return result
+
+
+@router.patch("/{project_id}/categories/{category_id}", response_model=CategoryOut)
+def rename_category(
+    project_id: UUID, category_id: UUID, payload: CategoryUpdate,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Renames a category and/or changes its prefix (see `rename_component`'s
+    docstring on why existing `unique_code`s are unaffected)."""
+    category = db.get(ProjectCategory, category_id)
+    if category is None or category.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found.")
+    existing = db.scalar(
+        select(ProjectCategory.id).where(
+            ProjectCategory.component_id == category.component_id, ProjectCategory.prefix == payload.prefix,
+            ProjectCategory.id != category_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "A category with this prefix already exists under this component."
+        )
+    category.name = payload.name
+    category.prefix = payload.prefix
+    log_event(db, entity_type="project_category", entity_id=category.id, action="renamed",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+@router.delete("/{project_id}/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(
+    project_id: UUID, category_id: UUID, reassign_to: UUID,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Deletes a category, reassigning every requirement that belonged to it
+    to `reassign_to` — which may be a category under a *different*
+    component (unlike moving a category's display position, which stays
+    within one component). Crossing components on reassignment also moves
+    the affected requirements' `component_id` to match, preserving the
+    invariant that a requirement's component always matches its category's
+    component. `reassign_to` must be a different, existing category in the
+    same project — if this is the project's only remaining category, no
+    valid target exists and deletion is refused.
+    """
+    category = db.get(ProjectCategory, category_id)
+    if category is None or category.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found.")
+    if reassign_to == category_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be a different category.")
+    target = db.get(ProjectCategory, reassign_to)
+    if target is None or target.project_id != project.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be an existing category in this project.")
+    db.execute(
+        Requirement.__table__.update()
+        .where(Requirement.category_id == category_id)
+        .values(category_id=reassign_to, component_id=target.component_id)
+    )
+    log_event(db, entity_type="project_category", entity_id=category_id, action="deleted",
+              actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"reassigned_to": str(reassign_to)})
+    db.delete(category)
+    db.commit()
 
 
 def _move_ordered(db: Session, model, scope_conditions: list, item_id: UUID, direction: str):

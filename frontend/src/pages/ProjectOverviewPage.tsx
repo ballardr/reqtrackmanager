@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -6,6 +7,7 @@ import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "..
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
+import { useTerm } from "../context/TerminologyContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -14,6 +16,7 @@ const strings = t();
  * per-stage progress, and a recent activity feed at a glance. */
 export function ProjectOverviewPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const requirementTerm = useTerm("requirement");
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [activity, setActivity] = useState<ChangeEntry[] | null>(null);
@@ -45,9 +48,14 @@ export function ProjectOverviewPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>{project.name}</h1>
-        <p className="text-muted">{project.summary}</p>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <p className="text-muted">{project.summary}</p>
+        </div>
+        <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
+          <Plus size={16} /> New {requirementTerm}
+        </Link>
       </div>
       <div className="grid grid-metrics">
         {tiles.map(([label, value]) => (

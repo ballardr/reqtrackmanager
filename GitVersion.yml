@@ -1,0 +1,9 @@
+# Configures GitVersion (.github/workflows/ci.yml's `docker-build` job) to
+# compute the SemVer tag applied to every pushed container image.
+#
+# Mainline mode: this repo has one long-lived branch (`main`), no release
+# branches, and no git tags yet — every commit that lands on `main` is
+# treated as a release, so the version increments automatically on each
+# merge instead of requiring someone to push a version tag by hand. Starts
+# at 0.1.0 in the absence of any existing tags.
+mode: Mainline

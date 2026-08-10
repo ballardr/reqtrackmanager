@@ -1,9 +1,10 @@
 import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
+import { notificationLink } from "../api/types";
 import { t } from "../i18n/strings";
 import { Tooltip } from "./Tooltip";
 
@@ -14,6 +15,7 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   async function reload() {
     const list = await api.get<Notification[]>("/api/v1/notifications");
@@ -41,6 +43,15 @@ export function NotificationBell() {
     reload();
   }
 
+  function openNotification(n: Notification) {
+    if (!n.read_at) markRead(n.id);
+    const link = notificationLink(n);
+    if (link) {
+      setOpen(false);
+      navigate(link);
+    }
+  }
+
   async function markAllRead() {
     await api.post("/api/v1/notifications/read-all");
     reload();
@@ -64,7 +75,7 @@ export function NotificationBell() {
       </Tooltip>
       {open && (
         <div
-          className="card stack"
+          className="card stack notification-dropdown"
           style={{
             position: "absolute", right: 0, top: "2.5rem", width: 320, maxHeight: 400, overflowY: "auto", zIndex: 10,
             // The empty state is just a header + one line of text — the
@@ -90,8 +101,8 @@ export function NotificationBell() {
             <div
               key={n.id}
               className="card"
-              style={{ cursor: "pointer", opacity: n.read_at ? 0.6 : 1 }}
-              onClick={() => !n.read_at && markRead(n.id)}
+              style={{ cursor: notificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.6 : 1 }}
+              onClick={() => openNotification(n)}
             >
               <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>
               {n.body && <div className="text-muted" style={{ fontSize: "0.85rem" }}>{n.body}</div>}
