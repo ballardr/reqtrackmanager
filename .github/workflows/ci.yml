@@ -222,9 +222,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
+      # continue-on-error on this and the two upload-artifact steps below:
+      # the real pass/fail signal for the backend suite is already pytest's
+      # own exit code, on the "Run backend tests with coverage" step above
+      # (which has no if: always() and correctly fails the job on a real
+      # test failure) — these three are reporting/artifact-attachment
+      # conveniences layered on top, not the gate itself. Without
+      # continue-on-error, an unrelated hiccup in any one of them (a
+      # GitHub API blip creating the check run, an artifact-service issue)
+      # would fail the job at this point and — since every later step
+      # implicitly requires success() — silently skip the *entire* E2E
+      # Playwright suite, while the job reports "failed" for a reason that
+      # has nothing to do with whether the tests actually passed. Found via
+      # local `act` runs where these steps fail for a different reason
+      # (`act` has no real ACTIONS_RUNTIME_TOKEN), which surfaced the same
+      # underlying gap: this job's step graph, not just this local
+      # limitation.
       - name: Publish backend test results
         uses: dorny/test-reporter@v3
         if: always()
+        continue-on-error: true
         with:
           name: Backend test results
           path: tests/container/pytest-report.xml
@@ -234,6 +251,7 @@ jobs:
       - name: Upload backend coverage report (HTML)
         uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
         with:
           name: backend-coverage-html
           path: tests/container/htmlcov
@@ -242,6 +260,7 @@ jobs:
       - name: Upload backend coverage/test reports (raw)
         uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
         with:
           name: backend-test-reports
           path: |
@@ -251,11 +270,17 @@ jobs:
 
       # Backend pytest's schema fixture leaves the shared containers with a
       # migrated-but-empty database once the session ends (see conftest.py) —
-      # restart to re-run bootstrap admin creation, then reseed the fixed
-      # persona dataset the Playwright suite expects. Same sequence
-      # documented for local development in docs/deployment.md's
-      # troubleshooting section.
-      - name: Restart backend and reseed E2E dataset
+      # restart to re-run bootstrap admin creation, then reseed both fixed
+      # datasets the Playwright suite expects: the E2E persona/org/project
+      # set most specs are written against, and the demo dataset
+      # (demo.admin@example.com etc.) badge-filters.spec.ts specifically
+      # needs. Same sequence documented for local development in
+      # docs/deployment.md's troubleshooting section. Found via local `act`
+      # runs: this step previously only ran seed_e2e_dataset.py, so
+      # badge-filters.spec.ts failed deterministically (not flakily) on
+      # every real CI run — demo.admin@example.com genuinely didn't exist,
+      # so login never redirected and the test timed out waiting for it.
+      - name: Restart backend and reseed test datasets
         working-directory: tests/container
         run: |
           docker compose restart backend
@@ -264,6 +289,7 @@ jobs:
             [ "$status" = "healthy" ] && break
             sleep 3
           done
+          docker compose exec -T backend python scripts/seed_demo_data.py
           docker compose exec -T backend python scripts/seed_e2e_dataset.py
 
       # Runs after the E2E dataset is seeded so the full-chain test
@@ -286,9 +312,14 @@ jobs:
         env:
           PLAYWRIGHT_JUNIT_OUTPUT_NAME: playwright-report.xml
 
+      # Same continue-on-error reasoning as the backend Publish/Upload steps
+      # above: "Run Playwright E2E suite" (no if: always()) is the real
+      # pass/fail gate via its own exit code; these two are reporting
+      # conveniences that must not be able to mask whether it actually ran.
       - name: Publish E2E test results
         uses: dorny/test-reporter@v3
         if: always()
+        continue-on-error: true
         with:
           name: E2E (Playwright) test results
           path: tests/playwright/playwright-report.xml
@@ -298,6 +329,7 @@ jobs:
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
         with:
           name: playwright-report
           path: |
