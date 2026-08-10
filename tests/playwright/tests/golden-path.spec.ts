@@ -52,15 +52,33 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByPlaceholder("Name").fill("Software");
     await page.getByPlaceholder("Prefix").fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
-    await expect(page.getByText("Software").first()).toBeVisible();
+    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
+    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
+    // concurrently, then two more awaited *sequentially* afterwards
+    // (org users, report templates) — unrelated to the categories tab,
+    // but still part of the same component's state, so each one still
+    // triggers a re-render. That second wave lands ~150-300ms after the
+    // component itself first becomes visible (confirmed via a
+    // MutationObserver against the real running app) and is enough to
+    // reset whatever's mid-typed into the newly-created component's own
+    // "add category" form. Waiting for the network to go idle rides past
+    // that whole settling window before touching the form at all.
+    await page.waitForLoadState("networkidle");
 
-    // Once "Software" exists, its own nested "add category" form is the
-    // first Name/Prefix pair on the page (it renders above the "add
-    // component" form at the bottom of the list).
-    await page.getByPlaceholder("Name").first().fill("Performance");
-    await page.getByPlaceholder("Prefix").first().fill("PERF");
-    await page.getByRole("button", { name: "New category" }).click();
-    await expect(page.getByText("Performance").first()).toBeVisible();
+    // The component/category rename UI (each name/prefix rendered as an
+    // always-editable input, not static text) means a page-wide
+    // getByPlaceholder("Name").first() is also ambiguous on its own: the
+    // "Software" component's own nested "add category" form and the
+    // standalone "add component" form at the bottom both have
+    // Name/Prefix-placeholder inputs. Scope explicitly to the "Software"
+    // component's own container (input -> row -> row -> the component's
+    // own stack div, three levels up) so this can't cross-hit a sibling
+    // form.
+    const softwareRow = page.locator('input[value="Software"]').locator("xpath=../../..");
+    await softwareRow.getByPlaceholder("Name").fill("Performance");
+    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
+    await softwareRow.getByRole("button", { name: "New category" }).click();
+    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
   });
 
   await test.step("add requirement", async () => {

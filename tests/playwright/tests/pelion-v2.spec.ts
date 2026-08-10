@@ -59,14 +59,31 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await page.getByPlaceholder("Name").first().fill("Software");
     await page.getByPlaceholder("Prefix").first().fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
-    await expect(page.getByText("Software").first()).toBeVisible();
+    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
+    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
+    // concurrently, then two more awaited *sequentially* afterwards (org
+    // users, report templates) — unrelated to the categories tab, but
+    // still part of the same component's state, so each one still
+    // triggers a re-render ~150-300ms after "Software" itself first
+    // becomes visible (confirmed via a MutationObserver against the real
+    // running app), enough to reset whatever's mid-typed into the
+    // newly-created component's own "add category" form. Wait for the
+    // network to go idle to ride past that settling window before
+    // touching the form.
+    await page.waitForLoadState("networkidle");
 
-    // Component/category tree: once "Software" exists, its own nested
-    // "add category" form is the first Name/Prefix pair on the page.
-    await page.getByPlaceholder("Name").first().fill("Performance");
-    await page.getByPlaceholder("Prefix").first().fill("PERF");
-    await page.getByRole("button", { name: "New category" }).click();
-    await expect(page.getByText("Performance").first()).toBeVisible();
+    // The component/category rename UI (each name/prefix rendered as an
+    // always-editable input) also means a page-wide getByPlaceholder("Name")
+    // is ambiguous once both "Software"'s own "add category" form and the
+    // standalone "add component" form exist — scope explicitly to
+    // "Software"'s own container (input -> row -> row -> the component's
+    // own stack div, three levels up) so this can't cross-hit the wrong
+    // form.
+    const softwareRow = page.locator('input[value="Software"]').locator("xpath=../../..");
+    await softwareRow.getByPlaceholder("Name").fill("Performance");
+    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
+    await softwareRow.getByRole("button", { name: "New category" }).click();
+    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
 
     await page.getByRole("button", { name: "Custom fields" }).click();
     await page.getByPlaceholder("Field name").fill("Priority");
@@ -91,7 +108,12 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   });
 
   await test.step("upload a file attachment to the requirement", async () => {
-    await page.locator('input[type="file"]').setInputFiles({
+    // Scoped to the requirement's own "Attachments" card: the comment
+    // thread's compose box (CommentThread.tsx) now also renders its own
+    // always-present file input for staging a comment attachment, so a
+    // page-wide input[type="file"] is ambiguous between the two.
+    const attachmentsCard = page.locator(".card", { has: page.getByRole("heading", { name: "Attachments" }) });
+    await attachmentsCard.locator('input[type="file"]').setInputFiles({
       name: "notes.txt",
       mimeType: "text/plain",
       buffer: Buffer.from("Playwright attachment test"),
@@ -201,7 +223,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
     await page.getByText("Project Admin").click();
     await page.getByRole("button", { name: "Categories" }).click();
-    await expect(page.getByText("Software").first()).toBeVisible();
+    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
     await page.getByRole("button", { name: "Custom fields" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
   });

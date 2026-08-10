@@ -49,13 +49,28 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // Wait for "Web" (and its own, now-rendered nested "add category" form)
     // before filling it — otherwise the fill can race ahead of the reload
     // and land on the wrong (not-yet-replaced) form.
-    await expect(page.getByText("Web").first()).toBeVisible();
-    // Component/category tree: once "Web" exists, its own nested "add
-    // category" form is the first Name/Prefix pair on the page.
-    await page.getByPlaceholder("Name").first().fill("Functional");
-    await page.getByPlaceholder("Prefix").first().fill("FN");
-    await page.getByRole("button", { name: "New category" }).click();
-    await expect(page.getByText("Functional").first()).toBeVisible();
+    await expect(page.locator('input[value="Web"]').first()).toBeVisible();
+    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
+    // concurrently, then two more awaited *sequentially* afterwards (org
+    // users, report templates) — unrelated to the categories tab, but
+    // still part of the same component's state, so each one still
+    // triggers a re-render ~150-300ms after "Web" itself first becomes
+    // visible (confirmed via a MutationObserver against the real running
+    // app), enough to reset whatever's mid-typed into the newly-created
+    // component's own "add category" form. Wait for the network to go
+    // idle to ride past that settling window before touching the form.
+    await page.waitForLoadState("networkidle");
+    // The component/category rename UI (each name/prefix rendered as an
+    // always-editable input) also means a page-wide getByPlaceholder("Name")
+    // is ambiguous once both "Web"'s own "add category" form and the
+    // standalone "add component" form exist — scope explicitly to "Web"'s
+    // own container (input -> row -> row -> the component's own stack
+    // div, three levels up) so this can't cross-hit the wrong form.
+    const webRow = page.locator('input[value="Web"]').locator("xpath=../../..");
+    await webRow.getByPlaceholder("Name").fill("Functional");
+    await webRow.getByPlaceholder("Prefix").fill("FN");
+    await webRow.getByRole("button", { name: "New category" }).click();
+    await expect(page.locator('input[value="Functional"]').first()).toBeVisible();
   });
 
   await test.step("create a requirement and open its card from the card-based list", async () => {
