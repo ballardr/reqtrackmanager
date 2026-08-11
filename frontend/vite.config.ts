@@ -26,6 +26,21 @@ export default defineConfig({
   // render or fail their play functions/assertions — not just a visual
   // component explorer with no automated check behind it.
   test: {
+    // Root-level, not per-project: Vitest's workspace ("projects") mode
+    // applies coverage/reporters globally across every project rather than
+    // letting each declare its own, even though there's currently only the
+    // one "storybook" project below.
+    reporters: ["default", "junit"],
+    outputFile: { junit: "./vitest-report.xml" },
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "json-summary"],
+      // Every component/page/hook under src/ counts, even ones with zero
+      // stories yet — a coverage % that only reflects the ~handful of files
+      // with a `.stories.tsx` would be a misleading number to badge.
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.stories.tsx", "src/**/*.d.ts", "src/main.tsx", "src/vite-env.d.ts"],
+    },
     projects: [
       {
         extends: true,

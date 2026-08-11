@@ -4,6 +4,13 @@
  * which reads as "do this now" rather than "this is on/off". Exposed as
  * `role="switch"` for assistive tech rather than a native `<input
  * type="checkbox">`, since the pill visual has no direct HTML equivalent.
+ *
+ * Stops click propagation: at least one call site (PreferencesPage.tsx's
+ * 2FA toggle) renders this inside a `CollapsibleSection`'s title, which
+ * that component always wraps in its own clickable header — without this,
+ * toggling "Enable 2FA" also bubbled up and collapsed the section,
+ * immediately hiding the QR code/confirmation-code UI the toggle had just
+ * revealed.
  */
 export function ToggleSwitch({
   checked,
@@ -23,7 +30,10 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(!checked);
+      }}
       style={{
         width: 40,
         height: 22,

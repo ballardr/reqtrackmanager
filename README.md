@@ -1,8 +1,10 @@
 # ReqTrackManager
 
 [![CI](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml/badge.svg)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
-[![Backend tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/tests-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
-[![Backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/coverage-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Backend tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/backend-tests-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Backend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/backend-coverage-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Frontend tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/frontend-tests-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
+[![Frontend coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ballardr/reqtrackmanager/badges/frontend-coverage-badge.json)](https://github.com/ballardr/reqtrackmanager/actions/workflows/ci.yml)
 
 ReqTrackManager is an open-source engineering requirements management system (ERMS) — a formal, collaborative alternative to IBM DOORS-style tools for product teams that can't justify that cost, without falling back to a static requirements spreadsheet that nobody trusts by the second review cycle. Requirements get a real identity, a full version history, and a paper trail from first draft to shipped and verified; changes to already-approved requirements go through an actual review workflow instead of a silent edit. It's built to sit at the center of how a hardware, firmware, or regulated-software team actually works day to day — not bolted on as an afterthought.
 

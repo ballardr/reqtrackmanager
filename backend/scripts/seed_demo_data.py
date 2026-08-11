@@ -462,6 +462,7 @@ def main() -> None:
 
     print("Approving the Scoping stage baseline for Falcon-3...")
     scoping_stage = httpx.get(f"{BASE}/projects/{drone['id']}/stages", headers=h_pm, timeout=30).json()[0]
+    transition_stage(h_pm, drone["id"], scoping_stage["id"], "review")
     transition_stage(h_pm, drone["id"], scoping_stage["id"], "approved")
 
     print("Discussing a requirement on Falcon-3...")

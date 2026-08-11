@@ -92,6 +92,10 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
     await page.getByRole("button", { name: "Project stages" }).click();
+    // A stage must enter review before it can be approved (C-R-05's
+    // review-deadline/response workflow lives in that state) — approving
+    // straight from scoping is no longer a valid transition.
+    await page.getByRole("button", { name: "Start review" }).click();
     await page.getByRole("button", { name: "Approve stage" }).click();
     await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
 

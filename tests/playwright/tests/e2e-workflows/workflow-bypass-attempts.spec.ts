@@ -18,6 +18,19 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByRole("button", { name: "Project stages" }).click();
+      // A stage must be in review before it can be approved — start review
+      // first if the stage is still in scoping (idempotent against a
+      // re-run: only clicked when the button is actually present).
+      const startReviewButton = page.getByRole("button", { name: "Start review" });
+      if (await startReviewButton.count()) {
+        await startReviewButton.click();
+        // Wait for the transition to actually land before looking for
+        // "Approve stage" below — it's gated on status === "review", so
+        // checking its count() immediately after the click (before the
+        // page has refetched/re-rendered) can race and read 0, silently
+        // skipping the approval and leaving the stage stuck in review.
+        await expect(page.getByText("In review", { exact: true })).toBeVisible();
+      }
       const approveButton = page.getByRole("button", { name: "Approve stage" });
       if (await approveButton.count()) {
         await approveButton.click();

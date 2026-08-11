@@ -68,11 +68,21 @@ test("insert an image into a project's report intro and generate a PDF", async (
   await test.step("upload and insert an image into the report intro", async () => {
     await page.getByRole("button", { name: "Insert image" }).first().click();
     const fileInput = page.locator('input[type="file"][accept="image/*"]').first();
-    await fileInput.setInputFiles({
-      name: "pixel.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
-    });
+    // setInputFiles only waits for the browser's own file-selection/change
+    // event, not for RichTextEditor's async upload (uploadImage awaits
+    // api.postFile) that follows it — the markdown insert only happens
+    // once that resolves. Wait for the actual upload response so the
+    // assertion below isn't racing a real network round trip against a
+    // fixed timeout (this can genuinely take longer than 5s on a
+    // resource-constrained CI runner than it does locally).
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/resources") && r.request().method() === "POST"),
+      fileInput.setInputFiles({
+        name: "pixel.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
+      }),
+    ]);
     // The picker inserts `![pixel.png](attachment:<id>)` at the cursor and
     // closes itself — confirm the markdown textarea actually received it.
     const introTextarea = page.locator("textarea").first();

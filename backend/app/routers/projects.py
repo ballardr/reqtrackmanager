@@ -378,11 +378,25 @@ def update_terminology(
 
 @router.get("/{project_id}/report-config", response_model=ProjectReportConfig)
 def get_report_config(
-    project_id: UUID, project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Returns the project's *effective* report structure (mock's "Report
     Setup") — its own content where set, falling back per-field to the
-    owning organisation's default otherwise (`resolve_report_config`)."""
+    owning organisation's default otherwise (`resolve_report_config`).
+
+    Read-only, so gated to plain project view rather than manage access:
+    stakeholders and members can generate reports (C-U-03) and
+    `ReportsPage.tsx` fetches this same endpoint to pre-populate the
+    generation page, which was silently 403ing (and, bundled into
+    `ProjectAdminPage.tsx`'s single `Promise.all` reload, hanging that
+    whole page on its loading spinner — the same failure class as the
+    previously-fixed OrgAdminPage hang) for any caller below manager/
+    administrator. `update_report_config` below stays manage-only, since
+    only admins/PMs may persist changes to it.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     org = db.get(Organization, project.organization_id)
     return resolve_report_config(project, org)
 
@@ -700,6 +714,20 @@ def delete_stage(
     db.commit()
 
 
+#: Explicit forward-only lifecycle transitions this endpoint permits, keyed
+#: by the stage's *current* status. COMPLETED is deliberately absent as a
+#: value here — it's only reachable via the dedicated `/stages/{id}/complete`
+#: endpoint (C-P-02), which also handles the `cascade_to_requirements` flag
+#: and doesn't belong in a generic status-setter. ARCHIVED is reachable from
+#: any non-terminal status, matching its own documented purpose as a manual,
+#: no-special-gating display/filtering state (see `StageStatus`'s docstring).
+_ALLOWED_STAGE_TRANSITIONS: dict[StageStatus, set[StageStatus]] = {
+    StageStatus.SCOPING: {StageStatus.REVIEW, StageStatus.ARCHIVED},
+    StageStatus.REVIEW: {StageStatus.APPROVED, StageStatus.ARCHIVED},
+    StageStatus.APPROVED: {StageStatus.ARCHIVED},
+}
+
+
 @router.post("/{project_id}/stages/{stage_id}/transition", response_model=ProjectStageOut)
 def transition_stage(
     project_id: UUID,
@@ -716,14 +744,37 @@ def transition_stage(
     until further change requests are approved (C-G-12). This transition
     requires the project manager role specifically (C-U-03 clarification),
     not just general settings-management access.
+
+    Only the forward transitions in `_ALLOWED_STAGE_TRANSITIONS` are
+    accepted (plus the always-available move to ARCHIVED) — a stage can't
+    skip a step (e.g. straight from SCOPING to APPROVED, bypassing the
+    review-deadline/stakeholder-response workflow, C-R-05) or move
+    backwards (e.g. APPROVED back to SCOPING, which would silently unlock
+    already-locked requirements outside the change-request process,
+    C-G-12). COMPLETED is intentionally not settable here at all; see
+    `/stages/{stage_id}/complete`.
     """
     stage = db.get(ProjectStage, stage_id)
     if stage is None or stage.project_id != project.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
 
+    # Role check before state-machine check for APPROVED specifically, so an
+    # unauthorized caller always gets a uniform 403 rather than a 409 that
+    # would leak the stage's current status to someone who can't act on it
+    # anyway (matches C-U-03's PM-only approval gate being checked first
+    # everywhere else in this file).
     if new_status == StageStatus.APPROVED:
         if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project.id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a stage.")
+
+    allowed = _ALLOWED_STAGE_TRANSITIONS.get(stage.status, set())
+    if new_status not in allowed:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot transition a stage from '{stage.status.value}' to '{new_status.value}'.",
+        )
+
+    if new_status == StageStatus.APPROVED:
         from datetime import datetime
 
         stage.status = StageStatus.APPROVED

@@ -1,20 +1,29 @@
 # GitHub Actions CI pipeline.
 #
-# Three jobs, run on every push to main, every pull request, and on demand:
-#   1. frontend          - lint, type-check, and production build (fast, no Docker)
+# Four jobs, run on every push to main, every pull request, and on demand:
+#   1. frontend          - lint, type-check, production build, then the
+#                          Storybook/Vitest suite (real Chromium) with
+#                          coverage
 #   2. backend-and-e2e   - the same dev/test Docker Compose stack developers run
 #                          locally (db, minio, mailhog, keycloak, backend,
 #                          frontend, mcp-server); backend pytest with coverage
 #                          + JUnit reporting, ruff lint, the mcp-server's own
 #                          integration test suite, then the full Playwright
 #                          E2E suite against the running containers
-#   3. docker-build      - builds the production backend, frontend, and
-#                          mcp-server images, gated on the two jobs above
-#                          passing; tags each with GitVersion's computed
-#                          SemVer plus the commit SHA and `latest`, and
-#                          pushes all three to ghcr.io — except on pull_request
-#                          runs, which still build (proving the Dockerfiles
-#                          work) but never push
+#   3. publish-badges    - needs: [frontend, backend-and-e2e]. Best-effort;
+#                          turns both jobs' coverage/JUnit output into the
+#                          four README badges and pushes them together to the
+#                          `badges` branch. A dedicated job specifically to
+#                          avoid frontend and backend-and-e2e (which run in
+#                          parallel) independently force-pushing their own
+#                          badge files and racing each other — see that job's
+#                          own comment.
+#   4. docker-build      - builds the production backend, frontend, and
+#                          mcp-server images, gated on jobs 1-2 passing; tags
+#                          each with GitVersion's computed SemVer plus the
+#                          commit SHA and `latest`, and pushes all three to
+#                          ghcr.io — except on pull_request runs, which still
+#                          build (proving the Dockerfiles work) but never push
 #
 # Test results are published as GitHub check annotations and as downloadable
 # artifacts; a coverage summary is written to the job summary. This exists to
@@ -36,8 +45,13 @@ permissions:
 
 jobs:
   frontend:
-    name: Frontend lint & build
+    name: Frontend lint, build & test
     runs-on: ubuntu-latest
+    # checks: write is for the "Publish frontend test results" step below
+    # (dorny/test-reporter creating a check run) — same reasoning as
+    # backend-and-e2e's identical permission.
+    permissions:
+      checks: write
     defaults:
       run:
         working-directory: frontend
@@ -59,16 +73,115 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # test-storybook (vite.config.ts) runs every Storybook story as a real
+      # Chromium test via Vitest's browser mode — needs its own Playwright
+      # browser install, independent of tests/playwright's.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # `timeout` + the JUnit check below work around a real @vitest/browser
+      # + Playwright-provider quirk (reproduced locally via `act`, not
+      # specific to this container): the process can finish the actual run
+      # — tests execute, the coverage report and vitest-report.xml are both
+      # written correctly — and then simply never call process.exit(),
+      # hanging indefinitely instead of returning. A bare `npm run` with no
+      # timeout would hang this step (and the whole job) forever on a run
+      # that already succeeded. 180s is generous headroom over the ~10s this
+      # suite actually takes; a genuine hang before producing a report still
+      # fails loudly (no vitest-report.xml to check, so the raw exit status
+      # propagates), and a real per-test failure is caught explicitly by
+      # parsing the JUnit output rather than assumed away.
+      - name: Run frontend tests with coverage
+        run: |
+          set +e
+          timeout 180 npm run test-storybook -- --coverage
+          status=$?
+          set -e
+          if [ $status -eq 0 ]; then
+            exit 0
+          fi
+          if [ ! -f vitest-report.xml ]; then
+            echo "vitest failed before producing a report (exit $status)." >&2
+            exit $status
+          fi
+          python3 - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          root = ET.parse("vitest-report.xml").getroot()
+          suites = root.findall(".//testsuite") if root.tag == "testsuites" else [root]
+          failures = sum(int(s.attrib.get("failures", 0)) for s in suites)
+          errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
+          if failures or errors:
+              print(f"{failures} failure(s), {errors} error(s) in vitest-report.xml.", file=sys.stderr)
+              sys.exit(1)
+          print("vitest didn't exit cleanly, but vitest-report.xml shows every test passed — treating as success.")
+          PY
+
+      - name: Frontend coverage summary
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          with open("coverage/coverage-summary.json") as f:
+              pct = json.load(f)["total"]["lines"]["pct"]
+          print("## Frontend coverage")
+          print()
+          print(f"**{pct:.2f}%** line coverage.")
+          print()
+          print("Full HTML report attached as the `frontend-coverage-html` artifact.")
+          print()
+          print(
+              "Low by design today: only Storybook stories under `test-storybook` "
+              "count towards this number, and most page-level logic is instead "
+              "covered by the Playwright E2E suite (see the `backend-and-e2e` job), "
+              "which this badge doesn't measure."
+          )
+          PY
+
+      # Same continue-on-error reasoning as backend-and-e2e's equivalent
+      # steps: "Run frontend tests with coverage" above (no if: always()) is
+      # the real pass/fail gate via its own exit code; these three are
+      # reporting/artifact-attachment conveniences layered on top.
+      - name: Publish frontend test results
+        uses: dorny/test-reporter@v3
+        if: always()
+        continue-on-error: true
+        with:
+          name: Frontend test results
+          path: frontend/vitest-report.xml
+          reporter: java-junit
+          fail-on-error: true
+
+      - name: Upload frontend coverage report (HTML)
+        uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: frontend-coverage-html
+          path: frontend/coverage
+          retention-days: 14
+
+      - name: Upload frontend coverage/test reports (raw)
+        uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: frontend-test-reports
+          path: |
+            frontend/coverage/coverage-summary.json
+            frontend/vitest-report.xml
+          retention-days: 14
+
   backend-and-e2e:
     name: Backend tests, coverage & E2E
     runs-on: ubuntu-latest
     permissions:
-      # write (not just read) is needed for the "Publish coverage/test
-      # badges" step below, which pushes a small JSON file to the
-      # `badges` branch using this job's own GITHUB_TOKEN — no external
-      # badge service or extra secret, but a real, scoped-to-this-job
-      # permission bump worth calling out explicitly.
-      contents: write
+      # checks: write is for the "Publish backend test results" step below
+      # (dorny/test-reporter creating a check run). Badge publishing (which
+      # used to run here, needing contents: write) now happens in the
+      # dedicated publish-badges job instead — see that job's own comment
+      # for why.
       checks: write
     steps:
       - uses: actions/checkout@v7
@@ -152,79 +265,6 @@ jobs:
           print()
           print("Full HTML report attached as the `backend-coverage-html` artifact.")
           PY
-
-      # Feeds the two shields.io "endpoint" badges at the top of README.md
-      # (coverage %, pass/fail test count). No external badge service or
-      # extra secret: this job's own GITHUB_TOKEN pushes a small JSON file
-      # to a dedicated `badges` branch (a single, always-overwritten commit,
-      # not a growing history), which shields.io's endpoint format reads
-      # directly via a raw.githubusercontent.com URL. Best-effort — a
-      # push failure here (e.g. a transient network error) must never fail
-      # the actual CI signal, so this always runs and never fails the job.
-      - name: Publish coverage/test badges
-        if: always()
-        continue-on-error: true
-        working-directory: tests/container
-        run: |
-          python3 - <<'PY'
-          import json
-          import xml.etree.ElementTree as ET
-
-          try:
-              coverage_pct = float(ET.parse("coverage.xml").getroot().attrib["line-rate"]) * 100
-          except (FileNotFoundError, ET.ParseError, KeyError):
-              raise SystemExit(0)  # nothing to report yet (e.g. pytest itself crashed) — skip quietly
-
-          try:
-              junit_root = ET.parse("pytest-report.xml").getroot()
-          except (FileNotFoundError, ET.ParseError):
-              raise SystemExit(0)
-          suites = junit_root.findall(".//testsuite") if junit_root.tag == "testsuites" else [junit_root]
-          total = sum(int(s.attrib.get("tests", 0)) for s in suites)
-          failures = sum(int(s.attrib.get("failures", 0)) for s in suites)
-          errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
-          passed = total - failures - errors
-          all_green = failures == 0 and errors == 0
-
-          def coverage_color(pct: float) -> str:
-              if pct >= 90:
-                  return "brightgreen"
-              if pct >= 75:
-                  return "yellow"
-              return "red"
-
-          with open("coverage-badge.json", "w") as f:
-              json.dump({
-                  "schemaVersion": 1, "label": "backend coverage",
-                  "message": f"{coverage_pct:.1f}%", "color": coverage_color(coverage_pct),
-              }, f)
-          with open("tests-badge.json", "w") as f:
-              json.dump({
-                  "schemaVersion": 1, "label": "backend tests",
-                  "message": f"{passed} passed" if all_green else f"{passed}/{total} passed",
-                  "color": "brightgreen" if all_green else "red",
-              }, f)
-          PY
-
-          if [ ! -f coverage-badge.json ] || [ ! -f tests-badge.json ]; then
-            echo "No coverage/test report to publish a badge from — skipping."
-            exit 0
-          fi
-
-          rm -rf /tmp/badges-publish
-          mkdir -p /tmp/badges-publish
-          cp coverage-badge.json tests-badge.json /tmp/badges-publish/
-          cd /tmp/badges-publish
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -q -b badges
-          git add -A
-          git commit -q -m "Update CI badges"
-          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges:badges
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
 
       # continue-on-error on this and the two upload-artifact steps below:
       # the real pass/fail signal for the backend suite is already pytest's
@@ -346,6 +386,148 @@ jobs:
         working-directory: tests/container
         run: docker compose down -v
 
+  publish-badges:
+    name: Publish coverage/test badges
+    runs-on: ubuntu-latest
+    needs: [frontend, backend-and-e2e]
+    # Feeds the four shields.io "endpoint" badges at the top of README.md
+    # (backend/frontend × coverage %/pass-fail count). No external badge
+    # service or extra secret: this job's own GITHUB_TOKEN pushes small JSON
+    # files to a dedicated `badges` branch, which shields.io's endpoint
+    # format reads directly via a raw.githubusercontent.com URL.
+    #
+    # A dedicated job, not a step inside frontend/backend-and-e2e (where the
+    # backend half used to live): those two jobs run in parallel, and each
+    # independently force-pushing its own badge files straight to `badges`
+    # is a real race — whichever push lands second would wipe out the
+    # other's files, since each started from a bare, freshly-initialised
+    # git history with no knowledge of the other job's commit. Waiting for
+    # both jobs via `needs:` and publishing once, from one job, removes the
+    # race entirely.
+    #
+    # `if: always()`, and every step below is best-effort: a coverage/badge
+    # hiccup must never fail the actual CI signal (already reported via each
+    # job's own pass/fail and the dorny/test-reporter check runs), and one
+    # side being unavailable (e.g. the frontend job failed before producing
+    # a report) shouldn't block publishing the other side's badges.
+    if: always()
+    permissions:
+      contents: write
+    steps:
+      # upload-artifact preserves each artifact's paths relative to the
+      # *common ancestor* of the paths it was given, not the workspace root
+      # — backend-and-e2e uploaded `tests/container/{coverage.xml,pytest-
+      # report.xml}` (ancestor `tests/container/`) and frontend uploaded
+      # `frontend/{coverage/coverage-summary.json,vitest-report.xml}`
+      # (ancestor `frontend/`), so each artifact's own root already is that
+      # directory's contents — no `tests/container/`/`frontend/` prefix to
+      # account for below.
+      - name: Download backend test reports
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: backend-test-reports
+          path: backend-reports
+
+      - name: Download frontend test reports
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: frontend-test-reports
+          path: frontend-reports
+
+      - name: Generate badge JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def coverage_color(pct: float) -> str:
+              if pct >= 90:
+                  return "brightgreen"
+              if pct >= 75:
+                  return "yellow"
+              return "red"
+
+          def junit_counts(path: str) -> tuple[int, int] | None:
+              try:
+                  root = ET.parse(path).getroot()
+              except (FileNotFoundError, ET.ParseError):
+                  return None
+              suites = root.findall(".//testsuite") if root.tag == "testsuites" else [root]
+              total = sum(int(s.attrib.get("tests", 0)) for s in suites)
+              failures = sum(int(s.attrib.get("failures", 0)) for s in suites)
+              errors = sum(int(s.attrib.get("errors", 0)) for s in suites)
+              return total, total - failures - errors
+
+          def write_badges(prefix: str, label: str, coverage_pct: float | None, counts: tuple[int, int] | None) -> None:
+              if coverage_pct is not None:
+                  Path(f"{prefix}-coverage-badge.json").write_text(json.dumps({
+                      "schemaVersion": 1, "label": f"{label} coverage",
+                      "message": f"{coverage_pct:.1f}%", "color": coverage_color(coverage_pct),
+                  }))
+              if counts is not None:
+                  total, passed = counts
+                  all_green = passed == total
+                  Path(f"{prefix}-tests-badge.json").write_text(json.dumps({
+                      "schemaVersion": 1, "label": f"{label} tests",
+                      "message": f"{passed} passed" if all_green else f"{passed}/{total} passed",
+                      "color": "brightgreen" if all_green else "red",
+                  }))
+
+          backend_coverage = None
+          try:
+              backend_coverage = float(ET.parse("backend-reports/coverage.xml").getroot().attrib["line-rate"]) * 100
+          except (FileNotFoundError, ET.ParseError, KeyError):
+              pass
+          write_badges("backend", "backend", backend_coverage, junit_counts("backend-reports/pytest-report.xml"))
+
+          frontend_coverage = None
+          try:
+              frontend_coverage = json.loads(Path("frontend-reports/coverage/coverage-summary.json").read_text())["total"]["lines"]["pct"]
+          except (FileNotFoundError, KeyError):
+              pass
+          write_badges("frontend", "frontend", frontend_coverage, junit_counts("frontend-reports/vitest-report.xml"))
+          PY
+
+      - name: Push badges
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          badge_files=(*-badge.json)
+          if [ ${#badge_files[@]} -eq 0 ]; then
+            echo "No coverage/test reports available to publish badges from — skipping."
+            exit 0
+          fi
+
+          workdir="$PWD"
+          rm -rf /tmp/badges-publish
+          mkdir -p /tmp/badges-publish
+          cd /tmp/badges-publish
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Start from whatever's already published, if anything, so a
+          # partial run (e.g. only one side's tests produced a report this
+          # time) updates just those files rather than wiping out the other
+          # side's most recently published badges.
+          if git fetch -q origin badges:refs/remotes/origin/badges 2>/dev/null && \
+             git rev-parse -q --verify refs/remotes/origin/badges >/dev/null; then
+            git checkout -q -B badges refs/remotes/origin/badges
+          else
+            git checkout -q --orphan badges
+          fi
+          cp "$workdir"/*-badge.json .
+          git add -A
+          git commit -q -m "Update CI badges" --allow-empty
+          git push -q -f origin badges:badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
   docker-build:
     name: Build, version, and push production container images
     runs-on: ubuntu-latest
@@ -374,10 +556,11 @@ jobs:
         with:
           versionSpec: "6.x"
 
-      # GitVersion.yml (repo root) sets `mode: Mainline` — every commit on
-      # main is treated as a release, so the version bumps automatically
-      # with each merge instead of requiring a manually pushed git tag. No
-      # tags exist yet, so this starts at 0.1.0 and increments from there.
+      # GitVersion.yml (repo root) sets `mode: ContinuousDeployment` — every
+      # commit on main is treated as a release, so the version bumps
+      # automatically with each merge instead of requiring a manually pushed
+      # git tag. No tags exist yet, so this starts at 0.1.0 (`next-version`)
+      # and increments from there.
       - name: Determine version
         id: gitversion
         uses: gittools/actions/gitversion/execute@v3

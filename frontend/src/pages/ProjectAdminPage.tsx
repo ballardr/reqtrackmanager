@@ -42,6 +42,7 @@ export function ProjectAdminPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [newStageName, setNewStageName] = useState("");
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
   // Keyed by component id: each component's own inline "add category" form,
@@ -181,6 +182,18 @@ export function ProjectAdminPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  async function addStage() {
+    if (!newStageName.trim()) return;
+    await api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName });
+    setNewStageName("");
+    reload();
+  }
+
+  async function startStageReview(stageId: string) {
+    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`);
+    reload();
+  }
 
   async function approveStage(stageId: string) {
     await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`);
@@ -474,7 +487,12 @@ export function ProjectAdminPage() {
                   <Trash2 size={14} />
                 </button>
               </div>
-              {s.status !== "approved" && s.status !== "completed" && (
+              {s.status === "scoping" && (
+                <button className="btn" onClick={() => startStageReview(s.id)}>
+                  {strings.admin.startReview}
+                </button>
+              )}
+              {s.status === "review" && (
                 <button className="btn" onClick={() => approveStage(s.id)}>
                   <Check size={14} /> {strings.admin.approveStage}
                 </button>
@@ -539,6 +557,15 @@ export function ProjectAdminPage() {
           </div>
           );
         })}
+        <div className="row">
+          <input
+            className="input" placeholder={strings.admin.name} value={newStageName}
+            onChange={(e) => setNewStageName(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
+            <Plus size={14} /> {strings.admin.newStage}
+          </button>
+        </div>
       </div>
       )}
 
