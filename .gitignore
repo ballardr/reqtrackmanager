@@ -172,6 +172,8 @@ graphify-out/
 node_modules/
 frontend/dist/
 frontend/.env
+frontend/coverage/
+frontend/vitest-report.xml
 
 # Playwright / e2e
 tests/playwright/node_modules/

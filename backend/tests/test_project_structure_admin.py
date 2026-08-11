@@ -112,6 +112,11 @@ def test_delete_stage_blocked_by_existing_baseline(client, admin_token, org_id):
     stage = _stages(client, admin_token, project["id"])[0]
     other = _add_stage(client, admin_token, project["id"], "Other Stage")
 
+    review = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage['id']}/transition?new_status=review",
+        headers=auth_headers(admin_token),
+    )
+    assert review.status_code == 200, review.text
     approve = client.post(
         f"/api/v1/projects/{project['id']}/stages/{stage['id']}/transition?new_status=approved",
         headers=auth_headers(admin_token),

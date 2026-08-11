@@ -228,6 +228,49 @@ def test_project_stage_lifecycle_create_get_transition(client, admin_token, org_
     assert transitioned.json()["status"] == "review"
 
 
+def test_stage_transition_rejects_skipping_and_backwards_moves(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    stage_id = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()[0]["id"]
+
+    skip = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
+        headers=auth_headers(admin_token),
+    )
+    assert skip.status_code == 409, skip.text
+
+    skip_to_completed = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=completed",
+        headers=auth_headers(admin_token),
+    )
+    assert skip_to_completed.status_code == 409, skip_to_completed.text
+
+    review = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
+        headers=auth_headers(admin_token),
+    )
+    assert review.status_code == 200, review.text
+
+    approved = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
+        headers=auth_headers(admin_token),
+    )
+    assert approved.status_code == 200, approved.text
+
+    backwards = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=scoping",
+        headers=auth_headers(admin_token),
+    )
+    assert backwards.status_code == 409, backwards.text
+
+    # ARCHIVED remains reachable from any non-terminal status regardless of
+    # the forward-only rule (see StageStatus's own docstring).
+    archived = client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=archived",
+        headers=auth_headers(admin_token),
+    )
+    assert archived.status_code == 200, archived.text
+
+
 def test_org_user_deactivate_then_archive_lifecycle(client, admin_token, org_id):
     """A user's removal from an org is two explicit steps (C-U-04, C-U-05):
     deactivate (can no longer log in, but still visible/attributed) then

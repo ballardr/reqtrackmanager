@@ -164,7 +164,9 @@ def main() -> None:
     orgadmin_ab = create_org_user(h_admin, alpha["id"], "e2e-orgadmin-ab@example.com", "E2E OrgAdmin AlphaBeta", "org_admin")
     create_org_user(h_admin, gamma["id"], "e2e-orgadmin-g@example.com", "E2E OrgAdmin Gamma", "org_admin")
     stakeholder_a = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a@example.com", "E2E Stakeholder AlphaOnly", "member")
+    stakeholder_a2 = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a2@example.com", "E2E Stakeholder AlphaOnly Two", "member")
     member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
+    create_org_user(h_admin, alpha["id"], "e2e-orphan@example.com", "E2E Orphan Candidate", "member")
 
     # Bootstrap helper: no product endpoint lets a server admin grant a role
     # in an org they don't already belong to (assign_org_role requires a
@@ -190,6 +192,11 @@ def main() -> None:
     r = httpx.delete(f"{BASE}/orgs/{alpha['id']}/membership", headers=h_serveradmin, timeout=30)
     r.raise_for_status()
 
+    print("Orphan candidate leaves Alpha through the same self-service endpoint, for the user-directory/ban workflow...")
+    h_orphan = h(login("e2e-orphan@example.com", PASSWORD))
+    r = httpx.delete(f"{BASE}/orgs/{alpha['id']}/membership", headers=h_orphan, timeout=30)
+    r.raise_for_status()
+
     h_ab = h(login("e2e-orgadmin-ab@example.com", PASSWORD))
     h_g = h(login("e2e-orgadmin-g@example.com", PASSWORD))
 
@@ -203,6 +210,7 @@ def main() -> None:
 
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
+    assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], member_ab["user_id"], "member")
     assign_project_role(h_ab, beta1["id"], member_ab["user_id"], "member")
 
@@ -248,7 +256,9 @@ def main() -> None:
     print("  e2e-orgadmin-ab@example.com   - org_admin of Alpha + Beta; PM on all 4 of those projects")
     print("  e2e-orgadmin-g@example.com    - org_admin of Gamma only; PM on both Gamma projects")
     print("  e2e-stakeholder-a@example.com - stakeholder on Alpha-1 only")
+    print("  e2e-stakeholder-a2@example.com - second stakeholder on Alpha-1 only (for vote-tally coverage)")
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
+    print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
 
 

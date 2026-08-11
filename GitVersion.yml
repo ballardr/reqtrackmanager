@@ -1,9 +1,15 @@
 # Configures GitVersion (.github/workflows/ci.yml's `docker-build` job) to
 # compute the SemVer tag applied to every pushed container image.
 #
-# Mainline mode: this repo has one long-lived branch (`main`), no release
-# branches, and no git tags yet — every commit that lands on `main` is
-# treated as a release, so the version increments automatically on each
-# merge instead of requiring someone to push a version tag by hand. Starts
-# at 0.1.0 in the absence of any existing tags.
-mode: Mainline
+# ContinuousDeployment mode: this repo has one long-lived branch (`main`),
+# no release branches, and no git tags yet — every commit that lands on
+# `main` is treated as a release, so the version increments automatically on
+# each merge instead of requiring someone to push a version tag by hand
+# (`mode: Mainline`, used originally, was removed in GitVersion 6.0 —
+# ContinuousDeployment is its replacement: unlike ContinuousDelivery, it
+# produces a clean `X.Y.Z` on every commit with no prerelease suffix, which
+# is what a container-image tag needs). `next-version: 0.1.0` sets the
+# starting point in the absence of any existing tags — GitVersion's own
+# default would otherwise start the very first release at 0.0.1.
+mode: ContinuousDeployment
+next-version: 0.1.0

@@ -84,7 +84,10 @@ npm run lint     # ESLint (N-E-07): TypeScript + React Hooks + Fast Refresh rule
 npm run storybook       # component explorer at http://localhost:6006, with a light/dark theme toggle
 npm run build-storybook # static Storybook build
 npm run test-storybook  # runs every story as an automated test (real Chromium via Playwright), both themes included
+npm run test-storybook -- --coverage   # same, plus a v8 coverage report (frontend/coverage/) — needs `npx playwright install --with-deps chromium` first if you haven't run Storybook/its tests before
 ```
+
+Coverage today only reflects the files actually exercised by a story (`*.stories.tsx`) — most page-level logic is instead covered by the Playwright E2E suite below, which this number doesn't measure, so don't read a low frontend-coverage % as "untested."
 
 ## End-to-end tests
 
@@ -101,6 +104,34 @@ npm test
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push/PR to `main`: frontend lint + type-check + build, the full backend pytest suite with coverage (reported as a check, a job-summary percentage, and a downloadable HTML report) plus `ruff` lint against the real dev/test Docker Compose stack, and the full Playwright E2E suite against the running containers — all of it gating. A final job builds the production backend/frontend/mcp-server images once the two test jobs pass, tags each with a [GitVersion](https://gitversion.net/)-computed SemVer plus the commit SHA and `latest`, and pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}` — except on pull request runs, which still build (proving the Dockerfiles work) but never push. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
+`.github/workflows/ci.yml` runs on every push/PR to `main` (and on demand via `workflow_dispatch`):
+
+- **`frontend`** — lint, type-check + build, then the Storybook/Vitest suite above with coverage (`npm run test-storybook -- --coverage`), reported as a check via a JUnit report plus a job-summary percentage and a downloadable HTML report.
+- **`backend-and-e2e`** — the full backend pytest suite with coverage (check + job-summary percentage + downloadable HTML report), `ruff` lint (backend and mcp-server), the mcp-server's own pytest suite, and the full Playwright E2E suite — all against the real dev/test Docker Compose stack (`tests/container/`), the same one you run locally.
+- **`publish-badges`** — runs after both jobs above (`needs:`), regardless of whether they passed (best-effort; never fails the pipeline). Turns each side's coverage/JUnit output into the four `shields.io` endpoint badges at the top of the README, and pushes them to a dedicated `badges` branch. A dedicated job rather than a step inside `frontend`/`backend-and-e2e` specifically because those two run in parallel — either publishing its own badges independently would force-push over the other's files nondeterministically depending on which finished last.
+- **`docker-build`** — gated on `frontend` and `backend-and-e2e` passing. Builds the production backend/frontend/mcp-server images, tags each with a [GitVersion](https://gitversion.net/)-computed SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) plus the commit SHA and `latest`, and pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}` — except on pull request runs, which still build (proving the Dockerfiles work) but never push. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
 
 See the [README's Code Quality Rules](../README.md#code-quality-rules) for the conventions all of the above is expected to follow.
+
+### Testing the pipeline locally with `act`
+
+[`act`](https://github.com/nektos/act) (`brew install act`, or see its own install docs) runs GitHub Actions workflows locally against your own Docker daemon — useful for catching a broken workflow file (bad YAML, a wrong step reference, a job that only fails under CI's actual environment) without pushing and waiting on a real run. This project's CI has genuinely been debugged this way before — see `ci.yml`'s own comments on the `continue-on-error` steps and the demo-data seeding fix, both found via local `act` runs surfacing a real gap that individual local testing hadn't.
+
+```bash
+act -l                                                              # list every job act sees in ci.yml
+act push -j frontend -P ubuntu-latest=catthehacker/ubuntu:act-latest
+act push -j backend-and-e2e -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+A few things worth knowing before you run it:
+
+- **The `-P ubuntu-latest=...` flag avoids an interactive prompt.** The very first time `act` runs, it asks you to pick a runner-image size (Large/Medium/Micro) and hangs waiting for input if stdin isn't a real terminal (e.g. run from a script or an agent). Pinning `catthehacker/ubuntu:act-latest` (the "Medium" image, ~500MB, matches most of what real `ubuntu-latest` provides) up front skips the prompt entirely; add `-P ubuntu-latest=...` to every invocation, or run `act` once interactively first and let it write your choice to `~/.actrc`.
+- **`frontend`'s Playwright/Chromium step needs a bigger `/dev/shm`.** `act` runs your job as a plain `docker run` container on top of your own Docker daemon (unlike a real GitHub-hosted runner, which is a full VM, not a nested container) — a plain container's default 64 MB `/dev/shm` is too small for headless Chromium, which crashes on launch and leaves the test step hanging indefinitely rather than failing outright. Add `--container-options "--shm-size=2gb --init"` (the `--init` also fixes a related symptom: without a real init process reaping zombie children, a crashed browser's defunct process can leave the parent `vitest` process hanging even after it's already finished and written its report). **Neither flag is needed in the real `ci.yml`** — this is purely an artifact of how `act` simulates a runner, not something that affects actual GitHub Actions runs, so don't add either to the workflow file itself:
+
+  ```bash
+  act push -j frontend -P ubuntu-latest=catthehacker/ubuntu:act-latest --container-options "--shm-size=2gb --init"
+  ```
+
+- **`backend-and-e2e` needs Docker-in-Docker.** It runs `docker compose` itself (the real dev/test stack) from inside the job container, so `act` needs to give it access to your host's Docker socket — pass `-v /var/run/docker.sock:/var/run/docker.sock` (already the default for most `act` setups; only worth troubleshooting if you see a "Cannot connect to the Docker daemon" error inside the job).
+- **`docker-build` isn't meaningfully runnable under `act`.** It needs a real `GITHUB_TOKEN` with `packages: write` to push to `ghcr.io`, and GitVersion needs real commit history (`act` does give it a full checkout of your local repo, so version *computation* works, but the push step will fail without genuine registry credentials — expected, not a bug to chase).
+- **`dorny/test-reporter` and `actions/upload-artifact` fail under `act` for an unrelated reason**: they need a real `ACTIONS_RUNTIME_TOKEN`, which `act` doesn't provide. This is exactly why those steps (and the equivalents in `frontend`) have `continue-on-error: true` — the real pass/fail signal for each job is always the actual test command's own exit code, not these reporting/artifact conveniences layered on top.

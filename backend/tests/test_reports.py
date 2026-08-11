@@ -8,7 +8,7 @@ from app.services.reports import (
     default_chapters_per_component,
     resolve_report_config,
 )
-from tests.conftest import auth_headers, create_component_and_category, create_project
+from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
 
 def _seed_requirement(client, admin_token, org_id):
@@ -188,6 +188,33 @@ def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, 
     )
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"
+
+
+def test_report_config_is_readable_by_a_plain_stakeholder_not_just_a_manager(client, admin_token, org_id):
+    """Regression: GET report-config was gated to require_project_manage,
+    even though it's read-only content stakeholders/members need to
+    generate reports (C-U-03) — ReportsPage.tsx and ProjectAdminPage.tsx's
+    single Promise.all reload both fetch it, so this silently 403'd (and,
+    for ProjectAdminPage, hung the whole page on its loading spinner) for
+    any project role below manager/administrator. PUT stays manage-only."""
+    project = _seed_requirement(client, admin_token, org_id)
+    user_id = create_org_user(client, admin_token, org_id, "stakeholder_report@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": user_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    stakeholder_token = login(client, "stakeholder_report@example.com", "Password123!")
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(stakeholder_token))
+    assert resp.status_code == 200
+
+    denied = client.put(
+        f"/api/v1/projects/{project['id']}/report-config",
+        json={"intro": "Should not be allowed."},
+        headers=auth_headers(stakeholder_token),
+    )
+    assert denied.status_code == 403
 
 
 def test_project_falls_back_to_organisation_report_defaults(client, admin_token, org_id):

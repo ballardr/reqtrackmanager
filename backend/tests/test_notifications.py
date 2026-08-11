@@ -40,6 +40,10 @@ def test_stage_approval_notifies_project_members(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     stage_id = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()[0]["id"]
     client.post(
+        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
+        headers=auth_headers(admin_token),
+    )
+    client.post(
         f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
         headers=auth_headers(admin_token),
     )

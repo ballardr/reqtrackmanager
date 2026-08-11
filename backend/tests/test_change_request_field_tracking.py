@@ -56,8 +56,14 @@ def _create_requirement(client, admin_token, project_id, component_id, category_
 
 def _approve_current_stage(client, admin_token, project_id):
     stages = client.get(f"/api/v1/projects/{project_id}/stages", headers=auth_headers(admin_token)).json()
+    stage_id = stages[0]["id"]
+    review = client.post(
+        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=review",
+        headers=auth_headers(admin_token),
+    )
+    assert review.status_code == 200
     resp = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stages[0]['id']}/transition?new_status=approved",
+        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=approved",
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
