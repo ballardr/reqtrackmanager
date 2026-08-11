@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -25,7 +25,7 @@ from app.metrics import (
     requirements_updated_total,
 )
 from app.models.change_request import ChangeRequest, ReviewComment
-from app.models.custom_field import CustomFieldEntityKind
+from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
 from app.models.enums import (
     ChangeRequestStatus,
     ProjectRole,
@@ -63,8 +63,14 @@ from app.services import engagement, notifications, pubsub
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
+from app.services.requirement_csv import (
+    CUSTOM_FIELD_COLUMN_PREFIX,
+    custom_field_definitions_for_export,
+    export_requirements_csv,
+)
 from app.services.requirements import (
     apply_new_version,
     archive_requirement,
@@ -266,18 +272,35 @@ async def import_requirements(
 ):
     """Bulk-creates requirements from an uploaded CSV.
 
-    Expected columns: `name` (required), `reasoning`, `component_prefix`
-    (required, must match an existing `ProjectComponent.prefix`),
-    `category_prefix` (required, must match an existing `ProjectCategory.
-    prefix` *nested under that same component* — categories are unique per
-    component, not per project), `level` ("requirement"/"recommended",
-    optional), `target_version` (optional, must match an existing
-    `ProjectStage.name`).
+    Required columns: `name`, `component_prefix` (must match an existing
+    `ProjectComponent.prefix`), `category_prefix` (must match an existing
+    `ProjectCategory.prefix` *nested under that same component* —
+    categories are unique per component, not per project).
 
-    Unknown prefixes/stage names are reported as row errors rather than
-    silently creating new components/categories/stages. Registered before
-    `GET /{requirement_id}` so the static "/import" path isn't swallowed by
-    that dynamic route.
+    Optional columns, all of which round-trip with `GET .../export`:
+    `reasoning`, `clarification`, `description`, `level`
+    ("requirement"/"recommended", defaults to "requirement"),
+    `target_version` (must match an existing `ProjectStage.name`, defaults
+    to the project's earliest stage), `owner_email` (must match an existing
+    user's email; blank falls back to the importing user, same as a normal
+    create), `keywords` (`;`-separated), `review_date` (`YYYY-MM-DD`),
+    `review_lead_days` (integer), `reviewer_email`, and one
+    `cf_<custom field name>` column per the project's requirement custom
+    field definitions (validated the same way `POST` (create) validates
+    them — see `validate_custom_field_values`).
+
+    `unique_code`, `status`, `links`, and `attachments` are accepted but
+    ignored if present — `GET .../export` includes them for reference/
+    round-trip convenience, but a flat CSV row can't safely recreate
+    cross-requirement links or binary attachments, and status has its own
+    workflow-transition rules (every imported row is created as `draft`,
+    matching `POST` (create)'s own default).
+
+    Unknown prefixes/stage names/emails or invalid custom field values are
+    reported as row errors rather than silently creating new components/
+    categories/stages or dropping the requirement's owner. Registered
+    before `GET /{requirement_id}` so the static "/import" path isn't
+    swallowed by that dynamic route.
 
     Every valid row is created in a single transaction — nothing commits
     until the whole file has been processed, so a mid-file server error
@@ -305,13 +328,22 @@ async def import_requirements(
     # earliest stage (by sort_order), the same backfill convention
     # migration 0004 uses for pre-existing rows that had no target at all.
     default_stage = min(stages.values(), key=lambda s: s.sort_order) if stages else None
+    definitions_by_name = {d.name: d for d in custom_field_definitions_for_export(db, project_id)}
 
     raw = await file.read()
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
+    custom_field_columns = [h for h in (reader.fieldnames or []) if h.startswith(CUSTOM_FIELD_COLUMN_PREFIX)]
 
     count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
     errors: list[RequirementImportError] = []
     created = 0
+    email_cache: dict[str, User | None] = {}
+
+    def _lookup_user(email: str) -> User | None:
+        normalized = email.strip().lower()
+        if normalized not in email_cache:
+            email_cache[normalized] = db.scalar(select(User).where(User.email == normalized))
+        return email_cache[normalized]
 
     for row_num, row in enumerate(reader, start=2):  # header is row 1
         name = (row.get("name") or "").strip()
@@ -349,10 +381,72 @@ async def import_requirements(
             errors.append(RequirementImportError(row=row_num, message="Project has no stages; cannot assign a target."))
             continue
 
+        owner_email = (row.get("owner_email") or "").strip()
+        owner_id = None
+        if owner_email:
+            owner = _lookup_user(owner_email)
+            if owner is None:
+                errors.append(RequirementImportError(row=row_num, message=f"Unknown owner_email '{owner_email}'."))
+                continue
+            owner_id = owner.id
+
+        reviewer_email = (row.get("reviewer_email") or "").strip()
+        reviewer_id = None
+        if reviewer_email:
+            reviewer = _lookup_user(reviewer_email)
+            if reviewer is None:
+                errors.append(RequirementImportError(row=row_num, message=f"Unknown reviewer_email '{reviewer_email}'."))
+                continue
+            reviewer_id = reviewer.id
+
+        review_date_raw = (row.get("review_date") or "").strip()
+        review_date_value = None
+        if review_date_raw:
+            try:
+                review_date_value = date.fromisoformat(review_date_raw)
+            except ValueError:
+                errors.append(RequirementImportError(
+                    row=row_num, message=f"Invalid review_date '{review_date_raw}' (expected YYYY-MM-DD)."
+                ))
+                continue
+
+        review_lead_days_raw = (row.get("review_lead_days") or "").strip()
+        review_lead_days_value = None
+        if review_lead_days_raw:
+            try:
+                review_lead_days_value = int(review_lead_days_raw)
+            except ValueError:
+                errors.append(RequirementImportError(row=row_num, message=f"Invalid review_lead_days '{review_lead_days_raw}'."))
+                continue
+
+        raw_custom_fields: dict[str, object] = {}
+        for column in custom_field_columns:
+            definition = definitions_by_name.get(column[len(CUSTOM_FIELD_COLUMN_PREFIX):])
+            if definition is None:
+                continue  # stale/unknown column name (e.g. field renamed/deleted since export) — ignore, don't error
+            cell = row.get(column, "")
+            if definition.field_type == CustomFieldType.CHECKBOX:
+                # A checkbox has no "unanswered" state at the storage level
+                # (unlike text/list) — a blank cell most naturally reads as
+                # unchecked rather than "not set", so it's always included.
+                raw_custom_fields[str(definition.id)] = cell.strip().lower() in {"true", "1", "yes", "x"}
+            elif cell != "":
+                raw_custom_fields[str(definition.id)] = cell
+        try:
+            custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, raw_custom_fields)
+        except HTTPException as exc:
+            errors.append(RequirementImportError(row=row_num, message=str(exc.detail)))
+            continue
+
+        keywords = [k.strip() for k in (row.get("keywords") or "").split(";") if k.strip()]
+
         create_requirement(
             db, project, component, category, current_user,
-            name=name, reasoning=(row.get("reasoning") or "").strip(), clarification="",
-            owner_id=None, keywords=[], sort_order=count, target_stage_id=target_stage_id, level=level,
+            name=name, reasoning=(row.get("reasoning") or "").strip(),
+            clarification=(row.get("clarification") or "").strip(), description=(row.get("description") or "").strip(),
+            owner_id=owner_id, keywords=keywords, sort_order=count, target_stage_id=target_stage_id, level=level,
+            custom_fields=custom_fields, review_date=review_date_value, review_lead_days=review_lead_days_value,
+            reviewer_id=reviewer_id,
         )
         count += 1
         created += 1
@@ -362,6 +456,34 @@ async def import_requirements(
                    actor_id=current_user.id, project_id=project_id, detail={"created": created, "errors": len(errors)})
         db.commit()
     return RequirementImportResult(created=created, errors=errors)
+
+
+@router.get("/export")
+def export_requirements(
+    project_id: UUID, include_archived: bool = False,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Exports every field of this project's requirements as a full-fidelity
+    CSV — custom field values, target stage, keywords, review scheduling,
+    and more — directly re-importable via `POST .../import` (see that
+    endpoint's docstring for exactly which columns round-trip vs. are
+    reference-only). Distinct from `POST /reports/csv` (R-F-02), which
+    produces a fixed, formatted report table rather than a round-trippable
+    data dump — see `services.reports`'s module docstring.
+
+    Registered before `GET /{requirement_id}` so this static path isn't
+    swallowed by that dynamic route (same reasoning as `/import` above).
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    csv_bytes = export_requirements_csv(db, project, include_archived=include_archived)
+    return Response(
+        content=csv_bytes, media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements-export.csv"'
+        },
+    )
 
 
 @router.get("/reviews/due", response_model=list[RequirementDueForReviewOut])

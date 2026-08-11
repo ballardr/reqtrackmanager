@@ -209,6 +209,11 @@ export interface Organization {
   header_title: string | null;
 }
 
+export interface OrgImportResult {
+  organization: Organization;
+  warnings: string[];
+}
+
 export interface ServerSettings {
   accent_color_hex: string;
   default_logo_file_id: string | null;
@@ -306,6 +311,11 @@ export interface Project {
   is_template: boolean;
   allow_member_change_requests: boolean;
   terminology: Record<string, string>;
+}
+
+export interface ProjectImportResult {
+  project: Project;
+  warnings: string[];
 }
 
 export interface ProjectListItem extends Project {

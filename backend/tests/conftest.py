@@ -38,9 +38,10 @@ from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (populates Base.metadata)
 from app.config import get_settings
-from app.database import Base
+from app.database import Base, SessionLocal
 from app.database import engine as app_engine
 from app.migrations import run_migrations
+from app.services.bootstrap import run_bootstrap
 
 _settings_for_guard = get_settings()
 _test_db_name = _settings_for_guard.database_url.rpartition("/")[2]
@@ -108,12 +109,41 @@ def _clean_tables():
         conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
 
 
-@pytest.fixture
-def client():
+@pytest.fixture(scope="session")
+def _app_client():
+    # Session-scoped so `alembic upgrade head`, the server-admin bootstrap,
+    # and the scheduler/background-task startup in app.main.lifespan each
+    # run once for the whole suite rather than once per test. Previously
+    # `client` itself was function-scoped, so every test re-entered
+    # `TestClient(app)`'s context manager and re-ran the full app lifespan
+    # (a no-op `alembic upgrade head` alone costs ~0.5s), which dominated
+    # the suite's runtime across ~370 tests. Nothing in this suite depends
+    # on a fresh lifespan per test: the scheduler/disk-monitor tests call
+    # their check functions directly rather than relying on the
+    # lifespan-managed background loop's timing, and no test mutates
+    # persistent TestClient state (headers/cookies) that would leak across
+    # tests. Per-test isolation still comes from `_clean_tables` below.
     from app.main import app
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def client(_app_client):
+    # `_clean_tables` truncates every table (including `users`) after each
+    # test, so the server admin the session-scoped lifespan bootstrapped
+    # once at startup won't exist for the next test. Re-run just the
+    # bootstrap (a cheap idempotency check, only paying bcrypt's cost when
+    # it actually needs to recreate the admin) rather than the whole
+    # lifespan, since only tests that request `client` need an admin to be
+    # present.
+    db = SessionLocal()
+    try:
+        run_bootstrap(db)
+    finally:
+        db.close()
+    return _app_client
 
 
 def login(client: TestClient, email: str, password: str) -> str:

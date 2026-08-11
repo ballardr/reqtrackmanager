@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Organization, Project, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
+import type { Organization, Project, ProjectImportResult, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
 import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -42,7 +42,9 @@ export function ProjectListPage() {
   const [newSummary, setNewSummary] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
   const [templateProjectId, setTemplateProjectId] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
   const [viewMode, setViewMode] = useViewMode("projects");
 
@@ -114,6 +116,19 @@ export function ProjectListPage() {
   async function createProject() {
     setCreateError(null);
     try {
+      if (importFile) {
+        // Full-fidelity project bundle import (`services.project_export`) —
+        // a distinct path from template cloning: the bundle carries its own
+        // structure/history and may have been exported from a different
+        // organisation entirely, so it goes to a dedicated endpoint rather
+        // than reusing `template_project_id`.
+        const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", importFile, {
+          organization_id: newOrgId, name: newName, summary: newSummary,
+        });
+        if (result.warnings.length > 0) setImportWarnings(result.warnings);
+        navigate(`/projects/${result.project.id}`);
+        return;
+      }
       const project = await api.post<Project>("/api/v1/projects", {
         organization_id: newOrgId,
         name: newName,
@@ -159,7 +174,7 @@ export function ProjectListPage() {
             value={newSummary}
             onChange={(e) => setNewSummary(e.target.value)}
           />
-          {templateOptions.length > 0 && (
+          {templateOptions.length > 0 && !importFile && (
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.projects.useTemplate}
               <select className="input" value={templateProjectId} onChange={(e) => setTemplateProjectId(e.target.value)}>
@@ -172,10 +187,25 @@ export function ProjectListPage() {
               </select>
             </label>
           )}
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.projects.importFromBundle}
+            <input
+              className="input" type="file" accept=".zip,application/zip"
+              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
           {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
           <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId}>
             {strings.common.create}
           </button>
+        </div>
+      )}
+      {importWarnings && importWarnings.length > 0 && (
+        <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
+          <strong>{strings.projects.importWarnings}</strong>
+          <ul style={{ margin: 0 }}>
+            {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
         </div>
       )}
 

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { Organization } from "../api/types";
+import type { Organization, OrgImportResult } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
@@ -35,7 +35,9 @@ export function ServerOrganisationsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -51,6 +53,20 @@ export function ServerOrganisationsPage() {
   async function createOrg() {
     setCreateError(null);
     try {
+      if (importFile) {
+        // Full-fidelity organisation bundle import (`services.org_export`)
+        // — creates a brand-new organisation from an exported bundle
+        // (settings, members, report templates, and every project's
+        // structure/history), for backup restore, offboarding, or
+        // cross-instance migration.
+        const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", importFile, { name: newName });
+        if (result.warnings.length > 0) setImportWarnings(result.warnings);
+        setNewName("");
+        setImportFile(null);
+        setShowNewForm(false);
+        reload();
+        return;
+      }
       await api.post("/api/v1/orgs", { name: newName });
       setNewName("");
       setShowNewForm(false);
@@ -137,11 +153,34 @@ export function ServerOrganisationsPage() {
 
       {showNewForm && (
         <div className="card stack">
-          <input className="input" placeholder="Organisation name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <input
+            className="input"
+            placeholder={importFile ? "Organisation name (optional — defaults to the bundle's own name)" : "Organisation name"}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            Or import from an exported organisation bundle (.zip)
+            <input
+              className="input" type="file" accept=".zip,application/zip"
+              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
           {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-          <button className="btn btn-primary" onClick={createOrg} disabled={!newName} style={{ alignSelf: "flex-start" }}>
+          <button
+            className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}
+            style={{ alignSelf: "flex-start" }}
+          >
             Create
           </button>
+        </div>
+      )}
+      {importWarnings && importWarnings.length > 0 && (
+        <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
+          <strong>Imported with warnings</strong>
+          <ul style={{ margin: 0 }}>
+            {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
         </div>
       )}
 

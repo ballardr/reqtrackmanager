@@ -53,6 +53,17 @@ class ProjectOut(BaseModel):
     terminology: dict[str, str] = {}
 
 
+class ProjectImportResult(BaseModel):
+    """Outcome of importing a project bundle (`POST /projects/import`) —
+    the new project plus any human-readable warnings about references
+    (typically users) that couldn't be matched in the target deployment
+    and were remapped/dropped instead, so data loss during import is
+    visible rather than silent."""
+
+    project: ProjectOut
+    warnings: list[str] = []
+
+
 class ProjectUpdate(BaseModel):
     """Project settings update (name/summary, C-U-13 toggle, C-E-05 template flag)."""
 

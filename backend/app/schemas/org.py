@@ -62,6 +62,16 @@ class OrganizationOut(BaseModel):
     header_title: str | None = None
 
 
+class OrgImportResult(BaseModel):
+    """Outcome of importing an organisation bundle (`POST /orgs/import`) —
+    the new organisation plus any human-readable warnings (unmatched user
+    references remapped/invited instead, an sso_only source config that
+    wasn't carried over, etc.), so nothing lost during import is silent."""
+
+    organization: OrganizationOut
+    warnings: list[str] = []
+
+
 _HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 

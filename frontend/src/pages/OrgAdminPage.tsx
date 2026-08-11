@@ -1,4 +1,4 @@
-import { Lock, LogOut, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Lock, LogOut, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -30,6 +30,7 @@ import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { t } from "../i18n/strings";
+import { downloadBlob } from "../utils/download";
 
 const strings = t();
 
@@ -585,6 +586,20 @@ export function OrgAdminPage() {
     }
   }
 
+  const [exportingOrg, setExportingOrg] = useState(false);
+
+  async function exportOrg() {
+    if (!orgId || !org) return;
+    setExportingOrg(true);
+    try {
+      const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/export`);
+      const safeName = org.name.replace(/[\\/"\r\n\t]/g, "") || "organization";
+      downloadBlob(blob, `${safeName}-export.zip`);
+    } finally {
+      setExportingOrg(false);
+    }
+  }
+
   const orgIsDisabled = loadError?.toLowerCase().includes("disabled") ?? false;
 
   if (loadError && orgIsDisabled && user?.is_server_admin) {
@@ -683,6 +698,12 @@ export function OrgAdminPage() {
           {org.logo_file_id && (
             <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
           )}
+          <button
+            className="btn" onClick={exportOrg} disabled={exportingOrg}
+            title="Downloads a self-contained .zip with this organisation's settings, members, report templates, and every project's full structure/history — re-importable as a new organisation from the server organisations page."
+          >
+            <Download size={14} /> {exportingOrg ? "Exporting…" : "Export organisation bundle"}
+          </button>
           <button className="btn btn-danger" onClick={leaveOrg} title="Remove your own membership in this organisation">
             <LogOut size={14} /> Leave organisation
           </button>

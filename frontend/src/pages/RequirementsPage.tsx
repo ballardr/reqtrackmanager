@@ -85,6 +85,7 @@ export function RequirementsPage() {
   const [viewMode, setViewMode] = useViewMode("requirements");
   const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
   const [importing, setImporting] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -158,8 +159,9 @@ export function RequirementsPage() {
     if (!projectId || !user) return;
     (async () => {
       try {
-        const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
-        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
+        const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
+        setProject(proj);
+        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setIsOrgAdminOfProject(users.some((u) => u.user_id === user.id && u.roles.includes("org_admin")));
       } catch {
         // No org role at all (rare) — canManageProject still resolves correctly
@@ -277,7 +279,11 @@ export function RequirementsPage() {
         </button>
       </div>
 
-      <CsvImportWizard components={components} categories={categories} stages={stages} importing={importing} onImport={importCsv} />
+      <CsvImportWizard
+        projectId={projectId ?? ""} projectName={project?.name ?? ""}
+        components={components} categories={categories} stages={stages} customFields={customFieldDefs}
+        importing={importing} onImport={importCsv}
+      />
 
       {importResult && (
         <div className="card stack" style={{ gap: "0.4rem" }}>

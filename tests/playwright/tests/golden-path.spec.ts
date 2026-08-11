@@ -162,6 +162,13 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     expect(download.suggestedFilename()).toBe("requirements-import-template.csv");
   });
 
+  await test.step("export requirements as a full-fidelity CSV", async () => {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export CSV" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/-requirements-export\.csv$/);
+  });
+
   await test.step("toggle theme", async () => {
     await page.getByTitle("Preferences").click();
     await page.getByLabel("Theme").selectOption("dark");
