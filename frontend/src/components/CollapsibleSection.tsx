@@ -71,15 +71,26 @@ export function CollapsibleSection({
 
   return (
     <div className={variant === "card" ? "card stack" : "stack"}>
-      <button
+      {/* `role="button"` on a <div>, not a real <button> — `title` is
+          arbitrary ReactNode and at least one caller (PreferencesPage's 2FA
+          section) nests a real interactive <button> (ToggleSwitch) inside
+          it; a <button> wrapper here would make that a `<button>` inside a
+          `<button>`, invalid HTML that breaks click/keyboard handling
+          unpredictably. Mirrors the collapsed-state branch above, which
+          already uses this same div+role pattern. */}
+      <div
         onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        role="button"
+        tabIndex={0}
         className="row"
         style={{
           justifyContent: "space-between",
-          background: "none",
-          border: "none",
-          padding: 0,
-          margin: 0,
           cursor: "pointer",
           width: "100%",
           textAlign: "left",
@@ -90,7 +101,7 @@ export function CollapsibleSection({
       >
         {header}
         <ChevronUp size={16} />
-      </button>
+      </div>
       {children}
     </div>
   );

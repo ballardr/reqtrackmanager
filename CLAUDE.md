@@ -119,10 +119,13 @@ When making significant changes, update the README to include:
 - Do not remove existing documentation unless it is incorrect.
 - Update documentation when changing functionality.
 - Add tests for new functionality.
+- Code warnings (compiler/type-checker, linter, build-tool, and library deprecation warnings) must be fixed, not ignored, suppressed, or left in place. Do not silence a warning with an inline disable/ignore comment as a substitute for fixing it, unless the warning is a documented false positive.
+- When a dependency's current version is flagged as deprecated (by the library itself, its registry, or a warning it emits), upgrade it to a supported version or replacement. Never downgrade or pin to an older version to make a deprecation warning go away.
 
 ## Testing Requirements
 
 - Every new UI feature must come with a Playwright end-to-end test covering it — no UI feature is considered done until it has e2e coverage.
+- Every new piece of frontend UI (component or page) must also have Storybook coverage set up as part of the same change — no new frontend development is considered done without accompanying Storybook stories, in addition to the Playwright e2e requirement above.
 - Every backend change must come with a test that verifies the behaviour matches the request and pins it against future deviation/regression.
 - `backend/scripts/seed_demo_data.py` (a small, realistic manual-demo dataset) and `backend/scripts/seed_e2e_dataset.py` (the fixed persona/org/project dataset the Playwright suite is written against) must be kept in sync with the current schema and feature set. Whenever a change adds/renames/removes a model field, table, enum value, or a whole feature area, check whether either script needs a corresponding update — new fields should be populated with a sensible demo value rather than left at a default that hides the feature, and a removed/renamed field or relationship must not be left referencing something that no longer exists. Treat a script that fails to run, or that no longer demonstrates a feature it used to, as a bug the same as a failing test.
 

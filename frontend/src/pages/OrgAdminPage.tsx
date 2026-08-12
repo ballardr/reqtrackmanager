@@ -690,6 +690,13 @@ export function OrgAdminPage() {
 
   if (!org) return <Spinner />;
 
+  // sso_only and allow_self_signup are mutually exclusive (an org that only
+  // accepts SSO logins can't also let people create native-password
+  // accounts) — the backend already rejects saving this combination
+  // (test_sso_only_enforcement.py), this just surfaces the conflict before
+  // the round trip instead of only after a 422.
+  const selfSignupConflict = allowSelfSignup && ssoOnly;
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -1224,6 +1231,10 @@ export function OrgAdminPage() {
             </span>
           </label>
 
+          {selfSignupConflict && (
+            <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict}</div>
+          )}
+
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.orgAdmin.autoAcceptEmailDomain}
             <input
@@ -1279,7 +1290,12 @@ export function OrgAdminPage() {
           </div>
 
           {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-          <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
+          <button
+            className="btn btn-primary"
+            onClick={saveAdvanced}
+            disabled={selfSignupConflict}
+            style={{ alignSelf: "flex-start" }}
+          >
             {strings.orgAdmin.saveAdvanced}
           </button>
         </CollapsibleSection>
