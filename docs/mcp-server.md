@@ -1,10 +1,12 @@
-# MCP server: retrieving requirements from an AI assistant
+# MCP server: reading (and, optionally, writing) requirements from an AI assistant
 
-ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as read-only tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
+ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
+
+Read-only by default. An opt-in **write mode** (`MCP_WRITES_ENABLED=true`) additionally lets an AI assistant *author* requirement content — create new requirements and edit unlocked ones — narrowly scoped and with a structural guarantee that no tool, in either mode, can ever approve or decide anything. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" entry for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
 
 ## What it can do
 
-Fifteen tools, all read-only (no tool can create, edit, or delete anything):
+Fifteen read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
@@ -24,7 +26,26 @@ Fifteen tools, all read-only (no tool can create, edit, or delete anything):
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Deliberately scoped to *reading* — no tool can create, edit, delete, vote, comment, decide a change request, or record a review outcome. See [Known limitations](#known-limitations) for what's out of scope and why.
+Plus two write tools, only when [write mode](#write-mode) is enabled:
+
+| Tool | Purpose |
+| --- | --- |
+| `create_requirement` | Creates a new requirement (always starts in "draft") |
+| `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+
+No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
+
+## Write mode
+
+Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`yes`/`on`) — a deployment operator must explicitly opt in before this server can change any data at all, and when it's off, `create_requirement`/`update_requirement` don't just refuse to run, they don't exist: an MCP client's tool list never mentions them. Set `MCP_WRITES_ENABLED=true` on the `mcp-server` container's environment to turn it on (the bundled dev/test stack, `tests/container/docker-compose.yml`, already does; the production `docker-compose.yml` at the repo root defaults it off).
+
+**Requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through this server, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead; this server has no tool to create or decide one.
+
+**Why approval specifically stays human-only, structurally, not just by convention:** ReqTrackManager's approval workflow (a Project Manager approving a requirement, or deciding a change request) is only meaningful if every approval represents a real person taking accountability for that decision. The backend's own RBAC would *correctly* let a PM-privileged caller approve something through this server if a tool offered it — RBAC isn't wrong here, it's just answering a different question ("is this account allowed to?") than the one that matters for this specific action ("did an accountable human actually decide this, right now, deliberately?"). So this boundary is enforced at this server's own tool surface — by never exposing the capability in the first place — rather than left to the backend's per-account authorization to (correctly, but insufficiently) gate.
+
+**Still exactly the same pass-through authentication and authorization as every read tool** (see [Authentication model](#authentication-model) below) — write mode doesn't add a second permission model, it just adds two more tools that happen to issue `POST`/`PUT` requests instead of `GET`. The caller's own account still needs a requirement-editing project role (stakeholder, administrator, or manager) for either write tool to succeed, exactly as the UI would require.
+
+**What's still not exposed, even with write mode on** — a deliberately narrow first cut, not an oversight: submitting or deciding a change request, voting, commenting, recording a review outcome, marking a requirement completed, archiving/deleting, uploading attachments, and creating traceability links. All read-only-adjacent for now (each already has a read tool where relevant); a natural, larger follow-up if any of them is wanted later — see [Known limitations](#known-limitations).
 
 ## Authentication model
 
@@ -189,7 +210,7 @@ Then the MCP URL you give any remote client is `https://my.website.com/mcp/mcp` 
 
 ## Known limitations
 
-- **Read-only.** Voting, commenting, submitting/deciding change requests, recording review outcomes, and every other write operation are deliberately out of scope — letting an AI assistant *read* project data is a much smaller, safer surface than letting it act on the workflow. A natural, larger follow-up if that's ever wanted.
+- **Read-only unless write mode is explicitly enabled, and narrow even then.** See [Write mode](#write-mode) above. Voting, commenting, submitting/deciding change requests, recording review outcomes, marking a requirement completed, archiving, and file/link management are all still out of scope regardless of `MCP_WRITES_ENABLED` — letting an AI assistant *author requirement content* is a deliberately smaller, safer surface than letting it act on the rest of the workflow, and approval-type actions specifically are excluded on principle, not just left for later (see Write mode's rationale). A natural, larger follow-up if any of the non-approval items is ever wanted.
 - **No zero-click "click a button and you're connected" login.** Some MCP servers (Azure DevOps' among them) drive a full OAuth 2.1 flow so a client like VS Code can pop a browser automatically on first connection with no separate step. This server deliberately doesn't do that: building a spec-compliant OAuth 2.1 authorization server (PKCE, dynamic client registration, redirect_uri validation, authorization-code/token storage) is a substantial undertaking to get right, and `fastmcp`'s own documentation for the feature that would provide it explicitly warns "this is an extremely advanced pattern that most users should avoid." The `/login` page above is the deliberately-simpler alternative: one browser visit, a real login form, no new protocol surface — you still have to paste the resulting token into your client's config once, rather than it happening invisibly, but there's no custom authorization-server code to get wrong. See `docs/decisions.md` for the full writeup of this tradeoff.
 - **~~No long-lived API token mechanism~~ — resolved.** Personal Access Tokens (Preferences → Personal Access Tokens) are exactly this: independently revocable, scoped to whichever organisation(s) their creator chooses, and long-lived by default (90 days unless an org sets its own cap) — see [Getting a token](#getting-a-token) above. Session tokens (12-hour lifetime) and Claude Code's self-refreshing `headersHelper` remain available as lighter-weight alternatives when a long-lived credential isn't wanted.
 - **SSO accounts can't use the automated login helper.** `get_auth_header.sh` does a single non-interactive native-credential login; SSO accounts should use `/login?org=<slug>`'s "Sign in with SSO" button instead (see [Getting a token](#getting-a-token) above).

@@ -2,26 +2,42 @@
 Module: server
 
 A Model Context Protocol (MCP) server exposing ReqTrackManager's
-requirements as read-only tools an AI assistant can call directly, instead
-of a human copy-pasting requirement text into a chat window. See
-docs/mcp-server.md for the full design writeup and client setup guides
-(Claude Code, VS Code Copilot Chat, Microsoft Copilot Studio, and generic
-HTTP clients).
+requirements to an AI assistant to call directly, instead of a human
+copy-pasting requirement text into a chat window. Read-only by default;
+an opt-in write mode (`MCP_WRITES_ENABLED`) additionally exposes
+`create_requirement`/`update_requirement` so requirement *content* can be
+authored by AI. See docs/mcp-server.md for the full design writeup, the
+"Write mode" section, and client setup guides (Claude Code, VS Code
+Copilot Chat, Microsoft Copilot Studio, and generic HTTP clients).
 
 Responsibilities:
-- Exposes a small, deliberately read-only set of tools (list/get
-  organisations, projects, and requirements) backed entirely by the
-  existing REST API — this module contains no direct database access and
-  no business logic of its own.
+- Exposes a small set of tools (list/get organisations, projects, and
+  requirements; when write mode is on, create/edit requirement content
+  too) backed entirely by the existing REST API — this module contains no
+  direct database access and no business logic of its own.
 - Enforces authentication and authorization by *forwarding* the caller's
   own ReqTrackManager bearer token to the backend on every call, rather
   than authenticating as some shared service account. This is the module's
   one deliberate design decision, not incidental: the backend's existing,
   already-tested RBAC does 100% of the access-control work, so a caller
-  using this server can never see anything they couldn't already see
-  through the normal UI/API — there is no second, parallel permission
-  model to get wrong here. See `_forward_auth_header` and
+  using this server can never see or change anything they couldn't already
+  see or change through the normal UI/API — there is no second, parallel
+  permission model to get wrong here. See `_forward_auth_header` and
   docs/mcp-server.md's "Authentication model" section.
+- Never exposes an approval-type action, in either mode. There is no tool
+  to approve/decide a change request, approve a requirement, record a
+  review outcome, or mark a requirement completed — and, structurally, no
+  way to request one: `update_requirement` has no `status` parameter at
+  all, so a `status` transition can never be sent through this server
+  regardless of what the calling account's own role could do directly via
+  the API. This is a deliberate product decision, not merely an oversight
+  left for later: ReqTrackManager's approval workflow is only meaningful if
+  every approval is a deliberate human action taken with real accountability
+  in the UI, so this server keeps that boundary bright-line rather than
+  relying on the backend's RBAC (which *would* correctly allow a
+  PM-privileged caller to approve something) to enforce a product policy
+  it was never meant to express. See docs/decisions.md's "MCP server write
+  mode" entry.
 
 Design decision — pass-through auth, not a service account: an earlier
 design considered giving this server its own fixed backend credential
@@ -63,19 +79,49 @@ REQTRACK_API_URL = os.environ.get("REQTRACK_API_URL", "http://backend:8000").rst
 REQTRACK_PUBLIC_API_URL = os.environ.get("REQTRACK_PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
 _HTTP_TIMEOUT = 30.0
 
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    """Parses a boolean-ish environment variable the same permissive way
+    Docker Compose/`.env` files are typically written (`true`/`1`/`yes`/`on`,
+    case-insensitive) rather than requiring an exact literal."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Off by default: a deployment operator must explicitly opt in before this
+# server can change any data at all — see docs/mcp-server.md's "Write mode"
+# section and docs/decisions.md's "MCP server write mode" entry for why this
+# is a deliberate, narrow capability (requirement content only, never an
+# approval-type action) rather than a general write API.
+MCP_WRITES_ENABLED = _env_flag("MCP_WRITES_ENABLED")
+
+_READ_ONLY_INSTRUCTIONS = (
+    "Access to ReqTrackManager requirements, change requests, notifications, and review schedules. "
+    "Every tool call requires the caller's own ReqTrackManager access token, supplied as an "
+    "'Authorization: Bearer <token>' HTTP header on the MCP connection itself — this server never "
+    "authenticates as its own account (no token? visit this server's own /login page in a browser "
+    "to get one). Start with list_organizations or list_projects to find the project_id a "
+    "requirement or change request lives in, then list_requirements / get_requirement or "
+    "list_change_requests / get_change_request. A change request's discussion, tasks, and advisory "
+    "stakeholder votes are separate tools (list_change_request_comments/_tasks/_votes) from its "
+    "core detail."
+)
+_WRITE_MODE_INSTRUCTIONS = (
+    " Write mode is enabled on this server: create_requirement and update_requirement let you "
+    "author and edit requirement *content*. Neither tool, nor any other tool here, can approve or "
+    "decide anything — there is no way to approve a requirement or a change request, record a "
+    "review outcome, or mark a requirement completed through this server, regardless of the "
+    "calling account's own role. Those are deliberately human-only actions taken in the "
+    "ReqTrackManager UI. update_requirement also refuses to touch a requirement that's already "
+    "approved/locked — at that point a change request is required instead, and this server has no "
+    "tool for creating or deciding one."
+)
+
 mcp = FastMCP(
     name="ReqTrackManager",
-    instructions=(
-        "Read-only access to ReqTrackManager requirements, change requests, notifications, and "
-        "review schedules. Every tool call requires the caller's own ReqTrackManager access token, "
-        "supplied as an 'Authorization: Bearer <token>' HTTP header on the MCP connection itself — "
-        "this server never authenticates as its own account (no token? visit this server's own "
-        "/login page in a browser to get one). Start with list_organizations or list_projects to "
-        "find the project_id a requirement or change request lives in, then list_requirements / "
-        "get_requirement or list_change_requests / get_change_request. A change request's "
-        "discussion, tasks, and advisory stakeholder votes are separate tools "
-        "(list_change_request_comments/_tasks/_votes) from its core detail."
-    ),
+    instructions=_READ_ONLY_INSTRUCTIONS + (_WRITE_MODE_INSTRUCTIONS if MCP_WRITES_ENABLED else ""),
 )
 
 
@@ -137,17 +183,36 @@ def _require_uuid(value: str, field_name: str) -> str:
         raise ValueError(f"{field_name!r} must be a valid UUID, got {value!r}.") from exc
 
 
-async def _call_backend(method: str, path: str, *, params: dict | None = None) -> httpx.Response:
+def _detail(response: httpx.Response) -> str:
+    """Extracts FastAPI's `{"detail": "..."}` error body shape into a plain
+    string when present, falling back to the raw response text otherwise —
+    used so a validation/conflict error (e.g. "this requirement is approved;
+    changes must be made via a change request") reaches the AI assistant as
+    a clean sentence rather than a raw JSON blob."""
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text
+    if isinstance(body, dict) and isinstance(body.get("detail"), str):
+        return body["detail"]
+    return response.text
+
+
+async def _call_backend(
+    method: str, path: str, *, params: dict | None = None, json: dict | None = None
+) -> httpx.Response:
     """Makes one authenticated request to the ReqTrackManager backend,
     forwarding the caller's own token, and translates common failure modes
     into clear tool errors.
 
     Args:
-        method: HTTP method, e.g. "GET".
+        method: HTTP method, e.g. "GET", "POST", "PUT".
         path: Backend path starting with `/api/v1/...`.
         params: Optional query string parameters; `None` values are
             dropped so optional tool arguments don't get forwarded as the
             literal string "None".
+        json: Optional JSON request body, for write tools (`POST`/`PUT`).
+            Unused by every read tool.
 
     Returns:
         The successful `httpx.Response`.
@@ -157,6 +222,9 @@ async def _call_backend(method: str, path: str, *, params: dict | None = None) -
         PermissionError: the backend rejected the token (401) or the
             caller's own account lacks access to the requested resource (403).
         LookupError: the backend returned 404 for the requested resource.
+        ValueError: the backend rejected the request as invalid or
+            conflicting with the resource's current state (400/409/422) —
+            e.g. an unknown component_id, or editing a locked requirement.
         RuntimeError: any other non-2xx backend response, or a network-level
             failure reaching the backend at all.
     """
@@ -165,7 +233,7 @@ async def _call_backend(method: str, path: str, *, params: dict | None = None) -
     url = f"{REQTRACK_API_URL}{path}"
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.request(method, url, headers=headers, params=clean_params)
+            response = await client.request(method, url, headers=headers, params=clean_params, json=json)
     except httpx.HTTPError as exc:
         # Never include `headers` (or anything derived from it) in an
         # exception message — this is the one place in the module that
@@ -186,8 +254,10 @@ async def _call_backend(method: str, path: str, *, params: dict | None = None) -
         )
     if response.status_code == 404:
         raise LookupError("The requested resource does not exist, or you don't have access to it.")
+    if response.status_code in (400, 409, 422):
+        raise ValueError(f"ReqTrackManager rejected this request ({response.status_code}): {_detail(response)}")
     if response.is_error:
-        raise RuntimeError(f"ReqTrackManager returned an unexpected error ({response.status_code}): {response.text}")
+        raise RuntimeError(f"ReqTrackManager returned an unexpected error ({response.status_code}): {_detail(response)}")
     return response
 
 
@@ -489,6 +559,182 @@ async def list_project_reviews_due(project_id: str) -> list[dict]:
     pid = _require_uuid(project_id, "project_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/reviews/due")
     return response.json()
+
+
+# --- Write mode (MCP_WRITES_ENABLED) ----------------------------------------
+#
+# Registered only when the deployment operator has explicitly opted in.
+# When write mode is off, these tools don't exist at all — an MCP client
+# never even sees them listed, rather than seeing them fail at call time.
+# Deliberately narrow: requirement *content* only. Neither tool has a
+# `status` parameter, so an approval/completion transition can never be
+# requested through this server, regardless of the calling account's own
+# role — see this module's docstring and docs/decisions.md's "MCP server
+# write mode" entry for the reasoning.
+
+if MCP_WRITES_ENABLED:
+
+    @mcp.tool
+    async def create_requirement(
+        project_id: str,
+        name: str,
+        component_id: str,
+        category_id: str,
+        reasoning: str = "",
+        clarification: str = "",
+        description: str = "",
+        owner_id: str | None = None,
+        target_stage_id: str | None = None,
+        level: str = "requirement",
+        keywords: list[str] | None = None,
+        custom_fields: dict | None = None,
+        review_date: str | None = None,
+        review_lead_days: int | None = None,
+        reviewer_id: str | None = None,
+    ) -> dict:
+        """Creates a new requirement. Always starts in "draft" status —
+        there is no way to create one pre-approved, and no tool here can
+        approve it afterward either; use the ReqTrackManager UI for that.
+
+        The caller's own account still needs a requirement-editing project
+        role (stakeholder, administrator, or manager) for this to succeed —
+        same RBAC the UI enforces, nothing looser.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            name: The requirement's title.
+            component_id: UUID of an existing component in this project.
+            category_id: UUID of an existing category nested under that component.
+            reasoning: Why this requirement exists.
+            clarification: Additional clarifying detail.
+            description: Free-form long-form description.
+            owner_id: UUID of the user who owns this requirement; defaults
+                to the caller's own account if omitted.
+            target_stage_id: UUID of the project stage this requirement
+                targets; defaults to the project's earliest stage if omitted.
+            level: "requirement", "recommended", or "optional".
+            keywords: Optional list of search keywords (C-M-01).
+            custom_fields: Optional map of this project's custom field ids
+                to values — check an existing requirement in this project
+                (`get_requirement`) for the shape if this project has any defined.
+            review_date: Optional ISO date (YYYY-MM-DD) this requirement is next due for review.
+            review_lead_days: Optional override of how many days before
+                review_date a reminder notification fires.
+            reviewer_id: Optional UUID of the user responsible for that review.
+
+        Returns:
+            The newly created requirement's full detail, same shape as `get_requirement`.
+        """
+        pid = _require_uuid(project_id, "project_id")
+        body = {
+            "name": name,
+            "reasoning": reasoning,
+            "clarification": clarification,
+            "description": description,
+            "component_id": _require_uuid(component_id, "component_id"),
+            "category_id": _require_uuid(category_id, "category_id"),
+            "owner_id": _require_uuid(owner_id, "owner_id") if owner_id else None,
+            "target_stage_id": _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else None,
+            "level": level,
+            "keywords": keywords or [],
+            "custom_fields": custom_fields or {},
+            "review_date": review_date,
+            "review_lead_days": review_lead_days,
+            "reviewer_id": _require_uuid(reviewer_id, "reviewer_id") if reviewer_id else None,
+        }
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements", json=body)
+        return response.json()
+
+    @mcp.tool
+    async def update_requirement(
+        project_id: str,
+        requirement_id: str,
+        name: str | None = None,
+        reasoning: str | None = None,
+        clarification: str | None = None,
+        description: str | None = None,
+        component_id: str | None = None,
+        category_id: str | None = None,
+        owner_id: str | None = None,
+        target_stage_id: str | None = None,
+        level: str | None = None,
+        keywords: list[str] | None = None,
+        custom_fields: dict | None = None,
+        review_date: str | None = None,
+        review_lead_days: int | None = None,
+        reviewer_id: str | None = None,
+        change_note: str = "",
+    ) -> dict:
+        """Edits an unlocked requirement's content in place.
+
+        A partial update: this tool fetches the requirement's current
+        detail first and only overwrites the fields you actually pass —
+        any argument left as `None` keeps its current value unchanged. The
+        exception is `keywords`/`custom_fields`, which fully replace the
+        current set when given (not merged) — omit them to leave the
+        current set untouched.
+
+        This tool has no `status` parameter and can never approve, complete,
+        or otherwise transition a requirement's workflow state — see this
+        module's docstring for why. It also can't distinguish "clear
+        review_date/review_lead_days/reviewer_id entirely" from "I didn't
+        mention it" (both look like a missing argument); use the
+        ReqTrackManager UI if you need to genuinely blank one of those out.
+
+        Rejected with a clear error if the requirement is locked (status
+        "approved" or "completed") — at that point ReqTrackManager requires
+        an approved change request instead, and this server has no tool to
+        create or decide one; use the UI.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The requirement's UUID (from `list_requirements`).
+            name / reasoning / clarification / description: Content fields; omit any you're not changing.
+            component_id / category_id: Move the requirement to a different
+                component/category; omit to leave it where it is.
+            owner_id: Reassign the requirement's owner; omit to leave unchanged.
+            target_stage_id: Retarget which project stage this requirement is for; omit to leave unchanged.
+            level: "requirement", "recommended", or "optional"; omit to leave unchanged.
+            keywords: Replaces the full keyword set if given; omit to leave the current keywords unchanged.
+            custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
+            review_date / review_lead_days / reviewer_id: Review scheduling fields; omit any you're not changing.
+            change_note: Optional note explaining why this edit was made,
+                recorded in the requirement's version history (C-A-09).
+
+        Returns:
+            The requirement's new current detail, same shape as `get_requirement`.
+        """
+        pid = _require_uuid(project_id, "project_id")
+        rid = _require_uuid(requirement_id, "requirement_id")
+        current = (await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}")).json()
+
+        body = {
+            "name": name if name is not None else current["name"],
+            "reasoning": reasoning if reasoning is not None else current["reasoning"],
+            "clarification": clarification if clarification is not None else current["clarification"],
+            "description": description if description is not None else current["description"],
+            "component_id": _require_uuid(component_id, "component_id") if component_id else current["component_id"],
+            "category_id": _require_uuid(category_id, "category_id") if category_id else current["category_id"],
+            "owner_id": _require_uuid(owner_id, "owner_id") if owner_id else current["owner_id"],
+            "target_stage_id": (
+                _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else current["target_stage_id"]
+            ),
+            "level": level if level is not None else current["level"],
+            "keywords": keywords if keywords is not None else current["keywords"],
+            "custom_fields": custom_fields if custom_fields is not None else current["custom_fields"],
+            "change_note": change_note,
+            "review_date": review_date if review_date is not None else current["review_date"],
+            "review_lead_days": review_lead_days if review_lead_days is not None else current["review_lead_days"],
+            "reviewer_id": (
+                _require_uuid(reviewer_id, "reviewer_id") if reviewer_id else current["reviewer_id"]
+            ),
+            # Deliberately no "status" key — see this tool's own docstring
+            # and the module docstring: this server never sends a status
+            # transition, by construction, regardless of what the caller's
+            # account could do directly via the API.
+        }
+        response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
+        return response.json()
 
 
 _PAGE_STYLE = """

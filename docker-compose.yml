@@ -145,6 +145,10 @@ services:
     environment:
       REQTRACK_API_URL: http://backend:8000
       REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      # Off by default: a deployment operator must explicitly opt in before
+      # this server can create/edit anything — see docs/mcp-server.md's
+      # "Write mode" section.
+      MCP_WRITES_ENABLED: ${MCP_WRITES_ENABLED:-false}
     depends_on:
       backend:
         condition: service_healthy
