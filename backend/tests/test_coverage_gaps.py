@@ -21,6 +21,25 @@ def test_metrics_endpoint_returns_prometheus_text(client, admin_token):
     assert "http_requests_total" in resp.text
 
 
+def test_metrics_never_embeds_real_ids_from_a_cors_preflight(client, admin_token, org_id):
+    """Regression test for a real data leak: a CORS preflight `OPTIONS`
+    request is short-circuited by `CORSMiddleware` before FastAPI's router
+    ever sets `request.scope["route"]` — even for a path that would
+    otherwise resolve to a real endpoint — so the metrics middleware had no
+    route *template* to label with and fell back to the raw resolved path,
+    embedding this org's real id as a literal, unauthenticated `/metrics`
+    label value on every preflight the SPA makes (one per non-simple
+    cross-origin request)."""
+    preflight = client.options(
+        f"/api/v1/orgs/{org_id}/users",
+        headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},
+    )
+    assert preflight.status_code == 200
+    metrics_text = client.get("/metrics").text
+    assert org_id not in metrics_text
+    assert 'method="OPTIONS",path="unmatched"' in metrics_text
+
+
 def _create_requirement(client, admin_token, project_id, component_id, category_id, name):
     return client.post(
         f"/api/v1/projects/{project_id}/requirements",

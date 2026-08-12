@@ -2,9 +2,16 @@ import { Download, Upload } from "lucide-react";
 import Papa from "papaparse";
 import { useState } from "react";
 
-import type { Category, Component, ProjectStage } from "../api/types";
+import { api } from "../api/client";
+import type { Category, Component, CustomFieldDefinition, ProjectStage } from "../api/types";
+import { downloadBlob } from "../utils/download";
 
-type CanonicalField = "name" | "reasoning" | "component_prefix" | "category_prefix" | "level" | "target_version";
+type CanonicalField =
+  | "name" | "reasoning" | "clarification" | "description"
+  | "component_prefix" | "category_prefix" | "level" | "target_version"
+  | "owner_email" | "keywords" | "review_date" | "review_lead_days" | "reviewer_email";
+
+const CUSTOM_FIELD_COLUMN_PREFIX = "cf_";
 
 const FIELDS: { key: CanonicalField; label: string; required: boolean; hint: string }[] = [
   { key: "name", label: "Name", required: true, hint: "The requirement's title." },
@@ -17,6 +24,8 @@ const FIELDS: { key: CanonicalField; label: string; required: boolean; hint: str
     hint: "Must exactly match an existing category's prefix (case-sensitive).",
   },
   { key: "reasoning", label: "Reasoning", required: false, hint: "Why the requirement exists." },
+  { key: "clarification", label: "Clarification", required: false, hint: "Additional scope notes." },
+  { key: "description", label: "Description", required: false, hint: "Further elaboration." },
   {
     key: "level", label: "Level", required: false,
     hint: '"requirement" or "recommended" — defaults to "requirement" if left blank.',
@@ -25,21 +34,32 @@ const FIELDS: { key: CanonicalField; label: string; required: boolean; hint: str
     key: "target_version", label: "Target version", required: false,
     hint: "Must exactly match an existing stage's name, if set.",
   },
+  { key: "owner_email", label: "Owner email", required: false, hint: "Must match an existing user's email, if set." },
+  { key: "keywords", label: "Keywords", required: false, hint: "Semicolon-separated, e.g. \"safety;power\"." },
+  { key: "review_date", label: "Review date", required: false, hint: "YYYY-MM-DD, if set." },
+  { key: "review_lead_days", label: "Review lead days", required: false, hint: "Whole number of days, if set." },
+  { key: "reviewer_email", label: "Reviewer email", required: false, hint: "Must match an existing user's email, if set." },
 ];
 
 const PREVIEW_ROWS = 5;
 
-function guessMapping(headers: string[]): Record<CanonicalField, string> {
-  const mapping = {} as Record<CanonicalField, string>;
-  for (const field of FIELDS) {
-    const match = headers.find((h) => h.trim().toLowerCase() === field.key) ??
-      headers.find((h) => h.trim().toLowerCase().replace(/[\s_-]/g, "") === field.key.replace(/_/g, ""));
-    mapping[field.key] = match ?? "";
+function customFieldColumnKey(definition: CustomFieldDefinition): string {
+  return `${CUSTOM_FIELD_COLUMN_PREFIX}${definition.name}`;
+}
+
+function guessMapping(headers: string[], keys: string[]): Record<string, string> {
+  const mapping: Record<string, string> = {};
+  for (const key of keys) {
+    const match = headers.find((h) => h.trim().toLowerCase() === key.toLowerCase()) ??
+      headers.find((h) => h.trim().toLowerCase().replace(/[\s_-]/g, "") === key.replace(/_/g, "").toLowerCase());
+    mapping[key] = match ?? "";
   }
   return mapping;
 }
 
-function buildTemplateCsv(components: Component[], categories: Category[], stages: ProjectStage[]): string {
+function buildTemplateCsv(
+  components: Component[], categories: Category[], stages: ProjectStage[], customFields: CustomFieldDefinition[]
+): string {
   // A category belonging to the example component specifically — the tree
   // means the first category overall isn't necessarily one of this
   // component's own, which would produce an inconsistent (though still
@@ -50,50 +70,52 @@ function buildTemplateCsv(components: Component[], categories: Category[], stage
     component_prefix: components[0]?.prefix ?? "SW",
     category_prefix: exampleCategory?.prefix ?? "PERF",
     reasoning: "Why this requirement exists",
+    clarification: "",
+    description: "",
     level: "requirement",
     target_version: stages[0]?.name ?? "",
+    owner_email: "",
+    keywords: "",
+    review_date: "",
+    review_lead_days: "",
+    reviewer_email: "",
   };
-  return Papa.unparse({
-    fields: FIELDS.map((f) => f.key),
-    data: [FIELDS.map((f) => exampleRow[f.key])],
-  });
-}
-
-function downloadCsv(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  // See ReportsPage.tsx's downloadBlob: the anchor must be attached to the
-  // document for `download` (and its filename/suffix) to reliably apply.
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const customFieldKeys = customFields.map(customFieldColumnKey);
+  const fields = [...FIELDS.map((f) => f.key), ...customFieldKeys];
+  const data = [[...FIELDS.map((f) => exampleRow[f.key]), ...customFieldKeys.map(() => "")]];
+  return Papa.unparse({ fields, data });
 }
 
 /**
- * CSV bulk-import for requirements: parses the file client-side (Papaparse)
- * so the user can map their own column headers onto the backend's fixed
- * field names before anything is uploaded, rather than requiring the CSV
- * to already use those exact names. The backend endpoint
- * (`POST /projects/{id}/requirements/import`, see `routers/requirements.py`)
- * is unchanged — this only builds a canonically-headed CSV client-side and
- * sends that instead of the user's original file.
+ * Full-fidelity CSV bulk-import/export for requirements: import parses the
+ * file client-side (Papaparse) so the user can map their own column headers
+ * onto the backend's fixed field names (plus one `cf_<name>` column per the
+ * project's custom field definitions) before anything is uploaded, rather
+ * than requiring the CSV to already use those exact names. The backend
+ * endpoints (`POST`/`GET .../requirements/import`/`/export`, see
+ * `routers/requirements.py`) are unchanged by this remapping — it only
+ * builds a canonically-headed CSV client-side and sends that instead of the
+ * user's original file. Export downloads the server-generated file as-is
+ * (it's already canonically headed and directly re-importable).
  */
 export function CsvImportWizard({
-  components, categories, stages, importing, onImport,
+  projectId, projectName, components, categories, stages, customFields, importing, onImport,
 }: {
+  projectId: string;
+  projectName: string;
   components: Component[];
   categories: Category[];
   stages: ProjectStage[];
+  customFields: CustomFieldDefinition[];
   importing: boolean;
   onImport: (file: File) => Promise<void>;
 }) {
   const [headers, setHeaders] = useState<string[] | null>(null);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
-  const [mapping, setMapping] = useState<Record<CanonicalField, string>>({} as Record<CanonicalField, string>);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [exporting, setExporting] = useState(false);
+
+  const mappableKeys = [...FIELDS.map((f) => f.key), ...customFields.map(customFieldColumnKey)];
 
   function pickFile(file: File) {
     Papa.parse<Record<string, string>>(file, {
@@ -103,7 +125,7 @@ export function CsvImportWizard({
         const detectedHeaders = results.meta.fields ?? [];
         setHeaders(detectedHeaders);
         setRows(results.data);
-        setMapping(guessMapping(detectedHeaders));
+        setMapping(guessMapping(detectedHeaders, mappableKeys));
       },
     });
   }
@@ -111,23 +133,33 @@ export function CsvImportWizard({
   function cancel() {
     setHeaders(null);
     setRows([]);
-    setMapping({} as Record<CanonicalField, string>);
+    setMapping({});
   }
 
   async function confirmImport() {
-    const canonicalHeaders = FIELDS.map((f) => f.key);
     const remapped = rows.map((row) => {
       const out: Record<string, string> = {};
-      for (const field of FIELDS) {
-        const sourceColumn = mapping[field.key];
-        out[field.key] = sourceColumn ? row[sourceColumn] ?? "" : "";
+      for (const key of mappableKeys) {
+        const sourceColumn = mapping[key];
+        out[key] = sourceColumn ? row[sourceColumn] ?? "" : "";
       }
       return out;
     });
-    const csvText = Papa.unparse({ fields: canonicalHeaders, data: remapped });
+    const csvText = Papa.unparse({ fields: mappableKeys, data: remapped });
     const file = new File([csvText], "import.csv", { type: "text/csv" });
     await onImport(file);
     cancel();
+  }
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const blob = await api.getForBlob(`/api/v1/projects/${projectId}/requirements/export`);
+      const safeName = projectName.replace(/[\\/"\r\n\t]/g, "") || "project";
+      downloadBlob(blob, `${safeName}-requirements-export.csv`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   const missingRequired = FIELDS.filter((f) => f.required && !mapping[f.key]);
@@ -146,8 +178,17 @@ export function CsvImportWizard({
           />
         </label>
         <button
+          type="button" className="btn" disabled={exporting}
+          onClick={exportCsv}
+        >
+          <Download size={16} /> {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+        <button
           type="button" className="btn"
-          onClick={() => downloadCsv("requirements-import-template.csv", buildTemplateCsv(components, categories, stages))}
+          onClick={() => downloadBlob(
+            new Blob([buildTemplateCsv(components, categories, stages, customFields)], { type: "text/csv" }),
+            "requirements-import-template.csv"
+          )}
         >
           <Download size={16} /> Download template
         </button>
@@ -189,6 +230,27 @@ export function CsvImportWizard({
                   <td className="text-muted">{field.hint}</td>
                 </tr>
               ))}
+              {customFields.map((definition) => {
+                const key = customFieldColumnKey(definition);
+                return (
+                  <tr key={key}>
+                    <td>{definition.name}{definition.required && <span style={{ color: "var(--color-danger)" }}> *</span>}</td>
+                    <td>
+                      <select
+                        className="input"
+                        value={mapping[key] ?? ""}
+                        onChange={(e) => setMapping((prev) => ({ ...prev, [key]: e.target.value }))}
+                      >
+                        <option value="">— Not mapped —</option>
+                        {headers.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="text-muted">Custom field ({definition.field_type}).</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 

@@ -107,6 +107,8 @@ const en = {
     allOrganisations: "All organisations",
     requirementCount: "Requirements",
     organisation: "Organisation",
+    importFromBundle: "Or import from an exported project bundle (.zip)",
+    importWarnings: "Imported with warnings",
   },
   overview: {
     title: "Project overview",
@@ -242,6 +244,8 @@ const en = {
     terminologyHint: "Override how these terms are labelled in this project's UI. Leave blank to use the default.",
     archiveProject: "Archive project",
     unarchiveProject: "Unarchive project",
+    exportProject: "Export project bundle",
+    exportProjectHint: "Downloads a self-contained .zip with this project's structure, full requirement/change-request history, and attachments — re-importable as a new project from the Projects page, in this organisation or a different one.",
     customFields: "Custom fields",
     newCustomField: "New field",
     stages: "Project stages",

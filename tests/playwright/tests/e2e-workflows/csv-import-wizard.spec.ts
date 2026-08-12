@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { expect, test } from "@playwright/test";
 
 import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
@@ -57,6 +59,71 @@ test.describe("CSV import wizard", () => {
       await expect(page.getByText("Import complete: 1 created, 1 error(s)")).toBeVisible();
       await expect(page.getByText(/ZZZ-NO-SUCH/)).toBeVisible();
       await expect(page.getByText(new RegExp(`E2E CSV Import Row One`))).toBeVisible();
+    });
+  });
+
+  /**
+   * Job to be done: a full-fidelity export (custom field values, target
+   * stage) that's directly re-importable elsewhere without hand-editing —
+   * exercised end-to-end rather than just at the API level, since the
+   * export's column set/labels are UI-owned (CsvImportWizard's FIELDS list
+   * must stay in sync with the backend's column contract).
+   */
+  test("export includes a custom field value and re-imports unchanged", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.getByText(PROJECT_NAMES.beta2).click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+
+    const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+    const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+    const authHeaders = { Authorization: `Bearer ${token}` };
+    const fieldName = `E2E Priority ${Date.now()}`;
+    const fieldResp = await page.request.post(
+      `http://localhost:8000/api/v1/projects/${projectId}/custom-fields`,
+      { headers: authHeaders, data: { entity_kind: "requirement", name: fieldName, field_type: "short_text" } }
+    );
+    expect(fieldResp.ok()).toBeTruthy();
+    const field = await fieldResp.json();
+
+    const components: { id: string; prefix: string }[] = await (
+      await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/components`, { headers: authHeaders })
+    ).json();
+    const categories: { id: string; prefix: string; component_id: string }[] = await (
+      await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/categories`, { headers: authHeaders })
+    ).json();
+    const component = components[0];
+    const category = categories.find((c) => c.component_id === component.id)!;
+    const reqName = `E2E Export Round Trip (${Date.now()})`;
+    const createResp = await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/requirements`, {
+      headers: authHeaders,
+      data: {
+        name: reqName, component_id: component.id, category_id: category.id,
+        custom_fields: { [field.id]: "Urgent" },
+      },
+    });
+    expect(createResp.ok()).toBeTruthy();
+
+    await page.reload();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export CSV" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/-requirements-export\.csv$/);
+    const exportedPath = await download.path();
+    const exportedCsv = fs.readFileSync(exportedPath!, "utf-8");
+    expect(exportedCsv).toContain(`cf_${fieldName}`);
+    expect(exportedCsv).toContain(reqName);
+    expect(exportedCsv).toContain("Urgent");
+
+    await test.step("the exported file re-imports into the same project without errors", async () => {
+      const fileInput = page.locator('input[type="file"][accept*="csv"]');
+      await fileInput.setInputFiles({ name: "reexport.csv", mimeType: "text/csv", buffer: fs.readFileSync(exportedPath!) });
+      await expect(page.getByText("Map your CSV columns")).toBeVisible();
+      // The exported file is already canonically headed, so every field
+      // auto-maps — including the dynamic `cf_<name>` column.
+      const importButton = page.getByRole("button", { name: /^Import \d+ row/ });
+      await expect(importButton).toBeEnabled();
+      await importButton.click();
+      await expect(page.getByText(/Import complete: \d+ created, 0 error\(s\)/)).toBeVisible();
     });
   });
 });

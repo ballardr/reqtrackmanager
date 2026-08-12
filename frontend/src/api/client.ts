@@ -116,9 +116,10 @@ export const api = {
     request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "DELETE", body: body !== undefined ? JSON.stringify(body) : undefined }),
-  postFile: <T>(path: string, file: File) => {
+  postFile: <T>(path: string, file: File, fields?: Record<string, string>) => {
     const formData = new FormData();
     formData.append("file", file);
+    for (const [key, value] of Object.entries(fields ?? {})) formData.append(key, value);
     return request<T>(path, { method: "POST", body: formData });
   },
   postForBlob: async (path: string, body?: unknown): Promise<Blob> => {
@@ -129,6 +130,13 @@ export const api = {
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+    if (!response.ok) throw new ApiError(response.status, response.statusText);
+    return response.blob();
+  },
+  getForBlob: async (path: string): Promise<Blob> => {
+    const headers: Record<string, string> = {};
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    const response = await fetch(`${BASE_URL}${path}`, { headers });
     if (!response.ok) throw new ApiError(response.status, response.statusText);
     return response.blob();
   },

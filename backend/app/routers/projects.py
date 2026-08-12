@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,7 @@ from app.schemas.project import (
     ProjectGroupCreate,
     ProjectGroupMemberAdd,
     ProjectGroupOut,
+    ProjectImportResult,
     ProjectListItemOut,
     ProjectMetricsOut,
     ProjectOut,
@@ -73,7 +74,9 @@ from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
+from app.services.downloads import filename_safe
 from app.services.notifications import notify
+from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.rbac import (
     check_pat_scope,
     get_effective_org_roles,
@@ -185,6 +188,39 @@ def create_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+@router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
+async def import_project(
+    request: Request,
+    organization_id: UUID = Form(...), name: str = Form(...), summary: str | None = Form(None),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Creates a brand-new project in `organization_id` from an uploaded
+    project export bundle (`GET /{project_id}/export` — see
+    `services.project_export`'s module docstring for the full bundle
+    contents: structure, custom field definitions, and full history).
+
+    Authorization mirrors plain project creation (`POST /projects`) exactly
+    — org admins or project creators of the *target* organisation — which
+    is what makes cross-organisation import safe: the bundle itself carries
+    no ids or org references, only names/prefixes/emails resolved fresh
+    against whatever org the caller is authorized to create in.
+
+    Registered before `GET /{project_id}` so the static "/import" path
+    isn't swallowed by that dynamic route.
+    """
+    check_pat_scope(request, organization_id)
+    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
+    if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
+
+    zip_bytes = await file.read()
+    project, warnings = import_project_bundle(
+        db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
+    )
+    return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
 
 
 @router.get("", response_model=list[ProjectListItemOut])
@@ -336,6 +372,24 @@ def get_project(project_id: UUID, current_user: User = Depends(require_project_v
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     return project
+
+
+@router.get("/{project_id}/export")
+def export_project(project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Exports this project's full structure and history as a self-
+    describing zip bundle (see `services.project_export`'s module
+    docstring) — directly re-importable via `POST /projects/import`, into
+    this organisation or a different one, to create a brand-new project.
+
+    Same authorization as the other structural-admin endpoints
+    (`require_project_manage`): project managers, project administrators,
+    or organisation admins of this project's organisation.
+    """
+    zip_bytes = build_project_bundle(db, project, current_user)
+    return Response(
+        content=zip_bytes, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-export.zip"'},
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -624,7 +678,7 @@ def create_stage(
     db.flush()
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="created",
               actor_id=current_user.id, project_id=project.id)
-    _notify_stage_transition(db, project, stage)
+    _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
     return stage
@@ -788,7 +842,7 @@ def transition_stage(
         log_event(db, entity_type="project_stage", entity_id=stage.id, action="status_changed",
                    actor_id=current_user.id, project_id=project.id, detail={"status": new_status.value})
 
-    _notify_stage_transition(db, project, stage)
+    _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
     return stage
@@ -881,7 +935,7 @@ _STAGE_NOTIFICATION_TYPES = {
 }
 
 
-def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage) -> None:
+def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage, actor_id: UUID) -> None:
     """Notifies all project members of stage transitions (C-N-01), including
     a newly created stage entering scoping.
 
@@ -891,6 +945,10 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage)
     every actual caller of `_notify_stage_transition` (a subsequent stage
     being created via `create_stage`, or an existing stage transitioning via
     `transition_stage`) is, by construction, never that excluded case.
+
+    `actor_id` is whoever created the stage or triggered the transition —
+    excluded from this broadcast so they're not told about the very change
+    they just made (e.g. the project manager who approved the stage).
     """
     notification_type = _STAGE_NOTIFICATION_TYPES.get(stage.status)
     if notification_type is None:
@@ -903,6 +961,7 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage)
                 db, user, notification_type=notification_type,
                 title=f"{project.name}: {stage.name} is now {stage.status.value}",
                 project_id=project.id, entity_type="project_stage", entity_id=str(stage.id),
+                actor_id=actor_id,
             )
 
 
@@ -1271,7 +1330,7 @@ def add_project_group_member(
                 db, added_user, notification_type=NotificationType.PROJECT_JOINED,
                 title=f"You were added to {project.name}",
                 body=f"You were added to the '{group.name}' group." if group else "",
-                project_id=project.id,
+                project_id=project.id, actor_id=current_user.id,
             )
     db.commit()
 
@@ -1342,7 +1401,7 @@ def assign_project_role(
                 db, granted_user, notification_type=NotificationType.PROJECT_JOINED,
                 title=f"You were added to {project.name}",
                 body=f"You were granted the '{payload.role.value}' role.",
-                project_id=project.id,
+                project_id=project.id, actor_id=current_user.id,
             )
         db.commit()
 
@@ -1414,7 +1473,7 @@ def assign_project_role_by_email(
             db, existing_user, notification_type=NotificationType.PROJECT_JOINED,
             title=f"You were added to {project.name}",
             body=f"You were granted the '{payload.role.value}' role.",
-            project_id=project.id,
+            project_id=project.id, actor_id=current_user.id,
         )
         db.commit()
         return AssignByEmailOut(outcome="added")
@@ -1472,6 +1531,7 @@ def revoke_project_role(
         notify(
             db, revoked_user, notification_type=NotificationType.PERMISSION_REVOKED,
             title=f"Your '{role.value}' role on {project.name} was revoked", project_id=project.id,
+            actor_id=current_user.id,
         )
     # Only clean up subscriptions/favourites if the user has no other role
     # (direct or group-derived) left granting them access to this project.

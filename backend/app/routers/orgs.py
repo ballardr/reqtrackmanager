@@ -13,7 +13,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -40,6 +40,7 @@ from app.schemas.org import (
     OrgGroupCreate,
     OrgGroupMemberAdd,
     OrgGroupOut,
+    OrgImportResult,
     OrgLoginInfoOut,
     OrgProjectSummaryOut,
     OrgRoleAssign,
@@ -57,9 +58,11 @@ from app.schemas.report import OrgReportDefaults
 from app.security import hash_password
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
 from app.services.org_deletion import delete_organization_cascade
+from app.services.org_export import build_org_bundle, import_org_bundle
 from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
     can_manage_project_settings,
@@ -87,6 +90,59 @@ def create_organization(
     db.commit()
     db.refresh(org)
     return org
+
+
+@router.post("/import", response_model=OrgImportResult, status_code=status.HTTP_201_CREATED)
+async def import_organization(
+    name: str | None = Form(None), file: UploadFile = File(...),
+    current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+):
+    """Creates a brand-new organisation from an uploaded organisation export
+    bundle (`GET /{organization_id}/export` — see `services.org_export`'s
+    module docstring for the full bundle contents and the security
+    decisions behind what is/isn't carried over: secrets are never
+    included, and SSO is always left disabled post-import).
+
+    Server-admin only, matching plain organisation creation (`POST /orgs`)
+    — creating an organisation is a platform-level action either way.
+
+    Registered before `POST /{organization_id}/join-as-admin` (in this file's
+    declaration order) purely for readability grouping with `POST ""`; it
+    doesn't need static-route-ordering protection like `/import` in
+    `routers/projects.py` does, since no bare `POST /{organization_id}`
+    route exists here to collide with.
+    """
+    zip_bytes = await file.read()
+    org, warnings = import_org_bundle(db, name=name, zip_bytes=zip_bytes, current_user=current_user)
+    return OrgImportResult(organization=OrganizationOut.model_validate(org), warnings=warnings)
+
+
+@router.get("/{organization_id}/export")
+def export_organization(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Exports this organisation's full settings, membership, report
+    templates, and every project's structure/history as a self-describing
+    zip bundle (see `services.org_export`'s module docstring) — directly
+    re-importable via `POST /orgs/import` to stand up a brand-new
+    organisation, for backup, offboarding, or migration to a different
+    deployment.
+
+    `require_org_role(ORG_ADMIN)` — deliberately no server-admin bypass
+    (I-M-05: org-scoped content isn't accessible just by being server
+    admin). An operator who needs to back up an org they don't belong to
+    uses the existing `POST /{organization_id}/join-as-admin` self-service
+    escalation first, rather than this endpoint adding a new bypass.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
+    zip_bytes = build_org_bundle(db, org, current_user)
+    return Response(
+        content=zip_bytes, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"'},
+    )
 
 
 @router.post("/{organization_id}/join-as-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -239,7 +295,9 @@ def delete_organization(
 
 
 @router.get("", response_model=list[OrganizationOut])
-def list_organizations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_organizations(
+    mine: bool = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
     """Lists organisations. Server admins see all; other users see only orgs they belong to.
 
     This one server-admin bypass is kept deliberately (unlike every other
@@ -248,8 +306,15 @@ def list_organizations(current_user: User = Depends(get_current_user), db: Sessi
     organisation", and the server admin needs to see an org exists at all in
     order to complete the one capability I-M-05 actually grants them —
     creating that organisation's initial user.
+
+    `mine=true` opts out of that bypass and always returns only the
+    caller's own memberships, regardless of server-admin status — for a
+    caller that needs "organisations I can actually act within" (e.g. the
+    project list's org filter and its "new project" org picker), where the
+    full server-wide directory would let a server admin with no real
+    membership anywhere pick an organisation they hold no role in at all.
     """
-    if current_user.is_server_admin:
+    if current_user.is_server_admin and not mine:
         return db.scalars(select(Organization)).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
@@ -604,6 +669,7 @@ def assign_org_role(
                 db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
                 title="Organisation permission granted",
                 body=f"You were granted the '{payload.role.value}' role in an organisation.",
+                actor_id=current_user.id,
             )
         db.commit()
 

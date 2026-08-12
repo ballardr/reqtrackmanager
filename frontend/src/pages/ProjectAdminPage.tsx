@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -24,6 +24,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { t } from "../i18n/strings";
+import { downloadBlob } from "../utils/download";
 
 const strings = t();
 
@@ -176,6 +177,20 @@ export function ProjectAdminPage() {
     const action = project?.is_archived ? "unarchive" : "archive";
     await api.post(`/api/v1/projects/${projectId}/${action}`);
     reload();
+  }
+
+  const [exporting, setExporting] = useState(false);
+
+  async function exportProject() {
+    if (!projectId || !project) return;
+    setExporting(true);
+    try {
+      const blob = await api.getForBlob(`/api/v1/projects/${projectId}/export`);
+      const safeName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
+      downloadBlob(blob, `${safeName}-export.zip`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   useEffect(() => {
@@ -424,9 +439,14 @@ export function ProjectAdminPage() {
         </label>
 
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <button className="btn btn-primary" onClick={saveSettings}>
-            {strings.admin.saveSettings}
-          </button>
+          <div className="row">
+            <button className="btn btn-primary" onClick={saveSettings}>
+              {strings.admin.saveSettings}
+            </button>
+            <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint}>
+              <Download size={16} /> {exporting ? "Exporting…" : strings.admin.exportProject}
+            </button>
+          </div>
           <button className="btn btn-danger" onClick={toggleArchive}>
             {project.is_archived ? strings.admin.unarchiveProject : strings.admin.archiveProject}
           </button>

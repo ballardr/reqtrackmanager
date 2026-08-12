@@ -25,6 +25,7 @@ from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword
 from app.models.user import User
 from app.schemas.report import ReportRequest
+from app.services.downloads import filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
 from app.services.reports import (
@@ -154,13 +155,6 @@ def _resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: 
     return resolved
 
 
-def _filename_safe(name: str) -> str:
-    """Strips characters that would break a quoted `Content-Disposition`
-    filename (or be awkward on a filesystem) out of a project name before
-    it's used to build a downloaded report's filename."""
-    return re.sub(r'[\\"/\r\n\t]', "", name).strip() or "project"
-
-
 @router.post("/pdf")
 def generate_pdf(
     project_id: UUID, payload: ReportRequest,
@@ -225,7 +219,7 @@ def generate_pdf(
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{_filename_safe(project.name)}-requirements.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.pdf"'},
     )
 
 
@@ -240,5 +234,5 @@ def generate_csv(
     csv_bytes = generate_csv_report(rows)
     return Response(
         content=csv_bytes, media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{_filename_safe(project.name)}-requirements.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.csv"'},
     )

@@ -29,14 +29,16 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("create project", async () => {
     await page.getByRole("button", { name: "New project" }).click();
-    // The org dropdown's default selection is whichever org sorts first
-    // alphabetically, not necessarily the admin's own org (this stack may
-    // also have E2E-workflow seed orgs present) — select explicitly, after
-    // waiting for the actual option (not just any combobox on the page —
-    // the role/stage filter comboboxes already have static options and can
-    // satisfy a weaker "not empty" check before the org picker mounts).
-    await expect(page.getByRole("combobox").first()).toContainText("Default Organization");
-    await page.getByRole("combobox").first().selectOption({ label: "Default Organization" });
+    // The org picker only renders at all when the caller belongs to more
+    // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
+    // used here belongs to exactly one ("Default Organization"), so it's
+    // implicit rather than offered as a choice. Select explicitly only if
+    // a picker is actually present, so this still works if the admin ever
+    // gains a second org membership in some other stack/seed configuration.
+    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    if (await orgPicker.count() > 0) {
+      await orgPicker.selectOption({ label: "Default Organization" });
+    }
     await page.getByPlaceholder("Name").fill(projectName);
     await page.getByPlaceholder("Summary").fill("Created by Playwright");
     await page.getByRole("button", { name: "Create" }).click();
@@ -160,6 +162,13 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("button", { name: "Download template" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-import-template.csv");
+  });
+
+  await test.step("export requirements as a full-fidelity CSV", async () => {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export CSV" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/-requirements-export\.csv$/);
   });
 
   await test.step("toggle theme", async () => {

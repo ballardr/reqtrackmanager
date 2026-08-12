@@ -92,6 +92,13 @@ The backend should be organized into discrete modules such as:
 - audit and history
 - file management
 
+**Implementation note (bundle export/import):** three related, self-describing zip-bundle export/import capabilities exist beyond the fixed-table CSV export in "reporting and export generation" above, for backup, offboarding, and migration rather than reporting:
+- **Requirement CSV** (`GET`/`POST /projects/{id}/requirements/export|import`, `backend/app/services/requirement_csv.py`) — full-fidelity round trip of every requirement field, including custom field values and target stage, distinct from the fixed report-table CSV (R-F-02).
+- **Project bundles** (`GET /projects/{id}/export`, `POST /projects/import`, `backend/app/services/project_export.py`) — a project's structure (stages/components/categories/custom field definitions) and full history (every requirement version, change request with its versions/tasks/votes/comments, baselines, review outcomes) plus attachments, importable as a brand-new project in any organisation the caller can create in.
+- **Organisation bundles** (`GET /orgs/{id}/export`, `POST /orgs/import`, `backend/app/services/org_export.py`) — an organisation's settings, members, report templates, org-owned files, and every project bundled the same way, importable as a brand-new organisation.
+
+Every bundle is a zip with a self-describing `manifest.json` (`kind`/`format_version`) so a newer application version can recognise and reject a bundle it can't safely import, rather than partially applying one. Cross-references inside a bundle use portable keys (requirement `unique_code`, component/category prefix, user email) instead of raw database ids, since ids from the source deployment are meaningless in the target one. See [decisions.md](decisions.md)'s "Bundle export/import" entry for the security decisions (Restricted secrets are never exported; SSO is always left disabled post-import since the OIDC secret isn't carried over; project-level group *membership* is never replayed on import to avoid a cross-tenant privilege-escalation path) and the full field-by-field design.
+
 ### Data Layer
 PostgreSQL is the primary transactional store for the system. It stores:
 - organizations and users

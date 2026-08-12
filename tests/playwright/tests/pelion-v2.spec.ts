@@ -37,14 +37,16 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
   await test.step("create the project that will become a template", async () => {
     await page.getByRole("button", { name: "New project" }).click();
-    // The org dropdown's default selection is whichever org sorts first
-    // alphabetically, not necessarily the admin's own org (this stack may
-    // also have E2E-workflow seed orgs present) — select explicitly, after
-    // waiting for the actual option (not just any combobox on the page —
-    // the role/stage filter comboboxes already have static options and can
-    // satisfy a weaker "not empty" check before the org picker mounts).
-    await expect(page.getByRole("combobox").first()).toContainText("Default Organization");
-    await page.getByRole("combobox").first().selectOption({ label: "Default Organization" });
+    // The org picker only renders at all when the caller belongs to more
+    // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
+    // used here belongs to exactly one ("Default Organization"), so it's
+    // implicit rather than offered as a choice. Select explicitly only if
+    // a picker is actually present, so this still works if the admin ever
+    // gains a second org membership in some other stack/seed configuration.
+    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    if (await orgPicker.count() > 0) {
+      await orgPicker.selectOption({ label: "Default Organization" });
+    }
     await page.getByPlaceholder("Name").fill(templateProjectName);
     await page.getByPlaceholder("Summary").fill("Created by Playwright (Pelion v2 spec)");
     await page.getByRole("button", { name: "Create" }).click();
@@ -207,12 +209,18 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("create a new project from the template and verify configuration was copied", async () => {
     await page.getByRole("button", { name: "New project" }).click();
     // The template dropdown only lists templates belonging to the
-    // currently-selected org, and the org picker's default selection is
-    // whichever org sorts first alphabetically (this stack may have
-    // E2E-workflow seed orgs present) — select the admin's own org
-    // explicitly, or the template project created above won't be an option.
-    await expect(page.getByRole("combobox").first()).toContainText("Default Organization");
-    await page.getByRole("combobox").first().selectOption({ label: "Default Organization" });
+    // currently-selected org. The org picker itself only renders when the
+    // caller belongs to more than one organisation (see ProjectListPage.tsx)
+    // — the bootstrap admin used here belongs to exactly one ("Default
+    // Organization"), which is auto-selected as soon as it's the only
+    // option, so the template project created above is still on offer
+    // without needing to select it explicitly. Select explicitly only if a
+    // picker is actually present, so this still works if the admin ever
+    // gains a second org membership in some other stack/seed configuration.
+    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    if (await orgPicker.count() > 0) {
+      await orgPicker.selectOption({ label: "Default Organization" });
+    }
     await page.getByPlaceholder("Name").fill(clonedProjectName);
     await page.getByPlaceholder("Summary").fill("Cloned by Playwright (Pelion v2 spec)");
     await expect(page.getByLabel("Create from template")).toContainText(templateProjectName);
