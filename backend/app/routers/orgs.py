@@ -26,6 +26,7 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, Repo
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
+from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.org import (
     DefaultTemplateUpdate,
@@ -36,6 +37,7 @@ from app.schemas.org import (
     OrganizationCreate,
     OrganizationDeleteConfirm,
     OrganizationOut,
+    OrganizationRename,
     OrgBrandingUpdate,
     OrgGroupCreate,
     OrgGroupMemberAdd,
@@ -59,6 +61,7 @@ from app.security import hash_password
 from app.services import engagement
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
+from app.services.email import SmtpOverride, send_email
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
 from app.services.org_deletion import delete_organization_cascade
@@ -335,6 +338,34 @@ def get_organization(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
     if not current_user.is_server_admin and not get_effective_org_roles(db, current_user.id, organization_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
+    return org
+
+
+@router.put("/{organization_id}/name", response_model=OrganizationOut)
+def rename_organization(
+    organization_id: UUID, payload: OrganizationRename,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Renames an organisation (C-U-01: "Organisational Admins can manage
+    properties of the organisation"). Org-admin only, no server-admin
+    bypass — same I-M-05 scoping as every other org-property endpoint
+    (`update_org_branding`, `update_advanced_settings`, ...); a server admin
+    who needs to rename an org they don't belong to uses the existing
+    `POST /{organization_id}/join-as-admin` self-service escalation first.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    old_name = org.name
+    org.name = payload.name
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="renamed",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"old_name": old_name, "new_name": org.name},
+    )
+    db.commit()
+    db.refresh(org)
     return org
 
 
@@ -1248,6 +1279,52 @@ def update_advanced_settings(
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
     )
+
+
+@router.post("/{organization_id}/test-email", status_code=status.HTTP_204_NO_CONTENT)
+def send_org_test_email(
+    organization_id: UUID, payload: TestEmailRequest,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sends a test email through this organisation's own configured SMTP
+    relay (`Organization.smtp_*`, set via `update_advanced_settings` above)
+    rather than the deployment-wide one, so an org admin can confirm their
+    override actually works before relying on it — this is currently the
+    only thing that reads `Organization.smtp_*` at all; see
+    `services/email.py`'s module docstring and docs/decisions.md's "SMTP/SSO
+    organisation settings are a storage-only seam" entry for why ordinary
+    notification email still doesn't.
+
+    Raises:
+        HTTPException: 404 if the organisation doesn't exist; 400 if it has
+            no SMTP host configured yet; 502 if the send itself fails (bad
+            credentials, unreachable host, ...) — surfaced with the
+            underlying error so the admin knows what to fix, since
+            confirming deliverability is the entire point of this action.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if not org.smtp_host:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation has no SMTP host configured.")
+    to_email = payload.to_email or current_user.email
+    try:
+        send_email(
+            to_email, f"Test email from {org.name}",
+            f"This is a test email sent using {org.name}'s configured SMTP settings in ReqTrackManager.",
+            smtp_override=SmtpOverride(
+                host=org.smtp_host, port=org.smtp_port, username=org.smtp_username,
+                password=org.smtp_password, use_tls=org.smtp_use_tls,
+            ),
+        )
+    except Exception as err:  # noqa: BLE001 - surfacing the underlying SMTP failure is the entire point of a test-email action
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Failed to send test email: {err}") from err
+    log_event(
+        db, entity_type="organization", entity_id=organization_id, action="test_email_sent",
+        actor_id=current_user.id, organization_id=organization_id, detail={"to": to_email},
+    )
+    db.commit()
 
 
 # --- SSO / branded login page (E-U-01, E-P-03) ------------------------------

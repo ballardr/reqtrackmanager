@@ -162,6 +162,10 @@ services:
     environment:
       REQTRACK_API_URL: http://backend:8000
       REQTRACK_PUBLIC_API_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
+      # On by default in the dev/test stack so the write tools (and their
+      # test coverage) are actually exercised — see docs/mcp-server.md's
+      # "Write mode" section. The production stack below defaults this off.
+      MCP_WRITES_ENABLED: ${MCP_WRITES_ENABLED:-true}
     depends_on:
       backend:
         condition: service_healthy

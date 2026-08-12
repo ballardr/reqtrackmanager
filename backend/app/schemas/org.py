@@ -35,6 +35,24 @@ class OrganizationCreate(BaseModel):
         return stripped
 
 
+class OrganizationRename(BaseModel):
+    """Renames an organisation (`PUT /orgs/{id}/name`) — the org's display
+    name is otherwise only ever set once, at creation (`OrganizationCreate`)."""
+
+    name: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str) -> str:
+        """Same non-blank guard as `OrganizationCreate.name` — see that
+        validator's docstring for why a blank name specifically breaks the
+        `DELETE /orgs/{id}` confirmation gate."""
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Organisation name cannot be blank.")
+        return stripped
+
+
 class OrganizationDeleteConfirm(BaseModel):
     """Safety gate for `DELETE /orgs/{id}`: the caller must type the
     organisation's exact current name, the same "type the name to confirm"

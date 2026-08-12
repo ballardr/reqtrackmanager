@@ -34,6 +34,27 @@ REQTRACK_API_URL = os.environ.get("REQTRACK_API_URL", "http://backend:8000")
 ADMIN_EMAIL = os.environ.get("REQTRACK_ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("REQTRACK_ADMIN_PASSWORD", "ChangeMe123!")
 
+# Mirrors server.py's own MCP_WRITES_ENABLED parsing — this test process is
+# a separate Python interpreter from the running mcp-server container, so it
+# reads the same env var itself rather than importing server.py's constant,
+# to decide which tool set (and which extra tests) to expect from whatever
+# server is actually running at MCP_SERVER_URL.
+MCP_WRITES_ENABLED = os.environ.get("MCP_WRITES_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+READ_ONLY_TOOLS = {
+    "list_organizations", "list_projects", "get_project",
+    "list_requirements", "get_requirement", "get_requirement_history",
+    "list_change_requests", "get_change_request", "list_change_request_votes",
+    "list_change_request_tasks", "list_change_request_comments",
+    "list_requirement_comments", "list_notifications",
+    "list_my_reviews_due", "list_project_reviews_due",
+}
+WRITE_TOOLS = {"create_requirement", "update_requirement"}
+
+requires_write_mode = pytest.mark.skipif(
+    not MCP_WRITES_ENABLED, reason="MCP_WRITES_ENABLED is not set on the server under test"
+)
+
 
 @pytest.fixture(scope="session")
 def admin_token() -> str:
@@ -64,14 +85,28 @@ def test_health_check_is_reachable_without_auth():
 async def test_tools_are_discoverable():
     async with _client(None) as client:
         tools = {t.name for t in await client.list_tools()}
-    assert tools == {
-        "list_organizations", "list_projects", "get_project",
-        "list_requirements", "get_requirement", "get_requirement_history",
-        "list_change_requests", "get_change_request", "list_change_request_votes",
-        "list_change_request_tasks", "list_change_request_comments",
-        "list_requirement_comments", "list_notifications",
-        "list_my_reviews_due", "list_project_reviews_due",
-    }
+    expected = READ_ONLY_TOOLS | (WRITE_TOOLS if MCP_WRITES_ENABLED else set())
+    assert tools == expected
+
+
+@pytest.mark.asyncio
+async def test_no_tool_can_ever_approve_or_decide_anything():
+    """Regression guard for the explicit product decision (docs/decisions.md's
+    "MCP server write mode" entry): no tool, in either mode, may approve or
+    decide a change request, approve/complete a requirement, or record a
+    review outcome — those stay human-only actions taken in the UI. Guards
+    against a future change accidentally adding one without deliberately
+    revisiting that decision."""
+    async with _client(None) as client:
+        tools = {t.name for t in await client.list_tools()}
+    # Checked as a *leading* verb, not a substring — a read tool like
+    # "list_change_request_votes" legitimately contains "vote" (listing the
+    # advisory tally, not casting one) and must not trip this guard.
+    forbidden_leading_verbs = {"approve", "decide", "complete", "vote", "reject"}
+    for name in tools:
+        leading_verb = name.lower().split("_", 1)[0]
+        assert leading_verb not in forbidden_leading_verbs, f"{name!r} looks like an approval-type tool"
+        assert "review_outcome" not in name.lower(), f"{name!r} looks like an approval-type tool"
 
 
 @pytest.mark.asyncio
@@ -208,6 +243,148 @@ async def test_notifications_and_reviews_due_tools_return_lists(admin_token):
             pytest.skip("No projects visible to the admin account — seed data hasn't been loaded.")
         project_reviews = await client.call_tool("list_project_reviews_due", {"project_id": projects[0]["id"]})
         assert isinstance(project_reviews.data, list)
+
+
+def _create_test_project(admin_token: str) -> tuple[str, str, str]:
+    """Creates a throwaway project, with one component and one category,
+    via the real backend API — so write-mode tests have deterministic ids
+    to exercise rather than depending on whatever seed data (E2E/demo, or
+    none at all) happens to be loaded. `admin_token`'s bootstrap account
+    always has its own organisation (I-M-08) to create it in, and becomes
+    this project's manager on creation (C-U-10), the same as a real user
+    creating a project through the UI would."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_id = httpx.get(f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10).json()[0]["id"]
+    suffix = uuid.uuid4().hex[:8]
+    project = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects",
+        json={"organization_id": org_id, "name": f"MCP Write Test {suffix}", "summary": ""},
+        headers=headers, timeout=10,
+    )
+    project.raise_for_status()
+    project_id = project.json()["id"]
+    component = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/components",
+        json={"name": "Software", "prefix": f"SW{suffix[:4]}"}, headers=headers, timeout=10,
+    )
+    component.raise_for_status()
+    component_id = component.json()["id"]
+    category = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/categories",
+        json={"name": "Performance", "prefix": f"PF{suffix[:4]}", "component_id": component_id},
+        headers=headers, timeout=10,
+    )
+    category.raise_for_status()
+    return project_id, component_id, category.json()["id"]
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_create_requirement_creates_a_real_draft_requirement(admin_token):
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {
+                "project_id": project_id, "name": "AI-authored requirement",
+                "component_id": component_id, "category_id": category_id,
+                "reasoning": "Written by a test.",
+            },
+        )
+    assert created.data["name"] == "AI-authored requirement"
+    assert created.data["reasoning"] == "Written by a test."
+    # Always starts in draft — no way to create pre-approved (see this
+    # tool's own docstring).
+    assert created.data["status"] == "draft"
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_update_requirement_partial_edit_preserves_untouched_fields(admin_token):
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {
+                "project_id": project_id, "name": "Original name",
+                "component_id": component_id, "category_id": category_id,
+                "reasoning": "Original reasoning.", "clarification": "Original clarification.",
+            },
+        )
+        requirement_id = created.data["id"]
+
+        updated = await client.call_tool(
+            "update_requirement",
+            {"project_id": project_id, "requirement_id": requirement_id, "reasoning": "Updated reasoning."},
+        )
+    assert updated.data["reasoning"] == "Updated reasoning."
+    # Fields the call didn't mention survive the partial update unchanged.
+    assert updated.data["name"] == "Original name"
+    assert updated.data["clarification"] == "Original clarification."
+    assert updated.data["status"] == "draft"
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_update_requirement_cannot_change_status_even_if_explicitly_requested(admin_token):
+    """update_requirement has no `status` parameter at all — calling it
+    with one anyway must fail before it can ever reach the backend as an
+    approval/completion attempt, regardless of the calling account's own role."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {
+                "project_id": project_id, "name": "Cannot self-approve",
+                "component_id": component_id, "category_id": category_id,
+            },
+        )
+        with pytest.raises(ToolError):
+            await client.call_tool(
+                "update_requirement",
+                {"project_id": project_id, "requirement_id": created.data["id"], "status": "approved"},
+            )
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_update_requirement_rejects_edits_to_a_locked_requirement(admin_token):
+    """Approves a requirement directly via the real REST API first (no MCP
+    tool can do this — see the guardrail tests above), then confirms
+    update_requirement surfaces a clear conflict rather than a raw 409."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {
+                "project_id": project_id, "name": "Will be approved",
+                "component_id": component_id, "category_id": category_id,
+            },
+        )
+        requirement_id = created.data["id"]
+
+        current = httpx.get(
+            f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{requirement_id}",
+            headers=headers, timeout=10,
+        ).json()
+        approve = httpx.put(
+            f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{requirement_id}",
+            json={
+                "name": current["name"], "reasoning": current["reasoning"], "clarification": current["clarification"],
+                "description": current["description"], "component_id": current["component_id"],
+                "category_id": current["category_id"], "owner_id": current["owner_id"], "status": "approved",
+                "level": current["level"], "keywords": current["keywords"], "custom_fields": current["custom_fields"],
+            },
+            headers=headers, timeout=10,
+        )
+        assert approve.status_code == 200, approve.text
+
+        with pytest.raises(ToolError, match="approved"):
+            await client.call_tool(
+                "update_requirement",
+                {"project_id": project_id, "requirement_id": requirement_id, "reasoning": "Should not be allowed."},
+            )
 
 
 LOGIN_PAGE_URL = MCP_SERVER_URL.replace("/mcp", "/login")
