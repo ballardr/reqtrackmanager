@@ -46,7 +46,11 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
       await page.getByLabel("Required").check();
       await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText("Priority")).toBeVisible();
+      // Anchored regex, not a plain substring match: `csv-import-wizard.
+      // spec.ts` creates its own `E2E Priority <timestamp>` field on this
+      // same project (Beta-2), and plain getByText("Priority") substring-
+      // matches that one too when both specs land in the same batch run.
+      await expect(page.getByText(/^Priority\b/)).toBeVisible();
       await expect(page.getByText("Required").first()).toBeVisible();
     });
 
@@ -54,7 +58,11 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
       await expect(page.getByText("Verification method")).toBeVisible();
-      await expect(page.getByText("Priority")).toBeVisible();
+      // Anchored regex, not a plain substring match: `csv-import-wizard.
+      // spec.ts` creates its own `E2E Priority <timestamp>` field on this
+      // same project (Beta-2), and plain getByText("Priority") substring-
+      // matches that one too when both specs land in the same batch run.
+      await expect(page.getByText(/^Priority\b/)).toBeVisible();
       await page.keyboard.press("Escape").catch(() => {});
       await page.goto(page.url());
     });
