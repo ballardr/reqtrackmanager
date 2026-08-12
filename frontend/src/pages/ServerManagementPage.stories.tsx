@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { ServerSettings, SignupConfig, SystemUser } from "../api/types";
 import { withRouter } from "../testing/storybook-helpers";
 import { ServerManagementPage } from "./ServerManagementPage";
@@ -112,6 +112,43 @@ export const SignupModeTab: Story = {
     await waitFor(() => expect(canvas.getByLabelText("Sign-up mode")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Sign-up mode"), "org_specified");
     await expect(canvas.getByText(/Organisations opt in/)).toBeInTheDocument();
+  },
+};
+
+export const TestEmailTab: Story = {
+  beforeEach: () => mockServerManagementApis([]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() => expect(canvas.getByText(/deployment's configured SMTP settings/)).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
+  },
+};
+
+export const TestEmailSendSuccess: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/system/test-email", {}));
+    await expect(canvas.getByText(/Test email sent/)).toBeInTheDocument();
+  },
+};
+
+export const TestEmailSendFailure: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "post").mockRejectedValue(new ApiError(502, "Failed to send test email: connection refused"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
+    await waitFor(() => expect(canvas.getByText(/connection refused/)).toBeInTheDocument());
   },
 };
 

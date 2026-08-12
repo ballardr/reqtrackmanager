@@ -1,4 +1,4 @@
-import { Download, Lock, LogOut, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -44,6 +44,8 @@ export function OrgAdminPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [org, setOrg] = useState<Organization | null>(null);
+  const [orgNameEdit, setOrgNameEdit] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [degradedOrgName, setDegradedOrgName] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -72,6 +74,10 @@ export function OrgAdminPage() {
   const [smtpUsername, setSmtpUsername] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpUseTls, setSmtpUseTls] = useState(true);
+  const [testEmailRecipient, setTestEmailRecipient] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailError, setTestEmailError] = useState<string | null>(null);
+  const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [newMappingGroup, setNewMappingGroup] = useState("");
   const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
   const [advancedError, setAdvancedError] = useState<string | null>(null);
@@ -179,6 +185,7 @@ export function OrgAdminPage() {
     setLoadError(null);
     setDegradedOrgName(null);
     setOrg(o);
+    setOrgNameEdit(o.name);
     setUseOwnAccentColor(o.accent_color_hex != null);
     setAccentColorInput(o.accent_color_hex ?? "#475569");
     setHeaderTitleInput(o.header_title ?? "");
@@ -260,6 +267,33 @@ export function OrgAdminPage() {
       setOutsideDomainUsers(await api.get<OutsideDomainUser[]>(`/api/v1/orgs/${orgId}/users/outside-domain`));
     } catch (err) {
       setOutsideDomainError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
+  async function renameOrg() {
+    if (!orgId || !orgNameEdit.trim() || !org || orgNameEdit === org.name) return;
+    setRenameError(null);
+    try {
+      const updated = await api.put<Organization>(`/api/v1/orgs/${orgId}/name`, { name: orgNameEdit });
+      setOrg(updated);
+      setOrgNameEdit(updated.name);
+    } catch (err) {
+      setRenameError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
+  async function sendOrgTestEmail() {
+    if (!orgId) return;
+    setTestEmailError(null);
+    setTestEmailSuccess(false);
+    setSendingTestEmail(true);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/test-email`, testEmailRecipient ? { to_email: testEmailRecipient } : {});
+      setTestEmailSuccess(true);
+    } catch (err) {
+      setTestEmailError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setSendingTestEmail(false);
     }
   }
 
@@ -700,7 +734,26 @@ export function OrgAdminPage() {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{org.name}</h1>
+        <div className="stack" style={{ gap: "0.35rem" }}>
+          <h1 style={{ margin: 0 }}>{org.name}</h1>
+          {advanced && (
+            <div className="row" style={{ gap: "0.4rem" }}>
+              <input
+                className="input"
+                style={{ maxWidth: 280 }}
+                value={orgNameEdit}
+                onChange={(e) => setOrgNameEdit(e.target.value)}
+                aria-label={strings.orgAdmin.rename}
+                title={strings.orgAdmin.renameHint}
+              />
+              {orgNameEdit.trim() && orgNameEdit !== org.name && (
+                <button className="btn" onClick={renameOrg} title={strings.orgAdmin.rename}>
+                  <Pencil size={14} /> {strings.orgAdmin.rename}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <div className="row">
           {org.logo_file_id && (
             <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
@@ -716,6 +769,7 @@ export function OrgAdminPage() {
           </button>
         </div>
       </div>
+      {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
       {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
 
       <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users} defaultCollapsed>
@@ -1200,6 +1254,26 @@ export function OrgAdminPage() {
             <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
             {strings.orgAdmin.smtpUseTls}
           </label>
+
+          <div className="stack" style={{ gap: "0.4rem" }}>
+            <strong>{strings.orgAdmin.testEmail}</strong>
+            <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint}</span>
+            <div className="row">
+              <input
+                className="input"
+                type="email"
+                placeholder={strings.orgAdmin.testEmailRecipientPlaceholder}
+                value={testEmailRecipient}
+                onChange={(e) => setTestEmailRecipient(e.target.value)}
+              />
+              <button className="btn" onClick={sendOrgTestEmail} disabled={!smtpHost || sendingTestEmail}>
+                {sendingTestEmail ? strings.orgAdmin.testEmailSending : strings.orgAdmin.testEmail}
+              </button>
+            </div>
+            {!smtpHost && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.testEmailNoSmtp}</span>}
+            {testEmailError && <div style={{ color: "var(--color-danger)" }}>{testEmailError}</div>}
+            {testEmailSuccess && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.testEmailSent}</div>}
+          </div>
 
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.orgAdmin.patMaxLifetime}

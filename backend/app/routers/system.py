@@ -29,10 +29,12 @@ from app.models.enums import SignupMode
 from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
+from app.schemas.email import TestEmailRequest
 from app.schemas.pat import BulkRevokeResult
 from app.schemas.signup import SelfSignupOrgOut, SignupConfigOut, SignupConfigUpdate
 from app.services.audit import log_event
 from app.services.branding import get_server_settings
+from app.services.email import send_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
 from app.services.rbac import require_server_admin
@@ -339,6 +341,37 @@ def revoke_all_pats_platform_wide(
               actor_id=current_user.id, detail={"count": count})
     db.commit()
     return BulkRevokeResult(revoked_count=count)
+
+
+@router.post("/test-email", status_code=status.HTTP_204_NO_CONTENT)
+def send_system_test_email(
+    payload: TestEmailRequest,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Sends a test email through the deployment-wide SMTP configuration
+    (`Settings.smtp_*`, `config.py`) — lets a server admin confirm outgoing
+    mail (C-N-03) actually works without waiting for a real notification to
+    trigger one. The organisation-scoped equivalent for an org with its own
+    SMTP override is `routers/orgs.py::send_org_test_email`.
+
+    Raises:
+        HTTPException: 502 if the send itself fails (bad credentials,
+            unreachable host, ...) — surfaced with the underlying error so
+            the admin knows what to fix, since confirming deliverability is
+            the entire point of this action.
+    """
+    to_email = payload.to_email or current_user.email
+    try:
+        send_email(
+            to_email, "ReqTrackManager test email",
+            "This is a test email sent from ReqTrackManager's deployment-wide SMTP configuration.",
+        )
+    except Exception as err:  # noqa: BLE001 - surfacing the underlying SMTP failure is the entire point of a test-email action
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Failed to send test email: {err}") from err
+    log_event(db, entity_type="system", entity_id="platform", action="test_email_sent",
+              actor_id=current_user.id, detail={"to": to_email})
+    db.commit()
 
 
 # --- Platform-wide branding defaults ----------------------------------------

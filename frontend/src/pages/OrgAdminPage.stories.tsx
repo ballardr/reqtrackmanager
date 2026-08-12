@@ -109,6 +109,26 @@ export const DisabledOrgServerAdminCanReEnable: Story = {
   },
 };
 
+export const RenameOrganization: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockImplementation(async (path: string) =>
+      path === `/api/v1/orgs/${ORG_ID}/name` ? { ...org, name: "Renamed Corp" } : org
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Rename")).toHaveValue("Acme Corp"));
+    await userEvent.clear(canvas.getByLabelText("Rename"));
+    await userEvent.type(canvas.getByLabelText("Rename"), "Renamed Corp");
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/name`, { name: "Renamed Corp" })
+    );
+    await expect(canvas.getByRole("heading", { name: "Renamed Corp" })).toBeInTheDocument();
+  },
+};
+
 export const BrandingSectionSave: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -166,6 +186,34 @@ export const AdvancedSettingsRequire2fa: Story = {
         expect.objectContaining({ require_2fa: true })
       )
     );
+  },
+};
+
+export const AdvancedSettingsTestEmailNoSmtpConfigured: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Advanced settings section" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Send test email" })).toBeDisabled();
+    await expect(canvas.getByText("Set an SMTP host above first.")).toBeInTheDocument();
+  },
+};
+
+export const AdvancedSettingsTestEmailSend: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ advanced: { ...advanced, smtp_host: "smtp.example.com", smtp_port: 587 } });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Advanced settings section" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Send test email" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/test-email`, {})
+    );
+    await expect(canvas.getByText(/Test email sent/)).toBeInTheDocument();
   },
 };
 

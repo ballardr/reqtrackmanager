@@ -320,6 +320,47 @@ function PlatformBrandingTab() {
   );
 }
 
+function TestEmailTab() {
+  const [recipient, setRecipient] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  async function send() {
+    setError(null);
+    setSuccess(false);
+    setSending(true);
+    try {
+      await api.post("/api/v1/system/test-email", recipient ? { to_email: recipient } : {});
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
+      <div className="row">
+        <input
+          className="input"
+          type="email"
+          placeholder={strings.system.testEmailRecipientPlaceholder}
+          value={recipient}
+          onChange={(e) => setRecipient(e.target.value)}
+        />
+        <button className="btn btn-primary" onClick={send} disabled={sending}>
+          {sending ? strings.system.testEmailSending : strings.system.testEmail}
+        </button>
+      </div>
+      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+      {success && <div style={{ color: "var(--color-accent)" }}>{strings.system.testEmailSent}</div>}
+    </div>
+  );
+}
+
 function SignupModeTab() {
   const [config, setConfig] = useState<SignupConfig | null>(null);
   const [mode, setMode] = useState<SignupMode>("disabled");
@@ -383,12 +424,13 @@ function SignupModeTab() {
  * doesn't fit a tab alongside these.
  */
 export function ServerManagementPage() {
-  const [tab, setTab] = useState<"accessReview" | "branding" | "signup">("accessReview");
+  const [tab, setTab] = useState<"accessReview" | "branding" | "signup" | "email">("accessReview");
 
   const tabs: { key: typeof tab; label: string }[] = [
     { key: "accessReview", label: strings.orgAdmin.accessReview },
     { key: "branding", label: strings.serverSettings.title },
     { key: "signup", label: strings.signupSettings.title },
+    { key: "email", label: strings.system.emailTab },
   ];
 
   return (
@@ -410,6 +452,7 @@ export function ServerManagementPage() {
       {tab === "accessReview" && <AccessReviewTab />}
       {tab === "branding" && <PlatformBrandingTab />}
       {tab === "signup" && <SignupModeTab />}
+      {tab === "email" && <TestEmailTab />}
     </div>
   );
 }
