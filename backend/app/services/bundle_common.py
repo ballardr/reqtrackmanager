@@ -12,14 +12,51 @@ or read, so they live here rather than being duplicated per bundle type.
 
 from __future__ import annotations
 
+import zipfile
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.user import User
 from app.services.files import upload_file
+
+# Bounds a bundle/CSV import's memory footprint. No deployment-wide request
+# body size limit exists yet (see docs/soc2/policies/information-security-
+# policy.md's Known Gaps), and DEFLATE's ~1032:1 worst-case ratio means an
+# unchecked zip well under any sane upload cap could still decompress to
+# many gigabytes — these two limits are checked before any entry is read,
+# not just before the whole request is accepted.
+MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+
+
+def enforce_upload_size_limit(data: bytes, *, what: str) -> None:
+    """Rejects an uploaded file before it's parsed at all if its raw size
+    alone already exceeds `MAX_IMPORT_UPLOAD_BYTES`."""
+    if len(data) > MAX_IMPORT_UPLOAD_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"{what} is too large ({len(data)} bytes; max {MAX_IMPORT_UPLOAD_BYTES} bytes).",
+        )
+
+
+def enforce_zip_uncompressed_size_limit(zf: zipfile.ZipFile) -> None:
+    """Rejects a zip bundle whose entries' *declared* uncompressed size
+    (`ZipInfo.file_size`, read from the central directory — cheap, no
+    decompression) would exceed `MAX_BUNDLE_UNCOMPRESSED_BYTES` in total,
+    before any entry is actually decompressed via `zf.read(...)`. A small
+    compressed upload can still pass `enforce_upload_size_limit` while
+    claiming an enormous uncompressed size (a classic zip-bomb shape); this
+    catches that case independently of the raw upload's own size."""
+    total = sum(zi.file_size for zi in zf.infolist())
+    if total > MAX_BUNDLE_UNCOMPRESSED_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Bundle's uncompressed contents ({total} bytes) exceed the maximum allowed ({MAX_BUNDLE_UNCOMPRESSED_BYTES} bytes).",
+        )
 
 
 class BundleImportWarnings:

@@ -224,3 +224,20 @@ def test_export_denies_users_without_project_access(client, admin_token, org_id)
         f"/api/v1/projects/{project['id']}/requirements/export", headers=auth_headers(other_org_admin_token)
     )
     assert resp.status_code in (403, 404)
+
+
+def test_import_rejects_a_csv_over_the_size_limit(client, admin_token, org_id, monkeypatch):
+    """Same shared upload-size guard the bundle importers use
+    (`services.bundle_common.enforce_upload_size_limit`) — a raw CSV upload
+    isn't subject to zip-bomb amplification, but is still unbounded memory
+    without this check."""
+    monkeypatch.setattr("app.services.bundle_common.MAX_IMPORT_UPLOAD_BYTES", 10)
+    project = create_project(client, admin_token, org_id)
+    create_component_and_category(client, admin_token, project["id"])
+    csv_content = "name,reasoning,component_prefix,category_prefix\nWidget,Because,SW,PERF\n"
+    assert len(csv_content) > 10
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/import",
+        files={"file": ("import.csv", csv_content, "text/csv")}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 413

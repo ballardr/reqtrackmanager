@@ -186,3 +186,30 @@ def test_import_rejects_a_non_zip_file(client, admin_token):
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400
+
+
+def test_import_rejects_a_raw_upload_over_the_size_limit(client, admin_token, org_id, monkeypatch):
+    """See test_project_export_import.py's equivalent test: same two-layer
+    zip-bomb defense in `services.bundle_common`, shared by both bundle kinds."""
+    monkeypatch.setattr("app.services.bundle_common.MAX_IMPORT_UPLOAD_BYTES", 10)
+    export_resp = client.get(f"/api/v1/orgs/{org_id}/export", headers=auth_headers(admin_token))
+    assert len(export_resp.content) > 10
+    resp = client.post(
+        "/api/v1/orgs/import",
+        data={"name": "Too Big"},
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 413
+
+
+def test_import_rejects_a_bundle_whose_declared_uncompressed_size_exceeds_the_cap(client, admin_token, org_id, monkeypatch):
+    monkeypatch.setattr("app.services.bundle_common.MAX_BUNDLE_UNCOMPRESSED_BYTES", 10)
+    export_resp = client.get(f"/api/v1/orgs/{org_id}/export", headers=auth_headers(admin_token))
+    resp = client.post(
+        "/api/v1/orgs/import",
+        data={"name": "Too Big Uncompressed"},
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 413

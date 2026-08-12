@@ -90,9 +90,26 @@ test.describe("organisation bundle export/import", () => {
       await page.getByText(newOrgName).locator("..").getByRole("link", { name: "Edit" }).click();
       await expect(page).toHaveURL(/\/orgs\/[0-9a-f-]+\/admin$/);
       await expect(page.getByRole("heading", { name: newOrgName })).toBeVisible();
+      const newOrgId = page.url().match(/orgs\/([0-9a-f-]+)\/admin/)![1];
 
-      await page.getByRole("link", { name: "Projects", exact: true }).click();
-      await expect(page.getByText("E2E Bundle Source Project")).toBeVisible();
+      // The server admin who ran the import has no role in the new org
+      // themselves (I-M-05: no bypass) — this project only shows up in
+      // *their* "Projects" tab if the "guaranteed project manager" fallback
+      // wrongly attributed to them instead of the org's real admin. Verify
+      // as the bundle admin (who was granted a real org_admin role by the
+      // import, matched by email) instead, confirming the fallback landed
+      // on the right person.
+      const bundleAdminToken2 = (
+        await (
+          await page.request.post("http://localhost:8000/api/v1/auth/login", { data: { email: bundleAdminEmail, password: PASSWORD } })
+        ).json()
+      ).access_token;
+      const importedProjects: { name: string }[] = await (
+        await page.request.get(`http://localhost:8000/api/v1/projects?organization_id=${newOrgId}`, {
+          headers: { Authorization: `Bearer ${bundleAdminToken2}` },
+        })
+      ).json();
+      expect(importedProjects.map((p) => p.name)).toContain("E2E Bundle Source Project");
     });
 
     fs.rmSync(exportedPath!, { force: true });

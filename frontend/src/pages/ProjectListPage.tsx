@@ -66,7 +66,11 @@ export function ProjectListPage() {
   async function reload() {
     setProjects(null);
     const [orgList, everyProject] = await Promise.all([
-      api.get<Organization[]>("/api/v1/orgs"),
+      // `mine=true`: a server admin otherwise sees every organisation in the
+      // deployment here (the plain `GET /orgs` directory-listing bypass,
+      // meant for the platform-level org directory) rather than just the
+      // ones they can actually create a project in or usefully filter by.
+      api.get<Organization[]>("/api/v1/orgs?mine=true"),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
       loadProjects(0, false),
     ]);

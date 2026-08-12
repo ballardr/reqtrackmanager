@@ -61,6 +61,7 @@ from app.schemas.requirement import (
 )
 from app.services import engagement, notifications, pubsub
 from app.services.audit import log_event
+from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.downloads import filename_safe
@@ -331,6 +332,7 @@ async def import_requirements(
     definitions_by_name = {d.name: d for d in custom_field_definitions_for_export(db, project_id)}
 
     raw = await file.read()
+    enforce_upload_size_limit(raw, what="CSV upload")
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
     custom_field_columns = [h for h in (reader.fieldnames or []) if h.startswith(CUSTOM_FIELD_COLUMN_PREFIX)]
 
@@ -882,6 +884,7 @@ def add_comment(
                 title="New comment on a requirement you follow",
                 body=payload.body[:200],
                 project_id=project_id, entity_type="requirement", entity_id=str(requirement_id),
+                actor_id=current_user.id,
             )
     db.commit()
     db.refresh(comment)

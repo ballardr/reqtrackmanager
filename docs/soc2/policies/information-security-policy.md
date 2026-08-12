@@ -47,7 +47,8 @@ Application-level enforcement of "least privilege, defense in depth" is concrete
 
 ## Known Gaps / Exceptions
 
-No formal governance structure, named owner, or staff communication/attestation process exists yet — this is the primary Company action item this policy package surfaces. See [trust-services-criteria-mapping.md](../trust-services-criteria-mapping.md) CC1/CC2 rows.
+1. No formal governance structure, named owner, or staff communication/attestation process exists yet — this is the primary Company action item this policy package surfaces. See [trust-services-criteria-mapping.md](../trust-services-criteria-mapping.md) CC1/CC2 rows.
+2. **No deployment-wide request/upload body size limit exists.** The bundle export/import and requirement CSV import endpoints (`services.bundle_common.enforce_upload_size_limit`/`enforce_zip_uncompressed_size_limit`, added during the bundle export/import hardening pass — see `docs/decisions.md`) cap both the raw upload and a zip bundle's declared uncompressed size, specifically because zip decompression can amplify a small upload by 1000x+ (DEFLATE's ~1032:1 worst case) before any content validation runs. Every other upload endpoint (avatars, requirement/comment attachments, organisation logo/login background) still has no such cap, relying only on authentication/authorization to bound who can upload, not how much — a resource-exhaustion exposure for any deployment without a size limit set at the reverse-proxy layer (e.g. nginx `client_max_body_size`).
 
 ## Related Documents
 

@@ -64,7 +64,13 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, Repo
 from app.models.project import Project
 from app.models.user import User
 from app.services.audit import log_event
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.bundle_common import (
+    BundleImportWarnings,
+    UserResolver,
+    enforce_upload_size_limit,
+    enforce_zip_uncompressed_size_limit,
+    import_bundled_file,
+)
 from app.services.files import read_file
 from app.services.invites import create_pending_invite
 from app.services.project_export import (
@@ -190,8 +196,10 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     Returns:
         The new Organization and a list of human-readable import warnings.
     """
+    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        enforce_zip_uncompressed_size_limit(zf)
         manifest = json.loads(zf.read("manifest.json"))
         data = json.loads(zf.read("org.json"))
     except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):

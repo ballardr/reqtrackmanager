@@ -295,7 +295,9 @@ def delete_organization(
 
 
 @router.get("", response_model=list[OrganizationOut])
-def list_organizations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_organizations(
+    mine: bool = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
     """Lists organisations. Server admins see all; other users see only orgs they belong to.
 
     This one server-admin bypass is kept deliberately (unlike every other
@@ -304,8 +306,15 @@ def list_organizations(current_user: User = Depends(get_current_user), db: Sessi
     organisation", and the server admin needs to see an org exists at all in
     order to complete the one capability I-M-05 actually grants them —
     creating that organisation's initial user.
+
+    `mine=true` opts out of that bypass and always returns only the
+    caller's own memberships, regardless of server-admin status — for a
+    caller that needs "organisations I can actually act within" (e.g. the
+    project list's org filter and its "new project" org picker), where the
+    full server-wide directory would let a server admin with no real
+    membership anywhere pick an organisation they hold no role in at all.
     """
-    if current_user.is_server_admin:
+    if current_user.is_server_admin and not mine:
         return db.scalars(select(Organization)).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
@@ -660,6 +669,7 @@ def assign_org_role(
                 db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
                 title="Organisation permission granted",
                 body=f"You were granted the '{payload.role.value}' role in an organisation.",
+                actor_id=current_user.id,
             )
         db.commit()
 

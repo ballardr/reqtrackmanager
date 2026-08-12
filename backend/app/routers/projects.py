@@ -678,7 +678,7 @@ def create_stage(
     db.flush()
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="created",
               actor_id=current_user.id, project_id=project.id)
-    _notify_stage_transition(db, project, stage)
+    _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
     return stage
@@ -842,7 +842,7 @@ def transition_stage(
         log_event(db, entity_type="project_stage", entity_id=stage.id, action="status_changed",
                    actor_id=current_user.id, project_id=project.id, detail={"status": new_status.value})
 
-    _notify_stage_transition(db, project, stage)
+    _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
     return stage
@@ -935,7 +935,7 @@ _STAGE_NOTIFICATION_TYPES = {
 }
 
 
-def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage) -> None:
+def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage, actor_id: UUID) -> None:
     """Notifies all project members of stage transitions (C-N-01), including
     a newly created stage entering scoping.
 
@@ -945,6 +945,10 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage)
     every actual caller of `_notify_stage_transition` (a subsequent stage
     being created via `create_stage`, or an existing stage transitioning via
     `transition_stage`) is, by construction, never that excluded case.
+
+    `actor_id` is whoever created the stage or triggered the transition —
+    excluded from this broadcast so they're not told about the very change
+    they just made (e.g. the project manager who approved the stage).
     """
     notification_type = _STAGE_NOTIFICATION_TYPES.get(stage.status)
     if notification_type is None:
@@ -957,6 +961,7 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage)
                 db, user, notification_type=notification_type,
                 title=f"{project.name}: {stage.name} is now {stage.status.value}",
                 project_id=project.id, entity_type="project_stage", entity_id=str(stage.id),
+                actor_id=actor_id,
             )
 
 
@@ -1325,7 +1330,7 @@ def add_project_group_member(
                 db, added_user, notification_type=NotificationType.PROJECT_JOINED,
                 title=f"You were added to {project.name}",
                 body=f"You were added to the '{group.name}' group." if group else "",
-                project_id=project.id,
+                project_id=project.id, actor_id=current_user.id,
             )
     db.commit()
 
@@ -1396,7 +1401,7 @@ def assign_project_role(
                 db, granted_user, notification_type=NotificationType.PROJECT_JOINED,
                 title=f"You were added to {project.name}",
                 body=f"You were granted the '{payload.role.value}' role.",
-                project_id=project.id,
+                project_id=project.id, actor_id=current_user.id,
             )
         db.commit()
 
@@ -1468,7 +1473,7 @@ def assign_project_role_by_email(
             db, existing_user, notification_type=NotificationType.PROJECT_JOINED,
             title=f"You were added to {project.name}",
             body=f"You were granted the '{payload.role.value}' role.",
-            project_id=project.id,
+            project_id=project.id, actor_id=current_user.id,
         )
         db.commit()
         return AssignByEmailOut(outcome="added")
@@ -1526,6 +1531,7 @@ def revoke_project_role(
         notify(
             db, revoked_user, notification_type=NotificationType.PERMISSION_REVOKED,
             title=f"Your '{role.value}' role on {project.name} was revoked", project_id=project.id,
+            actor_id=current_user.id,
         )
     # Only clean up subscriptions/favourites if the user has no other role
     # (direct or group-derived) left granting them access to this project.

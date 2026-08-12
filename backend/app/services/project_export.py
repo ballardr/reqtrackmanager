@@ -90,7 +90,13 @@ from app.models.requirement import (
 )
 from app.models.user import User
 from app.services.audit import log_event
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.bundle_common import (
+    BundleImportWarnings,
+    UserResolver,
+    enforce_upload_size_limit,
+    enforce_zip_uncompressed_size_limit,
+    import_bundled_file,
+)
 from app.services.files import read_file
 from app.services.rbac import get_project_managers
 
@@ -497,8 +503,10 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> by
 
 
 def _read_bundle(zip_bytes: bytes, expected_kind: str) -> tuple[dict, dict, zipfile.ZipFile]:
+    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        enforce_zip_uncompressed_size_limit(zf)
         manifest = json.loads(zf.read("manifest.json"))
         data = json.loads(zf.read("project.json"))
     except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):

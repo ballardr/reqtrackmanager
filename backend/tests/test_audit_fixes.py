@@ -48,6 +48,32 @@ def test_server_admin_can_still_create_org_and_its_initial_user(client, admin_to
     assert resp.status_code == 201, resp.text
 
 
+def test_list_organizations_mine_scopes_to_membership_even_for_server_admin(client, admin_token, org_id):
+    """The plain `GET /orgs` bypass exists for the platform-level org
+    directory (I-M-05's one documented carve-out) — a caller that needs
+    "orgs I can actually act within" instead (e.g. the project list's org
+    filter/new-project picker) must opt out of it with `mine=true`, or a
+    server admin sees every organisation in the deployment there too."""
+    other_org = client.post("/api/v1/orgs", json={"name": "Not My Org"}, headers=auth_headers(admin_token)).json()
+
+    all_orgs = client.get("/api/v1/orgs", headers=auth_headers(admin_token)).json()
+    assert any(o["id"] == other_org["id"] for o in all_orgs)
+
+    my_orgs = client.get("/api/v1/orgs?mine=true", headers=auth_headers(admin_token)).json()
+    my_org_ids = {o["id"] for o in my_orgs}
+    assert org_id in my_org_ids
+    assert other_org["id"] not in my_org_ids
+
+
+def test_list_organizations_mine_is_a_noop_for_non_server_admins(client, admin_token, org_id):
+    member_email = "mine-param-member@example.com"
+    create_org_user(client, admin_token, org_id, member_email, role="member")
+    member_token = login(client, member_email, "Password123!")
+    default_ids = {o["id"] for o in client.get("/api/v1/orgs", headers=auth_headers(member_token)).json()}
+    mine_ids = {o["id"] for o in client.get("/api/v1/orgs?mine=true", headers=auth_headers(member_token)).json()}
+    assert default_ids == mine_ids == {org_id}
+
+
 def test_server_admin_can_make_themselves_org_admin_of_an_org_they_dont_belong_to(client, admin_token):
     """Self-hosting use case: a server admin who is also the only person
     running the deployment needs a way to become admin of their own org,
@@ -178,13 +204,29 @@ def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, 
 
 def test_new_stage_entering_scoping_notifies_members(client, admin_token, org_id):
     """C-N-01: a newly created (non-initial) stage entering scoping notifies
-    project members — this is never the "brand new project" excluded case."""
+    project members — this is never the "brand new project" excluded case.
+
+    Uses a second member distinct from the creator: `admin_token` is both
+    the one creating the stage and (per `create_project`) already a project
+    manager, so checking their own notifications wouldn't distinguish "the
+    broadcast works" from "self-notifications aren't suppressed" — the
+    self-notification-suppression fix (see docs/decisions.md) makes those
+    two outcomes different."""
     project = create_project(client, admin_token, org_id)
+    member_id = create_org_user(client, admin_token, org_id, "stage-scoping-member@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": member_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    member_token = login(client, "stage-scoping-member@example.com", "Password123!")
+
     client.post(
         f"/api/v1/projects/{project['id']}/stages", json={"name": "Build"}, headers=auth_headers(admin_token)
     )
-    notifications = client.get("/api/v1/notifications", headers=auth_headers(admin_token)).json()
+    notifications = client.get("/api/v1/notifications", headers=auth_headers(member_token)).json()
     assert any(n["type"] == "stage_scoping" for n in notifications)
+    own_notifications = client.get("/api/v1/notifications", headers=auth_headers(admin_token)).json()
+    assert not any(n["type"] == "stage_scoping" for n in own_notifications)
 
 
 def test_project_creation_falls_back_to_org_default_template(client, admin_token, org_id):

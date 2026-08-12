@@ -341,3 +341,37 @@ def test_unmatched_required_user_reference_falls_back_to_importer_with_a_warning
         assert owner_id == importing_user.id
     finally:
         db.close()
+
+
+def test_import_rejects_a_raw_upload_over_the_size_limit(client, admin_token, org_id, monkeypatch):
+    """A zip-bomb defense has two layers (`services.bundle_common`): a cap
+    on the raw upload itself, checked before the zip is even opened. This
+    lowers that cap rather than actually uploading 200MB+ to exercise it."""
+    monkeypatch.setattr("app.services.bundle_common.MAX_IMPORT_UPLOAD_BYTES", 10)
+    project = create_project(client, admin_token, org_id)
+    export_resp = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(admin_token))
+    assert len(export_resp.content) > 10
+    resp = client.post(
+        "/api/v1/projects/import",
+        data={"organization_id": org_id, "name": "Too Big"},
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 413
+
+
+def test_import_rejects_a_bundle_whose_declared_uncompressed_size_exceeds_the_cap(client, admin_token, org_id, monkeypatch):
+    """The second zip-bomb defense layer: a cap on the *declared*
+    uncompressed size across every zip entry (`ZipInfo.file_size`), checked
+    before any entry is decompressed — catches a bundle that's small on
+    disk but claims to unpack into far more than this deployment allows."""
+    monkeypatch.setattr("app.services.bundle_common.MAX_BUNDLE_UNCOMPRESSED_BYTES", 10)
+    project = create_project(client, admin_token, org_id)
+    export_resp = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(admin_token))
+    resp = client.post(
+        "/api/v1/projects/import",
+        data={"organization_id": org_id, "name": "Too Big Uncompressed"},
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 413

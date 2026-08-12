@@ -147,11 +147,25 @@ async def security_headers_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
-    """Records request count and latency for every HTTP request (I-M metrics)."""
+    """Records request count and latency for every HTTP request (I-M metrics).
+
+    Labels with the matched route's *template* (`/api/v1/projects/{project_id}`),
+    never the resolved request path — a request that matches no route (a
+    genuine 404, or a CORS preflight `OPTIONS`, which `CORSMiddleware`
+    short-circuits before FastAPI's router ever sets `request.scope["route"]`,
+    even for a path that would otherwise have matched) has no template to
+    label with and is bucketed under the fixed `path="unmatched"` instead of
+    falling back to the raw path. Falling back to the raw path previously
+    leaked real path parameters — project/org/requirement ids — as literal,
+    unbounded-cardinality label values into the unauthenticated `/metrics`
+    output on every preflight (one per non-simple cross-origin request the
+    SPA makes), not just on genuine 404s.
+    """
     start = time.perf_counter()
     response = await call_next(request)
     duration = time.perf_counter() - start
-    path = request.scope.get("route").path if request.scope.get("route") else request.url.path
+    route = request.scope.get("route")
+    path = route.path if route else "unmatched"
     http_requests_total.labels(method=request.method, path=path, status_code=response.status_code).inc()
     http_request_duration_seconds.labels(method=request.method, path=path).observe(duration)
     return response

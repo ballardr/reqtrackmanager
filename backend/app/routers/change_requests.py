@@ -339,6 +339,7 @@ def submit_change_request(
                 db, user, notification_type=NotificationType.CHANGE_REQUEST_SUBMITTED,
                 title=f"Change request submitted: {version.proposed_name}",
                 project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
+                actor_id=current_user.id,
             )
     for user_id in get_project_users_by_role(db, project_id, ProjectRole.STAKEHOLDER):
         user = db.get(User, user_id)
@@ -347,6 +348,7 @@ def submit_change_request(
                 db, user, notification_type=NotificationType.STAKEHOLDER_INPUT_REQUESTED,
                 title=f"Your input is requested: {version.proposed_name}",
                 project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
+                actor_id=current_user.id,
             )
 
     db.commit()
@@ -520,6 +522,7 @@ def decide_change_request(
             notification_type=NotificationType.CHANGE_REQUEST_APPROVED if payload.approve else NotificationType.CHANGE_REQUEST_REJECTED,
             title=f"Your change request was {'approved' if payload.approve else 'rejected'}: {version.proposed_name}",
             body=payload.note, project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
+            actor_id=current_user.id,
         )
     if payload.approve:
         project_name = db.get(Project, project_id).name
@@ -531,6 +534,7 @@ def decide_change_request(
                     title=f"{project_name}: requirements updated via change request",
                     body=version.proposed_name, project_id=project_id,
                     entity_type="change_request", entity_id=str(cr.id),
+                    actor_id=current_user.id,
                 )
 
     db.commit()
@@ -714,6 +718,7 @@ def add_comment(
                 title="New comment on a change request you follow",
                 body=payload.body[:200],
                 project_id=project_id, entity_type="change_request", entity_id=str(cr_id),
+                actor_id=current_user.id,
             )
     db.commit()
     db.refresh(comment)
