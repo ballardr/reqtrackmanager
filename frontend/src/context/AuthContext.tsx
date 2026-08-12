@@ -1,22 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { AUTH_UNAUTHORIZED_EVENT, api, loadStoredToken, setAuthToken } from "../api/client";
 import type { User } from "../api/types";
-
-type LoginResult = { requires2fa: false; user: User } | { requires2fa: true; challengeToken: string };
-
-interface AuthContextValue {
-  user: User | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<LoginResult>;
-  signup: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<User>;
-  verify2fa: (challengeToken: string, code: string) => Promise<User>;
-  logout: () => void;
-  refreshUser: () => Promise<void>;
-  setUiPreference: (key: string, value: string | boolean) => void;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
 
 /** Provides the authenticated user and login/logout actions to the app. */
 export function AuthProvider({ children }: { children: ReactNode }) {

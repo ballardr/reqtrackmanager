@@ -8,7 +8,7 @@ import tseslint from "typescript-eslint";
 // TypeScript, React hooks, and Fast Refresh correctness catch real drift
 // without requiring a disruptive repo-wide reformat.
 export default tseslint.config(
-  { ignores: ["dist", "storybook-static", ".storybook"] },
+  { ignores: ["dist", "storybook-static", ".storybook", "coverage"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
 import type { Project } from "../api/types";
+import { ProjectContext, type ProjectContextValue } from "./ProjectContextValue";
 
 export type TerminologyKey = "project" | "stage" | "component" | "category" | "requirement" | "change_request";
 
@@ -17,12 +18,6 @@ const DEFAULT_TERMS: Record<TerminologyKey, string> = {
   requirement: "requirement",
   change_request: "change request",
 };
-
-interface ProjectContextValue {
-  terminology: Record<string, string>;
-}
-
-const ProjectContext = createContext<ProjectContextValue>({ terminology: {} });
 
 /**
  * Provides the current project's terminology overrides (C-C-03) to

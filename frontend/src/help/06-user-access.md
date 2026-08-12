@@ -35,7 +35,7 @@ flowchart TD
     Known -->|No| Policy{External user policy<br/>allows a new invite?}
     Policy -->|No| Blocked[Not offered — existing<br/>accounts only]
     Policy -->|Yes| SsoOnly{Is the organisation SSO-only?}
-    SsoOnly -->|Yes| Provisioned[Account + org + project role created now.<br/>Email just says "sign in via SSO"]
+    SsoOnly -->|Yes| Provisioned[Account + org + project role created now.<br/>Email just says: sign in via SSO]
     SsoOnly -->|No| Invite[Invite email sent with a signup link.<br/>Role granted once they complete it]
 ```
 

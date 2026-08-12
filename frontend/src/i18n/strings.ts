@@ -424,6 +424,7 @@ const en = {
     require2faHint: "Blocks every member of this organisation, including its own admins, from any of its projects or settings until they enable 2FA in Preferences. They can still enrol themselves at any time to regain access immediately — no admin action needed.",
     allowSelfSignup: "Allow self-signup",
     allowSelfSignupHint: "When the deployment's sign-up mode is \"org specified\", anyone with a matching email domain (below) can create their own account and join this organisation as a member. Cannot be enabled for an SSO-only organisation.",
+    selfSignupSsoConflict: "Self-signup can't be enabled while this organisation is SSO-only — turn off \"SSO only\" in the SSO configuration below first, or turn off self-signup here.",
     autoAcceptEmailDomain: "Accepted email domain",
     autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
     externalUserPolicy: "External users on projects",
