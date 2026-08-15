@@ -11,6 +11,7 @@ const org: Organization = {
   id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
+  email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
 };
 
 const notificationPrefs: NotificationPreference[] = [

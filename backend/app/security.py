@@ -129,6 +129,48 @@ def create_oidc_state_token(organization_id: str, client_nonce: str, client: str
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_email_unsubscribe_token(user_id: str) -> str:
+    """Creates a long-lived signed token embedded in the footer "manage
+    your email preferences" link of every outgoing email
+    (`services/notifications.py`), letting a recipient disable email
+    notifications with a single click, without logging in first.
+
+    Deliberately long-lived (2 years) rather than short-lived like
+    `create_access_token`/`create_oidc_state_token`: unlike those, this
+    token grants no session and no privileged action — the one thing it
+    can ever do, via `routers/notifications.py::unsubscribe`, is set
+    `User.email_digest_mode = DigestMode.NONE`, the exact same field a
+    logged-in user can already set themselves from the Preferences page
+    (`PUT /auth/me`). A stolen or forwarded link's worst case is someone
+    else turning off a user's email notifications — an availability/
+    annoyance issue, not a confidentiality or integrity breach — so the
+    usual "keep it short-lived" session-token reasoning doesn't apply, and
+    a working link that expires after a few weeks would be a worse
+    experience for no real security benefit. Every use (successful or
+    rejected) is still written to the audit trail — see the endpoint.
+    """
+    expire = datetime.now(UTC) + timedelta(days=730)
+    payload = {"sub": user_id, "exp": expire, "purpose": "email_unsubscribe"}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_email_unsubscribe_token(token: str) -> str | None:
+    """Decodes an unsubscribe token created by `create_email_unsubscribe_token`.
+
+    Returns:
+        The embedded user id, or `None` if the token is invalid, expired,
+        or wasn't issued for this purpose (e.g. an access token replayed
+        here, which must not be accepted).
+    """
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return None
+    if payload.get("purpose") != "email_unsubscribe":
+        return None
+    return payload.get("sub")
+
+
 def generate_pat() -> tuple[str, str, str]:
     """Generates a new Personal Access Token secret.
 

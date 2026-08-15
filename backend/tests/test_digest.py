@@ -44,6 +44,11 @@ async def test_daily_digest_batches_notifications_and_marks_emailed(client, admi
             assert mock_send.await_count == 1
             call_args = mock_send.await_args
             assert call_args.args[0] == "admin@example.com"
+            # The digest is a real rendered HTML email (services/email_templates.py),
+            # not the old plain-text-only body, and lists both batched notifications.
+            html_body = call_args.kwargs["html_body"]
+            assert "<html" in html_body.lower()
+            assert html_body.count("Your password was changed") == 2
 
         db.refresh(user)
         from sqlalchemy import select

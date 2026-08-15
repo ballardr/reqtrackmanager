@@ -120,6 +120,7 @@ When making significant changes, update the README to include:
 - Update documentation when changing functionality.
 - Add tests for new functionality.
 - Code warnings (compiler/type-checker, linter, build-tool, and library deprecation warnings) must be fixed, not ignored, suppressed, or left in place. Do not silence a warning with an inline disable/ignore comment as a substitute for fixing it, unless the warning is a documented false positive.
+- Do not edit linting configs (e.g. eslint/ruff/flake8/tsconfig rule sets and similar) to disable, downgrade, or narrow a rule as a way to make a warning go away. Fix the underlying code instead. A rule change is only acceptable when the rule itself is wrong for the project, and that must be raised with the user explicitly rather than done silently.
 - When a dependency's current version is flagged as deprecated (by the library itself, its registry, or a warning it emits), upgrade it to a supported version or replacement. Never downgrade or pin to an older version to make a deprecation warning go away.
 
 ## Testing Requirements

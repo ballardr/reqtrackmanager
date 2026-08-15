@@ -61,6 +61,9 @@ def test_system_test_email_defaults_to_caller_and_uses_deployment_smtp(client, a
     assert args[0] == "admin@example.com"
     # No smtp_override -> send_email falls back to the deployment-wide Settings.
     assert kwargs.get("smtp_override") is None
+    # A real rendered HTML email (services/email_templates.py), not a bare string.
+    assert "<html" in kwargs["html_body"].lower()
+    assert "deployment-wide SMTP configuration" in kwargs["html_body"]
 
 
 def test_system_test_email_honours_explicit_recipient(client, admin_token):
@@ -122,6 +125,8 @@ def test_org_test_email_uses_orgs_own_smtp_override(client, admin_token, org_id)
     assert override.username == "relay-user"
     assert override.password == "super-secret"
     assert override.use_tls is True
+    # Real rendered HTML using this org's own branding/name, not a bare string.
+    assert "<html" in kwargs["html_body"].lower()
 
 
 def test_org_test_email_requires_org_admin(client, admin_token, org_id):

@@ -12,6 +12,7 @@ const org: Organization = {
   id: ORG_ID, name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
+  email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
 };
 
 const orgUser: OrgUser = {
@@ -144,6 +145,29 @@ export const BrandingSectionSave: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ header_title: "Acme Requirements" }))
+    );
+  },
+};
+
+export const BrandingSectionEmailFooterSave: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(org);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Branding section" }));
+    await waitFor(() => expect(canvas.getByLabelText("Company name")).toBeInTheDocument());
+    await userEvent.type(canvas.getByLabelText("Company name"), "Acme Requirements Ltd");
+    await userEvent.type(canvas.getByLabelText("Website"), "https://acme.example.com");
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/branding`,
+        expect.objectContaining({
+          email_footer_company_name: "Acme Requirements Ltd", email_footer_website: "https://acme.example.com",
+        }),
+      )
     );
   },
 };

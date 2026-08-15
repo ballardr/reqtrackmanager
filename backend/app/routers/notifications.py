@@ -12,16 +12,23 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.notification import Notification, NotificationPreference, NotificationType
+from app.models.notification import DigestMode, Notification, NotificationPreference, NotificationType
 from app.models.user import User
 from app.schemas.notification import NotificationOut, NotificationPreferenceOut, NotificationPreferenceUpdate
+from app.security import decode_email_unsubscribe_token
+from app.services.audit import log_event
+from app.services.email_branding import resolve_email_branding
+from app.services.email_templates import render_page
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+settings = get_settings()
 
 
 @router.get("", response_model=list[NotificationOut])
@@ -116,3 +123,61 @@ def set_preference(
     pref.email_enabled = payload.email_enabled
     db.commit()
     return NotificationPreferenceOut(type=notification_type, ui_enabled=pref.ui_enabled, email_enabled=pref.email_enabled)
+
+
+# --- One-click email unsubscribe --------------------------------------------
+
+
+@router.get("/unsubscribe", response_class=HTMLResponse, include_in_schema=False)
+def unsubscribe(token: str, db: Session = Depends(get_db)):
+    """Public, unauthenticated landing page for the "manage your email
+    preferences" link in every outgoing email's footer
+    (`services/notifications.py::_unsubscribe_url`,
+    `security.create_email_unsubscribe_token`).
+
+    Deliberately narrow: the token can only ever set
+    `User.email_digest_mode = DigestMode.NONE` — the exact same field a
+    logged-in user can already set themselves from the Preferences page
+    (`PUT /auth/me`), so a one-click unsubscribe and "the login
+    preferences" are provably the same state, not a parallel flag. No
+    other account state is reachable through this endpoint. This is a
+    deliberate, narrow exception to normal authenticated-request handling
+    (mirroring the "shared UI chrome" carve-out documented in
+    `docs/soc2/policies/access-control-policy.md`'s Authorization section)
+    rather than a gap: an unauthenticated recipient clicking a link in
+    their mail client has no session to present, so the alternative would
+    be no one-click unsubscribe at all.
+
+    Every use — successful or a rejected/expired/tampered token — writes
+    an audit trail entry (`services/audit.py::log_event`) per
+    `docs/soc2/policies/system-operations-monitoring-and-logging-policy.md`,
+    so misuse or an unexpectedly-invalid link is visible without needing to
+    reconstruct it from anything else.
+    """
+    user_id_str = decode_email_unsubscribe_token(token)
+    user: User | None = None
+    if user_id_str:
+        try:
+            user = db.get(User, UUID(user_id_str))
+        except ValueError:
+            user = None
+
+    if user is not None:
+        user.email_digest_mode = DigestMode.NONE
+        log_event(
+            db, entity_type="user", entity_id=user.id, action="email_unsubscribed_via_link",
+            actor_id=None, detail={"result": "success"},
+        )
+    else:
+        log_event(
+            db, entity_type="user", entity_id="unknown", action="email_unsubscribe_link_rejected",
+            actor_id=None, detail={"result": "invalid_or_expired_token"},
+        )
+    db.commit()
+
+    branding = resolve_email_branding(db, organization_id=None)
+    html = render_page(
+        "unsubscribe_confirmation", branding=branding, success=user is not None,
+        cta_url=f"{settings.frontend_base_url}/preferences",
+    )
+    return HTMLResponse(html)

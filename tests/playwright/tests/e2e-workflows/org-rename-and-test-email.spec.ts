@@ -22,11 +22,68 @@ import { loginAs, PERSONAS } from "./helpers";
 const apiBaseUrl = "http://localhost:8000";
 const mailhogUrl = "http://localhost:8025";
 
-async function mailhogReceivedMessageTo(page: import("@playwright/test").Page, toEmail: string): Promise<boolean> {
+type MailhogPart = {
+  Headers: Record<string, string[]>;
+  Body: string;
+  MIME?: { Parts: MailhogPart[] } | null;
+};
+type MailhogMessage = { To: { Mailbox: string; Domain: string }[]; MIME: { Parts: MailhogPart[] } };
+
+async function mailhogMessageTo(page: import("@playwright/test").Page, toEmail: string): Promise<MailhogMessage | undefined> {
   const messages = await (await page.request.get(`${mailhogUrl}/api/v2/messages?limit=50`)).json();
-  return messages.items.some((m: { To: { Mailbox: string; Domain: string }[] }) =>
-    m.To.some((to) => `${to.Mailbox}@${to.Domain}` === toEmail),
-  );
+  return messages.items.find((m: MailhogMessage) => m.To.some((to) => `${to.Mailbox}@${to.Domain}` === toEmail));
+}
+
+async function mailhogReceivedMessageTo(page: import("@playwright/test").Page, toEmail: string): Promise<boolean> {
+  return (await mailhogMessageTo(page, toEmail)) !== undefined;
+}
+
+/** Decodes a quoted-printable body (stdlib `email.message.EmailMessage`'s
+ * default transfer encoding for these templates' non-7bit-safe long lines)
+ * into UTF-8 text: strips soft line breaks (`=\r\n`/`=\n`), then resolves
+ * `=XX` hex escapes byte-by-byte before decoding as UTF-8. */
+function decodeQuotedPrintable(input: string): string {
+  const withoutSoftBreaks = input.replace(/=\r\n/g, "").replace(/=\n/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < withoutSoftBreaks.length; i++) {
+    const ch = withoutSoftBreaks[i];
+    if (ch === "=" && /^[0-9A-Fa-f]{2}$/.test(withoutSoftBreaks.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(withoutSoftBreaks.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(ch.charCodeAt(0));
+    }
+  }
+  return Buffer.from(bytes).toString("utf-8");
+}
+
+/**
+ * Recursively finds the `text/html` MIME part of a captured message (it may
+ * be nested inside a `multipart/related` sub-part once an inline logo cid
+ * attachment is present — see `services/email.py`) and decodes its body per
+ * its own `Content-Transfer-Encoding`, so tests can assert on the actual
+ * rendered HTML rather than only on delivery having happened at all.
+ */
+function mailhogHtmlBody(message: MailhogMessage): string {
+  function search(part: MailhogPart): string | undefined {
+    const contentType = part.Headers["Content-Type"]?.[0] ?? "";
+    if (contentType.includes("text/html")) {
+      const encoding = (part.Headers["Content-Transfer-Encoding"]?.[0] ?? "").toLowerCase();
+      if (encoding === "base64") return Buffer.from(part.Body, "base64").toString("utf-8");
+      if (encoding === "quoted-printable") return decodeQuotedPrintable(part.Body);
+      return part.Body;
+    }
+    for (const sub of part.MIME?.Parts ?? []) {
+      const found = search(sub);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  for (const part of message.MIME.Parts) {
+    const found = search(part);
+    if (found) return found;
+  }
+  throw new Error("No text/html MIME part found in captured message");
 }
 
 test.describe("organisation rename and test-email actions", () => {
@@ -106,6 +163,16 @@ test.describe("organisation rename and test-email actions", () => {
       await expect
         .poll(async () => mailhogReceivedMessageTo(page, testEmailRecipient), { timeout: 15_000 })
         .toBe(true);
+
+      // The email is now real, rendered HTML from the shared branded
+      // template (services/email_templates.py), not a bare plain-text
+      // string — confirm the structure and this org's own branding
+      // resolved into it, not just that something arrived.
+      const message = await mailhogMessageTo(page, testEmailRecipient);
+      const html = mailhogHtmlBody(message!);
+      expect(html).toContain("<!DOCTYPE html>");
+      expect(html).toContain("prefers-color-scheme: dark");
+      expect(html).toContain(renamedName);
     });
   });
 
@@ -126,5 +193,54 @@ test.describe("organisation rename and test-email actions", () => {
     await expect
       .poll(async () => mailhogReceivedMessageTo(page, recipient), { timeout: 15_000 })
       .toBe(true);
+
+    const message = await mailhogMessageTo(page, recipient);
+    const html = mailhogHtmlBody(message!);
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("deployment-wide SMTP configuration");
+  });
+
+  test("an instant notification email includes a one-click unsubscribe link", async ({ page }) => {
+    const suffix = Date.now();
+    const orgName = `E2E Notif Email Org ${suffix}`;
+    const personaEmail = `e2e-notif-email-${suffix}@example.com`;
+
+    const adminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: "admin@example.com", password: "ChangeMe123!" },
+    });
+    const adminToken = (await adminLoginResp.json()).access_token;
+
+    const org = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { name: orgName },
+      })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: { email: personaEmail, display_name: "Notif Email Persona", password: "Password123!", role: "member" },
+    });
+
+    const personaLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: personaEmail, password: "Password123!" },
+    });
+    const personaToken = (await personaLoginResp.json()).access_token;
+
+    // A password change fires an instant PASSWORD_CHANGED notification
+    // (services/notifications.py::notify) — a security-relevant one that
+    // always emails regardless of preference defaults.
+    await page.request.post(`${apiBaseUrl}/api/v1/auth/change-password`, {
+      headers: { Authorization: `Bearer ${personaToken}` },
+      data: { current_password: "Password123!", new_password: "Password456!" },
+    });
+
+    await expect
+      .poll(async () => mailhogReceivedMessageTo(page, personaEmail), { timeout: 15_000 })
+      .toBe(true);
+
+    const message = await mailhogMessageTo(page, personaEmail);
+    const html = mailhogHtmlBody(message!);
+    expect(html).toContain("Manage your email preferences");
+    expect(html).toMatch(/href="[^"]*\/api\/v1\/notifications\/unsubscribe\?token=/);
   });
 });

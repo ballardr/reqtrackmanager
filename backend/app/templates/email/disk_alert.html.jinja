@@ -1,0 +1,23 @@
+{#
+  Disk-usage warning email (services/disk_monitor.py::check_disk_usage_once,
+  I-M-11) — always platform-branded (an operator alert, not tied to any
+  organisation). Context: usage_percent (float), threshold_percent (int),
+  cta_url (str).
+#}
+{% extends "base.html.jinja" %}
+{% import "_macros.html.jinja" as macros %}
+
+{% block preheader %}Storage disk usage is at {{ "%.1f"|format(usage_percent) }}%{% endblock %}
+{% block heading %}Storage disk usage warning{% endblock %}
+
+{% block body %}
+<p style="margin: 0;">
+  File storage disk usage is at <strong class="rtm-text">{{ "%.1f"|format(usage_percent) }}%</strong>,
+  at or above the configured threshold of {{ threshold_percent }}%.
+</p>
+<p style="margin: 12px 0 0;">Free up space or expand storage capacity to avoid uploads failing.</p>
+{% endblock %}
+
+{% block cta %}
+{{ macros.cta_button("Open server management", cta_url, branding) }}
+{% endblock %}

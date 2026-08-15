@@ -1,0 +1,109 @@
+{#
+  Shared layout for every outgoing HTML email (backend/app/services/
+  email_templates.py). Table-based markup with inline styles and a
+  prefers-color-scheme dark-mode block, per the "HTML email template
+  system" design brief — content templates extend this file and only
+  override the preheader/heading/body/cta blocks below.
+
+  Context variables expected (assembled by render_email()):
+    branding      - services.email_branding.EmailBranding
+    logo_src      - "cid:brand_logo" or None (omits the <img> entirely)
+    unsubscribe_url - str or None (omits the footer link entirely)
+    now_year      - int, for the footer copyright line
+#}
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{ branding.header_title }}</title>
+<style>
+  body, table, td { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body { margin: 0; padding: 0; width: 100% !important; background-color: #f4f4f5; }
+  table { border-collapse: collapse; }
+  img { border: 0; display: block; }
+
+  .rtm-page { background-color: #f4f4f5; }
+  .rtm-card { background-color: #ffffff; border-color: #e4e4e7; }
+  .rtm-text { color: #18181b; }
+  .rtm-muted { color: #52525b; }
+  .rtm-footer-text { color: #a1a1aa; }
+  .rtm-footer-link { color: #a1a1aa; }
+
+  @media (prefers-color-scheme: dark) {
+    .rtm-page { background-color: #09090b !important; }
+    .rtm-card { background-color: #18181b !important; border-color: #3f3f46 !important; }
+    .rtm-text { color: #f4f4f5 !important; }
+    .rtm-muted { color: #d4d4d8 !important; }
+    .rtm-footer-text { color: #71717a !important; }
+    .rtm-footer-link { color: #a1a1aa !important; }
+  }
+
+  @media screen and (max-width: 620px) {
+    .rtm-container { width: 100% !important; }
+    .rtm-px { padding-left: 24px !important; padding-right: 24px !important; }
+  }
+</style>
+</head>
+<body class="rtm-page">
+<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+  {% block preheader %}{% endblock %}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="rtm-page">
+  <tr>
+    <td align="center" style="padding: 32px 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="rtm-container" style="width: 600px; max-width: 600px;">
+        <!-- Brand header: platform icon + header title on a black background (the default requested style, unthemed by design) -->
+        <tr>
+          <td align="center" style="background-color: #000000; padding: 28px 24px; border-radius: 10px 10px 0 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                {% if logo_src %}
+                <td style="padding-right: 10px; vertical-align: middle;">
+                  <img src="{{ logo_src }}" width="28" height="28" alt="{{ branding.header_title }} logo" style="border-radius: 6px; width: 28px; height: 28px;">
+                </td>
+                {% endif %}
+                <td style="vertical-align: middle;">
+                  <span style="color: #ffffff; font-size: 18px; font-weight: 700; letter-spacing: 0.2px;">{{ branding.header_title }}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Content card -->
+        <tr>
+          <td class="rtm-card rtm-px" style="padding: 36px 40px; border: 1px solid; border-top: none;">
+            <h1 class="rtm-text" style="margin: 0 0 16px; font-size: 21px; font-weight: 700; line-height: 1.35;">{% block heading %}{% endblock %}</h1>
+            <div class="rtm-muted" style="font-size: 15px; line-height: 1.65;">
+              {% block body %}{% endblock %}
+            </div>
+            {% block cta %}{% endblock %}
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td align="center" style="padding: 24px 20px 0;">
+            <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">
+              &copy; {{ now_year }} {{ branding.footer_company_name }}{% if branding.footer_website %} &middot; <a href="{{ branding.footer_website }}" class="rtm-footer-link" style="text-decoration: underline;">{{ branding.footer_website }}</a>{% endif %}
+            </p>
+            {% if branding.footer_address %}
+            <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">{{ branding.footer_address | nl2br }}</p>
+            {% endif %}
+            {% if unsubscribe_url %}
+            <p class="rtm-footer-text" style="margin: 0 0 24px; font-size: 12px; line-height: 1.6;">
+              <a href="{{ unsubscribe_url }}" class="rtm-footer-link" style="text-decoration: underline;">Manage your email preferences</a>
+            </p>
+            {% else %}
+            <p style="margin: 0 0 24px;">&nbsp;</p>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

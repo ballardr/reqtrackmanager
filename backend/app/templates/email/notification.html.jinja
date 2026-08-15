@@ -1,0 +1,21 @@
+{#
+  A single instant notification email (services/notifications.py::notify).
+  Context: title (str), body_text (str), cta_url (str or None).
+#}
+{% extends "base.html.jinja" %}
+{% import "_macros.html.jinja" as macros %}
+
+{% block preheader %}{{ title }}{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+
+{% block body %}
+{% if body_text %}
+<p style="margin: 0;">{{ body_text }}</p>
+{% endif %}
+{% endblock %}
+
+{% block cta %}
+{% if cta_url %}
+{{ macros.cta_button("View in " ~ branding.header_title, cta_url, branding) }}
+{% endif %}
+{% endblock %}

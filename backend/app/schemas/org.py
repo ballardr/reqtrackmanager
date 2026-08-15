@@ -78,6 +78,9 @@ class OrganizationOut(BaseModel):
     disabled_at: datetime | None = None
     accent_color_hex: str | None = None
     header_title: str | None = None
+    email_footer_company_name: str | None = None
+    email_footer_website: str | None = None
+    email_footer_address: str | None = None
 
 
 class OrgImportResult(BaseModel):
@@ -95,15 +98,19 @@ _HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 class OrgBrandingUpdate(BaseModel):
     """Sets (or clears, with a null value) this organisation's UI accent
-    colour and header wordmark override. Both fall back to the platform
-    default (`ServerSettings`) when null."""
+    colour, header wordmark override, and outgoing-email footer identity
+    (`email_footer_*`). All fall back to the platform default
+    (`ServerSettings`) when null."""
 
     accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     header_title: str | None = Field(default=None, max_length=100)
+    email_footer_company_name: str | None = Field(default=None, max_length=255)
+    email_footer_website: str | None = Field(default=None, max_length=500)
+    email_footer_address: str | None = Field(default=None, max_length=2000)
 
-    @field_validator("header_title")
+    @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
     @classmethod
-    def _blank_title_means_unset(cls, value: str | None) -> str | None:
+    def _blank_means_unset(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
             return None
         return value

@@ -207,6 +207,9 @@ export interface Organization {
   disabled_at: string | null;
   accent_color_hex: string | null;
   header_title: string | null;
+  email_footer_company_name: string | null;
+  email_footer_website: string | null;
+  email_footer_address: string | null;
 }
 
 export interface OrgImportResult {
@@ -219,6 +222,9 @@ export interface ServerSettings {
   default_logo_file_id: string | null;
   default_header_title: string | null;
   default_login_background_file_id: string | null;
+  email_footer_company_name: string | null;
+  email_footer_website: string | null;
+  email_footer_address: string | null;
 }
 
 export type SignupMode = "disabled" | "always_on" | "org_specified";

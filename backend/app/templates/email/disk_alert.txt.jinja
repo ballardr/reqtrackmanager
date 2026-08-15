@@ -1,0 +1,16 @@
+{{ branding.header_title }}
+
+Storage disk usage warning
+
+File storage disk usage is at {{ "%.1f"|format(usage_percent) }}%, at or above the configured threshold of {{ threshold_percent }}%.
+Free up space or expand storage capacity to avoid uploads failing.
+
+Open server management: {{ cta_url }}
+
+--
+{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
+
+{% if branding.footer_address %}{{ branding.footer_address }}
+
+{% endif %}
+{% if unsubscribe_url %}Manage your email preferences: {{ unsubscribe_url }}{% endif %}

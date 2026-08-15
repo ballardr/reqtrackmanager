@@ -1,0 +1,16 @@
+{{ branding.header_title }}
+
+Test email
+
+This is a test email sent using {{ source_description }} in {{ branding.header_title }}.
+If you can read this, outgoing email is configured correctly.
+
+Open {{ branding.header_title }}: {{ cta_url }}
+
+--
+{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
+
+{% if branding.footer_address %}{{ branding.footer_address }}
+
+{% endif %}
+{% if unsubscribe_url %}Manage your email preferences: {{ unsubscribe_url }}{% endif %}

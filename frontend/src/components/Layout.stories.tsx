@@ -12,12 +12,16 @@ const SERVER_SETTINGS: ServerSettings = {
   default_logo_file_id: null,
   default_header_title: "ReqTrack Manager",
   default_login_background_file_id: null,
+  email_footer_company_name: null,
+  email_footer_website: null,
+  email_footer_address: null,
 };
 
 const ORG: Organization = {
   id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
+  email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
 };
 
 const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1" });

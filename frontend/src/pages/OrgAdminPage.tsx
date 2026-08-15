@@ -125,6 +125,9 @@ export function OrgAdminPage() {
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
   const [headerTitleInput, setHeaderTitleInput] = useState("");
+  const [emailFooterCompanyNameInput, setEmailFooterCompanyNameInput] = useState("");
+  const [emailFooterWebsiteInput, setEmailFooterWebsiteInput] = useState("");
+  const [emailFooterAddressInput, setEmailFooterAddressInput] = useState("");
   const [brandingError, setBrandingError] = useState<string | null>(null);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +192,9 @@ export function OrgAdminPage() {
     setUseOwnAccentColor(o.accent_color_hex != null);
     setAccentColorInput(o.accent_color_hex ?? "#475569");
     setHeaderTitleInput(o.header_title ?? "");
+    setEmailFooterCompanyNameInput(o.email_footer_company_name ?? "");
+    setEmailFooterWebsiteInput(o.email_footer_website ?? "");
+    setEmailFooterAddressInput(o.email_footer_address ?? "");
     setGroups(g);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
@@ -494,6 +500,9 @@ export function OrgAdminPage() {
       await api.put<Organization>(`/api/v1/orgs/${orgId}/branding`, {
         accent_color_hex: useOwnAccentColor ? accentColorInput : null,
         header_title: headerTitleInput || null,
+        email_footer_company_name: emailFooterCompanyNameInput || null,
+        email_footer_website: emailFooterWebsiteInput || null,
+        email_footer_address: emailFooterAddressInput || null,
       });
       reload();
     } catch (err) {
@@ -962,6 +971,30 @@ export function OrgAdminPage() {
             style={{ width: 60, height: 36, padding: 2 }}
           />
         )}
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
+        <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint}</p>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.emailFooterCompanyName}
+          <input
+            className="input"
+            value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
+          />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.emailFooterWebsite}
+          <input
+            className="input"
+            value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
+          />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.orgAdmin.emailFooterAddress}
+          <textarea
+            className="input" rows={3}
+            value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
+          />
+        </label>
         {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
         <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
           {strings.orgAdmin.saveBranding}

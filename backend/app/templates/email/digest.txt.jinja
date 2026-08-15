@@ -1,0 +1,16 @@
+{{ branding.header_title }}
+
+{{ items | length }} new notification{{ "s" if items | length != 1 else "" }}
+{% for item in items %}
+- {{ item.title }}{% if item.body %}: {{ item.body }}{% endif %}
+{% endfor %}
+
+View all notifications: {{ cta_url }}
+
+--
+{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
+
+{% if branding.footer_address %}{{ branding.footer_address }}
+
+{% endif %}
+{% if unsubscribe_url %}Manage your email preferences: {{ unsubscribe_url }}{% endif %}
