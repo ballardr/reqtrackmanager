@@ -57,7 +57,14 @@ Security decisions (see `docs/decisions.md` and
   create_pending_invite`) rather than granted their original org role
   directly — invite acceptance only ever grants base membership, so a
   warning notes any such member's original role (e.g. `org_admin`) needs a
-  manual re-grant once they sign up.
+  manual re-grant once they sign up. An existing account with `User.
+  is_banned` set is matched but granted neither an org role nor org group
+  membership (skipped with a warning instead) — a bundle is
+  caller-controlled data, not a trusted grant request, and must not become
+  a way around the same ban `assign_org_role`/`assign_project_role_by_email`
+  already enforce; this applies to `import_org_bundle` too; a banned
+  account should not quietly regain access via a brand-new organisation
+  either.
 - `is_active`/`disabled_at`/`disabled_by` are never imported — a freshly
   imported organisation always starts active, regardless of whether the
   source was disabled at export time.
@@ -299,6 +306,18 @@ def _import_members(
     for m in data.get("members", []):
         existing = find_user(m["email"])
         if existing is not None:
+            if existing.is_banned:
+                # Same invariant `assign_org_role`/`assign_project_role_by_email`
+                # enforce (see `User.is_banned`'s docstring: a ban "survives"
+                # a different org's admin trying to let the account back in).
+                # A bundle is attacker-controllable data, not a trusted grant
+                # request, so it must not become another unguarded way to
+                # hand a banned account a role.
+                warnings.add(
+                    f"Member '{m['email']}' has been banned by a server admin and was not granted the "
+                    f"'{m['org_role']}' role."
+                )
+                continue
             already_has_role = db.scalar(
                 select(UserOrgRole).where(
                     UserOrgRole.user_id == existing.id,
@@ -320,7 +339,8 @@ def _import_members(
 
 
 def _import_org_groups(
-    db: Session, org: Organization, data: dict[str, Any], find_user: Callable[[str], User | None], *, merge_by_name: bool,
+    db: Session, org: Organization, data: dict[str, Any], find_user: Callable[[str], User | None],
+    warnings: BundleImportWarnings, *, merge_by_name: bool,
 ) -> None:
     """Creates org groups from a bundle. `merge_by_name=False`
     (`import_org_bundle`): always creates a fresh `OrgGroup` — a brand-new
@@ -329,7 +349,14 @@ def _import_org_groups(
     name if the target org already has one, adding the bundle's members
     into it (a union — never removes an existing member), rather than
     creating a duplicate; purely additive either way, so unlike projects
-    and report templates this never needs a conflict resolution."""
+    and report templates this never needs a conflict resolution.
+
+    A banned member is skipped, same as `_import_members` — org group
+    membership isn't just a label here: `rbac.get_effective_project_roles`
+    grants a project role to any member of an org group nested into that
+    project's `ProjectGroup`, with no separate `UserOrgRole` check at all,
+    so this is an independent way a bundle could otherwise hand a banned
+    account real access."""
     existing_by_name: dict[str, OrgGroup] = {}
     if merge_by_name:
         existing_by_name = {
@@ -348,7 +375,9 @@ def _import_org_groups(
             )
         for email in g.get("member_emails", []):
             existing = find_user(email)
-            if existing is not None and existing.id not in existing_member_ids:
+            if existing is not None and existing.is_banned:
+                warnings.add(f"Member '{email}' has been banned by a server admin and was not added to group '{g['name']}'.")
+            elif existing is not None and existing.id not in existing_member_ids:
                 db.add(OrgGroupMember(org_group_id=group.id, user_id=existing.id))
 
 
@@ -497,7 +526,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     _import_report_templates(db, org, data, current_user, resolutions=None)
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
-    _import_org_groups(db, org, data, find_user, merge_by_name=False)
+    _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
 
     template_ref = data.get("default_template_project_ref")
@@ -608,7 +637,7 @@ def merge_org_bundle(
             a conflict this bundle/org pair actually has, or if a supplied
             resolution's value isn't valid for its conflict's kind.
     """
-    _manifest, data, file_bytes_by_ref, project_data_by_ref = _parse_org_bundle(zip_bytes)
+    manifest, data, file_bytes_by_ref, project_data_by_ref = _parse_org_bundle(zip_bytes)
     conflicts = _compute_merge_conflicts(db, target_org, data, project_data_by_ref)
 
     missing = [c["id"] for c in conflicts if c["id"] not in resolutions]
@@ -624,7 +653,7 @@ def merge_org_bundle(
     warnings = BundleImportWarnings()
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
-    _import_org_groups(db, target_org, data, find_user, merge_by_name=True)
+    _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     _import_report_templates(db, target_org, data, current_user, resolutions=resolutions)
     project_id_by_ref = _import_projects(
         db, target_org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=resolutions,
@@ -642,7 +671,22 @@ def merge_org_bundle(
     }
     log_event(
         db, entity_type="organization", entity_id=target_org.id, action="merged_from_bundle", actor_id=current_user.id,
-        organization_id=target_org.id, detail={"warning_count": len(warnings.messages), **summary},
+        organization_id=target_org.id,
+        detail={
+            "warning_count": len(warnings.messages), **summary,
+            # Provenance of the merged-in data — unlike `import_org_bundle`
+            # (which only ever creates a brand-new organisation from a
+            # bundle), this action writes into an org's real, live data, so
+            # "who did this" alone isn't enough for an incident review to
+            # trace *where the data came from* without this. `manifest`'s
+            # fields are the bundle's own self-reported metadata (written
+            # by `build_org_bundle` at export time), not independently
+            # verified — same trust level as the rest of the bundle's
+            # contents, which the target org_admin already chose to import.
+            "source_org_name": manifest.get("org_name"),
+            "source_exported_by_email": manifest.get("exported_by_email"),
+            "source_exported_at": manifest.get("exported_at"),
+        },
     )
     db.commit()
     db.refresh(target_org)
