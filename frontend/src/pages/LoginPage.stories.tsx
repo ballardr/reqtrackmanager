@@ -10,6 +10,7 @@ import { LoginPage } from "./LoginPage";
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: "ReqTrack Manager",
   default_login_background_file_id: null,
+  email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
 };
 
 function mockBrandingAndSignup(signupMode: SignupConfig["signup_mode"] = "disabled") {

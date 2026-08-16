@@ -131,6 +131,14 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             someone to a project by email who isn't already an org member
             (`ExternalUserPolicy`; see its docstring in `models/enums.py`).
             Defaults to DISABLED — an org must opt in to external users.
+        email_footer_company_name / email_footer_website /
+            email_footer_address: Optional per-org override of the
+            outgoing HTML email footer's legal/company identity (name,
+            website, postal address). `None` for any of the three falls
+            back to that same field on `ServerSettings` independently —
+            identical "org overrides, null means use the platform default"
+            semantics to `accent_color_hex`/`header_title` above, resolved
+            by `services/email_branding.py::resolve_email_branding`.
     """
 
     __tablename__ = "organizations"
@@ -194,6 +202,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     default_report_chapters: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     default_report_appendices: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
+    email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     """Platform-wide defaults for UI branding, lazily created as a single
@@ -224,6 +236,17 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         signup_mode: Server-wide public self-signup availability
             (`SignupMode`; see its docstring in `models/enums.py`). Defaults
             to DISABLED — public signup is opt-in at the deployment level.
+        email_footer_company_name / email_footer_website /
+            email_footer_address: Platform-wide default legal/company
+            identity shown in the outgoing HTML email footer (name,
+            website, postal address) — used whenever an org hasn't set its
+            own `Organization.email_footer_*` override, and always for
+            emails with no single org context (the daily digest, system
+            test email, disk-usage alert — see
+            `services/email_branding.py`). `email_footer_company_name`
+            falls back to the built-in product name if left unset, same as
+            `default_header_title`; the website/address have no built-in
+            fallback and are simply omitted from the footer when unset.
     """
 
     __tablename__ = "server_settings"
@@ -241,6 +264,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         nullable=True,
     )
     signup_mode: Mapped[SignupMode] = mapped_column(str_enum(SignupMode), default=SignupMode.DISABLED)
+    email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):

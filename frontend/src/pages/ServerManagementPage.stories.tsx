@@ -19,6 +19,8 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: null,
   default_login_background_file_id: null,
+  email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
+  email_footer_address: "1 Example Street\nExample City, EX1 1AA",
 };
 
 const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organizations: [] };
@@ -101,6 +103,31 @@ export const PlatformBrandingSave: Story = {
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save platform branding" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save platform branding" }));
     await waitFor(() => expect(canvas.getByText("Saved.")).toBeInTheDocument());
+  },
+};
+
+export const PlatformBrandingEmailFooter: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    // "Company name" also wraps a trailing hint <span>, so its accessible
+    // name is longer than "Company name" alone — match by prefix.
+    await waitFor(() => expect(canvas.getByLabelText(/^Company name/)).toHaveValue("ReqTrackManager"));
+    await expect(canvas.getByLabelText("Website")).toHaveValue("https://reqtrackmanager.example.com");
+    await expect(canvas.getByLabelText("Postal address")).toHaveValue("1 Example Street\nExample City, EX1 1AA");
+    await userEvent.clear(canvas.getByLabelText(/^Company name/));
+    await userEvent.type(canvas.getByLabelText(/^Company name/), "Acme Platform Inc");
+    await userEvent.click(canvas.getByRole("button", { name: "Save platform branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        "/api/v1/system/branding",
+        expect.objectContaining({ email_footer_company_name: "Acme Platform Inc" }),
+      ),
+    );
   },
 };
 

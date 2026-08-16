@@ -200,6 +200,19 @@ def main() -> None:
     h_ab = h(login("e2e-orgadmin-ab@example.com", PASSWORD))
     h_g = h(login("e2e-orgadmin-g@example.com", PASSWORD))
 
+    print("Setting Alpha's outgoing-email branding (org-level footer override)...")
+    r = httpx.put(
+        f"{BASE}/orgs/{alpha['id']}/branding",
+        json={
+            "accent_color_hex": None, "header_title": None,
+            "email_footer_company_name": "E2E Alpha Robotics",
+            "email_footer_website": "https://alpha-robotics.example.com",
+            "email_footer_address": "1 Test Fixture Way\nAlpha City, AC 00001",
+        },
+        headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+
     print("Creating projects (2 per org)...")
     alpha1 = create_project(h_ab, alpha["id"], "Alpha-1 Robotic Arm Controller", "E2E seed project.")
     alpha2 = create_project(h_ab, alpha["id"], "Alpha-2 Sensor Fusion Platform", "E2E seed project.")

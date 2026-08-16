@@ -14,11 +14,29 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.notification import DigestMode, Notification, NotificationPreference, NotificationType
+from app.models.project import Project
 from app.models.user import User
+from app.security import create_email_unsubscribe_token
 from app.services.email import send_email, send_email_async
+from app.services.email_branding import resolve_email_branding
+from app.services.email_templates import render_email
 
 DIGEST_INTERVAL_SECONDS = 24 * 60 * 60
+
+settings = get_settings()
+
+
+def _unsubscribe_url(user_id: UUID) -> str:
+    token = create_email_unsubscribe_token(str(user_id))
+    return f"{settings.public_backend_url}/api/v1/notifications/unsubscribe?token={token}"
+
+
+def _inline_logo(branding) -> dict[str, tuple[bytes, str]] | None:
+    if branding.logo_bytes is None:
+        return None
+    return {"brand_logo": (branding.logo_bytes, branding.logo_content_type)}
 
 
 def _get_preference(db: Session, user_id: UUID, notification_type: NotificationType) -> NotificationPreference | None:
@@ -100,7 +118,17 @@ def notify(
 
     if email_enabled and user.email_digest_mode == DigestMode.INSTANT:
         try:
-            send_email(user.email, title, body or title)
+            organization_id = None
+            if project_id is not None:
+                project = db.get(Project, project_id)
+                organization_id = project.organization_id if project else None
+            branding = resolve_email_branding(db, organization_id)
+            cta_url = f"{settings.frontend_base_url}/projects/{project_id}" if project_id else f"{settings.frontend_base_url}/notifications"
+            html_body, text_body = render_email(
+                "notification", branding=branding, unsubscribe_url=_unsubscribe_url(user.id),
+                title=title, body_text=body, cta_url=cta_url,
+            )
+            send_email(user.email, title, text_body, html_body=html_body, inline_images=_inline_logo(branding))
             notification.emailed_at = datetime.now(UTC)
         except Exception:  # noqa: BLE001 - never let email delivery break the triggering request
             pass
@@ -144,8 +172,19 @@ async def send_daily_digests(db: Session) -> None:
         ).all()
         if not pending:
             continue
-        body = "\n".join(f"- {n.title}: {n.body}" for n in pending)
-        await send_email_async(user.email, f"ReqTrackManager: {len(pending)} new notifications", body)
+        # Always platform-branded, never a specific org's: a digest can
+        # span notifications from multiple orgs, so there's no single
+        # "right" org to brand it with (see services/email_templates.py).
+        branding = resolve_email_branding(db, organization_id=None)
+        items = [{"title": n.title, "body": n.body} for n in pending]
+        cta_url = f"{settings.frontend_base_url}/notifications"
+        html_body, text_body = render_email(
+            "digest", branding=branding, unsubscribe_url=_unsubscribe_url(user.id), items=items, cta_url=cta_url,
+        )
+        await send_email_async(
+            user.email, f"ReqTrackManager: {len(pending)} new notifications", text_body,
+            html_body=html_body, inline_images=_inline_logo(branding),
+        )
         now = datetime.now(UTC)
         for n in pending:
             n.emailed_at = now

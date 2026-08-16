@@ -30,6 +30,14 @@ ruff==0.7.4
 pyotp==2.9.0
 qrcode[pil]==7.4.2
 aiosmtplib==3.0.2
+# Pinned to 3.1.6 (current latest as of this writing), which fixes every
+# publicly known Jinja2 CVE to date (2024-22195/34064 xmlattr-filter XSS,
+# 2024-56201/56326 sandbox escapes, 2025-27516 sandboxed |attr bypass). See
+# services/email_templates.py's module docstring for how templates are
+# used to stay outside the exposure window of that whole CVE class
+# regardless of version (autoescape always on, templates never built from
+# a runtime string, no |safe on user-supplied data).
+jinja2==3.1.6
 boto3==1.35.24
 apscheduler==3.10.4
 authlib==1.3.2

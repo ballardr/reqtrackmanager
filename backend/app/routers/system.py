@@ -35,6 +35,8 @@ from app.schemas.signup import SelfSignupOrgOut, SignupConfigOut, SignupConfigUp
 from app.services.audit import log_event
 from app.services.branding import get_server_settings
 from app.services.email import send_email
+from app.services.email_branding import resolve_email_branding
+from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
 from app.services.rbac import require_server_admin
@@ -362,11 +364,14 @@ def send_system_test_email(
             the entire point of this action.
     """
     to_email = payload.to_email or current_user.email
+    branding = resolve_email_branding(db, organization_id=None)
+    html_body, text_body = render_email(
+        "test_email", branding=branding, source_description="ReqTrackManager's deployment-wide SMTP configuration",
+        cta_url=settings.frontend_base_url,
+    )
+    inline_images = {"brand_logo": (branding.logo_bytes, branding.logo_content_type)} if branding.logo_bytes else None
     try:
-        send_email(
-            to_email, "ReqTrackManager test email",
-            "This is a test email sent from ReqTrackManager's deployment-wide SMTP configuration.",
-        )
+        send_email(to_email, "ReqTrackManager test email", text_body, html_body=html_body, inline_images=inline_images)
     except Exception as err:  # noqa: BLE001 - surfacing the underlying SMTP failure is the entire point of a test-email action
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Failed to send test email: {err}") from err
     log_event(db, entity_type="system", entity_id="platform", action="test_email_sent",
@@ -398,6 +403,9 @@ def update_branding(
     settings = get_server_settings(db)
     settings.accent_color_hex = payload.accent_color_hex
     settings.default_header_title = payload.default_header_title
+    settings.email_footer_company_name = payload.email_footer_company_name
+    settings.email_footer_website = payload.email_footer_website
+    settings.email_footer_address = payload.email_footer_address
     log_event(db, entity_type="system", entity_id="platform", action="branding_updated", actor_id=current_user.id)
     db.commit()
     db.refresh(settings)

@@ -1,0 +1,17 @@
+{{ branding.header_title }}
+
+{{ title }}
+{% if body_text %}
+{{ body_text }}
+{% endif %}
+{% if cta_url %}
+View in {{ branding.header_title }}: {{ cta_url }}
+{% endif %}
+
+--
+{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
+
+{% if branding.footer_address %}{{ branding.footer_address }}
+
+{% endif %}
+{% if unsubscribe_url %}Manage your email preferences: {{ unsubscribe_url }}{% endif %}

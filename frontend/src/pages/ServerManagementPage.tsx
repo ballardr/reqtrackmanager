@@ -190,6 +190,9 @@ function PlatformBrandingTab() {
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [accentColor, setAccentColor] = useState("#475569");
   const [headerTitle, setHeaderTitle] = useState("");
+  const [emailFooterCompanyName, setEmailFooterCompanyName] = useState("");
+  const [emailFooterWebsite, setEmailFooterWebsite] = useState("");
+  const [emailFooterAddress, setEmailFooterAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -199,6 +202,9 @@ function PlatformBrandingTab() {
     setSettings(s);
     setAccentColor(s.accent_color_hex);
     setHeaderTitle(s.default_header_title ?? "");
+    setEmailFooterCompanyName(s.email_footer_company_name ?? "");
+    setEmailFooterWebsite(s.email_footer_website ?? "");
+    setEmailFooterAddress(s.email_footer_address ?? "");
   }
 
   useEffect(() => {
@@ -212,6 +218,9 @@ function PlatformBrandingTab() {
       await api.put("/api/v1/system/branding", {
         accent_color_hex: accentColor,
         default_header_title: headerTitle || null,
+        email_footer_company_name: emailFooterCompanyName || null,
+        email_footer_website: emailFooterWebsite || null,
+        email_footer_address: emailFooterAddress || null,
       });
       setSaved(true);
       reload();
@@ -311,6 +320,29 @@ function PlatformBrandingTab() {
       {settings.default_login_background_file_id && (
         <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
       )}
+      <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
+      <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
+      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint}</p>
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        {strings.serverSettings.emailFooterCompanyName}
+        <input
+          className="input" placeholder={strings.appName}
+          value={emailFooterCompanyName} onChange={(e) => setEmailFooterCompanyName(e.target.value)}
+        />
+        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.emailFooterCompanyNameHint}</span>
+      </label>
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        {strings.serverSettings.emailFooterWebsite}
+        <input
+          className="input" value={emailFooterWebsite} onChange={(e) => setEmailFooterWebsite(e.target.value)}
+        />
+      </label>
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        {strings.serverSettings.emailFooterAddress}
+        <textarea
+          className="input" rows={3} value={emailFooterAddress} onChange={(e) => setEmailFooterAddress(e.target.value)}
+        />
+      </label>
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
       <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
         {strings.serverSettings.save}

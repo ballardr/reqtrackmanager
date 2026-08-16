@@ -1,0 +1,25 @@
+{#
+  Landing page rendered directly by GET /notifications/unsubscribe (not
+  sent as an email — a live HTTP response), so it has no .txt.jinja
+  sibling. Context: success (bool), cta_url (frontend login/preferences
+  page). logo_src is always None here (kept simple: this is a one-off
+  utility page, not a branded marketing surface).
+#}
+{% extends "base.html.jinja" %}
+{% import "_macros.html.jinja" as macros %}
+
+{% block preheader %}{{ "Email preferences updated" if success else "Link invalid or expired" }}{% endblock %}
+{% block heading %}{{ "You're unsubscribed" if success else "Link invalid or expired" }}{% endblock %}
+
+{% block body %}
+{% if success %}
+<p style="margin: 0;">You won't receive any further email notifications from {{ branding.header_title }}.</p>
+<p style="margin: 12px 0 0;">Changed your mind, or want finer-grained control? You can re-enable email notifications, or choose exactly which types you receive, from your preferences page.</p>
+{% else %}
+<p style="margin: 0;">This unsubscribe link is invalid or has expired. You can manage your email notification preferences directly instead.</p>
+{% endif %}
+{% endblock %}
+
+{% block cta %}
+{{ macros.cta_button("Manage email preferences", cta_url, branding) }}
+{% endblock %}

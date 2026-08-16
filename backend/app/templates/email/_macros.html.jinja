@@ -1,0 +1,20 @@
+{#
+  Shared macro(s) used by content templates that extend base.html.jinja.
+  Deliberately a "bulletproof button" (table + padded <a>, no background
+  image) rather than a <button>/CSS-only style, for wide email-client
+  compatibility (email-safe design per the "HTML email template system"
+  brief) — the one accepted simplification is no VML fallback for legacy
+  Outlook desktop, which loses the rounded corners there but not the link.
+#}
+{% macro cta_button(label, url, branding) %}
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 24px 0 4px;">
+  <tr>
+    <td style="border-radius: 6px; background-color: {{ branding.accent_color_hex }};">
+      <a href="{{ url }}" target="_blank" rel="noopener"
+         style="display: inline-block; padding: 12px 28px; font-size: 15px; font-weight: 600; line-height: 1.4; color: {{ branding.accent_text_hex }}; text-decoration: none; border-radius: 6px;">
+        {{ label }}
+      </a>
+    </td>
+  </tr>
+</table>
+{% endmacro %}

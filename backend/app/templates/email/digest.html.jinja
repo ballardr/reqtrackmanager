@@ -1,0 +1,30 @@
+{#
+  Daily digest email (services/notifications.py::send_daily_digests) —
+  always platform-branded, never a specific org's (a digest can span
+  notifications from multiple orgs; see services/email_templates.py).
+  Context: items (list of {title, body} dicts), cta_url (str).
+#}
+{% extends "base.html.jinja" %}
+{% import "_macros.html.jinja" as macros %}
+
+{% block preheader %}{{ items | length }} new notification{{ "s" if items | length != 1 else "" }}{% endblock %}
+{% block heading %}{{ items | length }} new notification{{ "s" if items | length != 1 else "" }}{% endblock %}
+
+{% block body %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  {% for item in items %}
+  <tr>
+    <td style="padding: 0 0 16px;">
+      <p class="rtm-text" style="margin: 0 0 2px; font-size: 15px; font-weight: 600;">{{ item.title }}</p>
+      {% if item.body %}
+      <p style="margin: 0; font-size: 14px;">{{ item.body }}</p>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
+
+{% block cta %}
+{{ macros.cta_button("View all notifications", cta_url, branding) }}
+{% endblock %}

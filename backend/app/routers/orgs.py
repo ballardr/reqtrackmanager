@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
@@ -62,6 +63,8 @@ from app.services import engagement
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
 from app.services.email import SmtpOverride, send_email
+from app.services.email_branding import resolve_email_branding
+from app.services.email_templates import render_email
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
 from app.services.org_deletion import delete_organization_cascade
@@ -77,6 +80,7 @@ from app.services.rbac import (
 )
 
 router = APIRouter(prefix="/api/v1/orgs", tags=["organizations"])
+settings = get_settings()
 
 
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
@@ -1165,15 +1169,18 @@ def update_org_branding(
     db: Session = Depends(get_db),
 ):
     """Sets (or clears, with null values) this organisation's UI accent
-    colour and header wordmark override (U-C-01 override). Both fall back
-    to the platform default (`GET /system/branding`) when null — this
-    endpoint never needs to know what that default is, it just clears its
-    own override."""
+    colour, header wordmark override (U-C-01 override), and outgoing-email
+    footer identity. All fall back to the platform default
+    (`GET /system/branding`) when null — this endpoint never needs to know
+    what that default is, it just clears its own override."""
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     org.accent_color_hex = payload.accent_color_hex
     org.header_title = payload.header_title
+    org.email_footer_company_name = payload.email_footer_company_name
+    org.email_footer_website = payload.email_footer_website
+    org.email_footer_address = payload.email_footer_address
     log_event(db, entity_type="organization", entity_id=organization_id, action="branding_updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
@@ -1309,10 +1316,15 @@ def send_org_test_email(
     if not org.smtp_host:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation has no SMTP host configured.")
     to_email = payload.to_email or current_user.email
+    branding = resolve_email_branding(db, organization_id=organization_id)
+    html_body, text_body = render_email(
+        "test_email", branding=branding, source_description=f"{org.name}'s configured SMTP settings",
+        cta_url=settings.frontend_base_url,
+    )
+    inline_images = {"brand_logo": (branding.logo_bytes, branding.logo_content_type)} if branding.logo_bytes else None
     try:
         send_email(
-            to_email, f"Test email from {org.name}",
-            f"This is a test email sent using {org.name}'s configured SMTP settings in ReqTrackManager.",
+            to_email, f"Test email from {org.name}", text_body, html_body=html_body, inline_images=inline_images,
             smtp_override=SmtpOverride(
                 host=org.smtp_host, port=org.smtp_port, username=org.smtp_username,
                 password=org.smtp_password, use_tls=org.smtp_use_tls,

@@ -1,0 +1,22 @@
+{#
+  "Send test email" action (routers/system.py::send_system_test_email,
+  routers/orgs.py::send_org_test_email) — confirms SMTP delivery works and,
+  since it now renders through the real template, doubles as a live
+  branding preview (see the "No new preview UI" design decision).
+  Context: source_description (str, e.g. "ReqTrackManager's deployment-wide
+  SMTP configuration" or "Acme Inc's configured SMTP settings"), cta_url.
+#}
+{% extends "base.html.jinja" %}
+{% import "_macros.html.jinja" as macros %}
+
+{% block preheader %}Test email from {{ branding.header_title }}{% endblock %}
+{% block heading %}Test email{% endblock %}
+
+{% block body %}
+<p style="margin: 0;">This is a test email sent using {{ source_description }} in {{ branding.header_title }}.</p>
+<p style="margin: 12px 0 0;">If you can read this, outgoing email is configured correctly.</p>
+{% endblock %}
+
+{% block cta %}
+{{ macros.cta_button("Open " ~ branding.header_title, cta_url, branding) }}
+{% endblock %}

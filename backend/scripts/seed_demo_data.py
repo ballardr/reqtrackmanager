@@ -433,6 +433,18 @@ def main() -> None:
         footer_text="Solstice Robotics — Confidential",
     )
 
+    print("Setting organisation outgoing-email branding...")
+    httpx.put(
+        f"{BASE}/orgs/{org['id']}/branding",
+        json={
+            "accent_color_hex": None, "header_title": None,
+            "email_footer_company_name": "Solstice Robotics, Inc.",
+            "email_footer_website": "https://solsticerobotics.example.com",
+            "email_footer_address": "400 Aerodrome Way, Suite 210\nAustin, TX 78701",
+        },
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
+
     print("Creating 'Falcon-3 Inspection Drone'...")
     drone = create_project(
         h_pm, org["id"], "Falcon-3 Inspection Drone",
