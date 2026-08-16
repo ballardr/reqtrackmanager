@@ -90,7 +90,6 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   user_project_role: "Project role",
   custom_field_definition: "Custom field",
   requirement_link: "Requirement link",
-  organization: "Organisation",
   file_asset: "File",
 };
 
@@ -98,7 +97,12 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function activityEntityLabel(entityType: string): string {
+/** `entityType === "organization"` isn't in `ENTITY_TYPE_LABEL` since its
+ * label depends on the deployment's organisation-label override
+ * (`useOrgLabelCapitalized`) rather than being a fixed word — callers pass
+ * it as `orgLabel`. */
+export function activityEntityLabel(entityType: string, orgLabel: string): string {
+  if (entityType === "organization") return orgLabel;
   return ENTITY_TYPE_LABEL[entityType] ?? capitalize(entityType.replace(/_/g, " "));
 }
 
@@ -217,6 +221,25 @@ export interface OrgImportResult {
   warnings: string[];
 }
 
+export interface MergeConflict {
+  id: string;
+  kind: "project" | "report_template";
+  name: string;
+  existing_id: string;
+}
+
+export interface OrgMergePreviewResult {
+  conflicts: MergeConflict[];
+}
+
+export interface OrgMergeResult {
+  warnings: string[];
+  projects_imported: number;
+  projects_skipped: number;
+  report_templates_imported: number;
+  report_templates_overwritten: number;
+}
+
 export interface ServerSettings {
   accent_color_hex: string;
   default_logo_file_id: string | null;
@@ -225,6 +248,8 @@ export interface ServerSettings {
   email_footer_company_name: string | null;
   email_footer_website: string | null;
   email_footer_address: string | null;
+  org_label_singular: string | null;
+  org_label_plural: string | null;
 }
 
 export type SignupMode = "disabled" | "always_on" | "org_specified";

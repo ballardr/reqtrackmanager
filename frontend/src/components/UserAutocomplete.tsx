@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import type { ExternalUserMatch, OrgUser, OrgUserSearchResult } from "../api/types";
+import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -45,6 +46,7 @@ export function UserAutocomplete({
   const [serverMatches, setServerMatches] = useState<OrgUser[]>([]);
   const [external, setExternal] = useState<ExternalUserMatch | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const orgLabel = useOrgLabel();
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -150,7 +152,7 @@ export function UserAutocomplete({
               onClick={() => pickExternal(external)}
             >
               {external.exists
-                ? strings.userAutocomplete.addExisting.replace("{email}", external.email)
+                ? strings.userAutocomplete.addExisting(external.email, orgLabel)
                 : strings.userAutocomplete.inviteNew.replace("{email}", external.email)}
             </button>
           )}

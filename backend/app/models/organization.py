@@ -233,6 +233,16 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             (no single org context to brand it) — same upload pattern as
             `Organization.login_background_file_id`, which only applies to
             that org's own branded `/login/{slug}` page.
+        org_label_singular / org_label_plural: Optional deployment-wide
+            override of the word "organisation"/"Organisations" shown
+            throughout the UI (e.g. "Tenant"/"Tenants",
+            "Business Group"/"Business Groups"). `None` for either falls
+            back to the built-in English word — same "null means platform
+            default" convention as `default_header_title`. Deliberately
+            deployment-wide only, unlike `accent_color_hex`/`header_title`:
+            there is no per-organisation override, since the word used to
+            refer to organisations in general isn't a property of any one
+            organisation.
         signup_mode: Server-wide public self-signup availability
             (`SignupMode`; see its docstring in `models/enums.py`). Defaults
             to DISABLED — public signup is opt-in at the deployment level.
@@ -267,6 +277,8 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):

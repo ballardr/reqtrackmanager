@@ -4,11 +4,15 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
 
-const ENTITY_TYPE_FILTER_OPTIONS = Object.keys(ENTITY_TYPE_LABEL);
+// "organization" is a valid `entity_type` an org-scoped audit event can
+// report but isn't in `ENTITY_TYPE_LABEL` (its label depends on the
+// deployment's organisation-label override, see `activityEntityLabel`).
+const ENTITY_TYPE_FILTER_OPTIONS = [...Object.keys(ENTITY_TYPE_LABEL), "organization"];
 
 /**
  * Project changes-over-time view (C-A-10): a unified timeline of
@@ -18,6 +22,7 @@ const ENTITY_TYPE_FILTER_OPTIONS = Object.keys(ENTITY_TYPE_LABEL);
  */
 export function ProjectHistoryPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [changes, setChanges] = useState<ChangeEntry[] | null>(null);
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
@@ -59,7 +64,7 @@ export function ProjectHistoryPage() {
             <option value="">{strings.history.allEntityTypes}</option>
             {ENTITY_TYPE_FILTER_OPTIONS.map((key) => (
               <option key={key} value={key}>
-                {activityEntityLabel(key)}
+                {activityEntityLabel(key, orgLabelCap)}
               </option>
             ))}
           </select>
@@ -79,7 +84,7 @@ export function ProjectHistoryPage() {
             return (
               <div key={idx} className="row" style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
                 <span>
-                  <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
+                  <span className="badge">{activityEntityLabel(c.entity_type, orgLabelCap)}</span> {describeActivityEntry(c)}
                   {link && (
                     <>
                       {" "}

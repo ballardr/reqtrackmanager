@@ -399,13 +399,18 @@ def update_branding(
 ):
     """Sets the platform-wide default accent colour and header title, used
     on any page without a single resolvable organisation context, and as
-    the fallback for any org that hasn't set its own override."""
+    the fallback for any org that hasn't set its own override. Also sets the
+    deployment-wide organisation label override (`org_label_singular`/
+    `org_label_plural`) — unlike the rest of this endpoint's fields, that one
+    has no per-org override to fall back from; it's platform-wide only."""
     settings = get_server_settings(db)
     settings.accent_color_hex = payload.accent_color_hex
     settings.default_header_title = payload.default_header_title
     settings.email_footer_company_name = payload.email_footer_company_name
     settings.email_footer_website = payload.email_footer_website
     settings.email_footer_address = payload.email_footer_address
+    settings.org_label_singular = payload.org_label_singular
+    settings.org_label_plural = payload.org_label_plural
     log_event(db, entity_type="system", entity_id="platform", action="branding_updated", actor_id=current_user.id)
     db.commit()
     db.refresh(settings)

@@ -9,6 +9,7 @@ C-U-12).
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -33,6 +34,7 @@ from app.schemas.org import (
     DefaultTemplateUpdate,
     DisplayNameLockUpdate,
     ExternalUserMatch,
+    MergeConflictOut,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrganizationCreate,
@@ -45,6 +47,8 @@ from app.schemas.org import (
     OrgGroupOut,
     OrgImportResult,
     OrgLoginInfoOut,
+    OrgMergePreviewResult,
+    OrgMergeResult,
     OrgProjectSummaryOut,
     OrgRoleAssign,
     OrgSsoConfigOut,
@@ -68,7 +72,7 @@ from app.services.email_templates import render_email
 from app.services.files import delete_file, upload_file
 from app.services.notifications import notify
 from app.services.org_deletion import delete_organization_cascade
-from app.services.org_export import build_org_bundle, import_org_bundle
+from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
 from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
     can_manage_project_settings,
@@ -150,6 +154,65 @@ def export_organization(
         content=zip_bytes, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"'},
     )
+
+
+@router.post("/{organization_id}/import/preview", response_model=OrgMergePreviewResult)
+async def preview_organization_merge(
+    organization_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Previews merging an uploaded organisation export bundle into this
+    *existing* organisation — the first step of `POST
+    .../import/merge` (see `services.org_export.merge_org_bundle`'s
+    docstring for how this differs from `POST /orgs/import`, which always
+    creates a brand-new organisation instead). Reports every project/report
+    template in the bundle that collides by name with something this
+    organisation already has, without writing anything; an empty list means
+    the bundle can be merged in with no resolutions needed.
+
+    `require_org_role(ORG_ADMIN)` — same bar as `export_organization`
+    above, deliberately no server-admin bypass (I-M-05): merging into an
+    existing organisation's real, live data is exactly the kind of
+    org-scoped content access that carve-out doesn't extend to.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    zip_bytes = await file.read()
+    conflicts = detect_merge_conflicts(db, org, zip_bytes)
+    return OrgMergePreviewResult(conflicts=[MergeConflictOut(**c) for c in conflicts])
+
+
+@router.post("/{organization_id}/import/merge", response_model=OrgMergeResult)
+async def merge_organization_bundle(
+    organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+):
+    """Merges an uploaded organisation export bundle's users, groups,
+    projects, and report templates into this *existing* organisation (see
+    `services.org_export.merge_org_bundle`'s docstring for exactly what is
+    and isn't touched, and why). `resolutions` is a JSON object mapping
+    each conflict `POST .../import/preview` reported to how it should be
+    handled — see `services.org_export.detect_merge_conflicts`'s and
+    `merge_org_bundle`'s docstrings for the exact id/value shapes.
+
+    Same `ORG_ADMIN`-only, no-server-admin-bypass authorization as
+    `preview_organization_merge` above.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    try:
+        parsed_resolutions = json.loads(resolutions)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "resolutions must be a JSON object.") from None
+    if not isinstance(parsed_resolutions, dict) or not all(isinstance(v, str) for v in parsed_resolutions.values()):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "resolutions must be a JSON object mapping conflict ids to string values.")
+    zip_bytes = await file.read()
+    warnings, summary = merge_org_bundle(
+        db, target_org=org, zip_bytes=zip_bytes, resolutions=parsed_resolutions, current_user=current_user,
+    )
+    return OrgMergeResult(warnings=warnings, **summary)
 
 
 @router.post("/{organization_id}/join-as-admin", status_code=status.HTTP_204_NO_CONTENT)

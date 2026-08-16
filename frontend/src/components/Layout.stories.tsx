@@ -15,6 +15,8 @@ const SERVER_SETTINGS: ServerSettings = {
   email_footer_company_name: null,
   email_footer_website: null,
   email_footer_address: null,
+  org_label_singular: null,
+  org_label_plural: null,
 };
 
 const ORG: Organization = {

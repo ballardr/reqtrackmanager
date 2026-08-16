@@ -93,6 +93,38 @@ class OrgImportResult(BaseModel):
     warnings: list[str] = []
 
 
+class MergeConflictOut(BaseModel):
+    """One project or report template in an org bundle whose name collides
+    with something the target organisation already has
+    (`services.org_export.detect_merge_conflicts`). `id` is the exact key
+    `OrgMergeRequest.resolutions` must supply a resolution for."""
+
+    id: str
+    kind: str
+    name: str
+    existing_id: UUID
+
+
+class OrgMergePreviewResult(BaseModel):
+    """Response of `POST /orgs/{id}/import/preview`: every conflict this
+    bundle has against this organisation. An empty list means the bundle
+    can be merged in with no resolutions needed."""
+
+    conflicts: list[MergeConflictOut] = []
+
+
+class OrgMergeResult(BaseModel):
+    """Outcome of `POST /orgs/{id}/import/merge` — human-readable warnings
+    (same shape as `OrgImportResult`'s) plus counts of what happened to
+    each conflicting/non-conflicting project and report template."""
+
+    warnings: list[str] = []
+    projects_imported: int
+    projects_skipped: int
+    report_templates_imported: int
+    report_templates_overwritten: int
+
+
 _HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 

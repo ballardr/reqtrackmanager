@@ -5,6 +5,7 @@ import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { t } from "../i18n/strings";
@@ -39,6 +40,8 @@ export function PreferencesPage() {
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const orgLabel = useOrgLabel();
+  const orgLabelPlural = useOrgLabelPlural();
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
@@ -168,7 +171,7 @@ export function PreferencesPage() {
   async function createPat() {
     setPatError(null);
     if (newPatOrgIds.size === 0) {
-      setPatError(strings.preferences.patNoOrgsSelected);
+      setPatError(strings.preferences.patNoOrgsSelected(orgLabel));
       return;
     }
     try {
@@ -357,7 +360,7 @@ export function PreferencesPage() {
             disabled={user?.display_name_locked}
             onChange={(e) => setDisplayName(e.target.value)}
           />
-          {user?.display_name_locked && <span className="text-muted">{strings.preferences.displayNameLocked}</span>}
+          {user?.display_name_locked && <span className="text-muted">{strings.preferences.displayNameLocked(orgLabel)}</span>}
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.pronouns}
@@ -514,8 +517,8 @@ export function PreferencesPage() {
       {tab === "access" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.access}</h2>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.accessHint}</p>
-        {myOrgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations}</p>}
+        <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.accessHint(orgLabel)}</p>
+        {myOrgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations(orgLabelPlural)}</p>}
         {myOrgs.map((org) => {
           const roles = myOrgRoles[org.id] ?? [];
           const orgProjects = myProjects.filter((p) => p.organization_id === org.id);
@@ -529,7 +532,7 @@ export function PreferencesPage() {
                   ))}
                 </span>
                 {roles.includes("org_admin") && (
-                  <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation}</Link>
+                  <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
                 )}
               </div>
               {orgProjects.length > 0 && (
@@ -553,7 +556,7 @@ export function PreferencesPage() {
       {tab === "pats" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
-        <p className="text-muted">{strings.preferences.patsHint}</p>
+        <p className="text-muted">{strings.preferences.patsHint(orgLabel)}</p>
 
         {pats.filter((p) => !p.revoked_at).length === 0 ? (
           <p className="text-muted">{strings.preferences.patNone}</p>
@@ -562,7 +565,7 @@ export function PreferencesPage() {
             <thead>
               <tr>
                 <th>{strings.preferences.patName}</th>
-                <th>{strings.orgAdmin.organizations}</th>
+                <th>{strings.orgAdmin.organizations(orgLabelPlural)}</th>
                 <th>{strings.preferences.patProjects}</th>
                 <th>{strings.preferences.patExpires}</th>
                 <th>{strings.preferences.patLastUsed}</th>
@@ -608,7 +611,7 @@ export function PreferencesPage() {
             onChange={(e) => setNewPatName(e.target.value)}
           />
           <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.preferences.patOrgs}
+            {strings.preferences.patOrgs(orgLabelPlural)}
             <div className="stack" style={{ gap: "0.25rem" }}>
               {myOrgs.map((org) => (
                 <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
@@ -628,7 +631,7 @@ export function PreferencesPage() {
               {(() => {
                 const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
                 return scopedProjects.length === 0 ? (
-                  <span className="text-muted">{strings.preferences.patNoProjectsInOrgs}</span>
+                  <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
                 ) : (
                   <div className="stack" style={{ gap: "0.25rem" }}>
                     {scopedProjects.map((project) => (
@@ -644,7 +647,7 @@ export function PreferencesPage() {
                   </div>
                 );
               })()}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint}</span>
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
             </label>
           )}
           <label className="stack" style={{ gap: "0.25rem" }}>
@@ -660,7 +663,7 @@ export function PreferencesPage() {
             />
             {expiryTooLong && maxExpiresAt && (
               <span style={{ color: "var(--color-danger)", fontSize: "0.8rem" }}>
-                {strings.preferences.patExpiryTooLong.replace(
+                {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
                   "{date}", new Date(maxExpiresAt).toLocaleDateString()
                 )}
               </span>

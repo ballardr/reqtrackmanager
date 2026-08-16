@@ -6,7 +6,7 @@ import { api, fileUrl } from "../api/client";
 import type { ProjectListItem } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
-import { BrandingProvider, useBranding } from "../context/BrandingContext";
+import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
 import { TerminologyProvider, useTermPlural } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { t } from "../i18n/strings";
@@ -81,6 +81,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const requirementsTerm = useTermPlural("requirement");
   const changeRequestsTerm = useTermPlural("change_request");
   const branding = useBranding();
+  const orgLabelPlural = useOrgLabelPlural();
   const [hasFavourites, setHasFavourites] = useState(false);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
@@ -185,7 +186,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           {user.is_server_admin && (
             <>
               <div className="nav-section-label">Administration</div>
-              <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railCollapsed} />
             </>
           )}

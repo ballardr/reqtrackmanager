@@ -1,4 +1,5 @@
 import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "../api/types";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
 
 /** Right-side activity timeline (mock's "Subscribed" panel): audit events
  * plus version history for one requirement/change request, newest first.
@@ -7,6 +8,7 @@ import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "..
  * (`describeActivityEntry`/`activityEntityLabel` in `api/types.ts`) —
  * previously each of the three built its own, inconsistent rendering. */
 export function ActivityPanel({ entries }: { entries: ChangeEntry[] }) {
+  const orgLabelCap = useOrgLabelCapitalized();
   return (
     <div className="card stack" style={{ alignSelf: "flex-start", minWidth: 220 }}>
       <h2 style={{ margin: 0, fontSize: "1rem" }}>Activity</h2>
@@ -14,7 +16,7 @@ export function ActivityPanel({ entries }: { entries: ChangeEntry[] }) {
       {entries.map((e, i) => (
         <div key={i} className="stack" style={{ gap: "0.15rem" }}>
           <div className="row" style={{ gap: "0.3rem" }}>
-            <span className="badge">{activityEntityLabel(e.entity_type)}</span>
+            <span className="badge">{activityEntityLabel(e.entity_type, orgLabelCap)}</span>
           </div>
           <div style={{ fontSize: "0.85rem" }}>{describeActivityEntry(e)}</div>
           <div className="text-muted" style={{ fontSize: "0.75rem" }}>{new Date(e.timestamp).toLocaleString()}</div>

@@ -21,6 +21,7 @@ const SERVER_SETTINGS: ServerSettings = {
   default_login_background_file_id: null,
   email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
   email_footer_address: "1 Example Street\nExample City, EX1 1AA",
+  org_label_singular: null, org_label_plural: null,
 };
 
 const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organizations: [] };
@@ -126,6 +127,27 @@ export const PlatformBrandingEmailFooter: Story = {
       expect(api.put).toHaveBeenCalledWith(
         "/api/v1/system/branding",
         expect.objectContaining({ email_footer_company_name: "Acme Platform Inc" }),
+      ),
+    );
+  },
+};
+
+export const PlatformBrandingOrgLabel: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "put").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    await waitFor(() => expect(canvas.getByLabelText(/^Organisation label \(singular\)/)).toHaveValue(""));
+    await userEvent.type(canvas.getByLabelText(/^Organisation label \(singular\)/), "tenant");
+    await userEvent.type(canvas.getByLabelText(/^Organisation label \(plural\)/), "Tenants");
+    await userEvent.click(canvas.getByRole("button", { name: "Save platform branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        "/api/v1/system/branding",
+        expect.objectContaining({ org_label_singular: "tenant", org_label_plural: "Tenants" }),
       ),
     );
   },

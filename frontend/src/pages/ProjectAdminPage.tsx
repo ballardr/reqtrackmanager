@@ -23,6 +23,7 @@ import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
+import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
 
@@ -37,6 +38,7 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
  */
 export function ProjectAdminPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const orgLabel = useOrgLabel();
   const [project, setProject] = useState<Project | null>(null);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
@@ -363,13 +365,13 @@ export function ProjectAdminPage() {
         `/api/v1/projects/${projectId}/roles/by-email`,
         { email, role },
       );
-      const messages: Record<AssignByEmailOutcome, string> = {
+      const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
         added: strings.admin.externalAddedDirectly,
         invited: strings.admin.externalInvited,
         sso_provisioned: strings.admin.externalSsoProvisioned,
       };
       setExternalAddResult({
-        message: messages[result.outcome].replace("{email}", email).replace("{role}", role),
+        message: messages[result.outcome](email, role, orgLabel),
         isError: false,
       });
       reload();
@@ -443,7 +445,7 @@ export function ProjectAdminPage() {
             <button className="btn btn-primary" onClick={saveSettings}>
               {strings.admin.saveSettings}
             </button>
-            <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint}>
+            <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint(orgLabel)}>
               <Download size={16} /> {exporting ? "Exporting…" : strings.admin.exportProject}
             </button>
           </div>
@@ -827,9 +829,9 @@ export function ProjectAdminPage() {
                   {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
                 </span>
                 <span className="text-muted">
-                  {strings.admin.memberCount.replace("{n}", String(g.member_user_ids.length))}
+                  {strings.admin.memberCount(g.member_user_ids.length)}
                   {g.member_org_group_ids.length > 0 &&
-                    ` + ${strings.admin.viaOrgGroups.replace("{n}", String(g.member_org_group_ids.length))}`}
+                    ` + ${strings.admin.viaOrgGroups(g.member_org_group_ids.length, orgLabel)}`}
                 </span>
               </div>
               {g.member_user_ids.length > 0 && (

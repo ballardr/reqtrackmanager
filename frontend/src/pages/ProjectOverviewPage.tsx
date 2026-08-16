@@ -7,6 +7,7 @@ import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "..
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useTerm } from "../context/TerminologyContext";
 import { t } from "../i18n/strings";
 
@@ -17,6 +18,7 @@ const strings = t();
 export function ProjectOverviewPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const requirementTerm = useTerm("requirement");
+  const orgLabelCap = useOrgLabelCapitalized();
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [activity, setActivity] = useState<ChangeEntry[] | null>(null);
@@ -117,7 +119,7 @@ export function ProjectOverviewPage() {
               style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
             >
               <span>
-                <span className="badge">{activityEntityLabel(c.entity_type)}</span> {describeActivityEntry(c)}
+                <span className="badge">{activityEntityLabel(c.entity_type, orgLabelCap)}</span> {describeActivityEntry(c)}
                 {link && (
                   <>
                     {" "}
