@@ -11,6 +11,8 @@ import { useUiPreference } from "../hooks/useUiPreference";
 import { t } from "../i18n/strings";
 import type {
   DigestMode,
+  MyMemberships,
+  MyOrgGroup,
   NotificationPreference,
   OrgRole,
   OrgUser,
@@ -69,6 +71,7 @@ export function PreferencesPage() {
 
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
   const [myOrgRoles, setMyOrgRoles] = useState<Record<string, OrgRole[]>>({});
+  const [myGroupsByOrg, setMyGroupsByOrg] = useState<Record<string, MyOrgGroup[]>>({});
   const [pats, setPats] = useState<PersonalAccessToken[]>([]);
   const [newPatName, setNewPatName] = useState("");
   const [newPatOrgIds, setNewPatOrgIds] = useState<Set<string>>(new Set());
@@ -83,6 +86,11 @@ export function PreferencesPage() {
     api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
     api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
     api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+    api.get<MyMemberships>("/api/v1/auth/me/memberships").then((memberships) => {
+      setMyGroupsByOrg(
+        Object.fromEntries(memberships.organizations.map((m) => [m.organization_id, m.groups]))
+      );
+    });
     api.get<Organization[]>("/api/v1/orgs").then(async (orgs) => {
       // `GET /orgs` returns every org on the deployment for a server admin
       // (I-M-05's platform-wide console view), not just orgs they're
@@ -546,6 +554,19 @@ export function PreferencesPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {(myGroupsByOrg[org.id] ?? []).length > 0 && (
+                <div className="stack" style={{ gap: "0.25rem" }}>
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.myGroups}</span>
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                    {(myGroupsByOrg[org.id] ?? []).map((g) => (
+                      <li key={g.id} style={{ listStyle: "circle" }}>
+                        {g.name}
+                        {!g.direct && <span className="text-muted"> ({strings.preferences.inheritedGroup})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           );

@@ -114,6 +114,7 @@ function AccessReviewTab() {
                   <th>{strings.system.email}</th>
                   <th>{strings.system.name}</th>
                   <th>{strings.system.organizations(orgLabelPlural)}</th>
+                  <th>{strings.system.groups}</th>
                   <th>{strings.system.lastLogin}</th>
                   <th>{strings.system.created}</th>
                   <th></th>
@@ -131,6 +132,7 @@ function AccessReviewTab() {
                           ? strings.system.organizationCount(u.organization_count, orgLabel)
                           : strings.system.noOrganizations}
                     </td>
+                    <td>{u.group_names.length > 0 ? u.group_names.join(", ") : "—"}</td>
                     <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never}</td>
                     <td>{new Date(u.created_at).toLocaleDateString()}</td>
                     <td>

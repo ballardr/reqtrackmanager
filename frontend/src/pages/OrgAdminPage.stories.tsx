@@ -32,7 +32,10 @@ const ssoConfig: OrgSsoConfig = {
   oidc_client_id: "client-1", oidc_required_group: null,
 };
 
-const groups: OrgGroup[] = [{ id: "grp1", name: "Engineering", member_user_ids: ["user-1"] }];
+const groups: OrgGroup[] = [
+  { id: "grp1", name: "Engineering", member_user_ids: ["user-1"], member_org_group_ids: [], idp_synced_group_name: null },
+  { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
+];
 
 function mockOrgAdminApis(overrides: { advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -46,6 +49,7 @@ function mockOrgAdminApis(overrides: { advanced?: OrgAdvancedSettings; sso?: Org
     if (path.includes("/pats")) return [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
+    if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -250,13 +254,58 @@ export const SsoSectionSaveDisabledWhenNotConfigured: Story = {
   },
 };
 
+export const ScimSectionGenerateToken: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue({ token: "rtm_scim_fake-secret-value", token_prefix: "rtm_scim_fak" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "SCIM provisioning section" }));
+    await waitFor(() => expect(canvas.getByText("Not enabled.")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Generate SCIM token" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/scim-token`)
+    );
+    await expect(canvas.getByDisplayValue("rtm_scim_fake-secret-value")).toBeInTheDocument();
+  },
+};
+
 export const GroupsSectionShowsMembers: Story = {
   beforeEach: () => mockOrgAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Organisation groups section" }));
-    await waitFor(() => expect(canvas.getByText("Engineering")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Engineering", { selector: "span" })).toBeInTheDocument());
     await expect(canvas.getByText(/Alex Morgan/)).toBeInTheDocument();
+  },
+};
+
+export const GroupsSectionNestGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Organisation groups section" }));
+    await waitFor(() => expect(canvas.getByText("Engineering", { selector: "span" })).toBeInTheDocument());
+
+    // Exactly one <option>Platform</option> exists (Engineering's own
+    // nest-picker) — Platform's own row excludes itself, so its picker
+    // offers "Engineering" instead.
+    const platformOption = canvas.getByText("Platform", { selector: "option" });
+    const select = platformOption.closest("select")!;
+    await userEvent.selectOptions(select, "grp2");
+    const row = select.closest<HTMLElement>(".row")!;
+    await userEvent.click(within(row).getByRole("button"));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/groups/grp1/members`,
+        { member_org_group_id: "grp2" }
+      )
+    );
   },
 };
 

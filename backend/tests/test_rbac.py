@@ -380,3 +380,89 @@ def test_sole_project_manager_cannot_leave_even_with_a_co_admin(client, admin_to
     resp = client.delete(f"/api/v1/orgs/{org['id']}/membership", headers=auth_headers(admin1_token))
     assert resp.status_code == 409
     assert project["name"] in resp.json()["detail"]
+
+
+def test_org_wide_visibility_grants_baseline_access_with_no_explicit_role(client, admin_token, org_id):
+    """A plain org member with zero direct/group role sees and can view an
+    org_wide project, but not a same-org only_specified one."""
+    project = create_project(client, admin_token, org_id, "Org Wide Project")
+    resp = client.patch(
+        f"/api/v1/projects/{project['id']}", json={"visibility": "org_wide"}, headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["visibility"] == "org_wide"
+
+    other_project = create_project(client, admin_token, org_id, "Only Specified Project")
+
+    create_org_user(client, admin_token, org_id, "orgwide_member@example.com", role="member")
+    member_token = login(client, "orgwide_member@example.com", "Password123!")
+
+    view = client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(member_token))
+    assert view.status_code == 200, view.text
+
+    denied = client.get(f"/api/v1/projects/{other_project['id']}", headers=auth_headers(member_token))
+    assert denied.status_code == 403
+
+    listed = client.get("/api/v1/projects?archived=false", headers=auth_headers(member_token)).json()
+    listed_ids = {p["id"] for p in listed}
+    assert project["id"] in listed_ids
+    assert other_project["id"] not in listed_ids
+
+
+def test_org_wide_visibility_does_not_reach_a_different_organisation(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "Org Wide Elsewhere")
+    client.patch(
+        f"/api/v1/projects/{project['id']}", json={"visibility": "org_wide"}, headers=auth_headers(admin_token)
+    )
+
+    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Unrelated Org")
+    create_org_user(client, other_admin_token, other_org["id"], "outsider2@example.com", role="member")
+    outsider_token = login(client, "outsider2@example.com", "Password123!")
+
+    resp = client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
+
+    listed = client.get("/api/v1/projects?archived=false", headers=auth_headers(outsider_token)).json()
+    assert project["id"] not in {p["id"] for p in listed}
+
+
+def test_org_wide_visibility_never_implies_manager_or_admin_rights(client, admin_token, org_id):
+    """Org-wide visibility is a read grant only — it must never let a plain
+    member manage project settings or structure."""
+    project = create_project(client, admin_token, org_id, "Org Wide Read Only")
+    client.patch(
+        f"/api/v1/projects/{project['id']}", json={"visibility": "org_wide"}, headers=auth_headers(admin_token)
+    )
+    create_org_user(client, admin_token, org_id, "orgwide_readonly@example.com", role="member")
+    member_token = login(client, "orgwide_readonly@example.com", "Password123!")
+
+    resp = client.patch(
+        f"/api/v1/projects/{project['id']}", json={"name": "Renamed"}, headers=auth_headers(member_token)
+    )
+    assert resp.status_code == 403
+
+
+def test_visibility_change_is_audit_logged(client, admin_token, org_id):
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models.audit import AuditEvent
+
+    project = create_project(client, admin_token, org_id, "Audited Visibility Project")
+    resp = client.patch(
+        f"/api/v1/projects/{project['id']}", json={"visibility": "org_wide"}, headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = list(
+            db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action == "settings_updated", AuditEvent.entity_id == project["id"]
+                )
+            )
+        )
+    finally:
+        db.close()
+    assert any(e.detail and e.detail.get("visibility") == "org_wide" for e in events)

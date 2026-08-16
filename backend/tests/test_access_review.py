@@ -255,6 +255,29 @@ def test_system_users_org_names_reflect_membership(client, admin_token, org_id):
     assert by_id[admin_user_id]["organization_count"] == 1
 
 
+def test_system_users_group_names_include_direct_and_inherited_membership(client, admin_token, org_id):
+    user_id = create_org_user(client, admin_token, org_id, "access_review_group_member@example.com", role="member")
+    parent = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Access Review Parent"}, headers=auth_headers(admin_token)
+    ).json()
+    child = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Access Review Child"}, headers=auth_headers(admin_token)
+    ).json()
+    client.post(
+        f"/api/v1/orgs/{org_id}/groups/{parent['id']}/members", json={"member_org_group_id": child["id"]},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        f"/api/v1/orgs/{org_id}/groups/{child['id']}/members", json={"user_id": user_id},
+        headers=auth_headers(admin_token),
+    )
+
+    resp = client.get("/api/v1/system/users", headers=auth_headers(admin_token))
+    by_id = {u["user_id"]: u for u in resp.json()}
+    assert "Access Review Child" in by_id[user_id]["group_names"]
+    assert "Access Review Parent" in by_id[user_id]["group_names"]
+
+
 def test_cannot_revoke_the_deployment_last_active_server_admin(client, admin_token, org_id):
     """Hardening-review finding: revoking the sole remaining active server
     admin would be an unrecoverable lockout — nobody left with the

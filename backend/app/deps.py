@@ -177,6 +177,28 @@ def get_current_user_header_or_query(
     return _resolve_user_from_token(token or query_token, db, request)
 
 
+def get_current_user_header_or_query_optional(
+    request: Request,
+    query_token: str | None = Query(default=None, alias="token"),
+    token: str | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Like `get_current_user_header_or_query`, but returns `None` instead
+    of raising when no token was presented at all, rather than 401ing.
+
+    Used by `routers/files.py::download_file`, which also serves fully
+    anonymous visitors (e.g. the pre-login page's branding images) alongside
+    its normal authenticated callers. A token that *is* present but invalid
+    or expired still raises 401 as usual — this only relaxes the "no token
+    at all" case, so a caller with a broken session doesn't silently fall
+    back to being treated as anonymous.
+    """
+    resolved = token or query_token
+    if not resolved:
+        return None
+    return _resolve_user_from_token(resolved, db, request)
+
+
 def get_client_ip(request: Request) -> str:
     """Extracts the originating client IP, honouring a proxy-set header.
 

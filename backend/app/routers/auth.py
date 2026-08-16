@@ -25,11 +25,16 @@ from app.deps import get_client_ip, get_current_user
 from app.metrics import login_attempts_total
 from app.models.enums import OrgRole, SignupMode
 from app.models.notification import NotificationType
-from app.models.organization import Organization, PendingInvite, UserOrgRole
+from app.models.organization import Organization, OrgGroup, PendingInvite, UserOrgRole
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
+    MyMembershipsOut,
+    MyOrgGroupOut,
+    MyOrgMembershipOut,
+    MyProjectMembershipOut,
     SignupRequest,
     TokenResponse,
     TwoFactorChallengeResponse,
@@ -47,6 +52,7 @@ from app.services.branding import get_server_settings
 from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
 from app.services.invites import consume_pending_invites
+from app.services.rbac import get_effective_org_roles, get_effective_project_roles, get_user_org_group_ids
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
@@ -260,6 +266,55 @@ def verify_2fa(
 def read_me(current_user: User = Depends(get_current_user)):
     """Returns the current authenticated user's profile."""
     return UserOut.model_validate(current_user)
+
+
+@router.get("/me/memberships", response_model=MyMembershipsOut)
+def read_my_memberships(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns the current user's full cross-org membership picture — org
+    roles, org-group membership (direct and inherited via nesting), and
+    per-project roles, across every organisation they belong to. Backs the
+    self-service "My groups & roles" section (`PreferencesPage.tsx`) —
+    self-service, so no `require_org_role` gate; any authenticated user may
+    read their own data.
+
+    "Orgs I belong to" is scoped to organisations with at least one direct
+    `UserOrgRole` row — every project-accessible user already has one
+    somewhere (C-U-02, enforced at write time by `_require_user_in_org`),
+    so this doesn't miss project-only access.
+    """
+    org_ids = set(
+        db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)).all()
+    )
+    orgs = db.scalars(select(Organization).where(Organization.id.in_(org_ids))).all() if org_ids else []
+
+    out = []
+    for org in orgs:
+        org_roles = get_effective_org_roles(db, current_user.id, org.id)
+        direct_group_ids, inherited_group_ids = get_user_org_group_ids(db, current_user.id, org.id)
+        group_rows = db.scalars(
+            select(OrgGroup).where(OrgGroup.id.in_(direct_group_ids | inherited_group_ids))
+        ).all()
+        groups = [
+            MyOrgGroupOut(id=g.id, name=g.name, direct=g.id in direct_group_ids)
+            for g in sorted(group_rows, key=lambda g: g.name.lower())
+        ]
+
+        projects = []
+        for project in db.scalars(select(Project).where(Project.organization_id == org.id, Project.is_archived.is_(False))):
+            roles = get_effective_project_roles(db, current_user.id, project.id)
+            if roles:
+                projects.append(
+                    MyProjectMembershipOut(id=project.id, name=project.name, roles=sorted(roles, key=lambda r: r.value))
+                )
+
+        out.append(
+            MyOrgMembershipOut(
+                organization_id=org.id, organization_name=org.name,
+                org_roles=sorted(org_roles, key=lambda r: r.value), groups=groups, projects=projects,
+            )
+        )
+    out.sort(key=lambda m: m.organization_name.lower())
+    return MyMembershipsOut(organizations=out)
 
 
 @router.patch("/me/preferences", response_model=UserOut)

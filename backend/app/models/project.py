@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum, utcnow
-from app.models.enums import ProjectRole, StageReviewResponseChoice, StageStatus
+from app.models.enums import ProjectRole, ProjectVisibility, StageReviewResponseChoice, StageStatus
 
 
 class Project(UUIDPKMixin, TimestampMixin, Base):
@@ -48,6 +48,11 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     allow_member_change_requests: Mapped[bool] = mapped_column(Boolean, default=True)
     # Whether this project can be used as a template for new projects (C-E-05).
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether every org member automatically gets baseline view access
+    # (ProjectVisibility.ORG_WIDE) or only explicitly-assigned users/groups
+    # (ONLY_SPECIFIED, the default — see services.rbac.get_effective_project_roles
+    # for where the ORG_WIDE grant is actually applied).
+    visibility: Mapped[ProjectVisibility] = mapped_column(str_enum(ProjectVisibility, 20), default=ProjectVisibility.ONLY_SPECIFIED)
     # Per-project terminology overrides (C-C-03), e.g. {"stage": "Horizon"}.
     # Keys are restricted to a fixed, documented set (see schemas/project.py);
     # this is not a freeform key-value store.

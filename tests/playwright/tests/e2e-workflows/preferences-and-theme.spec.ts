@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: profile preferences persist server-side (not just
@@ -88,6 +88,43 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       await page.getByRole("link", { name: "Help", exact: true }).click();
       await expect(page).toHaveURL(/\/help$/);
       await expect(page.locator("main")).not.toBeEmpty();
+    });
+
+    await test.step("the access tab lists direct and inherited org-group membership", async () => {
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const me = await (
+        await page.request.get("http://localhost:8000/api/v1/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      ).json();
+      const orgs = await (
+        await page.request.get("http://localhost:8000/api/v1/orgs?mine=true", { headers: { Authorization: `Bearer ${token}` } })
+      ).json();
+      const alphaOrgId = orgs.find((o: { name: string; id: string }) => o.name === ORG_NAMES.alpha).id;
+      const suffix = Date.now();
+      const parentName = `E2E Preferences Parent ${suffix}`;
+      const childName = `E2E Preferences Child ${suffix}`;
+      const authHeaders = { Authorization: `Bearer ${token}` };
+      const parent = await (
+        await page.request.post(`http://localhost:8000/api/v1/orgs/${alphaOrgId}/groups`, {
+          headers: authHeaders, data: { name: parentName },
+        })
+      ).json();
+      const child = await (
+        await page.request.post(`http://localhost:8000/api/v1/orgs/${alphaOrgId}/groups`, {
+          headers: authHeaders, data: { name: childName },
+        })
+      ).json();
+      await page.request.post(`http://localhost:8000/api/v1/orgs/${alphaOrgId}/groups/${parent.id}/members`, {
+        headers: authHeaders, data: { member_org_group_id: child.id },
+      });
+      await page.request.post(`http://localhost:8000/api/v1/orgs/${alphaOrgId}/groups/${child.id}/members`, {
+        headers: authHeaders, data: { user_id: me.id },
+      });
+
+      await page.goto("/preferences");
+      await page.getByRole("button", { name: "Your access" }).click();
+      await expect(page.getByText(childName)).toBeVisible();
+      await expect(page.getByText(parentName)).toBeVisible();
+      await expect(page.getByText("(via a nested group)")).toBeVisible();
     });
   });
 });

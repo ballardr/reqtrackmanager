@@ -45,6 +45,7 @@ from app.schemas.org import (
     OrgGroupCreate,
     OrgGroupMemberAdd,
     OrgGroupOut,
+    OrgGroupUpdate,
     OrgImportResult,
     OrgLoginInfoOut,
     OrgMergePreviewResult,
@@ -59,10 +60,12 @@ from app.schemas.org import (
     OutsideDomainUserOut,
     ReportTemplateCreate,
     ReportTemplateOut,
+    ScimTokenCreatedOut,
+    ScimTokenStatusOut,
 )
 from app.schemas.pat import BulkRevokeResult, OrgPersonalAccessTokenOut
 from app.schemas.report import OrgReportDefaults
-from app.security import hash_password
+from app.security import generate_scim_token, hash_password
 from app.services import engagement
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
@@ -81,6 +84,7 @@ from app.services.rbac import (
     require_org_admin_or_server_admin,
     require_org_role,
     require_server_admin,
+    would_create_org_group_cycle,
 )
 
 router = APIRouter(prefix="/api/v1/orgs", tags=["organizations"])
@@ -1022,8 +1026,11 @@ def create_org_group(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Creates an organisation group (C-U-08)."""
-    group = OrgGroup(organization_id=organization_id, name=payload.name)
+    """Creates an organisation group (C-U-08), optionally marking it as
+    IdP-synced from creation (`payload.idp_synced_group_name`)."""
+    if payload.idp_synced_group_name:
+        _require_idp_synced_name_available(db, organization_id, payload.idp_synced_group_name)
+    group = OrgGroup(organization_id=organization_id, name=payload.name, idp_synced_group_name=payload.idp_synced_group_name)
     db.add(group)
     db.flush()
     log_event(
@@ -1031,7 +1038,10 @@ def create_org_group(
         organization_id=organization_id,
     )
     db.commit()
-    return OrgGroupOut(id=group.id, name=group.name, member_user_ids=[])
+    return OrgGroupOut(
+        id=group.id, name=group.name, member_user_ids=[], member_org_group_ids=[],
+        idp_synced_group_name=group.idp_synced_group_name,
+    )
 
 
 @router.get("/{organization_id}/projects", response_model=list[OrgProjectSummaryOut])
@@ -1060,9 +1070,74 @@ def list_org_groups(
     groups = db.scalars(select(OrgGroup).where(OrgGroup.organization_id == organization_id)).all()
     out = []
     for g in groups:
-        member_ids = db.scalars(select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == g.id)).all()
-        out.append(OrgGroupOut(id=g.id, name=g.name, member_user_ids=list(member_ids)))
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None))
+        ).all()
+        nested_group_ids = db.scalars(
+            select(OrgGroupMember.member_org_group_id).where(
+                OrgGroupMember.org_group_id == g.id, OrgGroupMember.member_org_group_id.is_not(None)
+            )
+        ).all()
+        out.append(
+            OrgGroupOut(
+                id=g.id, name=g.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
+                idp_synced_group_name=g.idp_synced_group_name,
+            )
+        )
     return out
+
+
+def _require_idp_synced_name_available(db: Session, organization_id: UUID, name: str, *, exclude_group_id: UUID | None = None) -> None:
+    """Rejects with 400 if another `OrgGroup` in this org already claims
+    `name` as its IdP-sync target — enforced here (in addition to the
+    partial unique index, the real guarantee under concurrent writes) so a
+    routine admin mistake gets a clear error instead of a raw
+    `IntegrityError`."""
+    conflict_query = select(OrgGroup).where(
+        OrgGroup.organization_id == organization_id, OrgGroup.idp_synced_group_name == name
+    )
+    if exclude_group_id is not None:
+        conflict_query = conflict_query.where(OrgGroup.id != exclude_group_id)
+    if db.scalar(conflict_query) is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Another group is already synced from IdP group '{name}'."
+        )
+
+
+@router.patch("/{organization_id}/groups/{group_id}", response_model=OrgGroupOut)
+def update_org_group(
+    organization_id: UUID,
+    group_id: UUID,
+    payload: OrgGroupUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets or clears an org group's IdP-sync target
+    (`OrgGroup.idp_synced_group_name`) — the only mutable field an org
+    group has today (no rename endpoint exists for this or `ProjectGroup`).
+    """
+    group = _get_org_group_in_org(db, organization_id, group_id)
+    if payload.idp_synced_group_name:
+        _require_idp_synced_name_available(db, organization_id, payload.idp_synced_group_name, exclude_group_id=group_id)
+    group.idp_synced_group_name = payload.idp_synced_group_name
+    log_event(
+        db, entity_type="org_group", entity_id=group_id, action="idp_sync_updated", actor_id=current_user.id,
+        organization_id=organization_id, detail={"idp_synced_group_name": payload.idp_synced_group_name},
+    )
+    db.commit()
+    db.refresh(group)
+    member_ids = db.scalars(
+        select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None))
+    ).all()
+    nested_group_ids = db.scalars(
+        select(OrgGroupMember.member_org_group_id).where(
+            OrgGroupMember.org_group_id == group.id, OrgGroupMember.member_org_group_id.is_not(None)
+        )
+    ).all()
+    return OrgGroupOut(
+        id=group.id, name=group.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
+        idp_synced_group_name=group.idp_synced_group_name,
+    )
 
 
 def _get_org_group_in_org(db: Session, organization_id: UUID, group_id: UUID) -> OrgGroup:
@@ -1087,59 +1162,91 @@ def add_org_group_member(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Adds a member to an organisation group.
+    """Adds a member to an organisation group: either a user, or another
+    org group nested inside it (exactly one of `payload.user_id`/
+    `payload.member_org_group_id`, same convention as
+    `add_project_group_member`).
 
-    Hardening-review finding: this endpoint checked that `group_id`
-    belongs to `organization_id`, but never that `payload.user_id` itself
-    holds any role in that organisation — unlike the structurally parallel
-    `add_project_group_member` (`routers/projects.py`), which explicitly
-    enforces C-U-02 ("All Project users must be an organisation user") via
-    `_require_user_in_org`. Because `get_effective_project_roles` resolves
-    project access through org groups nested into project groups purely
-    from `OrgGroupMember` rows (re-checking only that the *group's* org
-    matches the project's, never that the *member* actually belongs to
-    that org), an org admin adding an arbitrary user id here — anyone in
-    the system, with zero relationship to this organisation — would have
-    silently handed that user full project access the moment this group
-    is (routinely, legitimately) nested into any project group. A genuine
-    cross-tenant privilege escalation, not merely a data-integrity nit.
+    Hardening-review finding (user branch): this endpoint checked that
+    `group_id` belongs to `organization_id`, but never that
+    `payload.user_id` itself holds any role in that organisation — unlike
+    the structurally parallel `add_project_group_member`
+    (`routers/projects.py`), which explicitly enforces C-U-02 ("All Project
+    users must be an organisation user") via `_require_user_in_org`.
+    Because `get_effective_project_roles` resolves project access through
+    org groups nested into project groups purely from `OrgGroupMember` rows
+    (re-checking only that the *group's* org matches the project's, never
+    that the *member* actually belongs to that org), an org admin adding an
+    arbitrary user id here — anyone in the system, with zero relationship
+    to this organisation — would have silently handed that user full
+    project access the moment this group is (routinely, legitimately)
+    nested into any project group. A genuine cross-tenant privilege
+    escalation, not merely a data-integrity nit.
     """
+    if not payload.user_id and not payload.member_org_group_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or member_org_group_id.")
     _get_org_group_in_org(db, organization_id, group_id)
-    if not get_effective_org_roles(db, payload.user_id, organization_id):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "The user must be a member of this organisation first."
+
+    if payload.user_id is not None:
+        if not get_effective_org_roles(db, payload.user_id, organization_id):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "The user must be a member of this organisation first."
+            )
+        existing = db.scalar(
+            select(OrgGroupMember).where(
+                OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == payload.user_id
+            )
         )
-    existing = db.scalar(
-        select(OrgGroupMember).where(
-            OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == payload.user_id
+        if existing is None:
+            db.add(OrgGroupMember(org_group_id=group_id, user_id=payload.user_id))
+            log_event(
+                db, entity_type="org_group", entity_id=group_id, action="member_added", actor_id=current_user.id,
+                organization_id=organization_id, detail={"user_id": str(payload.user_id)},
+            )
+            db.commit()
+    else:
+        # Nesting a group belonging to a different organisation would let
+        # its members inherit membership here, crossing the tenant boundary
+        # — same reasoning as `add_project_group_member`'s org_group_id
+        # branch, one level up.
+        child_group = _get_org_group_in_org(db, organization_id, payload.member_org_group_id)
+        if child_group.id == group_id or would_create_org_group_cycle(db, group_id, child_group.id):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This would create a cycle of nested groups.")
+        existing = db.scalar(
+            select(OrgGroupMember).where(
+                OrgGroupMember.org_group_id == group_id, OrgGroupMember.member_org_group_id == child_group.id
+            )
         )
-    )
-    if existing is None:
-        db.add(OrgGroupMember(org_group_id=group_id, user_id=payload.user_id))
-        log_event(
-            db, entity_type="org_group", entity_id=group_id, action="member_added", actor_id=current_user.id,
-            organization_id=organization_id, detail={"user_id": str(payload.user_id)},
-        )
-        db.commit()
+        if existing is None:
+            db.add(OrgGroupMember(org_group_id=group_id, member_org_group_id=child_group.id))
+            log_event(
+                db, entity_type="org_group", entity_id=group_id, action="nested_group_added", actor_id=current_user.id,
+                organization_id=organization_id, detail={"member_org_group_id": str(child_group.id)},
+            )
+            db.commit()
 
 
-@router.delete("/{organization_id}/groups/{group_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{organization_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_org_group_member(
     organization_id: UUID,
     group_id: UUID,
-    user_id: UUID,
+    member_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
+    """Removes a member from an organisation group — `member_id` is matched
+    against either a user member or a nested-group member (whichever it
+    is), same generic-id convention as `remove_project_group_member`."""
     _get_org_group_in_org(db, organization_id, group_id)
     db.execute(
         OrgGroupMember.__table__.delete().where(
-            OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == user_id
+            OrgGroupMember.org_group_id == group_id,
+            (OrgGroupMember.user_id == member_id) | (OrgGroupMember.member_org_group_id == member_id),
         )
     )
     log_event(
         db, entity_type="org_group", entity_id=group_id, action="member_removed", actor_id=current_user.id,
-        organization_id=organization_id, detail={"user_id": str(user_id)},
+        organization_id=organization_id, detail={"member_id": str(member_id)},
     )
     db.commit()
 
@@ -1486,6 +1593,61 @@ def update_sso_config(
         oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
         oidc_required_group=org.oidc_required_group,
     )
+
+
+@router.get("/{organization_id}/scim-token", response_model=ScimTokenStatusOut)
+def get_scim_token_status(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Whether SCIM 2.0 provisioning (`routers/scim.py`) is enabled for
+    this org, and its current token's non-secret prefix — never the token
+    itself, which is only ever shown once, at (re)generation."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return ScimTokenStatusOut(enabled=org.scim_token_hash is not None, token_prefix=org.scim_token_prefix)
+
+
+@router.post("/{organization_id}/scim-token", response_model=ScimTokenCreatedOut)
+def regenerate_scim_token(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """(Re)generates this org's SCIM bearer token — immediately invalidates
+    any previous one (a single active token per org, same as this codebase's
+    Personal Access Tokens are per-user-per-token rather than allowing
+    silent parallel validity). The raw secret is returned exactly once."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    raw_token, token_hash, token_prefix = generate_scim_token()
+    org.scim_token_hash = token_hash
+    org.scim_token_prefix = token_prefix
+    log_event(db, entity_type="organization", entity_id=organization_id, action="scim_token_regenerated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    return ScimTokenCreatedOut(token=raw_token, token_prefix=token_prefix)
+
+
+@router.delete("/{organization_id}/scim-token", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_scim_token(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Disables SCIM provisioning for this org by clearing its token —
+    every subsequent SCIM request against this org 401s immediately."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    org.scim_token_hash = None
+    org.scim_token_prefix = None
+    log_event(db, entity_type="organization", entity_id=organization_id, action="scim_token_revoked",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
 
 
 @router.post("/{organization_id}/login-background", response_model=OrganizationOut)

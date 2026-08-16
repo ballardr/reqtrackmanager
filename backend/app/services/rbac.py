@@ -4,13 +4,27 @@ Module: services.rbac
 Computes a user's effective organisation and project roles and exposes
 FastAPI dependencies that enforce them (C-U-01, C-U-03).
 
-Effective project role resolution combines three sources, per C-U-11 /
+Effective project role resolution combines four sources, per C-U-11 /
 C-U-12:
     1. Direct per-user role assignments (UserProjectRole).
     2. Membership in a project group (ProjectGroupMember with user_id set).
     3. Membership in an org group that is itself nested inside a project
        group (ProjectGroupMember with org_group_id set, resolved via
-       OrgGroupMember).
+       OrgGroupMember) — transitively: a user who's only a *direct* member
+       of a sub-group counts as a member of every ancestor group too, via
+       OrgGroupMember's own self-nesting (OrgGroupMember.member_org_group_id,
+       a distinct, fully transitive relationship from this one-hop
+       org-group-in-project-group nesting — see `_ancestor_org_group_ids`/
+       `_descendant_org_group_ids` and docs/decisions.md for why the two
+       nesting relationships resolve differently).
+    4. ProjectVisibility.ORG_WIDE: baseline MEMBER access for any user who
+       holds any role in the project's own organisation, with no explicit
+       assignment needed. Deliberately narrower than the other three
+       sources — never implies PROJECT_MANAGER/ADMINISTRATOR/STAKEHOLDER,
+       and deliberately not folded into `get_project_member_user_ids`
+       (broadcast notification targeting, C-N-01) or
+       `can_manage_project_settings` — org-wide visibility is a read grant,
+       not a "this is now like being a real project member" shortcut.
 
 A project manager role implies project administrator and stakeholder
 capabilities (C-U-03 clarification: "Project Managers can also perform all
@@ -34,7 +48,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import OrgRole, ProjectRole
+from app.models.enums import OrgRole, ProjectRole, ProjectVisibility
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.user import User
@@ -163,6 +177,47 @@ def is_org_admin(db: Session, user_id: UUID, organization_id: UUID) -> bool:
     return OrgRole.ORG_ADMIN in get_effective_org_roles(db, user_id, organization_id)
 
 
+def get_user_org_group_ids(db: Session, user_id: UUID, organization_id: UUID) -> tuple[set[UUID], set[UUID]]:
+    """Returns `(direct_group_ids, inherited_group_ids)` — org groups the
+    user is a direct member of in `organization_id`, and every additional
+    group they're an effective member of transitively via nesting (see
+    `_ancestor_org_group_ids`). Used by the self-service "my groups" view
+    (`routers/auth.py::read_my_memberships`) and the server-admin
+    access-review directory.
+
+    Hardening-review finding: `_ancestor_org_group_ids` itself walks
+    `OrgGroupMember` with no organisation filter (nesting is only ever
+    same-org at write time, per `routers.orgs.add_org_group_member`'s
+    cross-org rejection, so it should never actually cross a tenant
+    boundary) — but both callers of this function place the result
+    directly under `organization_id` in their response (a membership
+    entry in `read_my_memberships`, a name list in the access-review
+    directory) with no downstream re-check, unlike
+    `get_effective_project_roles`'s equivalent nested-group resolution,
+    which re-joins on `OrgGroup.organization_id` as defense in depth
+    even though the same write-time check already applies there. Filtered
+    here too, for the same reason: a bug elsewhere that ever let a
+    cross-org edge through should never surface another organisation's
+    group name under this one.
+    """
+    direct = set(
+        db.scalars(
+            select(OrgGroupMember.org_group_id)
+            .join(OrgGroup, OrgGroup.id == OrgGroupMember.org_group_id)
+            .where(OrgGroupMember.user_id == user_id, OrgGroup.organization_id == organization_id)
+        ).all()
+    )
+    ancestors = _ancestor_org_group_ids(db, direct)
+    if ancestors:
+        ancestors = set(
+            db.scalars(
+                select(OrgGroup.id).where(OrgGroup.id.in_(ancestors), OrgGroup.organization_id == organization_id)
+            ).all()
+        )
+    inherited = ancestors - direct
+    return direct, inherited
+
+
 def can_manage_project_settings(db: Session, user: User, project: Project) -> bool:
     """Whether the user may manage project setup, stages, components, categories.
 
@@ -173,6 +228,75 @@ def can_manage_project_settings(db: Session, user: User, project: Project) -> bo
         return True
     roles = get_effective_project_roles(db, user.id, project.id)
     return bool(roles & {ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR})
+
+
+_ORG_GROUP_CLOSURE_ITERATION_CAP = 1000
+
+
+def _ancestor_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
+    """Returns every org group that (transitively) contains any group in
+    `group_ids` as a nested member — walks "upward" through
+    `OrgGroupMember.member_org_group_id` to find containing groups.
+
+    An iterative BFS closure rather than a recursive SQL CTE, matching this
+    module's existing style of explicit, readable Python-side set
+    operations (see `get_effective_project_roles`'s own two-query-then-union
+    shape) — org-group counts per organisation are small, so the extra
+    round-trips are a non-issue. The iteration cap is defense in depth only:
+    cycles are rejected at write time (`routers.orgs.add_org_group_member`),
+    so this should never actually trip.
+    """
+    visited: set[UUID] = set()
+    frontier = set(group_ids)
+    iterations = 0
+    while frontier and iterations < _ORG_GROUP_CLOSURE_ITERATION_CAP:
+        iterations += 1
+        parents = set(
+            db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.member_org_group_id.in_(frontier))).all()
+        )
+        new = parents - visited
+        if not new:
+            break
+        visited.update(new)
+        frontier = new
+    return visited
+
+
+def _descendant_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
+    """Returns every org group nested (transitively) inside any group in
+    `group_ids` — the inverse of `_ancestor_org_group_ids`, walking
+    "downward" through `OrgGroupMember.member_org_group_id`."""
+    visited: set[UUID] = set()
+    frontier = set(group_ids)
+    iterations = 0
+    while frontier and iterations < _ORG_GROUP_CLOSURE_ITERATION_CAP:
+        iterations += 1
+        children = set(
+            db.scalars(
+                select(OrgGroupMember.member_org_group_id).where(
+                    OrgGroupMember.org_group_id.in_(frontier), OrgGroupMember.member_org_group_id.is_not(None)
+                )
+            ).all()
+        )
+        new = children - visited
+        if not new:
+            break
+        visited.update(new)
+        frontier = new
+    return visited
+
+
+def would_create_org_group_cycle(db: Session, parent_group_id: UUID, child_group_id: UUID) -> bool:
+    """True if nesting `child_group_id` as a member of `parent_group_id`
+    would create a cycle — either they're the same group (self-nesting), or
+    `parent_group_id` is already reachable as a descendant of
+    `child_group_id` (i.e. `child_group_id` already, transitively,
+    contains `parent_group_id`, so adding the reverse edge would close a
+    loop). Checked at write time in `routers.orgs.add_org_group_member`.
+    """
+    if parent_group_id == child_group_id:
+        return True
+    return parent_group_id in _descendant_org_group_ids(db, {child_group_id})
 
 
 def get_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
@@ -196,9 +320,10 @@ def get_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) ->
     ).all()
     roles.update(ProjectRole(r) for r in direct_group_roles)
 
-    user_org_group_ids = set(
+    direct_org_group_ids = set(
         db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.user_id == user_id)).all()
     )
+    user_org_group_ids = direct_org_group_ids | _ancestor_org_group_ids(db, direct_org_group_ids)
     if user_org_group_ids:
         # Defense in depth: even though endpoints reject nesting an org
         # group from a different organisation into a project group at
@@ -217,6 +342,14 @@ def get_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) ->
             )
         ).all()
         roles.update(ProjectRole(r) for r in nested_group_roles)
+
+    project_row = db.execute(
+        select(Project.visibility, Project.organization_id).where(Project.id == project_id)
+    ).first()
+    if project_row is not None:
+        visibility, organization_id = project_row
+        if visibility == ProjectVisibility.ORG_WIDE and get_effective_org_roles(db, user_id, organization_id):
+            roles.add(ProjectRole.MEMBER)
 
     if ProjectRole.PROJECT_MANAGER in roles:
         roles.add(ProjectRole.PROJECT_ADMINISTRATOR)
@@ -331,8 +464,16 @@ def get_project_member_user_ids(db: Session, project_id: UUID) -> set[UUID]:
         ).all()
     )
     if nested_org_group_ids:
+        # A user in a sub-group counts as a member via a parent group
+        # nested into this project group too (transitive org-group
+        # nesting) — expand to every descendant before resolving members.
+        all_org_group_ids = nested_org_group_ids | _descendant_org_group_ids(db, nested_org_group_ids)
         user_ids.update(
-            db.scalars(select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id.in_(nested_org_group_ids))).all()
+            db.scalars(
+                select(OrgGroupMember.user_id).where(
+                    OrgGroupMember.org_group_id.in_(all_org_group_ids), OrgGroupMember.user_id.is_not(None)
+                )
+            ).all()
         )
     return user_ids
 

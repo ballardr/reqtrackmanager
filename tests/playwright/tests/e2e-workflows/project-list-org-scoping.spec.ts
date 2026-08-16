@@ -81,10 +81,13 @@ test.describe("project list organisation scoping for a server admin", () => {
     await expect(page.locator("select:has(option:text-is('All organisations'))")).toHaveCount(0);
     await page.getByRole("button", { name: "New project" }).click();
     const soloPanel = page.locator(".card", { has: page.getByPlaceholder("Name", { exact: true }) });
-    // No org select at all now (org A has no projects yet either, so the
-    // template picker is also absent) — org A is the only valid choice,
-    // applied implicitly rather than asked for.
-    await expect(soloPanel.locator("select")).toHaveCount(0);
+    // No org select now (org A has no projects yet either, so the template
+    // picker is also absent) — org A is the only valid choice, applied
+    // implicitly rather than asked for. The Visibility select is a real,
+    // always-meaningful choice independent of org count, so it's the one
+    // select still expected here.
+    await expect(soloPanel.locator("select")).toHaveCount(1);
+    await expect(soloPanel.getByLabel("Visibility")).toBeVisible();
 
     // Delete org A too, restoring the shared persona to its documented
     // zero-org baseline for any other spec that runs after this one.

@@ -1,13 +1,15 @@
 # Enterprise integration: SSO, SCIM, and the separate-port provisioning API
 
-This document covers Massif (v3)'s enterprise-authentication requirements (E-U-01, E-U-02, E-P-02, E-P-03). Two of these are real, working, tested code in this pass. Two are deliberately left as a concrete architectural blueprint for a follow-up session, since each is effectively its own project. All four build on the same provisioning core, so the blueprint isn't speculative — it reuses code that already exists and already works.
+This document covers Massif (v3)'s enterprise-authentication requirements (E-U-01, E-U-02, E-P-02, E-P-03), plus the group-membership-sync work built alongside them as part of the same groups/permissions overhaul (not itself an `E-*` requirement — see `docs/decisions.md`'s "Groups/permissions overhaul" entries, which the agent recorded there rather than in `docs/requirements.md` per explicit user direction). Three of these are real, working, tested code. One is deliberately left as a concrete architectural blueprint for a follow-up session, since it's effectively its own project layered on top of what's already built.
 
-| Requirement | Status this pass |
+| Requirement | Status |
 | --- | --- |
 | E-U-01 (SSO/OIDC login) | **Built and tested end-to-end** against a real Keycloak instance |
 | E-P-03 (per-org branded login page) | **Built** (org-scoped `/login/{slug}` page, custom background/logo, SSO button) |
-| E-U-02 (SCIM provisioning) | Blueprint only (below) |
+| E-U-02 (SCIM provisioning) | **Built and tested** — Users/Groups CRUD + group-membership sync (below) |
 | E-P-02 (separate-port provisioning API) | Blueprint only (below) |
+
+Alongside E-U-01/E-U-02, this pass also added **IdP group-membership sync into `OrgGroup`** (not just org *roles*, which `sso_group_mappings` already handled) via two independent paths: OIDC login-time claims sync (`OrgGroup.idp_synced_group_name`, extending the mechanism below) and SCIM push provisioning (the group CRUD/PATCH endpoints below) — see "IdP group-membership sync" further down.
 
 ## What was built: OIDC login (E-U-01)
 
@@ -56,20 +58,29 @@ This means a genuinely self-hosted identity provider — an on-prem Keycloak or 
 
 `Organization.oidc_client_secret` uses `EncryptedString` (`backend/app/models/encrypted_type.py`, Fernet-based, keyed from the `APP_SECRET_ENCRYPTION_KEY` setting — distinct from `JWT_SECRET`) rather than being stored as a plain column — the app reads/writes plaintext transparently, but only ciphertext ever reaches the database. See the README's Configuration table and [docs/soc2/policies/encryption-and-key-management-policy.md](soc2/policies/encryption-and-key-management-policy.md) for the full rationale.
 
-## Blueprint: SCIM provisioning (E-U-02)
+## Built: SCIM provisioning (E-U-02)
 
-Not built this pass. Designed to share the exact provisioning core built for SSO above, since SCIM and SSO converge on identical logic — only the trigger differs (an IdP pushing a change vs. a user completing a login redirect).
+Inbound SCIM 2.0 provisioning (`backend/app/routers/scim.py`), tested with `backend/tests/test_scim.py`. Originally scoped as SAML (a second SSO login protocol) instead — reconsidered mid-build: SAML only carries group information as a side effect of an active login, so it can't promptly deprovision someone who's stopped logging in. SCIM is push-based (the IdP calls *into* this app whenever group membership changes, no login required) and is the protocol Okta/Entra ID/Google Workspace actually use for provisioning sync, so it's a better fit for "sync groups from the IdP" than a second login protocol would have been.
 
-**Scope**: a subset of RFC 7644 (SCIM 2.0) covering the two resource types that matter here — `/scim/v2/Users` and `/scim/v2/Groups` — not the full spec (no `/scim/v2/Schemas` introspection, no PATCH-with-arbitrary-path-expressions, just the operations real IdP provisioning connectors actually send in practice: `POST`/`GET`/`PUT`/`DELETE` on Users, group membership updates).
+**Scope**: a pragmatic subset of RFC 7643/7644, not full spec compliance — documented candidly (see `routers/scim.py`'s own module docstring) rather than hidden:
+- Filter support is limited to a single `attr eq "value"` expression (`userName eq`/`emails.value eq` for Users, `displayName eq` for Groups) — covers what Okta/Entra ID/Google Workspace SCIM clients actually send, not the full filter grammar (no AND/OR/complex paths).
+- PATCH supports `active`/`displayName` replace on Users and `members` add/remove on Groups (both list-value and the single-member `members[value eq "<id>"]` path form) — the operations those same IdPs send for deprovisioning and group-membership sync, not arbitrary path expressions.
+- No Bulk operations, no ETags/versioning, no schema extensions. `/scim/v2/ServiceProviderConfig`/`/ResourceTypes` are included (static) since several IdP SCIM clients probe them during setup, but `/scim/v2/Schemas` introspection is not.
 
-**Mapping onto existing models**:
-- `POST /scim/v2/Users` → calls `oidc_provisioning.find_or_provision_user()` directly with a synthesized claims dict built from the SCIM payload (`userName` → email, `id`/`externalId` → `external_subject`), instead of from a verified ID token — trust here comes from the bearer token authenticating the *request*, not from a signed ID token, since there's no login flow involved.
-- `PUT`/`PATCH /scim/v2/Users/{id}` → deactivate/reactivate maps to the existing `is_active` flag and the existing deactivation service (`backend/app/services/...` — the same path the UI's "Deactivate user" action already uses, including its C-U-09 sole-manager-fallback guard).
-- `GET/POST/DELETE /scim/v2/Groups` and group-membership PATCH operations → map onto `OrgGroup`/`OrgGroupMember`, with group membership changes calling `sync_org_roles_from_claims()`-equivalent logic keyed off group name rather than an OIDC claim.
+**Mapping onto existing models**: a SCIM Group's `id` *is* this app's own `OrgGroup.id`, and a SCIM User's `id` is this app's own `User.id` — the IdP stores whatever `id` a `POST` returns and addresses that exact resource on every later call, so no separate external-id mapping table was needed. `POST /scim/v2/Users` finds-or-creates a `User` by email (`auth_backend="scim"`, no password) and grants baseline `OrgRole.MEMBER` if the resolved user holds no role in the calling org yet — a SCIM `Users` resource is inherently org-scoped, so "provisioned into this org via SCIM" already implies membership; role elevation beyond that is a separate, existing concern (`sso_group_mappings`/manual grants). `DELETE`/PATCH-`active:false` deactivates rather than hard-deletes (C-U-04/C-U-05), same as every other user-removal path. Group-membership PATCH/PUT operate directly on `OrgGroupMember` rows with `user_id` set — **never** `member_org_group_id` (nested-group) edges, which are structural, admin-managed relationships an IdP's group roster must not be able to rearrange (`test_scim_membership_sync_never_touches_nested_group_edges` pins this).
 
-**Authentication**: a per-organisation bearer token (a new `Organization.scim_bearer_token_hash` column, generated once and shown to the admin exactly once, verified by hash on every SCIM request) — deliberately not a user JWT, since SCIM calls come from the IdP's provisioning engine, not a logged-in browser.
+**Authentication**: a per-organisation bearer token (`Organization.scim_token_hash`/`scim_token_prefix`, hashed the same way as a Personal Access Token — `security.hash_pat`/`generate_scim_token` — a fast SHA-256 lookup hash, appropriate since the secret is already high-entropy random). Managed via `routers/orgs.py`'s `GET`/`POST`/`DELETE /{organization_id}/scim-token` (org-admin only, in `OrgAdminPage.tsx`'s "SCIM provisioning" section) — the raw token is shown exactly once, at generation, and a single active token per org (regenerating immediately invalidates the previous one). Deliberately not a user JWT, since SCIM calls come from the IdP's provisioning engine, not a logged-in browser; `routers.scim.require_scim_org` resolves the calling *organisation* from the token, entirely independent of `deps.get_current_user*`.
 
-**Pointing real IdPs at it**: Keycloak's SCIM support requires the community `keycloak-scim` extension (not built in as of Keycloak 26); Entra ID and Authentik both have first-party SCIM provisioning connectors in their admin UI that just need the base URL (`https://{host}/scim/v2`) and the bearer token above.
+**Pointing real IdPs at it**: Keycloak's SCIM support requires the community `keycloak-scim` extension (not built in as of Keycloak 26, and not exercised by this repo's Playwright suite for that reason — `scim-provisioning.spec.ts` proves the token generate → real authenticated request → revoke loop against this app's own SCIM endpoint directly, not through an external IdP); Entra ID and Authentik both have first-party SCIM provisioning connectors in their admin UI that just need the base URL (`https://{host}/scim/v2`) and the bearer token above.
+
+## IdP group-membership sync (OIDC + SCIM)
+
+Two independent, parallel paths sync IdP group membership into `OrgGroup`/`OrgGroupMember` — distinct from `sso_group_mappings`, which syncs into org *roles*, not groups:
+
+- **OIDC, login-time**: `OrgGroup.idp_synced_group_name` (nullable, unique per org) marks a group as IdP-managed. `services/oidc_provisioning.py::sync_org_groups_from_claims` runs alongside `sync_org_roles_from_claims` on every OIDC login, granting/revoking membership in every `idp_synced_group_name`-tagged group based on whether that exact name appears in the IdP's `groups`/`roles` claim — same vocabulary-scoping (never touches an untagged group) and "no claim at all is unknown, not empty" rule as the existing role sync. Configured per group in `OrgAdminPage.tsx`'s groups section.
+- **SCIM, push-based**: see above — membership changes arrive whenever the IdP's provisioning engine sends them, not tied to any login.
+
+Both paths only ever touch `OrgGroupMember` rows with `user_id` set, never nested-group (`member_org_group_id`) edges — those are structural, admin-managed relationships (see "Groups/permissions overhaul, part 2" in `docs/decisions.md`), not something either sync mechanism should be able to rearrange.
 
 ## Blueprint: separate-port provisioning API (E-P-02)
 

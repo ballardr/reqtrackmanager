@@ -264,6 +264,22 @@ class OrgSsoConfigOut(BaseModel):
     oidc_required_group: str | None = None
 
 
+class ScimTokenStatusOut(BaseModel):
+    """Whether SCIM provisioning is enabled for this org, and (if so) the
+    non-secret prefix of its current token — never the token itself."""
+
+    enabled: bool
+    token_prefix: str | None = None
+
+
+class ScimTokenCreatedOut(BaseModel):
+    """Returned exactly once, immediately after (re)generating a SCIM
+    token — the raw secret is never retrievable again afterward."""
+
+    token: str
+    token_prefix: str
+
+
 class OrgLoginInfoOut(BaseModel):
     """Public, unauthenticated org-branded login page info (E-P-03) — no
     secrets, just enough to render the page and offer an SSO button."""
@@ -327,13 +343,30 @@ class OrgRoleAssign(BaseModel):
 
 class OrgGroupCreate(BaseModel):
     name: str
+    idp_synced_group_name: str | None = None
+
+
+class OrgGroupUpdate(BaseModel):
+    """Currently only the IdP-sync target can be changed after creation —
+    renaming isn't supported (matching this codebase's existing scope for
+    `OrgGroup`/`ProjectGroup`, neither of which have a rename endpoint)."""
+
+    idp_synced_group_name: str | None = None
 
 
 class OrgGroupMemberAdd(BaseModel):
-    user_id: UUID
+    """Exactly one of `user_id` / `member_org_group_id` must be set — mirrors
+    `ProjectGroupMemberAdd`'s user-or-org-group shape one level up; the
+    router checks this explicitly (same convention as
+    `add_project_group_member`), not a pydantic validator."""
+
+    user_id: UUID | None = None
+    member_org_group_id: UUID | None = None
 
 
 class OrgGroupOut(BaseModel):
     id: UUID
     name: str
     member_user_ids: list[UUID]
+    member_org_group_ids: list[UUID] = []
+    idp_synced_group_name: str | None = None

@@ -72,6 +72,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     is_archived: false,
     is_template: false,
     allow_member_change_requests: true,
+    visibility: "only_specified",
     terminology: {},
     ...overrides,
   };

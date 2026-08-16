@@ -25,6 +25,7 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 settings = get_settings()
 
 PAT_PREFIX = "rtm_pat_"
+SCIM_TOKEN_PREFIX = "rtm_scim_"
 
 
 def hash_password(password: str) -> str:
@@ -211,6 +212,21 @@ def hash_pat(raw_token: str) -> str:
         authenticated request's lookup cheap.
     """
     return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+def generate_scim_token() -> tuple[str, str, str]:
+    """Generates a new per-organisation SCIM 2.0 bearer token
+    (`routers/scim.py`). Same shape and hashing rationale as `generate_pat`
+    — an opaque, instantly-revocable random secret, not a JWT — just a
+    different, recognisable prefix so a token pasted into the wrong config
+    field is obviously not a PAT (or vice versa).
+
+    Returns:
+        A 3-tuple of `(raw_token, token_hash, token_prefix)`, same meaning
+        as `generate_pat`'s return value.
+    """
+    raw_token = f"{SCIM_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+    return raw_token, hash_pat(raw_token), raw_token[: len(SCIM_TOKEN_PREFIX) + 6]
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:

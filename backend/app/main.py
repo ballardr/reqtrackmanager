@@ -38,6 +38,7 @@ from app.routers import (
     reports,
     requirements,
     reviews,
+    scim,
     system,
     ws,
 )
@@ -185,6 +186,7 @@ app.include_router(notifications.router)
 app.include_router(reviews.router)
 app.include_router(pats.router)
 app.include_router(system.router)
+app.include_router(scim.router)
 if settings.websocket_enabled:
     # I-A-04: the WebSocket interface is optional — deployments that can't
     # or don't want persistent socket connections can disable it entirely

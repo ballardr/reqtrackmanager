@@ -5,11 +5,9 @@ System management endpoints that are not scoped to any single organisation
 (I-M-06): granting or revoking the server admin role itself on another
 user, the system-wide user access-review directory (C-A-13), platform-wide
 UI branding defaults, and the server-wide public self-signup mode. Most of
-this router is server-admin only; the branding GET is one exception
-(readable by any authenticated user, since it drives shared app-shell
-rendering for everyone), and `GET /signup-config` is a further exception —
-entirely unauthenticated, since the signup form itself needs it before any
-session exists.
+this router is server-admin only; the branding GET and `GET /signup-config`
+are exceptions — both entirely unauthenticated, since the plain `/login`
+page and the signup form itself both need them before any session exists.
 """
 
 from __future__ import annotations
@@ -24,9 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.deps import get_current_user
 from app.models.enums import SignupMode
-from app.models.organization import Organization, UserOrgRole
+from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.user import User
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.email import TestEmailRequest
@@ -39,7 +36,7 @@ from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
-from app.services.rbac import require_server_admin
+from app.services.rbac import get_user_org_group_ids, require_server_admin
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 settings = get_settings()
@@ -66,7 +63,11 @@ class SystemUserOut(BaseModel):
     `settings.access_review_show_org_names` (default on — a server admin
     already has direct database access regardless) rather than silently
     always on; when off, `organization_names` is always `[]` and the UI
-    falls back to `organization_count`."""
+    falls back to `organization_count`. `group_names` (every org group the
+    user effectively belongs to across every org, direct or inherited via
+    nesting — see `services.rbac.get_user_org_group_ids`) is gated by the
+    same setting, for the same reason: naming a specific team/group is at
+    least as revealing of org-internal structure as an org name is."""
 
     user_id: UUID
     email: str
@@ -80,6 +81,7 @@ class SystemUserOut(BaseModel):
     has_org_membership: bool
     organization_count: int
     organization_names: list[str]
+    group_names: list[str]
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -189,6 +191,20 @@ def list_system_users(
         if all_org_ids and settings.access_review_show_org_names
         else {}
     )
+    # Group names are gated by the same setting as org names (see
+    # SystemUserOut's docstring) — skip the per-user group lookups
+    # entirely when the gate is off, same as the org-names branch above.
+    group_names_by_user: dict[UUID, list[str]] = {}
+    if settings.access_review_show_org_names:
+        for user_id, org_ids in org_ids_by_user.items():
+            group_ids: set[UUID] = set()
+            for organization_id in org_ids:
+                direct, inherited = get_user_org_group_ids(db, user_id, organization_id)
+                group_ids |= direct | inherited
+            if group_ids:
+                group_names_by_user[user_id] = sorted(
+                    db.scalars(select(OrgGroup.name).where(OrgGroup.id.in_(group_ids))).all()
+                )
     return [
         SystemUserOut(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
@@ -197,6 +213,7 @@ def list_system_users(
             is_server_admin=u.is_server_admin, has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
+            group_names=group_names_by_user.get(u.id, []),
         )
         for u in users
     ]
@@ -383,11 +400,14 @@ def send_system_test_email(
 
 
 @router.get("/branding", response_model=ServerSettingsOut)
-def get_branding(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Readable by any authenticated user (not server-admin-gated): the app
-    shell needs these defaults to render its own chrome for every user, not
-    just server admins — same reasoning as why org logos are readable by
-    anyone regardless of org membership (see `routers/files.py`)."""
+def get_branding(db: Session = Depends(get_db)):
+    """Public, unauthenticated (no `current_user` dependency at all) —
+    contains no sensitive fields, and is needed by the plain `/login` page
+    to render its background image and header title before any session
+    exists, in addition to the authenticated app shell's own chrome. Same
+    reasoning as `orgs.py::get_org_login_info`, and why org/platform logos
+    and login backgrounds are readable by anyone regardless of
+    authentication (see `routers/files.py`)."""
     return get_server_settings(db)
 
 

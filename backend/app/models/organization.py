@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -178,6 +178,18 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     oidc_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     oidc_client_secret: Mapped[str | None] = mapped_column(EncryptedString(1000), nullable=True)
     oidc_required_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # SCIM 2.0 inbound provisioning (routers/scim.py) — a per-org bearer
+    # token, hashed the same way as a Personal Access Token (security.hash_pat;
+    # a fast SHA-256 lookup hash is appropriate here for the same reason it
+    # is for PATs — the secret itself is already high-entropy random, not a
+    # human password). `scim_token_prefix` is safe to display in plaintext
+    # (mirrors PersonalAccessToken.token_prefix) so an admin can confirm
+    # which token is configured without re-exposing the secret. SCIM is
+    # considered enabled for this org whenever `scim_token_hash` is set.
+    scim_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scim_token_prefix: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     login_background_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("file_assets.id", use_alter=True, name="fk_organizations_login_background_file_id"),
@@ -405,22 +417,67 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
 
     Org groups can be nested inside project groups (C-U-12) so that an
     organisational team (e.g. "Development Team") can be granted a project
-    role in a single step.
+    role in a single step. Org groups can also be nested inside *other* org
+    groups (`OrgGroupMember.member_org_group_id`), transitively — unlike
+    org-group-in-project-group nesting, which deliberately resolves only
+    one level deep (see docs/decisions.md), this nesting is fully
+    transitive: a user in a sub-group counts as a member of every ancestor
+    group too (`services.rbac._ancestor_org_group_ids`/
+    `_descendant_org_group_ids`).
     """
 
     __tablename__ = "org_groups"
+    __table_args__ = (
+        # Partial unique index (only enforced when set) — two groups in the
+        # same org can't both claim to be the sync target for the same IdP
+        # group name. `text()` since the column isn't defined as a usable
+        # Python name yet at this point in the class body.
+        Index(
+            "uq_org_group_idp_synced_group_name", "organization_id", "idp_synced_group_name",
+            unique=True, postgresql_where=text("idp_synced_group_name IS NOT NULL"),
+        ),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
     name: Mapped[str] = mapped_column(String(255))
+    # When set, this group's *user* membership (never its nested-group
+    # edges — those are structural, admin-managed relationships) is fully
+    # IdP-managed: `services.oidc_provisioning.sync_org_groups_from_claims`
+    # grants/revokes membership on every login based on whether this exact
+    # name appears in the IdP's groups/roles claim, scoped strictly to
+    # every `OrgGroup` in the org with this field set (never touches a
+    # group with it unset) — same vocabulary-scoping pattern as
+    # `sync_org_roles_from_claims`'s `sso_managed_roles`. Unique per org
+    # (partial index — see migration 0011), so two groups can't both claim
+    # to be the sync target for the same IdP group name.
+    idp_synced_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class OrgGroupMember(UUIDPKMixin, TimestampMixin, Base):
-    """Membership of a user in an organisation group."""
+    """A member of an organisation group: either a user, or another org
+    group nested inside it (transitively resolved — see `OrgGroup`'s
+    docstring).
+
+    Exactly one of user_id / member_org_group_id must be set. Cycle
+    prevention (a group can't contain itself, directly or transitively) is
+    enforced at write time in `routers.orgs.add_org_group_member`, not by a
+    database constraint.
+    """
 
     __tablename__ = "org_group_members"
-    __table_args__ = (UniqueConstraint("org_group_id", "user_id"),)
+    __table_args__ = (
+        CheckConstraint(
+            "(user_id IS NOT NULL)::int + (member_org_group_id IS NOT NULL)::int = 1",
+            name="ck_org_group_member_exactly_one_target",
+        ),
+        UniqueConstraint("org_group_id", "user_id", name="uq_org_group_member_user"),
+        UniqueConstraint("org_group_id", "member_org_group_id", name="uq_org_group_member_nested_group"),
+    )
 
     org_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"))
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    member_org_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), nullable=True
+    )

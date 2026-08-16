@@ -11,7 +11,7 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
     user_id: "u1", email: "orphan@example.com", display_name: "Orphan User", is_active: true,
     is_banned: false, last_login_at: "2026-02-01T09:00:00Z", is_2fa_enabled: false,
     created_at: "2026-01-01T09:00:00Z", is_server_admin: false, has_org_membership: false,
-    organization_count: 0, organization_names: [],
+    organization_count: 0, organization_names: [], group_names: [],
     ...overrides,
   };
 }
@@ -52,6 +52,18 @@ export const AccessReviewOrphanedAccounts: Story = {
     await expect(canvas.getByText("None")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Grant server admin" })).toBeInTheDocument();
+  },
+};
+
+export const AccessReviewShowsGroups: Story = {
+  beforeEach: () =>
+    mockServerManagementApis([
+      systemUser({ user_id: "u1", email: "grouped@example.com", group_names: ["Engineering", "Platform"] }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("grouped@example.com")).toBeInTheDocument());
+    await expect(canvas.getByText("Engineering, Platform")).toBeInTheDocument();
   },
 };
 
