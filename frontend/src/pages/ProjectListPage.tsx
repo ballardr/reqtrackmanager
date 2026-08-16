@@ -10,6 +10,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -29,6 +30,8 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
 export function ProjectListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const orgLabelPlural = useOrgLabelPlural();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
@@ -229,7 +232,7 @@ export function ProjectListPage() {
         </button>
         {orgs.length > 1 && (
           <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
-            <option value="">{strings.projects.allOrganisations}</option>
+            <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
             {orgs.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
@@ -317,7 +320,7 @@ export function ProjectListPage() {
               <tr>
                 <th />
                 <th>Name</th>
-                {showOrgColumn && <th>{strings.projects.organisation}</th>}
+                {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
                 <th>Stage</th>
                 <th>{strings.projects.roles}</th>
                 <th>{strings.projects.requirementCount}</th>

@@ -29,6 +29,7 @@ import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
+import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useTerm, useTermPlural } from "../context/TerminologyContext";
 import { t } from "../i18n/strings";
 
@@ -86,6 +87,8 @@ export function ChangeRequestsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgResources, setOrgResources] = useState<FileAsset[]>([]);
+  const orgLabel = useOrgLabel();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [showForm, setShowForm] = useState(false);
   const [kind, setKind] = useState<"new_requirement" | "modify_requirement">("modify_requirement");
   const [requirementId, setRequirementId] = useState("");
@@ -440,7 +443,7 @@ export function ChangeRequestsPage() {
           <div className="stack" style={{ gap: "0.25rem" }}>
             {orgResources.length === 0 && (
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                {strings.changeRequests.noAttachmentsAvailable}
+                {strings.changeRequests.noAttachmentsAvailable(orgLabel, orgLabelCap)}
               </p>
             )}
             {orgResources.map((r) => (

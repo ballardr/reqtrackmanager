@@ -25,6 +25,8 @@ class ServerSettingsOut(BaseModel):
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
     email_footer_address: str | None = None
+    org_label_singular: str | None = None
+    org_label_plural: str | None = None
 
 
 class ServerSettingsUpdate(BaseModel):
@@ -33,3 +35,5 @@ class ServerSettingsUpdate(BaseModel):
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
     email_footer_address: str | None = Field(default=None, max_length=2000)
+    org_label_singular: str | None = Field(default=None, max_length=50)
+    org_label_plural: str | None = Field(default=None, max_length=50)

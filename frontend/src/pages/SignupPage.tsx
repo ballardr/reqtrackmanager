@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
 import type { SignupConfig } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
 
@@ -21,6 +22,7 @@ const strings = t();
  */
 export function SignupPage() {
   const { signup } = useAuth();
+  const orgLabelPlural = useOrgLabelPlural();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite") ?? undefined;
@@ -75,7 +77,7 @@ export function SignupPage() {
         {inviteToken ? (
           <p className="text-muted">{strings.signup.invitePrompt}</p>
         ) : (
-          config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint}</p>
+          config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
         )}
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.signup.displayName}

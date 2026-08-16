@@ -16,9 +16,20 @@ export interface Branding {
   logoFileId: string | null;
   headerTitle: string;
   accentColorHex: string;
+  orgLabel: string;
+  orgLabelPlural: string;
 }
 
-const DEFAULT_BRANDING: Branding = { logoFileId: null, headerTitle: strings.appName, accentColorHex: DEFAULT_ACCENT_HEX };
+const DEFAULT_ORG_LABEL = "organisation";
+const DEFAULT_ORG_LABEL_PLURAL = "Organisations";
+
+const DEFAULT_BRANDING: Branding = {
+  logoFileId: null,
+  headerTitle: strings.appName,
+  accentColorHex: DEFAULT_ACCENT_HEX,
+  orgLabel: DEFAULT_ORG_LABEL,
+  orgLabelPlural: DEFAULT_ORG_LABEL_PLURAL,
+};
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRANDING);
 
@@ -27,6 +38,11 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
     logoFileId: org.logo_file_id ?? serverDefault.logoFileId,
     headerTitle: org.header_title || serverDefault.headerTitle,
     accentColorHex: org.accent_color_hex ?? serverDefault.accentColorHex,
+    // Deployment-wide only — no per-org override (see `ServerSettings.
+    // org_label_singular`/`org_label_plural`'s docstring), so this is always
+    // just carried through from the platform default unchanged.
+    orgLabel: serverDefault.orgLabel,
+    orgLabelPlural: serverDefault.orgLabelPlural,
   };
 }
 
@@ -64,6 +80,8 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
         logoFileId: serverSettings.default_logo_file_id,
         headerTitle: serverSettings.default_header_title || strings.appName,
         accentColorHex: serverSettings.accent_color_hex,
+        orgLabel: serverSettings.org_label_singular || DEFAULT_ORG_LABEL,
+        orgLabelPlural: serverSettings.org_label_plural || DEFAULT_ORG_LABEL_PLURAL,
       };
 
       if (projectId) {
@@ -97,4 +115,26 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
  * see `BrandingProvider`'s docstring for the resolution rules. */
 export function useBranding(): Branding {
   return useContext(BrandingContext);
+}
+
+/** The deployment-wide word used in place of "organisation" (lower-case,
+ * singular — for mid-sentence substitution), or the built-in English word if
+ * no override is set. Unlike the rest of `Branding`, always deployment-wide
+ * (see `fromOrg`) — there is no per-organisation override. */
+export function useOrgLabel(): string {
+  return useContext(BrandingContext).orgLabel;
+}
+
+/** Capitalised singular form of `useOrgLabel()`, for phrase-initial use
+ * ("Organisation role", "Manage organisation" -> "Manage Tenant"). */
+export function useOrgLabelCapitalized(): string {
+  const label = useOrgLabel();
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** The deployment-wide word used in place of "Organisations" (capitalised
+ * plural — for standalone headings/nav labels), or the built-in English word
+ * if no override is set. */
+export function useOrgLabelPlural(): string {
+  return useContext(BrandingContext).orgLabelPlural;
 }

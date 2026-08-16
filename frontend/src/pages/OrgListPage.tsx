@@ -4,6 +4,7 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -16,6 +17,7 @@ const strings = t();
  */
 export function OrgListPage() {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
+  const orgLabelPlural = useOrgLabelPlural();
 
   useEffect(() => {
     api.get<Organization[]>("/api/v1/orgs").then(setOrgs);
@@ -36,7 +38,7 @@ export function OrgListPage() {
             {o.name}
           </Link>
         ))}
-        {orgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations}</p>}
+        {orgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations(orgLabelPlural)}</p>}
       </div>
     </div>
   );

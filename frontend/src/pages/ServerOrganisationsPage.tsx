@@ -6,6 +6,7 @@ import { ApiError, api } from "../api/client";
 import type { Organization, OrgImportResult } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { Spinner } from "../components/Spinner";
+import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -27,6 +28,9 @@ const strings = t();
 type StatusFilter = "active" | "disabled" | "all";
 
 export function ServerOrganisationsPage() {
+  const orgLabel = useOrgLabel();
+  const orgLabelCap = useOrgLabelCapitalized();
+  const orgLabelPlural = useOrgLabelPlural();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [search, setSearch] = useState("");
   // Defaults to "active" (C-A-13-adjacent hygiene): a deployment that's
@@ -126,9 +130,9 @@ export function ServerOrganisationsPage() {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations}</h1>
+        <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
-          <Plus size={16} /> New organisation
+          <Plus size={16} /> New {orgLabel}
         </button>
       </div>
 
@@ -136,7 +140,7 @@ export function ServerOrganisationsPage() {
         <input
           className="input"
           style={{ maxWidth: 280 }}
-          placeholder={strings.serverOrgs.search}
+          placeholder={strings.serverOrgs.search(orgLabelPlural)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -155,12 +159,12 @@ export function ServerOrganisationsPage() {
         <div className="card stack">
           <input
             className="input"
-            placeholder={importFile ? "Organisation name (optional — defaults to the bundle's own name)" : "Organisation name"}
+            placeholder={importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
           <label className="stack" style={{ gap: "0.25rem" }}>
-            Or import from an exported organisation bundle (.zip)
+            Or import from an exported {orgLabel} bundle (.zip)
             <input
               className="input" type="file" accept=".zip,application/zip"
               onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
@@ -239,8 +243,8 @@ export function ServerOrganisationsPage() {
             ))}
           </tbody>
         </table>
-        {orgs.length === 0 && <p className="text-muted">No organisations yet.</p>}
-        {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty}</p>}
+        {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
+        {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
       </div>
 
       {deletingOrgId &&
@@ -249,8 +253,8 @@ export function ServerOrganisationsPage() {
           if (!org) return null;
           return (
             <div className="card stack" style={{ borderColor: "var(--color-danger)" }}>
-              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.deleteTitle}</h2>
-              <p className="text-muted">{strings.serverOrgs.deleteHint.replace("{name}", org.name)}</p>
+              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.deleteTitle(orgLabel)}</h2>
+              <p className="text-muted">{strings.serverOrgs.deleteHint(org.name, orgLabel)}</p>
               <input
                 className="input"
                 placeholder={org.name}

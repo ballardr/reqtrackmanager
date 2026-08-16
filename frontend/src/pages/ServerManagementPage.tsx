@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -15,6 +16,8 @@ function AccessReviewTab() {
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [patResult, setPatResult] = useState<string | null>(null);
+  const orgLabel = useOrgLabel();
+  const orgLabelPlural = useOrgLabelPlural();
 
   async function reload() {
     const params = new URLSearchParams();
@@ -50,7 +53,7 @@ function AccessReviewTab() {
   }
 
   function ban(userId: string) {
-    if (!window.confirm(strings.system.banConfirm)) return;
+    if (!window.confirm(strings.system.banConfirm(orgLabel))) return;
     runAction(() => api.post(`/api/v1/system/users/${userId}/ban`));
   }
 
@@ -59,7 +62,7 @@ function AccessReviewTab() {
   }
 
   function grantServerAdmin(userId: string) {
-    if (!window.confirm(strings.system.grantServerAdminConfirm)) return;
+    if (!window.confirm(strings.system.grantServerAdminConfirm(orgLabelPlural))) return;
     runAction(() => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: true }));
   }
 
@@ -78,7 +81,7 @@ function AccessReviewTab() {
     <div className="stack">
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint}</p>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
         <div className="row" style={{ gap: "1rem", alignItems: "center" }}>
           <label className="row" style={{ gap: "0.4rem" }}>
@@ -110,7 +113,7 @@ function AccessReviewTab() {
                 <tr>
                   <th>{strings.system.email}</th>
                   <th>{strings.system.name}</th>
-                  <th>{strings.system.organizations}</th>
+                  <th>{strings.system.organizations(orgLabelPlural)}</th>
                   <th>{strings.system.lastLogin}</th>
                   <th>{strings.system.created}</th>
                   <th></th>
@@ -125,7 +128,7 @@ function AccessReviewTab() {
                       {u.organization_names.length > 0
                         ? u.organization_names.join(", ")
                         : u.organization_count > 0
-                          ? strings.system.organizationCount.replace("{n}", String(u.organization_count))
+                          ? strings.system.organizationCount(u.organization_count, orgLabel)
                           : strings.system.noOrganizations}
                     </td>
                     <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never}</td>
@@ -176,7 +179,7 @@ function AccessReviewTab() {
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.patRevokeAll}</h2>
-        <p className="text-muted">{strings.system.patRevokeAllHint}</p>
+        <p className="text-muted">{strings.system.patRevokeAllHint(orgLabelPlural)}</p>
         <button className="btn btn-danger" onClick={revokeAllPatsPlatformWide} style={{ alignSelf: "flex-start" }}>
           {strings.system.patRevokeAll}
         </button>
@@ -187,9 +190,12 @@ function AccessReviewTab() {
 }
 
 function PlatformBrandingTab() {
+  const currentOrgLabel = useOrgLabel();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
   const [accentColor, setAccentColor] = useState("#475569");
   const [headerTitle, setHeaderTitle] = useState("");
+  const [orgLabelSingular, setOrgLabelSingular] = useState("");
+  const [orgLabelPlural, setOrgLabelPlural] = useState("");
   const [emailFooterCompanyName, setEmailFooterCompanyName] = useState("");
   const [emailFooterWebsite, setEmailFooterWebsite] = useState("");
   const [emailFooterAddress, setEmailFooterAddress] = useState("");
@@ -202,6 +208,8 @@ function PlatformBrandingTab() {
     setSettings(s);
     setAccentColor(s.accent_color_hex);
     setHeaderTitle(s.default_header_title ?? "");
+    setOrgLabelSingular(s.org_label_singular ?? "");
+    setOrgLabelPlural(s.org_label_plural ?? "");
     setEmailFooterCompanyName(s.email_footer_company_name ?? "");
     setEmailFooterWebsite(s.email_footer_website ?? "");
     setEmailFooterAddress(s.email_footer_address ?? "");
@@ -218,6 +226,8 @@ function PlatformBrandingTab() {
       await api.put("/api/v1/system/branding", {
         accent_color_hex: accentColor,
         default_header_title: headerTitle || null,
+        org_label_singular: orgLabelSingular || null,
+        org_label_plural: orgLabelPlural || null,
         email_footer_company_name: emailFooterCompanyName || null,
         email_footer_website: emailFooterWebsite || null,
         email_footer_address: emailFooterAddress || null,
@@ -271,7 +281,7 @@ function PlatformBrandingTab() {
 
   return (
     <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint}</p>
+      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.logo}
         <input
@@ -295,6 +305,22 @@ function PlatformBrandingTab() {
           value={headerTitle} onChange={(e) => setHeaderTitle(e.target.value)}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.headerTitleHint}</span>
+      </label>
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        {strings.serverSettings.orgLabelSingular}
+        <input
+          className="input" placeholder="organisation"
+          value={orgLabelSingular} onChange={(e) => setOrgLabelSingular(e.target.value)}
+        />
+        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelSingularHint}</span>
+      </label>
+      <label className="stack" style={{ gap: "0.25rem" }}>
+        {strings.serverSettings.orgLabelPlural}
+        <input
+          className="input" placeholder="Organisations"
+          value={orgLabelPlural} onChange={(e) => setOrgLabelPlural(e.target.value)}
+        />
+        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelPluralHint}</span>
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.accentColor}
@@ -322,7 +348,7 @@ function PlatformBrandingTab() {
       )}
       <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint}</p>
+      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.emailFooterCompanyName}
         <input
@@ -394,6 +420,8 @@ function TestEmailTab() {
 }
 
 function SignupModeTab() {
+  const orgLabel = useOrgLabel();
+  const orgLabelPlural = useOrgLabelPlural();
   const [config, setConfig] = useState<SignupConfig | null>(null);
   const [mode, setMode] = useState<SignupMode>("disabled");
   const [saved, setSaved] = useState(false);
@@ -430,12 +458,12 @@ function SignupModeTab() {
         {strings.signupSettings.mode}
         <select className="input" value={mode} onChange={(e) => setMode(e.target.value as SignupMode)}>
           <option value="disabled">{strings.signupSettings.modeDisabled}</option>
-          <option value="always_on">{strings.signupSettings.modeAlwaysOn}</option>
-          <option value="org_specified">{strings.signupSettings.modeOrgSpecified}</option>
+          <option value="always_on">{strings.signupSettings.modeAlwaysOn(orgLabel)}</option>
+          <option value="org_specified">{strings.signupSettings.modeOrgSpecified(orgLabel)}</option>
         </select>
       </label>
       {mode === "org_specified" && (
-        <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint}</p>
+        <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint(orgLabelPlural)}</p>
       )}
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
       <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>

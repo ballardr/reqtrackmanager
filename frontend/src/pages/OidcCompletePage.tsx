@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { setAuthToken } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { OIDC_CLIENT_NONCE_STORAGE_KEY } from "./OrgLoginPage";
 
@@ -30,6 +31,7 @@ export function OidcCompletePage() {
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const orgLabel = useOrgLabel();
 
   useEffect(() => {
     // Not react-router's useSearchParams: the payload is in the fragment
@@ -52,7 +54,7 @@ export function OidcCompletePage() {
         setError(strings.login.error);
         return;
       }
-      setError(deniedMessage || strings.login.notProvisioned);
+      setError(deniedMessage || strings.login.notProvisioned(orgLabel));
       return;
     }
 

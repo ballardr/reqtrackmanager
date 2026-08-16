@@ -4,11 +4,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import type {
   ExternalUserPolicy,
   FileAsset,
+  MergeConflict,
   OrgAdvancedSettings,
   OrgGroup,
+  OrgMergePreviewResult,
+  OrgMergeResult,
   OrgPersonalAccessToken,
   OrgProjectSummary,
   OrgReportDefaults,
@@ -24,6 +28,7 @@ import type {
 } from "../api/types";
 import { ORG_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
@@ -31,6 +36,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
+import { defaultResolutions } from "../utils/mergeConflicts";
 
 const strings = t();
 
@@ -43,6 +49,9 @@ export function OrgAdminPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const orgLabel = useOrgLabel();
+  const orgLabelCap = useOrgLabelCapitalized();
+  const orgLabelPlural = useOrgLabelPlural();
   const [org, setOrg] = useState<Organization | null>(null);
   const [orgNameEdit, setOrgNameEdit] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -334,13 +343,13 @@ export function OrgAdminPage() {
   }
 
   async function descopeOrgPat(patId: string) {
-    if (!orgId || !window.confirm(strings.orgAdmin.patDescopeConfirm)) return;
+    if (!orgId || !window.confirm(strings.orgAdmin.patDescopeConfirm(orgLabel, orgLabelPlural))) return;
     await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function revokeAllOrgPats() {
-    if (!orgId || !window.confirm(strings.orgAdmin.patRevokeAllConfirm)) return;
+    if (!orgId || !window.confirm(strings.orgAdmin.patRevokeAllConfirm(orgLabel, orgLabelPlural))) return;
     const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
     setOrgPats([]);
     setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
@@ -643,6 +652,57 @@ export function OrgAdminPage() {
     }
   }
 
+  const [importMergeFile, setImportMergeFile] = useState<File | null>(null);
+  const [importMergeConflicts, setImportMergeConflicts] = useState<MergeConflict[] | null>(null);
+  const [importMergeResolutions, setImportMergeResolutions] = useState<Record<string, string>>({});
+  const [importMergePreviewing, setImportMergePreviewing] = useState(false);
+  const [importMergeSubmitting, setImportMergeSubmitting] = useState(false);
+  const [importMergeError, setImportMergeError] = useState<string | null>(null);
+  const [importMergeResult, setImportMergeResult] = useState<OrgMergeResult | null>(null);
+
+  async function previewImportMerge() {
+    if (!orgId || !importMergeFile) return;
+    setImportMergeError(null);
+    setImportMergeResult(null);
+    setImportMergePreviewing(true);
+    try {
+      const result = await api.postFile<OrgMergePreviewResult>(`/api/v1/orgs/${orgId}/import/preview`, importMergeFile);
+      setImportMergeConflicts(result.conflicts);
+      setImportMergeResolutions(defaultResolutions(result.conflicts));
+    } catch (err) {
+      setImportMergeError(err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setImportMergePreviewing(false);
+    }
+  }
+
+  async function confirmImportMerge() {
+    if (!orgId || !importMergeFile) return;
+    setImportMergeError(null);
+    setImportMergeSubmitting(true);
+    try {
+      const result = await api.postFile<OrgMergeResult>(`/api/v1/orgs/${orgId}/import/merge`, importMergeFile, {
+        resolutions: JSON.stringify(importMergeResolutions),
+      });
+      setImportMergeResult(result);
+      setImportMergeFile(null);
+      setImportMergeConflicts(null);
+      setImportMergeResolutions({});
+      reload();
+    } catch (err) {
+      setImportMergeError(err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setImportMergeSubmitting(false);
+    }
+  }
+
+  function cancelImportMerge() {
+    setImportMergeFile(null);
+    setImportMergeConflicts(null);
+    setImportMergeResolutions({});
+    setImportMergeError(null);
+  }
+
   const orgIsDisabled = loadError?.toLowerCase().includes("disabled") ?? false;
 
   if (loadError && orgIsDisabled && user?.is_server_admin) {
@@ -653,7 +713,7 @@ export function OrgAdminPage() {
     // pre-existing role.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations}</h1>
+        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.disabled}</h2>
           <p className="text-muted">{loadError}</p>
@@ -663,7 +723,7 @@ export function OrgAdminPage() {
           </button>
         </div>
         <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
-          {strings.orgAdmin.backToOrganizations}
+          {strings.orgAdmin.backToOrganizations(orgLabelPlural)}
         </Link>
       </div>
     );
@@ -677,7 +737,7 @@ export function OrgAdminPage() {
       <div className="card stack">
         <p>{loadError}</p>
         <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
-          {strings.orgAdmin.backToOrganizations}
+          {strings.orgAdmin.backToOrganizations(orgLabelPlural)}
         </Link>
       </div>
     );
@@ -693,13 +753,13 @@ export function OrgAdminPage() {
     // from this page at all.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations}</h1>
+        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
         <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle}</h2>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle(orgLabel)}</h2>
           <p className="text-muted">{strings.orgAdmin.notAMemberHint}</p>
           {joinError && <div style={{ color: "var(--color-danger)" }}>{joinError}</div>}
           <button className="btn btn-primary" onClick={joinAsAdmin} disabled={joining} style={{ alignSelf: "flex-start" }}>
-            {strings.orgAdmin.joinAsAdmin}
+            {strings.orgAdmin.joinAsAdmin(orgLabel)}
           </button>
         </div>
         <div className="card stack">
@@ -714,7 +774,7 @@ export function OrgAdminPage() {
             onChange={(e) => setBootstrapPassword(e.target.value)}
           />
           {bootstrapError && <div style={{ color: "var(--color-danger)" }}>{bootstrapError}</div>}
-          {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated}</div>}
+          {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated(orgLabel)}</div>}
           <button
             className="btn btn-primary"
             onClick={createInitialAdmin}
@@ -725,7 +785,7 @@ export function OrgAdminPage() {
           </button>
         </div>
         <Link to="/orgs" className="btn" style={{ alignSelf: "flex-start" }}>
-          {strings.orgAdmin.backToOrganizations}
+          {strings.orgAdmin.backToOrganizations(orgLabelPlural)}
         </Link>
       </div>
     );
@@ -753,7 +813,7 @@ export function OrgAdminPage() {
                 value={orgNameEdit}
                 onChange={(e) => setOrgNameEdit(e.target.value)}
                 aria-label={strings.orgAdmin.rename}
-                title={strings.orgAdmin.renameHint}
+                title={strings.orgAdmin.renameHint(orgLabel)}
               />
               {orgNameEdit.trim() && orgNameEdit !== org.name && (
                 <button className="btn" onClick={renameOrg} title={strings.orgAdmin.rename}>
@@ -769,19 +829,83 @@ export function OrgAdminPage() {
           )}
           <button
             className="btn" onClick={exportOrg} disabled={exportingOrg}
-            title="Downloads a self-contained .zip with this organisation's settings, members, report templates, and every project's full structure/history — re-importable as a new organisation from the server organisations page."
+            title={`Downloads a self-contained .zip with this ${orgLabel}'s settings, members, report templates, and every project's full structure/history — re-importable as a new ${orgLabel} from the server ${orgLabelPlural.toLowerCase()} page.`}
           >
-            <Download size={14} /> {exportingOrg ? "Exporting…" : "Export organisation bundle"}
+            <Download size={14} /> {exportingOrg ? "Exporting…" : `Export ${orgLabel} bundle`}
           </button>
-          <button className="btn btn-danger" onClick={leaveOrg} title="Remove your own membership in this organisation">
-            <LogOut size={14} /> Leave organisation
+          <button className="btn btn-danger" onClick={leaveOrg} title={`Remove your own membership in this ${orgLabel}`}>
+            <LogOut size={14} /> Leave {orgLabel}
           </button>
         </div>
       </div>
       {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
       {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
 
-      <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users} defaultCollapsed>
+      <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
+        {!importMergeConflicts && !importMergeResult && (
+          <div className="stack">
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.importMerge.chooseFile}
+              <input
+                type="file" accept=".zip,application/zip"
+                onChange={(e) => setImportMergeFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              className="btn btn-primary" onClick={previewImportMerge}
+              disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
+            >
+              <Upload size={14} /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
+            </button>
+          </div>
+        )}
+        {importMergeConflicts && !importMergeResult && (
+          <div className="stack">
+            {importMergeConflicts.length === 0 ? (
+              <p>{strings.importMerge.noConflicts}</p>
+            ) : (
+              <ImportConflictPanel
+                conflicts={importMergeConflicts}
+                resolutions={importMergeResolutions}
+                onResolutionChange={(id, value) => setImportMergeResolutions((r) => ({ ...r, [id]: value }))}
+              />
+            )}
+            <div className="row">
+              <button
+                className="btn btn-primary" onClick={confirmImportMerge} disabled={importMergeSubmitting}
+              >
+                {importMergeSubmitting ? strings.importMerge.importing : strings.importMerge.confirmImport}
+              </button>
+              <button className="btn" onClick={cancelImportMerge} disabled={importMergeSubmitting}>
+                {strings.importMerge.cancel}
+              </button>
+            </div>
+          </div>
+        )}
+        {importMergeResult && (
+          <div className="card stack">
+            <strong>{strings.importMerge.resultTitle}</strong>
+            <ul style={{ margin: 0 }}>
+              <li>{strings.importMerge.projectsImported(importMergeResult.projects_imported)}</li>
+              <li>{strings.importMerge.projectsSkipped(importMergeResult.projects_skipped)}</li>
+              <li>{strings.importMerge.reportTemplatesImported(importMergeResult.report_templates_imported)}</li>
+              <li>{strings.importMerge.reportTemplatesOverwritten(importMergeResult.report_templates_overwritten)}</li>
+            </ul>
+            {importMergeResult.warnings.length > 0 && (
+              <ul style={{ margin: 0, color: "var(--color-warning, #b58900)" }}>
+                {importMergeResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            )}
+            <button className="btn" onClick={() => setImportMergeResult(null)} style={{ alignSelf: "flex-start" }}>
+              {strings.common.close}
+            </button>
+          </div>
+        )}
+        {importMergeError && <div style={{ color: "var(--color-danger)" }}>{importMergeError}</div>}
+      </CollapsibleSection>
+
+      <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)} defaultCollapsed>
         <div className="row">
           <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
             {strings.orgAdmin.filterStale}
@@ -809,10 +933,10 @@ export function OrgAdminPage() {
         {outsideDomainError && <div style={{ color: "var(--color-danger)" }}>{outsideDomainError}</div>}
         {outsideDomainUsers !== null && (
           <div className="card stack">
-            <strong>{strings.orgAdmin.outsideDomainUsers}</strong>
-            <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint}</p>
+            <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
+            <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint(orgLabel)}</p>
             {outsideDomainUsers.length === 0 ? (
-              <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers}</p>
+              <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>
             ) : (
               <table>
                 <thead>
@@ -886,7 +1010,7 @@ export function OrgAdminPage() {
 
       {orgProjects && (
         <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects} defaultCollapsed>
-          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint}</p>
+          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint(orgLabel)}</p>
           {orgProjects.map((p) => (
             <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
@@ -940,7 +1064,7 @@ export function OrgAdminPage() {
 
       <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding} defaultCollapsed>
         <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.logo}
+          {strings.orgAdmin.logo(orgLabel)}
           <input
             ref={logoInputRef}
             type="file"
@@ -963,7 +1087,7 @@ export function OrgAdminPage() {
         </label>
         <label className="row">
           <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
-          {strings.orgAdmin.useOwnAccentColor}
+          {strings.orgAdmin.useOwnAccentColor(orgLabel)}
         </label>
         {useOwnAccentColor && (
           <input
@@ -973,7 +1097,7 @@ export function OrgAdminPage() {
         )}
         <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
         <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint}</p>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.orgAdmin.emailFooterCompanyName}
           <input
@@ -1004,7 +1128,7 @@ export function OrgAdminPage() {
       {orgReportDefaultsAvailable && (
       <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults" defaultCollapsed>
         <p className="text-muted" style={{ margin: 0 }}>
-          Used as the default intro, body chapters, and appendices for any project in this organisation that
+          Used as the default intro, body chapters, and appendices for any project in this {orgLabel} that
           hasn't set its own — see each project's Report Setup tab.
         </p>
         <div className="stack" style={{ gap: "0.25rem" }}>
@@ -1070,7 +1194,7 @@ export function OrgAdminPage() {
                 type="checkbox" checked={newTemplateIncludeLogo}
                 onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
               />
-              {strings.admin.includeLogo}
+              {strings.admin.includeLogo(orgLabel)}
             </label>
           </div>
           <input
@@ -1089,7 +1213,7 @@ export function OrgAdminPage() {
             label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
             organizationId={orgId}
           />
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint}</span>
+          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
           <label className="row" style={{ gap: "0.4rem" }}>
             <input
               type="checkbox" checked={newTemplateChaptersPerComponent}
@@ -1116,7 +1240,7 @@ export function OrgAdminPage() {
             {strings.orgAdmin.slug}
             <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              {strings.orgAdmin.slugHint.replace("{slug}", slugInput || "…")}
+              {strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
             </span>
           </label>
           <label className="row">
@@ -1190,7 +1314,7 @@ export function OrgAdminPage() {
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups} defaultCollapsed>
+      <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)} defaultCollapsed>
         {groups.map((g) => {
           const memberIds = new Set(g.member_user_ids);
           const members = users.filter((u) => memberIds.has(u.user_id));
@@ -1247,7 +1371,7 @@ export function OrgAdminPage() {
           onChange={(e) => e.target.files?.[0] && uploadResource(e.target.files[0])}
         />
         <span className="text-muted row">
-          <Upload size={14} /> {strings.orgAdmin.resourcesHint}
+          <Upload size={14} /> {strings.orgAdmin.resourcesHint(orgLabel)}
         </span>
       </CollapsibleSection>
 
@@ -1290,7 +1414,7 @@ export function OrgAdminPage() {
 
           <div className="stack" style={{ gap: "0.4rem" }}>
             <strong>{strings.orgAdmin.testEmail}</strong>
-            <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint}</span>
+            <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
             <div className="row">
               <input
                 className="input"
@@ -1319,14 +1443,14 @@ export function OrgAdminPage() {
               value={patMaxLifetimeDays}
               onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
             />
-            <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint}</span>
+            <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
           </label>
 
           <label className="row" style={{ gap: "0.6rem" }}>
             <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
             <span className="stack" style={{ gap: 0 }}>
               {strings.orgAdmin.require2fa}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint}</span>
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
             </span>
           </label>
 
@@ -1334,12 +1458,12 @@ export function OrgAdminPage() {
             <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
             <span className="stack" style={{ gap: 0 }}>
               {strings.orgAdmin.allowSelfSignup}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint}</span>
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
             </span>
           </label>
 
           {selfSignupConflict && (
-            <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict}</div>
+            <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
           )}
 
           <label className="stack" style={{ gap: "0.25rem" }}>
@@ -1360,7 +1484,7 @@ export function OrgAdminPage() {
               value={externalUserPolicy}
               onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
             >
-              <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled}</option>
+              <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
               <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
               <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
             </select>
@@ -1411,7 +1535,7 @@ export function OrgAdminPage() {
       {advanced && (
         <CollapsibleSection sectionKey="orgAdmin.pats" title={strings.orgAdmin.pats} defaultCollapsed>
           {orgPats.length === 0 ? (
-            <p className="text-muted">{strings.orgAdmin.patNone}</p>
+            <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
           ) : (
             <table>
               <thead>
@@ -1432,7 +1556,7 @@ export function OrgAdminPage() {
                     <td>
                       {p.name}
                       {p.other_org_count > 0 && (
-                        <div className="text-muted">{strings.orgAdmin.patOtherOrgs.replace("{n}", String(p.other_org_count))}</div>
+                        <div className="text-muted">{strings.orgAdmin.patOtherOrgs(p.other_org_count, orgLabelPlural)}</div>
                       )}
                     </td>
                     <td>{new Date(p.expires_at).toLocaleDateString()}</td>
@@ -1462,7 +1586,7 @@ export function OrgAdminPage() {
 
           {orgPats.length > 0 && (
             <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
-              {strings.orgAdmin.patRevokeAll}
+              {strings.orgAdmin.patRevokeAll(orgLabel)}
             </button>
           )}
           {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
