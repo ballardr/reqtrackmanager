@@ -58,7 +58,17 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // project-*specific* endpoints enforce a single org's requirement.
       gamma1Id = (await projectsResp.json()).find((p: { name: string }) => p.name === PROJECT_NAMES.gamma1).id;
 
-      await page.getByText(PROJECT_NAMES.gamma1).click();
+      // Wait for the project-detail fetch this click triggers (which
+      // resolves 403, driving the "2FA required" UI) before asserting on
+      // its result — a bare click() plus an immediate expect() relies
+      // purely on the assertion's own timeout to outlast the navigation +
+      // network round trip, the same race already found and fixed twice
+      // elsewhere in this pass (project-history.spec.ts,
+      // requirements-and-cr-filters.spec.ts).
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes(`/api/v1/projects/${gamma1Id}`) && r.request().method() === "GET"),
+        page.getByText(PROJECT_NAMES.gamma1).click(),
+      ]);
       await expect(page.getByText(/2FA|two-factor/i).first()).toBeVisible();
     });
 

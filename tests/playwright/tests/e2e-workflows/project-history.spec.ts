@@ -37,7 +37,15 @@ test.describe("project history / changes-over-time view", () => {
 
     await test.step("filtering to a future date range shows no changes", async () => {
       const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-      await page.getByLabel("Since").fill(future.toISOString().slice(0, 16));
+      // Wait for the debounced /changes fetch this filter change triggers
+      // before asserting on its result — a bare fill() plus an immediate
+      // expect() relies purely on the assertion's own timeout to outlast
+      // the debounce+network round trip, which the very next line below
+      // already avoids doing for the matching "clear the filter" fetch.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/changes")),
+        page.getByLabel("Since").fill(future.toISOString().slice(0, 16)),
+      ]);
       await expect(page.getByText("No changes in this range.")).toBeVisible();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/changes")),
