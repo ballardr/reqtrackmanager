@@ -1,4 +1,4 @@
-import { Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -8,6 +8,7 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import type {
   ExternalUserPolicy,
   FileAsset,
+  LinkTypeDefinition,
   MergeConflict,
   OrgAdvancedSettings,
   OrgGroup,
@@ -23,6 +24,7 @@ import type {
   OutsideDomainUser,
   ProjectGroup,
   ProjectListItem,
+  ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
   ScimTokenCreated,
@@ -44,8 +46,19 @@ const strings = t();
 
 /**
  * Organisation administration: users (C-U-01), groups (C-U-08), shared
- * resource files (C-M-03), the organisation logo (U-C-02), and the default
- * template project used for new projects (C-E-04).
+ * resource files (C-M-03), the organisation logo (U-C-02), the default
+ * template project used for new projects (C-E-04), the org's definable
+ * project statuses (Project Statuses section — the status list every
+ * project in this org picks from), and the org's definable, bidirectional
+ * requirement link types (Link Types section — each type stores both a
+ * forward and reverse display name, since a link renders differently
+ * depending on which requirement it's viewed from; see
+ * `docs/decisions.md`). Both of the latter two share the same
+ * rename/reorder/delete-with-reassignment contract as custom fields, with
+ * one addition: deleting a status/link type currently in use 409s with a
+ * server-supplied count, at which point a reassignment picker (rather than
+ * a plain confirm) lets the admin move existing references to another
+ * status/type before the delete retries.
  */
 export function OrgAdminPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -73,6 +86,25 @@ export function OrgAdminPage() {
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
+
+  // --- Project statuses (C-G-XX) ---------------------------------------
+  const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
+  const [newStatusName, setNewStatusName] = useState("");
+  const [statusNameEdits, setStatusNameEdits] = useState<Record<string, string>>({});
+  const [deletingStatusId, setDeletingStatusId] = useState<string | null>(null);
+  const [statusInUseMessage, setStatusInUseMessage] = useState<string | null>(null);
+  const [reassignStatusTo, setReassignStatusTo] = useState("");
+  const [projectStatusError, setProjectStatusError] = useState<string | null>(null);
+
+  // --- Requirement link types (C-G-09) ---------------------------------
+  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
+  const [newLinkTypeForward, setNewLinkTypeForward] = useState("");
+  const [newLinkTypeReverse, setNewLinkTypeReverse] = useState("");
+  const [linkTypeEdits, setLinkTypeEdits] = useState<Record<string, { forward: string; reverse: string }>>({});
+  const [deletingLinkTypeId, setDeletingLinkTypeId] = useState<string | null>(null);
+  const [linkTypeInUseMessage, setLinkTypeInUseMessage] = useState<string | null>(null);
+  const [reassignLinkTypeTo, setReassignLinkTypeTo] = useState("");
+  const [linkTypeError, setLinkTypeError] = useState<string | null>(null);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
@@ -179,13 +211,16 @@ export function OrgAdminPage() {
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
     let o: Organization, g: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
+    let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
     try {
-      [o, g, r, projects, templates] = await Promise.all([
+      [o, g, r, projects, templates, statuses, linkTypeList] = await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
         api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
         api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
+        api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
+        api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${orgId}/link-types`),
       ]);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : strings.common.error);
@@ -214,6 +249,8 @@ export function OrgAdminPage() {
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
     setReportTemplates(templates);
+    setProjectStatuses(statuses);
+    setLinkTypes(linkTypeList);
     await loadUsers(userFilter);
 
     try {
@@ -405,6 +442,125 @@ export function OrgAdminPage() {
     if (!expandedProjectId) return;
     await api.delete(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members/${userId}`);
     setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  }
+
+  async function addProjectStatus() {
+    if (!newStatusName.trim() || !orgId) return;
+    await api.post(`/api/v1/orgs/${orgId}/project-statuses`, { name: newStatusName });
+    setNewStatusName("");
+    reload();
+  }
+
+  async function moveProjectStatus(id: string, direction: "up" | "down") {
+    await api.post(`/api/v1/orgs/${orgId}/project-statuses/${id}/move`, { direction });
+    reload();
+  }
+
+  async function renameProjectStatus(id: string, name: string) {
+    setProjectStatusError(null);
+    try {
+      await api.patch(`/api/v1/orgs/${orgId}/project-statuses/${id}`, { name });
+      setStatusNameEdits((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  /** Attempts a plain delete first (no `reassign_to_id`) per §4.0's server
+   * contract: a 204 means done; a 409 means the status is in use, at which
+   * point the reassignment picker opens showing the server's own count
+   * message rather than a generic one. */
+  async function attemptDeleteProjectStatus(id: string) {
+    setProjectStatusError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}`);
+      reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setDeletingStatusId(id);
+        setStatusInUseMessage(err.message);
+      } else {
+        setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
+      }
+    }
+  }
+
+  async function confirmDeleteProjectStatus(id: string) {
+    if (!reassignStatusTo) return;
+    setProjectStatusError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}?reassign_to_id=${reassignStatusTo}`);
+      setDeletingStatusId(null);
+      setStatusInUseMessage(null);
+      setReassignStatusTo("");
+      reload();
+    } catch (err) {
+      setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function addLinkType() {
+    if (!newLinkTypeForward.trim() || !newLinkTypeReverse.trim() || !orgId) return;
+    await api.post(`/api/v1/orgs/${orgId}/link-types`, {
+      forward_name: newLinkTypeForward, reverse_name: newLinkTypeReverse,
+    });
+    setNewLinkTypeForward("");
+    setNewLinkTypeReverse("");
+    reload();
+  }
+
+  async function moveLinkType(id: string, direction: "up" | "down") {
+    await api.post(`/api/v1/orgs/${orgId}/link-types/${id}/move`, { direction });
+    reload();
+  }
+
+  async function renameLinkType(id: string, forwardName: string, reverseName: string) {
+    setLinkTypeError(null);
+    try {
+      await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forwardName, reverse_name: reverseName });
+      setLinkTypeEdits((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function attemptDeleteLinkType(id: string) {
+    setLinkTypeError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}`);
+      reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setDeletingLinkTypeId(id);
+        setLinkTypeInUseMessage(err.message);
+      } else {
+        setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
+      }
+    }
+  }
+
+  async function confirmDeleteLinkType(id: string) {
+    if (!reassignLinkTypeTo) return;
+    setLinkTypeError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}?reassign_to_id=${reassignLinkTypeTo}`);
+      setDeletingLinkTypeId(null);
+      setLinkTypeInUseMessage(null);
+      setReassignLinkTypeTo("");
+      reload();
+    } catch (err) {
+      setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
+    }
   }
 
   useEffect(() => {
@@ -1132,6 +1288,156 @@ export function OrgAdminPage() {
           ))}
         </CollapsibleSection>
       )}
+
+      <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses} defaultCollapsed>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>
+        {projectStatusError && <div style={{ color: "var(--color-danger)" }}>{projectStatusError}</div>}
+        {projectStatuses.map((s, idx) => {
+          const nameEdit = statusNameEdits[s.id] ?? s.name;
+          const otherStatuses = projectStatuses.filter((other) => other.id !== s.id);
+          return (
+            <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row">
+                  <input
+                    className="input" style={{ maxWidth: 220 }} value={nameEdit}
+                    onChange={(e) => setStatusNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
+                  />
+                  {nameEdit !== s.name && nameEdit.trim() && (
+                    <button className="btn" title={strings.admin.rename} onClick={() => renameProjectStatus(s.id, nameEdit)}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="row">
+                  <button className="btn" disabled={idx === 0} onClick={() => moveProjectStatus(s.id, "up")}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button className="btn" disabled={idx === projectStatuses.length - 1} onClick={() => moveProjectStatus(s.id, "down")}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={otherStatuses.length === 0}
+                    title={otherStatuses.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteProjectStatus}
+                    onClick={() => attemptDeleteProjectStatus(s.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {deletingStatusId === s.id && (
+                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                  <span>{statusInUseMessage}</span>
+                  <span>{strings.admin.reassignExistingTo}</span>
+                  <select className="input" style={{ maxWidth: 220 }} value={reassignStatusTo} onChange={(e) => setReassignStatusTo(e.target.value)}>
+                    <option value="">—</option>
+                    {otherStatuses.map((other) => (
+                      <option key={other.id} value={other.id}>{other.name}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-danger" disabled={!reassignStatusTo} onClick={() => confirmDeleteProjectStatus(s.id)}>
+                    {strings.admin.confirmDelete}
+                  </button>
+                  <button className="btn" onClick={() => { setDeletingStatusId(null); setStatusInUseMessage(null); setReassignStatusTo(""); }}>
+                    {strings.common.cancel}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="row">
+          <input
+            className="input" placeholder={strings.admin.name} value={newStatusName}
+            onChange={(e) => setNewStatusName(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={addProjectStatus} disabled={!newStatusName.trim()}>
+            <Plus size={14} /> {strings.orgAdmin.newProjectStatus}
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes} defaultCollapsed>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
+        {linkTypeError && <div style={{ color: "var(--color-danger)" }}>{linkTypeError}</div>}
+        {linkTypes.map((lt, idx) => {
+          const edit = linkTypeEdits[lt.id] ?? { forward: lt.forward_name, reverse: lt.reverse_name };
+          const dirty = edit.forward !== lt.forward_name || edit.reverse !== lt.reverse_name;
+          const otherLinkTypes = linkTypes.filter((other) => other.id !== lt.id);
+          return (
+            <div key={lt.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row">
+                  <input
+                    className="input" style={{ maxWidth: 200 }} aria-label={strings.orgAdmin.forwardName} value={edit.forward}
+                    onChange={(e) => setLinkTypeEdits((m) => ({ ...m, [lt.id]: { ...edit, forward: e.target.value } }))}
+                  />
+                  <input
+                    className="input" style={{ maxWidth: 200 }} aria-label={strings.orgAdmin.reverseName} value={edit.reverse}
+                    onChange={(e) => setLinkTypeEdits((m) => ({ ...m, [lt.id]: { ...edit, reverse: e.target.value } }))}
+                  />
+                  {dirty && edit.forward.trim() && edit.reverse.trim() && (
+                    <button className="btn" title={strings.admin.rename} onClick={() => renameLinkType(lt.id, edit.forward, edit.reverse)}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="row">
+                  <button className="btn" disabled={idx === 0} onClick={() => moveLinkType(lt.id, "up")}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button className="btn" disabled={idx === linkTypes.length - 1} onClick={() => moveLinkType(lt.id, "down")}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={otherLinkTypes.length === 0}
+                    title={otherLinkTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteLinkType}
+                    onClick={() => attemptDeleteLinkType(lt.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {deletingLinkTypeId === lt.id && (
+                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                  <span>{linkTypeInUseMessage}</span>
+                  <span>{strings.admin.reassignExistingTo}</span>
+                  <select className="input" style={{ maxWidth: 220 }} value={reassignLinkTypeTo} onChange={(e) => setReassignLinkTypeTo(e.target.value)}>
+                    <option value="">—</option>
+                    {otherLinkTypes.map((other) => (
+                      <option key={other.id} value={other.id}>{other.forward_name}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-danger" disabled={!reassignLinkTypeTo} onClick={() => confirmDeleteLinkType(lt.id)}>
+                    {strings.admin.confirmDelete}
+                  </button>
+                  <button className="btn" onClick={() => { setDeletingLinkTypeId(null); setLinkTypeInUseMessage(null); setReassignLinkTypeTo(""); }}>
+                    {strings.common.cancel}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="row">
+          <input
+            className="input" placeholder={strings.orgAdmin.forwardName} value={newLinkTypeForward}
+            onChange={(e) => setNewLinkTypeForward(e.target.value)}
+          />
+          <input
+            className="input" placeholder={strings.orgAdmin.reverseName} value={newLinkTypeReverse}
+            onChange={(e) => setNewLinkTypeReverse(e.target.value)}
+          />
+          <button
+            className="btn btn-primary" onClick={addLinkType}
+            disabled={!newLinkTypeForward.trim() || !newLinkTypeReverse.trim()}
+          >
+            <Plus size={14} /> {strings.orgAdmin.newLinkType}
+          </button>
+        </div>
+      </CollapsibleSection>
 
       <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding} defaultCollapsed>
         <label className="stack" style={{ gap: "0.25rem" }}>

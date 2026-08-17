@@ -93,14 +93,16 @@ def test_create_and_list_traceability_link(client, admin_token, org_id):
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     source = _create_requirement(client, admin_token, project["id"], component_id, category_id, "Depends on target")
     target = _create_requirement(client, admin_token, project["id"], component_id, category_id, "The dependency")
+    link_types = {lt["forward_name"]: lt["id"] for lt in client.get(f"/api/v1/orgs/{org_id}/link-types", headers=auth_headers(admin_token)).json()}
 
     created = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{source['id']}/links",
-        json={"target_requirement_id": target["id"], "link_type": "depends_on"},
+        json={"target_requirement_id": target["id"], "link_type_id": link_types["Depends on"]},
         headers=auth_headers(admin_token),
     )
     assert created.status_code == 201, created.text
     assert created.json()["target_requirement_id"] == target["id"]
+    assert created.json()["display_name"] == "Depends on"
 
     listed = client.get(
         f"/api/v1/projects/{project['id']}/requirements/{source['id']}/links", headers=auth_headers(admin_token)

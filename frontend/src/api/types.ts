@@ -42,7 +42,12 @@ export const CHANGE_REQUEST_STATUS_LABEL: Record<ChangeRequestStatus, string> = 
   rejected: "Rejected",
   withdrawn: "Withdrawn",
 };
-export type LinkType = "relates_to" | "depends_on" | "derived_from";
+export type RequirementActionOutcome = "pending" | "completed" | "failed";
+export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, string> = {
+  pending: "Pending",
+  completed: "Completed",
+  failed: "Failed",
+};
 
 // Sentence-cased per the Australian Government Style Manual's "minimal
 // capitalisation" rule — see docs/decisions.md. Every raw enum value
@@ -91,6 +96,11 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   custom_field_definition: "Custom field",
   requirement_link: "Requirement link",
   file_asset: "File",
+  project_status_definition: "Project status",
+  requirement_link_type_definition: "Link type",
+  action_type_definition: "Action type",
+  requirement_action: "Action",
+  requirement_action_link: "Action link",
 };
 
 function capitalize(value: string): string {
@@ -346,6 +356,40 @@ export interface Project {
   allow_member_change_requests: boolean;
   visibility: "only_specified" | "org_wide";
   terminology: Record<string, string>;
+  status_id: string;
+}
+
+/** Org-definable project status (C-G-XX) — seeded with Proposed/Active/
+ * Abandoned/Completed per org, extensible/renamable/deletable like any
+ * other definition list. See `docs/decisions.md` for why deletion requires
+ * either zero usages or an explicit `reassign_to_id`. */
+export interface ProjectStatusDefinition {
+  id: string;
+  organization_id: string;
+  name: string;
+  sort_order: number;
+}
+
+/** Org-definable, bidirectional requirement link type — a link is always
+ * created from one requirement's point of view (the source), but must
+ * render sensibly when viewed from either end, hence the separate forward/
+ * reverse names (e.g. "Depends on" / "Is a dependency of"). */
+export interface LinkTypeDefinition {
+  id: string;
+  organization_id: string;
+  forward_name: string;
+  reverse_name: string;
+  sort_order: number;
+}
+
+/** Project-scoped requirement-action type (e.g. Review, Test) — project-
+ * scoped rather than org-scoped, matching `CustomFieldDefinition`, per
+ * `docs/decisions.md`. */
+export interface ActionTypeDefinition {
+  id: string;
+  project_id: string;
+  name: string;
+  sort_order: number;
 }
 
 export interface ProjectImportResult {
@@ -522,11 +566,53 @@ export interface RequirementVersionEntry {
   valid_to: string | null;
 }
 
+/**
+ * A traceability link between two requirements, resolved server-side from
+ * the point of view of whichever requirement `GET
+ * /projects/{id}/requirements/{requirement_id}/links` was called for —
+ * `direction`/`display_name`/`other_requirement_*` describe the *other*
+ * end from that viewpoint, so the frontend never has to work out which
+ * side it's looking from or which of `forward_name`/`reverse_name` to show.
+ */
 export interface RequirementLink {
   id: string;
   source_requirement_id: string;
   target_requirement_id: string;
-  link_type: LinkType;
+  link_type_id: string;
+  direction: "outgoing" | "incoming";
+  display_name: string;
+  other_requirement_id: string;
+  other_requirement_unique_code: string;
+  other_requirement_name: string;
+}
+
+/**
+ * A required action (e.g. review, test) with its own project-scoped
+ * identity (`unique_code`, like a requirement) — independent of any single
+ * requirement so one action can be linked from several via
+ * `RequirementActionLink` (see `routers/requirements.py`'s
+ * requirement<->action linking endpoints). Never hard-deleted, only
+ * archived (mirrors `Requirement.is_archived`).
+ */
+export interface RequirementAction {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  action_type_id: string;
+  title: string;
+  description: string;
+  outcome_status: RequirementActionOutcome;
+  assignee_id: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+  created_at: string;
+  updated_at: string;
+  comment_count: number;
 }
 
 export interface Comment {

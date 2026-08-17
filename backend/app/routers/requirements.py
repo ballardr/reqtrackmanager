@@ -24,6 +24,7 @@ from app.metrics import (
     requirements_created_total,
     requirements_updated_total,
 )
+from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
 from app.models.enums import (
@@ -39,7 +40,10 @@ from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementLink, RequirementReview, RequirementVersion
+from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.schemas.action import RequirementActionCreate, RequirementActionLinkCreate, RequirementActionOut
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.schemas.project import MoveDirection
@@ -60,6 +64,7 @@ from app.schemas.requirement import (
     RequirementVersionOut,
 )
 from app.services import engagement, notifications, pubsub
+from app.services.actions import action_to_out, generate_unique_code, get_requirement_action_in_project
 from app.services.audit import log_event
 from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
@@ -822,28 +827,63 @@ def _get_requirement_in_project(db: Session, project_id: UUID, requirement_id: U
     return requirement
 
 
+def _link_to_out(db: Session, link: RequirementLink, viewpoint_requirement_id: UUID) -> RequirementLinkOut:
+    """Resolves a `RequirementLink` into the API shape from the perspective
+    of `viewpoint_requirement_id` — whichever requirement `GET
+    /{requirement_id}/links` was called for. Direction and the
+    other-requirement's display fields can only be resolved server-side
+    (per-request), since a link row alone doesn't say which end the caller
+    is looking from (see `schemas.requirement.RequirementLinkOut`'s
+    docstring)."""
+    link_type = db.get(RequirementLinkTypeDefinition, link.link_type_id)
+    if link.source_requirement_id == viewpoint_requirement_id:
+        direction = "outgoing"
+        display_name = link_type.forward_name if link_type is not None else ""
+        other_id = link.target_requirement_id
+    else:
+        direction = "incoming"
+        display_name = link_type.reverse_name if link_type is not None else ""
+        other_id = link.source_requirement_id
+    other = db.get(Requirement, other_id)
+    other_version = get_current_version(db, other_id) if other is not None else None
+    return RequirementLinkOut(
+        id=link.id, source_requirement_id=link.source_requirement_id, target_requirement_id=link.target_requirement_id,
+        link_type_id=link.link_type_id, direction=direction, display_name=display_name,
+        other_requirement_id=other_id,
+        other_requirement_unique_code=other.unique_code if other is not None else "",
+        other_requirement_name=other_version.name if other_version is not None else "",
+    )
+
+
 @router.post("/{requirement_id}/links", response_model=RequirementLinkOut, status_code=status.HTTP_201_CREATED)
 def create_link(
     project_id: UUID, requirement_id: UUID, payload: RequirementLinkCreate,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Creates a traceability link between two requirements (C-G-09)."""
+    """Creates a traceability link between two requirements (C-G-09). Not
+    gated by either requirement's lock state — see `RequirementLink`'s
+    model docstring for why traceability metadata sits outside C-G-12's
+    change-log boundary."""
     _require_edit_role(db, current_user, project_id)
+    project = db.get(Project, project_id)
     _get_requirement_in_project(db, project_id, requirement_id)
     target = _get_requirement_in_project(db, project_id, payload.target_requirement_id)
+    link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
+    if link_type is None or link_type.organization_id != project.organization_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
     link = RequirementLink(
         source_requirement_id=requirement_id, target_requirement_id=target.id,
-        link_type=payload.link_type, created_by=current_user.id,
+        link_type_id=payload.link_type_id, created_by=current_user.id,
     )
     db.add(link)
     db.flush()
     log_event(db, entity_type="requirement_link", entity_id=link.id, action="created",
               actor_id=current_user.id, project_id=project_id,
               detail={"source_requirement_id": str(requirement_id), "target_requirement_id": str(target.id),
-                      "link_type": payload.link_type.value})
+                      "link_type_id": str(payload.link_type_id)})
     db.commit()
     db.refresh(link)
-    return link
+    return _link_to_out(db, link, requirement_id)
 
 
 @router.get("/{requirement_id}/links", response_model=list[RequirementLinkOut])
@@ -852,12 +892,34 @@ def list_links(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     _get_requirement_in_project(db, project_id, requirement_id)
-    return db.scalars(
+    links = db.scalars(
         select(RequirementLink).where(
             (RequirementLink.source_requirement_id == requirement_id)
             | (RequirementLink.target_requirement_id == requirement_id)
         )
     ).all()
+    return [_link_to_out(db, link, requirement_id) for link in links]
+
+
+@router.delete("/{requirement_id}/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_link(
+    project_id: UUID, requirement_id: UUID, link_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Removes a traceability link. 404s unless `link_id`'s source or
+    target is `requirement_id` — deletable from either end, not just the
+    end it was created from."""
+    _require_edit_role(db, current_user, project_id)
+    _get_requirement_in_project(db, project_id, requirement_id)
+    link = db.get(RequirementLink, link_id)
+    if link is None or requirement_id not in (link.source_requirement_id, link.target_requirement_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    log_event(db, entity_type="requirement_link", entity_id=link.id, action="deleted",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"source_requirement_id": str(link.source_requirement_id),
+                      "target_requirement_id": str(link.target_requirement_id)})
+    db.delete(link)
+    db.commit()
 
 
 @router.post("/{requirement_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
@@ -1142,4 +1204,113 @@ def unlink_requirement_file(
         delete_file(db, asset)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="file_unlinked",
               actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
+    db.commit()
+
+
+# --- Requirement<->action linking (see models.requirement_action) ----------
+#
+# A `RequirementAction` has its own project-scoped identity (routers.actions)
+# so it can be linked from multiple requirements; these four endpoints are
+# the requirement-side half of that many-to-many relationship.
+
+
+@router.post("/{requirement_id}/actions", status_code=status.HTTP_204_NO_CONTENT)
+def link_action(
+    project_id: UUID, requirement_id: UUID, payload: RequirementActionLinkCreate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Links an existing action to this requirement. Unlike `create_link`
+    (requirement-to-requirement), linking an action isn't itself content
+    with a display direction — just membership in the action's "which
+    requirements does this satisfy" set — so this returns no body."""
+    _require_edit_role(db, current_user, project_id)
+    _get_requirement_in_project(db, project_id, requirement_id)
+    action = get_requirement_action_in_project(db, project_id, payload.action_id)
+    existing = db.scalar(
+        select(RequirementActionLink).where(
+            RequirementActionLink.requirement_id == requirement_id, RequirementActionLink.action_id == action.id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is already linked to this requirement.")
+    db.add(RequirementActionLink(
+        requirement_id=requirement_id, action_id=action.id, linked_by=current_user.id, created_at=datetime.now(UTC),
+    ))
+    log_event(db, entity_type="requirement_action_link", entity_id=action.id, action="linked",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"requirement_id": str(requirement_id), "action_id": str(action.id)})
+    db.commit()
+
+
+@router.post(
+    "/{requirement_id}/actions/create-and-link", response_model=RequirementActionOut, status_code=status.HTTP_201_CREATED
+)
+def create_and_link_action(
+    project_id: UUID, requirement_id: UUID, payload: RequirementActionCreate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Creates a new action and links it to this requirement in one
+    transaction — avoids a two-request create-then-link race in the
+    inline-create UI (create the action, then have the very next `POST
+    .../actions` fail or double-submit)."""
+    _require_edit_role(db, current_user, project_id)
+    _get_requirement_in_project(db, project_id, requirement_id)
+    project = db.get(Project, project_id)
+    action_type = db.get(ActionTypeDefinition, payload.action_type_id)
+    if action_type is None or action_type.project_id != project_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action_type_id must be an action type defined in this project.")
+    action = RequirementAction(
+        project_id=project_id, unique_code=generate_unique_code(project), action_type_id=payload.action_type_id,
+        title=payload.title, description=payload.description, assignee_id=payload.assignee_id,
+        due_date=payload.due_date, creator_id=current_user.id,
+    )
+    db.add(action)
+    db.flush()
+    db.add(RequirementActionLink(
+        requirement_id=requirement_id, action_id=action.id, linked_by=current_user.id, created_at=datetime.now(UTC),
+    ))
+    log_event(db, entity_type="requirement_action", entity_id=action.id, action="created",
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
+              detail={"unique_code": action.unique_code, "title": action.title, "linked_requirement_id": str(requirement_id)})
+    db.commit()
+    db.refresh(action)
+    return action_to_out(db, action)
+
+
+@router.get("/{requirement_id}/actions", response_model=list[RequirementActionOut])
+def list_requirement_actions(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Lists every action linked to this requirement."""
+    _get_requirement_in_project(db, project_id, requirement_id)
+    actions = db.scalars(
+        select(RequirementAction)
+        .join(RequirementActionLink, RequirementActionLink.action_id == RequirementAction.id)
+        .where(RequirementActionLink.requirement_id == requirement_id)
+        .order_by(RequirementAction.unique_code)
+    ).all()
+    return [action_to_out(db, a) for a in actions]
+
+
+@router.delete("/{requirement_id}/actions/{action_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_action(
+    project_id: UUID, requirement_id: UUID, action_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Unlinks an action from this requirement — never deletes the action
+    itself, which may still be linked from other requirements."""
+    _require_edit_role(db, current_user, project_id)
+    _get_requirement_in_project(db, project_id, requirement_id)
+    link = db.scalar(
+        select(RequirementActionLink).where(
+            RequirementActionLink.requirement_id == requirement_id, RequirementActionLink.action_id == action_id
+        )
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This action is not linked to this requirement.")
+    log_event(db, entity_type="requirement_action_link", entity_id=action_id, action="unlinked",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"requirement_id": str(requirement_id), "action_id": str(action_id)})
+    db.delete(link)
     db.commit()

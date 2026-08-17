@@ -62,7 +62,6 @@ from app.models.enums import (
     ChangeRequestVoteChoice,
     ProjectRole,
     RequirementLevel,
-    RequirementLinkType,
     RequirementReviewOutcome,
     RequirementStatus,
     ReviewTargetType,
@@ -88,6 +87,7 @@ from app.models.requirement import (
     RequirementReview,
     RequirementVersion,
 )
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.services.audit import log_event
 from app.services.bundle_common import (
@@ -97,6 +97,7 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.rbac import get_project_managers
 
@@ -184,6 +185,18 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             keywords_by_req.setdefault(req_id, []).append(keyword)
 
     links = list(db.scalars(select(RequirementLink).where(RequirementLink.source_requirement_id.in_(req_ids))) if req_ids else [])
+    # Link types are exported/matched by name, not id — like every other
+    # cross-tenant reference in this bundle (users by email, custom fields
+    # by name), an id from the source deployment's
+    # `requirement_link_type_definitions` table means nothing on import
+    # (`apply_project_data` looks this back up by `forward_name` within the
+    # *target* organisation's own link types).
+    link_type_forward_name_by_id = {
+        lt.id: lt.forward_name
+        for lt in db.scalars(
+            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+        )
+    }
 
     attachments_by_req: dict[UUID, list[dict]] = {}
     file_assets_by_id: dict[UUID, FileAsset] = {}
@@ -345,7 +358,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         {
             "source_unique_code": req_code_by_id.get(link.source_requirement_id),
             "target_unique_code": req_code_by_id.get(link.target_requirement_id),
-            "link_type": link.link_type.value, "created_by_email": email(link.created_by),
+            "link_type_forward_name": link_type_forward_name_by_id.get(link.link_type_id),
+            "created_by_email": email(link.created_by),
         }
         for link in links if link.source_requirement_id in req_code_by_id and link.target_requirement_id in req_code_by_id
     ]
@@ -522,13 +536,18 @@ def _read_bundle(zip_bytes: bytes, expected_kind: str) -> tuple[dict, dict, zipf
 
 
 def new_project_from_bundle_data(
-    organization_id: UUID, name: str, summary: str | None, data: dict[str, Any],
+    db: Session, organization_id: UUID, name: str, summary: str | None, data: dict[str, Any],
 ) -> Project:
     """Builds the initial `Project` row (not yet added/flushed) for a
     bundle's `project.json` — the one piece of project creation that
     legitimately differs between callers (a standalone project import lets
     the caller override name/summary; an org import uses the bundle's own
-    project name for every project it contains, unmodified)."""
+    project name for every project it contains, unmodified).
+
+    `status_id` always starts at `organization_id`'s default status (never
+    read from the bundle) — a project's status is current lifecycle state,
+    not portable structural configuration, matching `clone_project`'s same
+    choice for template-based creation (see its module docstring)."""
     return Project(
         organization_id=organization_id, name=name, summary=summary if summary is not None else data.get("summary", ""),
         allow_member_change_requests=data.get("allow_member_change_requests", True),
@@ -536,6 +555,7 @@ def new_project_from_bundle_data(
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
         report_intro=data.get("report_intro", ""), report_chapters=data.get("report_chapters", []) or [],
         report_appendices=data.get("report_appendices", []) or [],
+        status_id=get_default_project_status_id(db, organization_id),
     )
 
 
@@ -569,6 +589,14 @@ def apply_project_data(
         warnings: Accumulates human-readable import warnings.
     """
     organization_id = project.organization_id
+
+    # Default action types (Review, Test) — a bundle doesn't currently carry
+    # its source project's action-type customisations across (unlike custom
+    # field definitions below), so every imported project simply starts
+    # with the same defaults a brand-new project would get. Matches
+    # `routers/projects.py::create_project`'s own default-seeding call for
+    # a manually-created (non-template) project.
+    seed_action_types(db, project.id)
     template_name = data.get("default_report_template_name")
     if template_name:
         template = db.scalar(
@@ -708,14 +736,35 @@ def apply_project_data(
                 ))
     project.next_requirement_seq = max(project.next_requirement_seq, max_seq + 1)
 
+    # Link types are matched by forward_name within the *target*
+    # organisation's own `requirement_link_type_definitions` — like every
+    # other cross-tenant reference in this bundle (users by email, custom
+    # fields by name), a source-deployment link-type id means nothing here.
+    # A bundle link whose type name has no match in the target organisation
+    # (e.g. it was a custom, non-default type the target org never defined)
+    # is skipped with a warning rather than guessing a fallback type, which
+    # would silently misrepresent the link's asserted meaning.
+    link_type_id_by_name = {
+        lt.forward_name: lt.id
+        for lt in db.scalars(
+            select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == organization_id)
+        )
+    }
     for link in data.get("requirement_links", []):
         source_id = requirement_id_by_code.get(link["source_unique_code"])
         target_id = requirement_id_by_code.get(link["target_unique_code"])
-        if source_id and target_id:
+        link_type_id = link_type_id_by_name.get(link.get("link_type_forward_name"))
+        if source_id and target_id and link_type_id is not None:
             db.add(RequirementLink(
-                source_requirement_id=source_id, target_requirement_id=target_id, link_type=RequirementLinkType(link["link_type"]),
+                source_requirement_id=source_id, target_requirement_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
             ))
+        elif source_id and target_id:
+            warnings.add(
+                f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "
+                f"references a link type ({link.get('link_type_forward_name')!r}) that doesn't exist in the "
+                "target organisation and was skipped."
+            )
 
     def import_comment(c: dict, target_type: ReviewTargetType, target_id: UUID, uploaded_by_key: str) -> None:
         comment = ReviewComment(
@@ -871,7 +920,7 @@ def import_project_bundle(
 
     warnings = BundleImportWarnings()
     users = UserResolver(db, current_user, warnings)
-    project = new_project_from_bundle_data(organization_id, name, summary, data)
+    project = new_project_from_bundle_data(db, organization_id, name, summary, data)
     db.add(project)
     db.flush()
 

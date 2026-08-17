@@ -276,6 +276,74 @@ def create_cr_task(headers: dict, project_id: str, cr_id: str, description: str,
     return r.json()
 
 
+def set_project_status(headers: dict, project_id: str, status_id: str) -> dict:
+    r = httpx.patch(f"{BASE}/projects/{project_id}", json={"status_id": status_id}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_requirement_link(headers: dict, project_id: str, requirement_id: str, target_requirement_id: str, link_type_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/links",
+        json={"target_requirement_id": target_requirement_id, "link_type_id": link_type_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_and_link_action(
+    headers: dict, project_id: str, requirement_id: str, *, title: str, description: str, action_type_id: str,
+    assignee_id: str | None = None, due_date: str | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/actions/create-and-link",
+        json={
+            "title": title, "description": description, "action_type_id": action_type_id,
+            "assignee_id": assignee_id, "due_date": due_date,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def link_action(headers: dict, project_id: str, requirement_id: str, action_id: str) -> None:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/actions", json={"action_id": action_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_status: str) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/actions/{action['id']}",
+        json={
+            "title": action["title"], "description": action["description"], "action_type_id": action["action_type_id"],
+            "assignee_id": action.get("assignee_id"), "due_date": action.get("due_date"),
+            "outcome_status": outcome_status,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def add_action_comment(headers: dict, project_id: str, action_id: str, body: str) -> dict:
+    r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/comments", json={"body": body}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_report_template(headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str) -> dict:
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/report-templates",
@@ -445,11 +513,19 @@ def main() -> None:
         headers=h_pm, timeout=30,
     ).raise_for_status()
 
+    print("Adding a custom requirement link type...")
+    # Beyond the 12 seeded defaults (C-G-09) — demonstrates that an
+    # organisation can extend the link-type vocabulary with its own.
+    supersedes_link_type = create_link_type(h_pm, org["id"], forward_name="Supersedes", reverse_name="Is superseded by")
+    default_link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    project_statuses = {s["name"]: s for s in httpx.get(f"{BASE}/orgs/{org['id']}/project-statuses", headers=h_pm, timeout=30).json()}
+
     print("Creating 'Falcon-3 Inspection Drone'...")
     drone = create_project(
         h_pm, org["id"], "Falcon-3 Inspection Drone",
         "Autonomous multirotor platform for utility and infrastructure visual inspection.",
     )
+    set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
     assign_project_role(h_pm, drone["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, drone["id"], demo_stakeholder["user_id"], "stakeholder")
     drone_components = {
@@ -471,6 +547,49 @@ def main() -> None:
 
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])
+
+    print("Linking related Falcon-3 requirements (C-G-09)...")
+    gps_req = drone_reqs["Acquire GPS position lock within 5 seconds of power-on in open-sky conditions"]
+    return_to_home_req = drone_reqs["Autonomously return to launch point when battery charge falls below 15%"]
+    preflight_req = drone_reqs["Complete pre-flight diagnostic checks in under 20 seconds"]
+    remote_id_req = drone_reqs["Broadcast Part 107 remote identification per FAA requirements"]
+    flight_log_req = drone_reqs["Log all flight-critical state transitions to onboard non-volatile storage"]
+    create_requirement_link(h_pm, drone["id"], return_to_home_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
+    create_requirement_link(h_pm, drone["id"], preflight_req["id"], gps_req["id"], default_link_types["Depends on"]["id"])
+    create_requirement_link(h_pm, drone["id"], remote_id_req["id"], flight_log_req["id"], supersedes_link_type["id"])
+
+    print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
+    drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
+    firmware_review = create_and_link_action(
+        h_pm, drone["id"], remote_id_req["id"], title="Review remote-ID firmware module against FAA rule text",
+        description="Line-by-line review of the broadcast module against the published Part 107 remote "
+        "identification rule, ahead of the compliance deadline.",
+        action_type_id=drone_action_types["Review"]["id"], assignee_id=demo_engineer["user_id"],
+        due_date=(date.today() + timedelta(days=5)).isoformat(),
+    )
+    set_action_outcome(h_pm, drone["id"], firmware_review, "completed")
+    add_action_comment(
+        h_pm, drone["id"], firmware_review["id"],
+        "Reviewed against the current rule text — one broadcast field was using the wrong units, fixed in "
+        "firmware rev 2.3.1. No other gaps found.",
+    )
+    wind_test = create_and_link_action(
+        h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],
+        title="Wind tunnel stability test at 45 km/h sustained gust",
+        description="Bench validation of airframe stability at the specified sustained gust threshold, "
+        "ahead of the Verification & Validation stage.",
+        action_type_id=drone_action_types["Test"]["id"], assignee_id=demo_stakeholder["user_id"],
+        due_date=(date.today() + timedelta(days=3)).isoformat(),
+    )
+    set_action_outcome(h_pm, drone["id"], wind_test, "failed")
+    add_action_comment(
+        h_pm, drone["id"], wind_test["id"],
+        "Observed noticeable yaw oscillation above 40 km/h in the current airframe revision — re-test "
+        "required once the propulsion team's damping fix lands.",
+    )
+    # A single action shared across two requirements (its own project-scoped
+    # identity, not owned by either one — see models.requirement_action).
+    link_action(h_pm, drone["id"], preflight_req["id"], wind_test["id"])
 
     print("Approving the Scoping stage baseline for Falcon-3...")
     scoping_stage = httpx.get(f"{BASE}/projects/{drone['id']}/stages", headers=h_pm, timeout=30).json()[0]
@@ -565,8 +684,10 @@ def main() -> None:
     print("  demo.stakeholder@example.com - stakeholder on both projects")
     print()
     print(f"Organisation: {ORG_NAME}")
-    print(f"  Falcon-3 Inspection Drone  ({len(drone_reqs)} requirements, 1 change request pending)")
-    print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request)")
+    print(f"  Falcon-3 Inspection Drone  ({len(drone_reqs)} requirements, 1 change request pending, status: Active)")
+    print("    - 3 requirement links (2 default 'Depends on', 1 custom 'Supersedes')")
+    print("    - 2 requirement actions (1 completed review, 1 failed test, shared across 2 requirements)")
+    print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request, status: Proposed)")
 
 
 if __name__ == "__main__":

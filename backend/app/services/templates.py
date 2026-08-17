@@ -4,10 +4,18 @@ Module: services.templates
 Implements "create a new project from an existing template project"
 (C-E-05). Per the requirement's clarification, cloning copies project
 groups, members of project groups, project configuration (components,
-categories, terminology, custom field definitions), and requirements —
-deliberately not stages/baselines/change-request history, since a template
-is a starting point for a new project's own lifecycle, not a copy of the
-source project's current lifecycle state.
+categories, terminology, custom field definitions, action type
+definitions), and requirements — deliberately not stages/baselines/change-
+request history, since a template is a starting point for a new project's
+own lifecycle, not a copy of the source project's current lifecycle state.
+
+The new project's `status_id` is deliberately *not* copied from the
+template's current status: a template project sitting at, say, "Completed"
+doesn't mean every project cloned from it should start there too (unlike
+its structural configuration, a status is lifecycle state, closer in spirit
+to the stages/baselines this function already excludes) — the new project
+starts at its organisation's default status instead, same as a project
+created from scratch.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.action_type import ActionTypeDefinition
 from app.models.custom_field import CustomFieldDefinition
 from app.models.enums import RequirementStatus, StageStatus
 from app.models.project import (
@@ -29,6 +38,7 @@ from app.models.project import (
 )
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
+from app.services.definitions import get_default_project_status_id
 from app.services.requirements import get_current_version
 
 
@@ -50,6 +60,7 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
         organization_id=source.organization_id, name=name, summary=summary,
         allow_member_change_requests=source.allow_member_change_requests,
         terminology=dict(source.terminology),
+        status_id=get_default_project_status_id(db, source.organization_id),
     )
     db.add(new_project)
     db.flush()
@@ -89,6 +100,13 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
         db.add(new_definition)
         db.flush()
         field_id_map[str(definition.id)] = str(new_definition.id)
+
+    for action_type in db.scalars(select(ActionTypeDefinition).where(ActionTypeDefinition.project_id == source.id)).all():
+        db.add(
+            ActionTypeDefinition(
+                project_id=new_project.id, name=action_type.name, sort_order=action_type.sort_order
+            )
+        )
 
     for group in db.scalars(select(ProjectGroup).where(ProjectGroup.project_id == source.id)).all():
         new_group = ProjectGroup(project_id=new_project.id, name=group.name, role=group.role, is_default=group.is_default)

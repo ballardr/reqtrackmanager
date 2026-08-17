@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type {
+  ActionTypeDefinition,
   AssignByEmailOutcome,
   Category,
   Component,
@@ -16,6 +17,7 @@ import type {
   ProjectGroup,
   ProjectReportConfig,
   ProjectStage,
+  ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
 } from "../api/types";
@@ -33,9 +35,14 @@ const strings = t();
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
 /**
- * Project administration: settings (C-U-13, C-C-03, C-P-01), stages/approval
+ * Project administration: settings (C-U-13, C-C-03, C-P-01) — including the
+ * project's status, picked from the owning organisation's definable status
+ * list (see OrgAdminPage's Project Statuses section) — stages/approval
  * (C-G-08, C-G-10), components and categories with ordering (C-G-07,
- * C-E-01/C-E-02), and project groups (C-U-11).
+ * C-E-01/C-E-02), project-scoped action types (Action Types tab — the type
+ * list requirement actions on this project pick from; project-scoped
+ * rather than org-scoped, matching custom fields, per `docs/decisions.md`),
+ * and project groups (C-U-11).
  */
 export function ProjectAdminPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -78,7 +85,18 @@ export function ProjectAdminPage() {
   const [allowMemberCr, setAllowMemberCr] = useState(true);
   const [isTemplate, setIsTemplate] = useState(false);
   const [visibility, setVisibility] = useState<"only_specified" | "org_wide">("only_specified");
+  const [statusId, setStatusId] = useState("");
+  const [orgProjectStatuses, setOrgProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
   const [terminology, setTerminology] = useState<Record<string, string>>({});
+
+  // --- Action types (project-scoped, per docs/decisions.md) ------------
+  const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
+  const [newActionTypeName, setNewActionTypeName] = useState("");
+  const [actionTypeNameEdits, setActionTypeNameEdits] = useState<Record<string, string>>({});
+  const [deletingActionTypeId, setDeletingActionTypeId] = useState<string | null>(null);
+  const [actionTypeInUseMessage, setActionTypeInUseMessage] = useState<string | null>(null);
+  const [reassignActionTypeTo, setReassignActionTypeTo] = useState("");
+  const [actionTypeError, setActionTypeError] = useState<string | null>(null);
 
   const [reportIntro, setReportIntro] = useState("");
   const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
@@ -100,7 +118,7 @@ export function ProjectAdminPage() {
 
   async function reload() {
     if (!projectId) return;
-    const [p, s, c, cat, g, cf, rc] = await Promise.all([
+    const [p, s, c, cat, g, cf, rc, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
@@ -108,6 +126,7 @@ export function ProjectAdminPage() {
       api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
       api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
+      api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
     ]);
     setProject(p);
     setSettingsName(p.name);
@@ -115,12 +134,14 @@ export function ProjectAdminPage() {
     setAllowMemberCr(p.allow_member_change_requests);
     setIsTemplate(p.is_template);
     setVisibility(p.visibility);
+    setStatusId(p.status_id);
     setTerminology(p.terminology);
     setStages(s);
     setComponents(c);
     setCategories(cat);
     setGroups(g);
     setCustomFields(cf);
+    setActionTypes(at);
     // Group membership (below) only stores user ids — resolving those to
     // an email/display name needs the org's member directory. Any org
     // role (including plain "member") can call this endpoint unfiltered
@@ -130,6 +151,7 @@ export function ProjectAdminPage() {
     setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
     setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
     setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
+    setOrgProjectStatuses(await api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`));
     setReportIntro(rc.intro);
     setReportChapters(rc.chapters);
     setReportAppendices(rc.appendices);
@@ -172,7 +194,7 @@ export function ProjectAdminPage() {
     await api.patch(`/api/v1/projects/${projectId}`, {
       name: settingsName, summary: settingsSummary,
       allow_member_change_requests: allowMemberCr, is_template: isTemplate,
-      visibility,
+      visibility, status_id: statusId || null,
     });
     reload();
   }
@@ -350,6 +372,66 @@ export function ProjectAdminPage() {
     }
   }
 
+  async function addActionType() {
+    if (!newActionTypeName.trim()) return;
+    await api.post(`/api/v1/projects/${projectId}/action-types`, { name: newActionTypeName });
+    setNewActionTypeName("");
+    reload();
+  }
+
+  async function moveActionType(id: string, direction: "up" | "down") {
+    await api.post(`/api/v1/projects/${projectId}/action-types/${id}/move`, { direction });
+    reload();
+  }
+
+  async function renameActionType(id: string, name: string) {
+    setActionTypeError(null);
+    try {
+      await api.patch(`/api/v1/projects/${projectId}/action-types/${id}`, { name });
+      setActionTypeNameEdits((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setActionTypeError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  /** Plain delete first (no `reassign_to_id`) per §4.0's shared contract —
+   * a 409 means it's in use, opening the reassignment picker with the
+   * server's own count message rather than a generic one (mirrors
+   * OrgAdminPage's project-statuses/link-types delete flow). */
+  async function attemptDeleteActionType(id: string) {
+    setActionTypeError(null);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/action-types/${id}`);
+      reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setDeletingActionTypeId(id);
+        setActionTypeInUseMessage(err.message);
+      } else {
+        setActionTypeError(err instanceof Error ? err.message : strings.common.error);
+      }
+    }
+  }
+
+  async function confirmDeleteActionType(id: string) {
+    if (!reassignActionTypeTo) return;
+    setActionTypeError(null);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/action-types/${id}?reassign_to_id=${reassignActionTypeTo}`);
+      setDeletingActionTypeId(null);
+      setActionTypeInUseMessage(null);
+      setReassignActionTypeTo("");
+      reload();
+    } catch (err) {
+      setActionTypeError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
   async function addGroupMember(groupId: string, userId: string) {
     await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { user_id: userId });
     reload();
@@ -407,7 +489,7 @@ export function ProjectAdminPage() {
   }
 
   const [tab, setTab] = useState<
-    "overview" | "stages" | "categories" | "customFields" | "groups" | "terminology" | "reportSetup"
+    "overview" | "stages" | "categories" | "customFields" | "actionTypes" | "groups" | "terminology" | "reportSetup"
   >("overview");
 
   if (!stages || !project) return <Spinner />;
@@ -417,6 +499,7 @@ export function ProjectAdminPage() {
     { key: "stages", label: strings.admin.stages },
     { key: "categories", label: strings.admin.categories },
     { key: "customFields", label: strings.admin.customFields },
+    { key: "actionTypes", label: strings.admin.actionTypes },
     { key: "groups", label: strings.admin.groups },
     { key: "terminology", label: strings.admin.terminology },
     { key: "reportSetup", label: "Report Setup" },
@@ -469,6 +552,16 @@ export function ProjectAdminPage() {
           </select>
         </label>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.admin.projectStatus}
+          <select className="input" value={statusId} onChange={(e) => setStatusId(e.target.value)}>
+            {orgProjectStatuses.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div className="row">
@@ -837,6 +930,77 @@ export function ProjectAdminPage() {
           </label>
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus size={14} /> {strings.admin.newCustomField}
+          </button>
+        </div>
+      </div>
+      )}
+
+      {tab === "actionTypes" && (
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.actionTypes}</h2>
+        {actionTypeError && <div style={{ color: "var(--color-danger)" }}>{actionTypeError}</div>}
+        {actionTypes.map((at, idx) => {
+          const nameEdit = actionTypeNameEdits[at.id] ?? at.name;
+          const otherActionTypes = actionTypes.filter((other) => other.id !== at.id);
+          return (
+            <div key={at.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row">
+                  <input
+                    className="input" style={{ maxWidth: 220 }} value={nameEdit}
+                    onChange={(e) => setActionTypeNameEdits((m) => ({ ...m, [at.id]: e.target.value }))}
+                  />
+                  {nameEdit !== at.name && nameEdit.trim() && (
+                    <button className="btn" title={strings.admin.rename} onClick={() => renameActionType(at.id, nameEdit)}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="row">
+                  <button className="btn" disabled={idx === 0} onClick={() => moveActionType(at.id, "up")}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button className="btn" disabled={idx === actionTypes.length - 1} onClick={() => moveActionType(at.id, "down")}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={otherActionTypes.length === 0}
+                    title={otherActionTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteActionType}
+                    onClick={() => attemptDeleteActionType(at.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {deletingActionTypeId === at.id && (
+                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+                  <span>{actionTypeInUseMessage}</span>
+                  <span>{strings.admin.reassignExistingTo}</span>
+                  <select className="input" style={{ maxWidth: 220 }} value={reassignActionTypeTo} onChange={(e) => setReassignActionTypeTo(e.target.value)}>
+                    <option value="">—</option>
+                    {otherActionTypes.map((other) => (
+                      <option key={other.id} value={other.id}>{other.name}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-danger" disabled={!reassignActionTypeTo} onClick={() => confirmDeleteActionType(at.id)}>
+                    {strings.admin.confirmDelete}
+                  </button>
+                  <button className="btn" onClick={() => { setDeletingActionTypeId(null); setActionTypeInUseMessage(null); setReassignActionTypeTo(""); }}>
+                    {strings.common.cancel}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="row">
+          <input
+            className="input" placeholder={strings.admin.name} value={newActionTypeName}
+            onChange={(e) => setNewActionTypeName(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={addActionType} disabled={!newActionTypeName.trim()}>
+            <Plus size={14} /> {strings.admin.newActionType}
           </button>
         </div>
       </div>

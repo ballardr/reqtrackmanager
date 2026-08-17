@@ -8,6 +8,12 @@ requirement attachments (C-M-02) and for linking an organisation's shared
 resource file to a requirement (C-M-04, `is_org_resource=True` files).
 Avatars (C-U-18) and organisation logos (U-C-02) reference `FileAsset`
 directly from `User`/`Organization` rather than through this link table.
+
+`RequirementActionFile` (requirement actions) mirrors `RequirementFile`
+exactly, one column renamed (`action_id` instead of `requirement_id`) —
+actions get their own direct-attachment table rather than reusing
+`RequirementFile`, matching the existing `RequirementFile`/`CommentFile`
+split (direct attachment vs. discussion-comment attachment) one level up.
 """
 
 from __future__ import annotations
@@ -55,6 +61,20 @@ class RequirementFile(UUIDPKMixin, Base):
     __table_args__ = (UniqueConstraint("requirement_id", "file_id"),)
 
     requirement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RequirementActionFile(UUIDPKMixin, Base):
+    """Links a file (direct upload) to a requirement action. Exact shape of
+    `RequirementFile`, with `action_id` in place of `requirement_id` — see
+    module docstring."""
+
+    __tablename__ = "requirement_action_files"
+    __table_args__ = (UniqueConstraint("action_id", "file_id"),)
+
+    action_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("requirement_actions.id", ondelete="CASCADE"))
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

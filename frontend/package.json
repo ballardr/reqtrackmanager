@@ -3,7 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
+    "postinstall": "git -C .. config core.hooksPath .githooks 2>/dev/null || true",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

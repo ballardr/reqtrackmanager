@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Installed automatically via frontend's `postinstall` script, which runs
+# `git config core.hooksPath .githooks` — see frontend/package.json.
+#
+# Blocks a commit that would leave frontend/package-lock.json out of sync
+# with frontend/package.json, the exact class of failure that broke CI in
+# docs/decisions.md ("PR #8 CI failure..."). This is a fast, non-destructive
+# check (npm ci --dry-run writes nothing to disk) rather than a Docker-based
+# one, since frontend/.nvmrc now matches CI/Dockerfile's Node version, so a
+# plain local npm resolves the lockfile the same way CI does.
+set -euo pipefail
+
+if ! git diff --cached --name-only | grep -qE '^frontend/(package\.json|package-lock\.json)$'; then
+  exit 0
+fi
+
+cd frontend
+
+REQUIRED_NODE_MAJOR="$(cat .nvmrc)"
+ACTUAL_NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo '')"
+if [[ "$ACTUAL_NODE_MAJOR" != "$REQUIRED_NODE_MAJOR" ]]; then
+  echo "pre-commit: active Node is $(node -v 2>/dev/null || echo 'not found'), but frontend/.nvmrc pins Node $REQUIRED_NODE_MAJOR (matches CI/Dockerfile)." >&2
+  echo "pre-commit: run 'nvm use' in frontend/ first, then retry the commit." >&2
+  exit 1
+fi
+
+echo "pre-commit: verifying frontend/package-lock.json is in sync (npm ci --dry-run)..."
+if ! DRY_RUN_OUTPUT="$(npm ci --dry-run --no-audit --no-fund 2>&1)"; then
+  echo "$DRY_RUN_OUTPUT" | grep -E '^npm error( code| Missing:| .*sync)' >&2 || echo "$DRY_RUN_OUTPUT" >&2
+  echo "pre-commit: frontend/package-lock.json is out of sync with package.json." >&2
+  echo "pre-commit: run frontend/scripts/sync-lockfile.sh, re-stage, and retry the commit." >&2
+  exit 1
+fi

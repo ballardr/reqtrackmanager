@@ -5,6 +5,7 @@ Imports every ORM model so that `Base.metadata` is fully populated for
 Alembic autogeneration and for `Base.metadata.create_all()` in tests.
 """
 
+from app.models.action_type import ActionTypeDefinition
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import (
     ChangeRequest,
@@ -15,7 +16,7 @@ from app.models.change_request import (
 )
 from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
-from app.models.file import CommentFile, FileAsset, RequirementFile
+from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
     Organization,
@@ -38,6 +39,7 @@ from app.models.project import (
     StageReviewResponse,
     UserProjectRole,
 )
+from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -47,9 +49,12 @@ from app.models.requirement import (
     RequirementReview,
     RequirementVersion,
 )
+from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 
 __all__ = [
+    "ActionTypeDefinition",
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",
@@ -62,6 +67,7 @@ __all__ = [
     "Subscription",
     "FileAsset",
     "RequirementFile",
+    "RequirementActionFile",
     "CommentFile",
     "Notification",
     "NotificationPreference",
@@ -80,6 +86,7 @@ __all__ = [
     "ProjectGroup",
     "ProjectGroupMember",
     "ProjectStage",
+    "ProjectStatusDefinition",
     "StageReviewResponse",
     "UserProjectRole",
     "Baseline",
@@ -87,6 +94,9 @@ __all__ = [
     "Requirement",
     "RequirementKeyword",
     "RequirementLink",
+    "RequirementLinkTypeDefinition",
+    "RequirementAction",
+    "RequirementActionLink",
     "RequirementReview",
     "RequirementVersion",
     "User",

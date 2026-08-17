@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import RequirementLevel, RequirementLinkType, RequirementReviewOutcome, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
 from app.schemas.file import FileAssetOut
 
 
@@ -120,14 +120,27 @@ class RequirementVersionOut(BaseModel):
 
 class RequirementLinkCreate(BaseModel):
     target_requirement_id: UUID
-    link_type: RequirementLinkType = RequirementLinkType.RELATES_TO
+    link_type_id: UUID
 
 
 class RequirementLinkOut(BaseModel):
+    """A traceability link, from the perspective of whichever requirement it
+    was fetched for (`GET /{requirement_id}/links`) — `direction`/
+    `display_name`/`other_requirement_*` are resolved server-side per
+    request rather than left for the frontend to infer, since only the
+    server can cheaply tell whether the requirement being viewed is the
+    link's source or target (see `routers.requirements::_link_to_out`).
+    """
+
     id: UUID
     source_requirement_id: UUID
     target_requirement_id: UUID
-    link_type: RequirementLinkType
+    link_type_id: UUID
+    direction: str  # "outgoing" (viewed requirement is the source) | "incoming" (is the target)
+    display_name: str  # forward_name if outgoing, reverse_name if incoming
+    other_requirement_id: UUID
+    other_requirement_unique_code: str
+    other_requirement_name: str
 
 
 class RequirementImportError(BaseModel):
