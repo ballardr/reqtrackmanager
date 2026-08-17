@@ -52,7 +52,7 @@ test.describe("org report templates and project report setup", () => {
       const row = reportTemplatesSection.locator(".row", { hasText: templateName }).first();
       await row.getByRole("button", { name: "Edit" }).click();
       await reportTemplatesSection.getByPlaceholder("Name", { exact: true }).fill(revisedName);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await reportTemplatesSection.getByRole("button", { name: "Save", exact: true }).click();
       await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();
     });
 

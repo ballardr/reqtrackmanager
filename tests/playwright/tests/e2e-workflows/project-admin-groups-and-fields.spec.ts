@@ -89,6 +89,40 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await expect(page.getByText(PERSONAS.memberAlphaBeta.email)).toHaveCount(0);
     });
 
+    await test.step("nest an org group into a project group directly from Project Admin", async () => {
+      // The backend has always supported org_group_id here (add_project_group_member);
+      // this closes the UX gap where no frontend surface sent it — only
+      // OrgAdminPage's own "expanded project" panel could, previously.
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
+      const project = await (
+        await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ).json();
+      const groupName = `E2E Nest Into Project ${Date.now()}`;
+      await page.request.post(`http://localhost:8000/api/v1/orgs/${project.organization_id}/groups`, {
+        headers: { Authorization: `Bearer ${token}` }, data: { name: groupName },
+      });
+      // ProjectAdminPage fetches org groups once on mount — the group just
+      // created via a direct API call isn't in that state until reloaded.
+      await page.reload();
+
+      await page.getByRole("button", { name: "Project groups" }).click();
+      // Default project groups are created in a fixed order — Project
+      // Managers, Project Administrators, Stakeholders, Members — so the
+      // "Members" group's own org-group picker is reliably the last one
+      // (same assumption the add-member step above already makes).
+      const membersGroupSelect = page.getByRole("combobox").last();
+      await membersGroupSelect.selectOption({ label: groupName });
+      await membersGroupSelect.locator("xpath=../button").click();
+      await expect(page.getByText(`${groupName} (`)).toBeVisible();
+
+      const orgGroupRow = page.locator("li", { hasText: groupName });
+      await orgGroupRow.getByRole("button").click();
+      await expect(page.getByText(`${groupName} (`)).toHaveCount(0);
+    });
+
     await test.step("override and then revert a terminology term", async () => {
       await page.getByRole("button", { name: "Terminology" }).click();
       await page.getByPlaceholder("requirement").fill("Spec");

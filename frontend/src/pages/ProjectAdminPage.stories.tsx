@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { Category, Component, ProjectGroup, ProjectStage } from "../api/types";
+import type { Category, Component, OrgGroup, ProjectGroup, ProjectStage } from "../api/types";
 import { buildProject, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
@@ -16,6 +16,9 @@ const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_
 const groups: ProjectGroup[] = [
   { id: "g1", name: "Stakeholders", role: "stakeholder", is_default: true, member_user_ids: [], member_org_group_ids: [] },
 ];
+const orgGroups: OrgGroup[] = [
+  { id: "og1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
+];
 
 function mockProjectAdminApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -23,6 +26,10 @@ function mockProjectAdminApis() {
     if (path.includes("/stages")) return stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
+    // Checked before the plain "/groups" check below — /orgs/{id}/groups
+    // also contains that substring, and returns a differently-shaped
+    // OrgGroup[] (project groups vs. org groups).
+    if (path.includes("/orgs/") && path.includes("/groups")) return orgGroups;
     if (path.includes("/groups")) return groups;
     if (path.includes("/custom-fields")) return [];
     if (path.includes("/report-config")) return {
@@ -58,6 +65,25 @@ export const OverviewTabSaveSettings: Story = {
       expect(api.patch).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}`,
         expect.objectContaining({ name: "Atlas Platform" })
+      )
+    );
+  },
+};
+
+export const OverviewTabSetOrgWideVisibility: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Visibility")).toHaveValue("only_specified"));
+    await userEvent.selectOptions(canvas.getByLabelText("Visibility"), "org_wide");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ visibility: "org_wide" })
       )
     );
   },
@@ -181,6 +207,28 @@ export const GroupsTabAddMember: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
     await expect(canvas.getByText("Stakeholder")).toBeInTheDocument();
+  },
+};
+
+export const GroupsTabAddOrgGroup: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
+    await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
+    const select = canvas.getByRole("combobox");
+    await userEvent.selectOptions(select, "og1");
+    const row = select.closest<HTMLElement>(".row")!;
+    await userEvent.click(within(row).getByRole("button"));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/groups/g1/members`,
+        { org_group_id: "og1" }
+      )
+    );
   },
 };
 

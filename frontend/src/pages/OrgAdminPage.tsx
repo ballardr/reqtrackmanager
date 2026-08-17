@@ -25,6 +25,8 @@ import type {
   ProjectListItem,
   ReportChapter,
   ReportTemplate,
+  ScimTokenCreated,
+  ScimTokenStatus,
 } from "../api/types";
 import { ORG_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
@@ -113,6 +115,10 @@ export function OrgAdminPage() {
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcRequiredGroup, setOidcRequiredGroup] = useState("");
   const [ssoError, setSsoError] = useState<string | null>(null);
+
+  const [scimStatus, setScimStatus] = useState<ScimTokenStatus | null>(null);
+  const [scimGeneratedToken, setScimGeneratedToken] = useState<string | null>(null);
+  const [scimError, setScimError] = useState<string | null>(null);
 
   const [orgReportDefaultsAvailable, setOrgReportDefaultsAvailable] = useState(false);
   const [orgReportIntro, setOrgReportIntro] = useState("");
@@ -238,6 +244,12 @@ export function OrgAdminPage() {
       setOidcIssuerUrl(sso.oidc_issuer_url ?? "");
       setOidcClientId(sso.oidc_client_id ?? "");
       setOidcRequiredGroup(sso.oidc_required_group ?? "");
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 403)) throw err;
+    }
+
+    try {
+      setScimStatus(await api.get<ScimTokenStatus>(`/api/v1/orgs/${orgId}/scim-token`));
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 403)) throw err;
     }
@@ -484,6 +496,43 @@ export function OrgAdminPage() {
     reload();
   }
 
+  const [nestSelections, setNestSelections] = useState<Record<string, string>>({});
+  const [nestErrors, setNestErrors] = useState<Record<string, string | null>>({});
+
+  async function addNestedGroupMember(groupId: string, memberOrgGroupId: string) {
+    setNestErrors((prev) => ({ ...prev, [groupId]: null }));
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/groups/${groupId}/members`, { member_org_group_id: memberOrgGroupId });
+      setNestSelections((prev) => ({ ...prev, [groupId]: "" }));
+      reload();
+    } catch (err) {
+      setNestErrors((prev) => ({ ...prev, [groupId]: err instanceof ApiError ? err.message : strings.common.error }));
+    }
+  }
+
+  async function removeNestedGroupMember(groupId: string, memberOrgGroupId: string) {
+    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${memberOrgGroupId}`);
+    reload();
+  }
+
+  const [idpSyncEdits, setIdpSyncEdits] = useState<Record<string, string>>({});
+  const [idpSyncErrors, setIdpSyncErrors] = useState<Record<string, string | null>>({});
+
+  async function saveIdpSync(groupId: string, value: string) {
+    setIdpSyncErrors((prev) => ({ ...prev, [groupId]: null }));
+    try {
+      await api.patch(`/api/v1/orgs/${orgId}/groups/${groupId}`, { idp_synced_group_name: value.trim() || null });
+      setIdpSyncEdits((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      reload();
+    } catch (err) {
+      setIdpSyncErrors((prev) => ({ ...prev, [groupId]: err instanceof ApiError ? err.message : strings.common.error }));
+    }
+  }
+
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoUploaded, setLogoUploaded] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -554,6 +603,28 @@ export function OrgAdminPage() {
       setOidcClientSecret("");
     } catch (err) {
       setSsoError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function regenerateScimToken() {
+    setScimError(null);
+    try {
+      const created = await api.post<ScimTokenCreated>(`/api/v1/orgs/${orgId}/scim-token`);
+      setScimGeneratedToken(created.token);
+      setScimStatus({ enabled: true, token_prefix: created.token_prefix });
+    } catch (err) {
+      setScimError(err instanceof ApiError ? err.message : strings.common.error);
+    }
+  }
+
+  async function revokeScimToken() {
+    setScimError(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/scim-token`);
+      setScimGeneratedToken(null);
+      setScimStatus({ enabled: false, token_prefix: null });
+    } catch (err) {
+      setScimError(err instanceof ApiError ? err.message : strings.common.error);
     }
   }
 
@@ -1297,6 +1368,36 @@ export function OrgAdminPage() {
         </CollapsibleSection>
       )}
 
+      {scimStatus && (
+        <CollapsibleSection sectionKey="orgAdmin.scim" title={strings.orgAdmin.scimProvisioning} defaultCollapsed>
+          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.scimHint}</p>
+          <div className="row">
+            <span>
+              {scimStatus.enabled
+                ? strings.orgAdmin.scimEnabledWithPrefix(scimStatus.token_prefix ?? "")
+                : strings.orgAdmin.scimDisabled}
+            </span>
+          </div>
+          {scimGeneratedToken && (
+            <div className="stack" style={{ gap: "0.25rem" }}>
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
+              <input className="input" readOnly value={scimGeneratedToken} onFocus={(e) => e.target.select()} />
+            </div>
+          )}
+          {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
+          <div className="row">
+            <button className="btn btn-primary" onClick={regenerateScimToken}>
+              {scimStatus.enabled ? strings.orgAdmin.scimRegenerate : strings.orgAdmin.scimGenerate}
+            </button>
+            {scimStatus.enabled && (
+              <button className="btn btn-danger" onClick={revokeScimToken}>
+                {strings.orgAdmin.scimRevoke}
+              </button>
+            )}
+          </div>
+        </CollapsibleSection>
+      )}
+
       {templateProjects.length > 0 && (
         <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate} defaultCollapsed>
           <select
@@ -1319,6 +1420,9 @@ export function OrgAdminPage() {
           const memberIds = new Set(g.member_user_ids);
           const members = users.filter((u) => memberIds.has(u.user_id));
           const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+          const nestedGroupIds = new Set(g.member_org_group_ids);
+          const nestedGroups = groups.filter((og) => nestedGroupIds.has(og.id));
+          const nestableGroups = groups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
           return (
             <div key={g.id} className="stack">
               <span>{g.name}</span>
@@ -1343,6 +1447,57 @@ export function OrgAdminPage() {
                 placeholder={strings.admin.addMemberPlaceholder}
                 onSelect={(userId) => addGroupMember(g.id, userId)}
               />
+              {nestedGroups.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {nestedGroups.map((og) => (
+                    <li key={og.id} style={{ listStyle: "circle" }}>
+                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                        <span>{strings.orgAdmin.nestedGroupLabel(og.name)}</span>
+                        <button className="btn" onClick={() => removeNestedGroupMember(g.id, og.id)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {nestableGroups.length > 0 && (
+                <div className="row">
+                  <select
+                    className="input"
+                    value={nestSelections[g.id] ?? ""}
+                    onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                  >
+                    <option value="">{strings.orgAdmin.addNestedGroup}</option>
+                    {nestableGroups.map((og) => (
+                      <option key={og.id} value={og.id}>
+                        {og.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn"
+                    disabled={!nestSelections[g.id]}
+                    onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              )}
+              {nestErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{nestErrors[g.id]}</div>}
+              <label className="row" style={{ gap: "0.25rem" }}>
+                {strings.orgAdmin.idpSyncedGroupName}
+                <input
+                  className="input"
+                  placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
+                  value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
+                  onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                />
+                <button className="btn" onClick={() => saveIdpSync(g.id, idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "")}>
+                  {strings.orgAdmin.saveIdpSync}
+                </button>
+              </label>
+              {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
             </div>
           );
         })}

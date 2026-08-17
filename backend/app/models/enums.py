@@ -27,6 +27,26 @@ class ProjectRole(str, enum.Enum):
     MEMBER = "member"
 
 
+class ProjectVisibility(str, enum.Enum):
+    """Who can see a project without an explicit user/group assignment.
+
+    ONLY_SPECIFIED: today's only behaviour — access is granted purely via
+        direct `UserProjectRole`/`ProjectGroupMember` assignment
+        (`services.rbac.get_effective_project_roles`). The default for
+        every project, including ones cloned from a template.
+    ORG_WIDE: every member of the project's organisation automatically
+        gets baseline `ProjectRole.MEMBER` (view-only) access, with no
+        assignment needed — never manager/administrator/stakeholder,
+        which still require an explicit grant. Deliberately does not
+        extend to project-broadcast notifications (`get_project_member_user_ids`)
+        or org-admin's project-settings carve-out
+        (`can_manage_project_settings`) — see `services.rbac`'s docstring.
+    """
+
+    ONLY_SPECIFIED = "only_specified"
+    ORG_WIDE = "org_wide"
+
+
 class StageStatus(str, enum.Enum):
     """Lifecycle states for a project stage (introduction, C-G-08).
 

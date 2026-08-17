@@ -35,7 +35,12 @@ from app.security import create_access_token, create_oidc_state_token, decode_ac
 from app.services import oidc_client
 from app.services.audit import log_event, log_login
 from app.services.invites import consume_pending_invites
-from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
+from app.services.oidc_provisioning import (
+    find_or_provision_user,
+    meets_required_group,
+    sync_org_groups_from_claims,
+    sync_org_roles_from_claims,
+)
 
 router = APIRouter(prefix="/api/v1/auth/oidc", tags=["auth-oidc"])
 settings = get_settings()
@@ -194,6 +199,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
     # for that case (none was ever created) and is a no-op.
     consume_pending_invites(db, user)
     sync_org_roles_from_claims(db, user, org, claims)
+    sync_org_groups_from_claims(db, user, org, claims)
     log_event(db, entity_type="user", entity_id=user.id, action="oidc_login",
               actor_id=user.id, organization_id=org.id, detail={"issuer": org.oidc_issuer_url})
     log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)

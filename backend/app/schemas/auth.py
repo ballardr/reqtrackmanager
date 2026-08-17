@@ -13,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.models.enums import OrgRole, ProjectRole
 from app.models.notification import DigestMode
 
 
@@ -124,3 +125,36 @@ class UserPreferencesUpdate(BaseModel):
         "replacing it wholesale — setting one key (e.g. a single list's tile/list choice) never needs to "
         "know or resend every other key already stored.",
     )
+
+
+class MyOrgGroupOut(BaseModel):
+    """One org group the caller belongs to, per `GET /auth/me/memberships`."""
+
+    id: UUID
+    name: str
+    direct: bool = Field(description="False if membership is only via a nested (ancestor) group.")
+
+
+class MyProjectMembershipOut(BaseModel):
+    id: UUID
+    name: str
+    roles: list[ProjectRole]
+
+
+class MyOrgMembershipOut(BaseModel):
+    organization_id: UUID
+    organization_name: str
+    org_roles: list[OrgRole]
+    groups: list[MyOrgGroupOut]
+    projects: list[MyProjectMembershipOut]
+
+
+class MyMembershipsOut(BaseModel):
+    """The current user's full cross-org membership picture — org roles,
+    org-group membership (direct and inherited via nesting), and per-
+    project roles — for the self-service "My groups & roles" view
+    (`PreferencesPage.tsx`) and reused by the server-admin access-review
+    directory (`GET /system/users`) for the same data about *other* users.
+    """
+
+    organizations: list[MyOrgMembershipOut]

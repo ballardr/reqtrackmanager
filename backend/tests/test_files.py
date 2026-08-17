@@ -210,3 +210,61 @@ def test_avatar_upload_and_org_logo_upload(client, admin_token, org_id):
     )
     assert resp.status_code == 200
     assert resp.json()["logo_file_id"] is not None
+
+
+def test_org_logo_and_login_background_are_downloadable_with_no_authentication(client, admin_token, org_id):
+    """Regression test: the org-branded login page (`/login/{slug}`) renders
+    these images before any session exists, so `GET /api/v1/files/{id}` must
+    serve them to a fully anonymous caller — not just any authenticated
+    user. Previously it required auth unconditionally, so an uploaded login
+    background never actually appeared on the real login page."""
+    logo = client.post(
+        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+    background = client.post(
+        f"/api/v1/orgs/{org_id}/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+
+    assert client.get(f"/api/v1/files/{logo['logo_file_id']}").status_code == 200
+    assert client.get(f"/api/v1/files/{background['login_background_file_id']}").status_code == 200
+
+
+def test_platform_default_logo_and_login_background_are_downloadable_with_no_authentication(client, admin_token):
+    """Same regression as above, for the platform-wide defaults shown on the
+    plain `/login` page (no single org's branding applies)."""
+    logo = client.post(
+        "/api/v1/system/branding/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+    background = client.post(
+        "/api/v1/system/branding/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+
+    assert client.get(f"/api/v1/files/{logo['default_logo_file_id']}").status_code == 200
+    assert client.get(f"/api/v1/files/{background['default_login_background_file_id']}").status_code == 200
+
+
+def test_system_branding_is_readable_with_no_authentication(client):
+    """The plain `/login` page fetches this endpoint before any session
+    exists, to pick up the header title and login background file id."""
+    resp = client.get("/api/v1/system/branding")
+    assert resp.status_code == 200
+
+
+def test_avatar_and_org_resources_still_require_authentication_when_anonymous(client, admin_token, org_id):
+    """Unlike logos/login backgrounds, avatars and org shared resources must
+    stay behind authentication — the anonymous carve-out above is narrowly
+    scoped to public branding images only."""
+    avatar = client.post(
+        "/api/v1/auth/me/avatar", files={"file": ("me.png", b"\x89PNG", "image/png")}, headers=auth_headers(admin_token)
+    ).json()
+    assert client.get(f"/api/v1/files/{avatar['avatar_file_id']}").status_code == 401
+
+    resource = client.post(
+        f"/api/v1/orgs/{org_id}/resources", files={"file": ("doc.txt", b"hello", "text/plain")},
+        headers=auth_headers(admin_token),
+    ).json()
+    assert client.get(f"/api/v1/files/{resource['id']}").status_code == 401

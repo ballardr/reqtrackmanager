@@ -81,7 +81,15 @@ test.describe("requirements list filters and view-mode persistence", () => {
     });
 
     await test.step("switching to list view persists across a reload", async () => {
-      await page.getByRole("button", { name: "List view" }).click();
+      // Wait for the PATCH to actually settle before reloading — a bare
+      // click() races the async save (AuthContext.tsx's setUiPreference is
+      // fire-and-forget) against the immediate reload below, which can
+      // observe the pre-save state if it wins the race — same fix as
+      // preferences-and-theme.spec.ts's "pronouns save and persist" step.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/auth/me/preferences") && r.request().method() === "PATCH"),
+        page.getByRole("button", { name: "List view" }).click(),
+      ]);
       await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
       await page.reload();
       await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");

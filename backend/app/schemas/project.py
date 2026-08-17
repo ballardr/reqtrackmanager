@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator
 
-from app.models.enums import ProjectRole, StageReviewResponseChoice, StageStatus
+from app.models.enums import ProjectRole, ProjectVisibility, StageReviewResponseChoice, StageStatus
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
@@ -27,6 +27,11 @@ class ProjectCreate(BaseModel):
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
     terminology: dict[str, str] = {}
     is_template: bool = False
+    # Always explicit, never inherited from a cloned template (see
+    # routers/projects.py::create_project) — a template happening to be
+    # org-wide-visible shouldn't silently make every project cloned from it
+    # org-wide too.
+    visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
 
     @field_validator("terminology")
     @classmethod
@@ -50,6 +55,7 @@ class ProjectOut(BaseModel):
     is_archived: bool = False
     is_template: bool = False
     allow_member_change_requests: bool = True
+    visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
 
 
@@ -71,6 +77,7 @@ class ProjectUpdate(BaseModel):
     summary: str | None = None
     allow_member_change_requests: bool | None = None
     is_template: bool | None = None
+    visibility: ProjectVisibility | None = None
 
 
 class TerminologyUpdate(BaseModel):

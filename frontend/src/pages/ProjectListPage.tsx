@@ -10,7 +10,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
-import { useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
+import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -30,6 +30,7 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
 export function ProjectListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
@@ -45,6 +46,7 @@ export function ProjectListPage() {
   const [newSummary, setNewSummary] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
   const [templateProjectId, setTemplateProjectId] = useState("");
+  const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
@@ -141,6 +143,7 @@ export function ProjectListPage() {
         name: newName,
         summary: newSummary,
         template_project_id: templateProjectId || null,
+        visibility: newVisibility,
       });
       navigate(`/projects/${project.id}`);
     } catch (err) {
@@ -194,6 +197,18 @@ export function ProjectListPage() {
               </select>
             </label>
           )}
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            {strings.admin.visibility}
+            <select
+              className="input"
+              value={newVisibility}
+              onChange={(e) => setNewVisibility(e.target.value as "only_specified" | "org_wide")}
+            >
+              <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
+              <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
+            </select>
+          </label>
+          <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.projects.importFromBundle}
             <input

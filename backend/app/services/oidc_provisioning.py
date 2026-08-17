@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import OrgRole
-from app.models.organization import Organization, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.user import User
 
 
@@ -186,5 +186,56 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
                 UserOrgRole.user_id == user.id,
                 UserOrgRole.organization_id == org.id,
                 UserOrgRole.role.in_(roles_to_revoke),
+            )
+        )
+
+
+def sync_org_groups_from_claims(db: Session, user: User, org: Organization, claims: dict) -> None:
+    """Grants/revokes `user`'s membership in this org's IdP-synced
+    `OrgGroup`s (`OrgGroup.idp_synced_group_name`) based on the IdP's
+    groups/roles claim — the group-membership analogue of
+    `sync_org_roles_from_claims`, same vocabulary-scoping and "no claim at
+    all is unknown, not empty" rules, applied one level down (groups
+    instead of roles).
+
+    Only ever touches `OrgGroupMember` rows with `user_id` set — a synced
+    group's *nested-group* edges (`member_org_group_id`) are structural,
+    admin-managed relationships, not per-user membership, and are never
+    added or removed by this sync.
+    """
+    idp_groups = set(claims.get("groups") or []) | set(claims.get("roles") or [])
+
+    synced_groups = db.scalars(
+        select(OrgGroup).where(OrgGroup.organization_id == org.id, OrgGroup.idp_synced_group_name.is_not(None))
+    ).all()
+    if not synced_groups:
+        return
+
+    if not idp_groups:
+        # Same "unknown, not empty" rule as sync_org_roles_from_claims:
+        # a provider that simply doesn't send this claim must not mass-
+        # revoke every synced group's membership on the next login.
+        return
+
+    name_to_group_id = {g.idp_synced_group_name: g.id for g in synced_groups}
+    synced_group_ids = set(name_to_group_id.values())
+
+    existing_member_of = set(
+        db.scalars(
+            select(OrgGroupMember.org_group_id).where(
+                OrgGroupMember.user_id == user.id, OrgGroupMember.org_group_id.in_(synced_group_ids)
+            )
+        ).all()
+    )
+    should_be_member_of = {group_id for name, group_id in name_to_group_id.items() if name in idp_groups}
+
+    for group_id in should_be_member_of - existing_member_of:
+        db.add(OrgGroupMember(org_group_id=group_id, user_id=user.id))
+
+    groups_to_leave = existing_member_of - should_be_member_of
+    if groups_to_leave:
+        db.execute(
+            OrgGroupMember.__table__.delete().where(
+                OrgGroupMember.user_id == user.id, OrgGroupMember.org_group_id.in_(groups_to_leave)
             )
         )

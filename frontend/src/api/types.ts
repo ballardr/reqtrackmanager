@@ -323,12 +323,15 @@ export interface SystemUser {
   has_org_membership: boolean;
   organization_count: number;
   organization_names: string[];
+  group_names: string[];
 }
 
 export interface OrgGroup {
   id: string;
   name: string;
   member_user_ids: string[];
+  member_org_group_ids: string[];
+  idp_synced_group_name: string | null;
 }
 
 export interface Project {
@@ -341,6 +344,7 @@ export interface Project {
   is_archived: boolean;
   is_template: boolean;
   allow_member_change_requests: boolean;
+  visibility: "only_specified" | "org_wide";
   terminology: Record<string, string>;
 }
 
@@ -815,6 +819,40 @@ export interface OrgSsoConfig {
   oidc_issuer_url: string | null;
   oidc_client_id: string | null;
   oidc_required_group: string | null;
+}
+
+export interface ScimTokenStatus {
+  enabled: boolean;
+  token_prefix: string | null;
+}
+
+export interface ScimTokenCreated {
+  token: string;
+  token_prefix: string;
+}
+
+export interface MyOrgGroup {
+  id: string;
+  name: string;
+  direct: boolean;
+}
+
+export interface MyProjectMembership {
+  id: string;
+  name: string;
+  roles: ProjectRole[];
+}
+
+export interface MyOrgMembership {
+  organization_id: string;
+  organization_name: string;
+  org_roles: OrgRole[];
+  groups: MyOrgGroup[];
+  projects: MyProjectMembership[];
+}
+
+export interface MyMemberships {
+  organizations: MyOrgMembership[];
 }
 
 export interface OrgLoginInfo {

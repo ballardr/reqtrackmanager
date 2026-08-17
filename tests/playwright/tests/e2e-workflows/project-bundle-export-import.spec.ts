@@ -42,14 +42,19 @@ test.describe("project bundle export/import", () => {
       await page.getByRole("button", { name: "New project" }).click();
       // Scoped to the "New project" form card specifically, not just "the
       // first <select> on the page" — the org filter and role filter rows
-      // below the form have their own <select>s, and while the org select
-      // is loading (orgs.length > 1 not yet true), an unscoped `.first()`
-      // can latch onto one of those instead and then wait forever for an
-      // option that will never appear in it.
+      // below the form have their own <select>s. orgAdminAlphaBeta always
+      // belongs to 2 orgs, so the org picker is always rendered here — but
+      // it (and the Visibility select next to it) both mount asynchronously
+      // with orgs.length, so a one-shot `isVisible()` check can latch onto
+      // whichever select happens to already be in the DOM at that instant
+      // rather than waiting for the org picker specifically. Waiting for
+      // its actual option content (a retrying assertion, unlike an action's
+      // one-shot actionability wait) is robust to that race.
       const form = page.locator(".card").filter({ has: page.getByPlaceholder("Name", { exact: true }) });
       await form.getByPlaceholder("Name", { exact: true }).fill(newName);
       const orgSelect = form.locator("select").first();
-      if (await orgSelect.isVisible()) await orgSelect.selectOption({ label: ORG_NAMES.beta });
+      await expect(orgSelect).toContainText(ORG_NAMES.beta);
+      await orgSelect.selectOption({ label: ORG_NAMES.beta });
       const fileInput = form.locator('input[type="file"][accept*="zip"]');
       await fileInput.setInputFiles(exportedPath);
       await page.getByRole("button", { name: "Create" }).click();

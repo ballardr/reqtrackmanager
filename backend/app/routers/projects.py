@@ -21,7 +21,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.change_request import ChangeRequest, ChangeRequestVersion
-from app.models.enums import ChangeRequestStatus, ExternalUserPolicy, OrgRole, ProjectRole, RequirementStatus, StageStatus
+from app.models.enums import (
+    ChangeRequestStatus,
+    ExternalUserPolicy,
+    OrgRole,
+    ProjectRole,
+    ProjectVisibility,
+    RequirementStatus,
+    StageStatus,
+)
 from app.models.file import RequirementFile
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, ReportTemplate, UserOrgRole
@@ -179,6 +187,9 @@ def create_project(
         project.terminology = payload.terminology
     if payload.is_template:
         project.is_template = True
+    # Always explicit, never inherited from a cloned template — see
+    # ProjectCreate.visibility's docstring.
+    project.visibility = payload.visibility
 
     log_event(
         db, entity_type="project", entity_id=project.id, action="created", actor_id=current_user.id,
@@ -261,7 +272,24 @@ def list_projects(
             .where(ProjectGroupMember.user_id == current_user.id)
         ).all()
     )
-    accessible_ids = project_ids_via_role | project_ids_via_group
+    # ProjectVisibility.ORG_WIDE (see services.rbac.get_effective_project_roles
+    # for the matching content-access grant): any project in an organisation
+    # the user holds any role in, regardless of a direct/group assignment.
+    user_org_ids = set(
+        db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)).all()
+    )
+    project_ids_via_org_wide = (
+        set(
+            db.scalars(
+                select(Project.id).where(
+                    Project.visibility == ProjectVisibility.ORG_WIDE, Project.organization_id.in_(user_org_ids)
+                )
+            ).all()
+        )
+        if user_org_ids
+        else set()
+    )
+    accessible_ids = project_ids_via_role | project_ids_via_group | project_ids_via_org_wide
     if not accessible_ids:
         projects = []
     else:
@@ -319,7 +347,8 @@ def list_projects(
                 id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
                 created_at=p.created_at, updated_at=p.updated_at,
                 is_archived=p.is_archived, is_template=p.is_template,
-                allow_member_change_requests=p.allow_member_change_requests, terminology=p.terminology,
+                allow_member_change_requests=p.allow_member_change_requests, visibility=p.visibility,
+                terminology=p.terminology,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
                 my_roles=list(roles),
@@ -399,7 +428,7 @@ def update_project(
     db: Session = Depends(get_db),
 ):
     """Updates project settings: name/summary, the member change-request
-    toggle (C-U-13), and the template flag (C-E-05)."""
+    toggle (C-U-13), the template flag (C-E-05), and visibility."""
     if payload.name is not None:
         project.name = payload.name
     if payload.summary is not None:
@@ -408,8 +437,11 @@ def update_project(
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.is_template is not None:
         project.is_template = payload.is_template
+    if payload.visibility is not None:
+        project.visibility = payload.visibility
     log_event(db, entity_type="project", entity_id=project_id, action="settings_updated",
-              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
+              detail={"visibility": payload.visibility.value} if payload.visibility is not None else None)
     db.commit()
     db.refresh(project)
     return project

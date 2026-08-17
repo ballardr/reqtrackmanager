@@ -10,6 +10,7 @@ import type {
   CustomFieldDefinition,
   CustomFieldEntityKind,
   CustomFieldType,
+  OrgGroup,
   OrgUser,
   Project,
   ProjectGroup,
@@ -45,6 +46,8 @@ export function ProjectAdminPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
+  const [orgGroupSelections, setOrgGroupSelections] = useState<Record<string, string>>({});
   const [newStageName, setNewStageName] = useState("");
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
@@ -74,6 +77,7 @@ export function ProjectAdminPage() {
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
   const [isTemplate, setIsTemplate] = useState(false);
+  const [visibility, setVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [terminology, setTerminology] = useState<Record<string, string>>({});
 
   const [reportIntro, setReportIntro] = useState("");
@@ -110,6 +114,7 @@ export function ProjectAdminPage() {
     setSettingsSummary(p.summary);
     setAllowMemberCr(p.allow_member_change_requests);
     setIsTemplate(p.is_template);
+    setVisibility(p.visibility);
     setTerminology(p.terminology);
     setStages(s);
     setComponents(c);
@@ -123,6 +128,7 @@ export function ProjectAdminPage() {
     // implies org membership, so this is safe for whoever can reach this
     // page at all.
     setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
+    setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
     setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
     setReportIntro(rc.intro);
     setReportChapters(rc.chapters);
@@ -166,6 +172,7 @@ export function ProjectAdminPage() {
     await api.patch(`/api/v1/projects/${projectId}`, {
       name: settingsName, summary: settingsSummary,
       allow_member_change_requests: allowMemberCr, is_template: isTemplate,
+      visibility,
     });
     reload();
   }
@@ -388,6 +395,17 @@ export function ProjectAdminPage() {
     reload();
   }
 
+  async function addOrgGroupMember(groupId: string, orgGroupId: string) {
+    await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { org_group_id: orgGroupId });
+    setOrgGroupSelections((prev) => ({ ...prev, [groupId]: "" }));
+    reload();
+  }
+
+  async function removeOrgGroupMember(groupId: string, orgGroupId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${orgGroupId}`);
+    reload();
+  }
+
   const [tab, setTab] = useState<
     "overview" | "stages" | "categories" | "customFields" | "groups" | "terminology" | "reportSetup"
   >("overview");
@@ -439,6 +457,18 @@ export function ProjectAdminPage() {
           <input type="checkbox" checked={isTemplate} onChange={(e) => setIsTemplate(e.target.checked)} />
           {strings.admin.isTemplate}
         </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.admin.visibility}
+          <select
+            className="input"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as "only_specified" | "org_wide")}
+          >
+            <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
+            <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
+          </select>
+        </label>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
 
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div className="row">
@@ -822,17 +852,15 @@ export function ProjectAdminPage() {
         )}
         {groups.map((g) => {
           const availableUsers = orgUsers.filter((u) => !g.member_user_ids.includes(u.user_id));
+          const nestedOrgGroups = orgGroups.filter((og) => g.member_org_group_ids.includes(og.id));
+          const nestableOrgGroups = orgGroups.filter((og) => !g.member_org_group_ids.includes(og.id));
           return (
             <div key={g.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <span>
                   {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
                 </span>
-                <span className="text-muted">
-                  {strings.admin.memberCount(g.member_user_ids.length)}
-                  {g.member_org_group_ids.length > 0 &&
-                    ` + ${strings.admin.viaOrgGroups(g.member_org_group_ids.length, orgLabel)}`}
-                </span>
+                <span className="text-muted">{strings.admin.memberCount(g.member_user_ids.length)}</span>
               </div>
               {g.member_user_ids.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
@@ -857,6 +885,41 @@ export function ProjectAdminPage() {
                 projectId={project?.id}
                 onSelectExternal={(email) => addExternalMember(email, g.role)}
               />
+              {nestedOrgGroups.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {nestedOrgGroups.map((og) => (
+                    <li key={og.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
+                      <span>{strings.admin.viaOrgGroup(og.name, orgLabel)}</span>
+                      <button className="btn btn-danger" onClick={() => removeOrgGroupMember(g.id, og.id)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {nestableOrgGroups.length > 0 && (
+                <div className="row">
+                  <select
+                    className="input"
+                    value={orgGroupSelections[g.id] ?? ""}
+                    onChange={(e) => setOrgGroupSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                  >
+                    <option value="">{strings.admin.addOrgGroupToProjectGroup(orgLabel)}</option>
+                    {nestableOrgGroups.map((og) => (
+                      <option key={og.id} value={og.id}>
+                        {og.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn"
+                    disabled={!orgGroupSelections[g.id]}
+                    onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

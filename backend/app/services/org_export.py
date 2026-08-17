@@ -109,6 +109,7 @@ from app.services.project_export import (
     collect_project_data,
     new_project_from_bundle_data,
 )
+from app.services.rbac import would_create_org_group_cycle
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
@@ -167,10 +168,23 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
     for g in org_groups:
         members = list(
             db.execute(
-                select(User.email).join(OrgGroupMember, OrgGroupMember.user_id == User.id).where(OrgGroupMember.org_group_id == g.id)
+                select(User.email).join(OrgGroupMember, OrgGroupMember.user_id == User.id).where(
+                    OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None)
+                )
             ).scalars()
         )
-        org_groups_json.append({"name": g.name, "member_emails": members})
+        # Nested org groups (`OrgGroupMember.member_org_group_id`) — the
+        # groups directly nested inside this one, by name (re-linked on
+        # import in a second pass, since a group can reference another one
+        # appearing later in this same list — see `_import_org_groups`).
+        nested_group_names = list(
+            db.execute(
+                select(OrgGroup.name)
+                .join(OrgGroupMember, OrgGroupMember.member_org_group_id == OrgGroup.id)
+                .where(OrgGroupMember.org_group_id == g.id)
+            ).scalars()
+        )
+        org_groups_json.append({"name": g.name, "member_emails": members, "nested_group_names": nested_group_names})
 
     logo_asset = db.get(FileAsset, org.logo_file_id) if org.logo_file_id else None
     if logo_asset:
@@ -356,12 +370,21 @@ def _import_org_groups(
     grants a project role to any member of an org group nested into that
     project's `ProjectGroup`, with no separate `UserOrgRole` check at all,
     so this is an independent way a bundle could otherwise hand a banned
-    account real access."""
+    account real access.
+
+    Nested-group edges (`nested_group_names`) are wired up in a second pass,
+    after every group in the bundle has been created/resolved, since a
+    group can reference another group appearing later in the same bundle.
+    An edge that would create a cycle (a malformed or adversarial bundle —
+    real exports can never produce one, since `add_org_group_member`
+    already rejects cycles at write time) is skipped with a warning, the
+    same as a banned member above."""
     existing_by_name: dict[str, OrgGroup] = {}
     if merge_by_name:
         existing_by_name = {
             g.name.strip().lower(): g for g in db.scalars(select(OrgGroup).where(OrgGroup.organization_id == org.id))
         }
+    groups_by_bundle_name: dict[str, OrgGroup] = {}
     for g in data.get("org_groups", []):
         group = existing_by_name.get(g["name"].strip().lower()) if merge_by_name else None
         existing_member_ids: set[UUID] = set()
@@ -371,7 +394,11 @@ def _import_org_groups(
             db.flush()
         elif merge_by_name:
             existing_member_ids = set(
-                db.scalars(select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)).all()
+                db.scalars(
+                    select(OrgGroupMember.user_id).where(
+                        OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None)
+                    )
+                ).all()
             )
         for email in g.get("member_emails", []):
             existing = find_user(email)
@@ -379,6 +406,26 @@ def _import_org_groups(
                 warnings.add(f"Member '{email}' has been banned by a server admin and was not added to group '{g['name']}'.")
             elif existing is not None and existing.id not in existing_member_ids:
                 db.add(OrgGroupMember(org_group_id=group.id, user_id=existing.id))
+        groups_by_bundle_name[g["name"].strip().lower()] = group
+    db.flush()
+
+    for g in data.get("org_groups", []):
+        group = groups_by_bundle_name[g["name"].strip().lower()]
+        existing_nested_ids: set[UUID] = set(
+            db.scalars(
+                select(OrgGroupMember.member_org_group_id).where(
+                    OrgGroupMember.org_group_id == group.id, OrgGroupMember.member_org_group_id.is_not(None)
+                )
+            ).all()
+        )
+        for nested_name in g.get("nested_group_names", []):
+            child = groups_by_bundle_name.get(nested_name.strip().lower())
+            if child is None or child.id in existing_nested_ids:
+                continue
+            if would_create_org_group_cycle(db, group.id, child.id):
+                warnings.add(f"Nesting '{child.name}' inside '{group.name}' would create a cycle — skipped.")
+                continue
+            db.add(OrgGroupMember(org_group_id=group.id, member_org_group_id=child.id))
 
 
 def _import_report_templates(

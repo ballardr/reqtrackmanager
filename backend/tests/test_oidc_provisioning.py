@@ -11,7 +11,12 @@ from app.database import SessionLocal
 from app.models.enums import OrgRole
 from app.models.organization import Organization
 from app.security import create_oidc_state_token
-from app.services.oidc_provisioning import find_or_provision_user, meets_required_group, sync_org_roles_from_claims
+from app.services.oidc_provisioning import (
+    find_or_provision_user,
+    meets_required_group,
+    sync_org_groups_from_claims,
+    sync_org_roles_from_claims,
+)
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 from tests.test_access_review import _make_orphaned_user
 
@@ -279,6 +284,169 @@ def test_sync_org_roles_leaves_existing_roles_alone_when_idp_asserts_no_groups_c
         db.close()
 
 
+def test_sync_org_groups_from_claims_grants_membership_in_a_synced_group():
+    from sqlalchemy import select
+
+    from app.models.organization import OrgGroup, OrgGroupMember
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Group Sync Org")
+        db.add(org)
+        db.flush()
+        group = OrgGroup(organization_id=org.id, name="Engineering", idp_synced_group_name="eng-team")
+        db.add(group)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "group-sync-subject", "email": "groupsync@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
+        db.commit()
+
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)
+        ).all()
+        assert user.id in member_ids
+    finally:
+        db.close()
+
+
+def test_sync_org_groups_grants_nothing_when_no_group_matches():
+    from sqlalchemy import select
+
+    from app.models.organization import OrgGroup, OrgGroupMember
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Group No Match Org")
+        db.add(org)
+        db.flush()
+        group = OrgGroup(organization_id=org.id, name="Engineering", idp_synced_group_name="eng-team")
+        db.add(group)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "group-no-match-subject", "email": "groupnomatch@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_groups_from_claims(db, user, org, {"groups": ["unrelated-group"]})
+        db.commit()
+
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)
+        ).all()
+        assert user.id not in member_ids
+    finally:
+        db.close()
+
+
+def test_sync_org_groups_revokes_membership_once_matching_group_claim_disappears():
+    from sqlalchemy import select
+
+    from app.models.organization import OrgGroup, OrgGroupMember
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Group Sync Down Org")
+        db.add(org)
+        db.flush()
+        group = OrgGroup(organization_id=org.id, name="Engineering", idp_synced_group_name="eng-team")
+        db.add(group)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "group-sync-down-subject", "email": "groupsyncdown@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
+        db.commit()
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)
+        ).all()
+        assert user.id in member_ids
+
+        sync_org_groups_from_claims(db, user, org, {"groups": ["some-other-group"]})
+        db.commit()
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)
+        ).all()
+        assert user.id not in member_ids
+    finally:
+        db.close()
+
+
+def test_sync_org_groups_never_touches_an_unsynced_group_or_nested_group_edges():
+    """A manually-managed group (idp_synced_group_name unset) must never be
+    touched, and a synced group's *nested-group* edges (structural,
+    admin-managed) must never be added/removed by claims-based sync — only
+    direct user membership rows."""
+    from sqlalchemy import select
+
+    from app.models.organization import OrgGroup, OrgGroupMember
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Group Unmanaged Org")
+        db.add(org)
+        db.flush()
+        manual_group = OrgGroup(organization_id=org.id, name="Manual Team")
+        synced_group = OrgGroup(organization_id=org.id, name="Synced Team", idp_synced_group_name="synced-team")
+        db.add_all([manual_group, synced_group])
+        db.flush()
+        nested_group = OrgGroup(organization_id=org.id, name="Nested Team")
+        db.add(nested_group)
+        db.flush()
+        db.add(OrgGroupMember(org_group_id=synced_group.id, member_org_group_id=nested_group.id))
+        db.commit()
+
+        user = find_or_provision_user(
+            db, {"sub": "unmanaged-subject", "email": "unmanaged@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        db.add(OrgGroupMember(org_group_id=manual_group.id, user_id=user.id))
+        db.commit()
+
+        sync_org_groups_from_claims(db, user, org, {"groups": ["manual team", "unrelated"]})
+        db.commit()
+
+        manual_member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == manual_group.id)
+        ).all()
+        assert user.id in manual_member_ids  # untouched, even though the claim name superficially matches
+
+        nested_edges = db.scalars(
+            select(OrgGroupMember.member_org_group_id).where(OrgGroupMember.org_group_id == synced_group.id)
+        ).all()
+        assert nested_group.id in nested_edges  # nesting edge survives sync untouched
+    finally:
+        db.close()
+
+
+def test_sync_org_groups_leaves_existing_membership_alone_when_idp_asserts_no_groups_claim_at_all():
+    from sqlalchemy import select
+
+    from app.models.organization import OrgGroup, OrgGroupMember
+
+    db = SessionLocal()
+    try:
+        org = Organization(name="OIDC Group No Claim Org")
+        db.add(org)
+        db.flush()
+        group = OrgGroup(organization_id=org.id, name="Engineering", idp_synced_group_name="eng-team")
+        db.add(group)
+        db.flush()
+        user = find_or_provision_user(
+            db, {"sub": "group-no-claim-subject", "email": "groupnoclaim@example.com", "email_verified": True}, issuer=ISSUER_A,
+        )
+        sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
+        db.commit()
+
+        sync_org_groups_from_claims(db, user, org, {})  # no groups/roles claim in this login's token at all
+        db.commit()
+
+        member_ids = db.scalars(
+            select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id)
+        ).all()
+        assert user.id in member_ids
+    finally:
+        db.close()
+
+
 def test_meets_required_group_admits_everyone_when_unset():
     org = Organization(name="No Gate Org")
     assert meets_required_group(org, {}) is True
@@ -309,6 +477,48 @@ def test_sso_config_round_trips_required_group(client, admin_token, org_id):
     resp = client.get(f"/api/v1/orgs/{org_id}/sso-config", headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.json()["oidc_required_group"] == "reqtrack-approved"
+
+
+def test_org_group_idp_sync_target_round_trips(client, admin_token, org_id):
+    group = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Synced Via API"}, headers=auth_headers(admin_token)
+    ).json()
+    assert group["idp_synced_group_name"] is None
+
+    resp = client.patch(
+        f"/api/v1/orgs/{org_id}/groups/{group['id']}", json={"idp_synced_group_name": "eng-team"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["idp_synced_group_name"] == "eng-team"
+
+    groups = client.get(f"/api/v1/orgs/{org_id}/groups", headers=auth_headers(admin_token)).json()
+    updated = next(g for g in groups if g["id"] == group["id"])
+    assert updated["idp_synced_group_name"] == "eng-team"
+
+    # Clearing it back to None is also supported.
+    resp = client.patch(
+        f"/api/v1/orgs/{org_id}/groups/{group['id']}", json={"idp_synced_group_name": None},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["idp_synced_group_name"] is None
+
+
+def test_two_org_groups_cannot_claim_the_same_idp_synced_group_name(client, admin_token, org_id):
+    client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "First", "idp_synced_group_name": "eng-team"},
+        headers=auth_headers(admin_token),
+    )
+    second = client.post(
+        f"/api/v1/orgs/{org_id}/groups", json={"name": "Second"}, headers=auth_headers(admin_token)
+    ).json()
+
+    resp = client.patch(
+        f"/api/v1/orgs/{org_id}/groups/{second['id']}", json={"idp_synced_group_name": "eng-team"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
 
 
 def test_update_sso_config_requires_org_admin(client, admin_token, org_id):

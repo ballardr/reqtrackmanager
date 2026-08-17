@@ -7,8 +7,12 @@ resources and org logo in routers/orgs.py, requirement attachments in
 routers/requirements.py, avatars in routers/auth.py) since each has a
 different payload/validation shape — but downloading only ever needs the
 file id, so it is unified here with context-sensitive authorization:
-- Avatars and organisation logos are viewable by any authenticated user
-  (they're shown in shared UI chrome regardless of org membership).
+- Organisation/platform logos and login-page background images are public
+  (no authentication required at all) — they're rendered on the pre-login
+  pages (`/login`, `/login/{slug}`) before any session exists, as well as in
+  authenticated UI chrome.
+- Avatars are viewable by any authenticated user (shown in shared UI chrome
+  regardless of org membership), but not anonymously.
 - Organisation shared resources require membership in that organisation.
 - Direct requirement attachments, and comment attachments (on either a
   requirement or a change request's discussion thread), require project
@@ -25,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user_header_or_query
+from app.deps import get_current_user_header_or_query_optional
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.enums import ReviewTargetType
 from app.models.file import CommentFile, FileAsset, RequirementFile
@@ -65,7 +69,7 @@ _INLINE_SAFE_CONTENT_TYPES = {
 def download_file(
     file_id: UUID,
     request: Request,
-    current_user: User = Depends(get_current_user_header_or_query),
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
     db: Session = Depends(get_db),
 ):
     file_asset = db.get(FileAsset, file_id)
@@ -73,64 +77,74 @@ def download_file(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
 
     # No server-admin bypass (I-M-05): uploaded files are "data within
-    # organisations". Avatars/logos are the one category that's genuinely
-    # open to any authenticated user regardless of org membership, since
-    # they're shown in shared UI chrome — also deliberately exempt from the
-    # Personal Access Token org-scope check below, for the same reason
-    # /auth/me and other personal, cross-org endpoints are (see
-    # docs/decisions.md's "Personal Access Tokens" section). The platform-wide
-    # default logo (`ServerSettings.default_logo_file_id`) belongs in this
-    # same bucket for the same reason, even though its `FileAsset` row is
-    # nominally owned by whichever organisation it happened to be stored
-    # against (see `routers/system.py::upload_branding_logo`) — that
-    # ownership is a storage-key implementation detail, not an access rule.
-    is_avatar_or_logo = (
-        db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
-        or db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
+    # organisations". Logos and login-page background images are public,
+    # served with no authentication at all, since they're rendered on the
+    # pre-login pages (`/login`, `/login/{slug}`) before any session exists
+    # — also deliberately exempt from the Personal Access Token org-scope
+    # check below, for the same reason /auth/me and other personal,
+    # cross-org endpoints are (see docs/decisions.md's "Personal Access
+    # Tokens" section). The platform-wide defaults
+    # (`ServerSettings.default_logo_file_id` /
+    # `default_login_background_file_id`) belong in this same bucket for the
+    # same reason, even though their `FileAsset` rows are nominally owned by
+    # whichever organisation they happened to be stored against (see
+    # `routers/system.py::upload_branding_logo`) — that ownership is a
+    # storage-key implementation detail, not an access rule.
+    is_public_branding = (
+        db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
+        or db.scalar(select(Organization).where(Organization.login_background_file_id == file_id)) is not None
         or db.scalar(select(ServerSettings).where(ServerSettings.default_logo_file_id == file_id)) is not None
+        or db.scalar(select(ServerSettings).where(ServerSettings.default_login_background_file_id == file_id)) is not None
     )
-    if not is_avatar_or_logo:
-        if file_asset.is_org_resource:
-            # This endpoint resolves the current user via
-            # get_current_user_header_or_query rather than one of
-            # services.rbac's require_* dependency factories (it needs to
-            # accept a ?token= query param for <img src> use, which those
-            # don't support) — so the Personal Access Token org-scope
-            # restriction those factories apply isn't automatic here and
-            # must be checked explicitly, in addition to (not instead of)
-            # the real RBAC role check below.
-            check_pat_scope(request, file_asset.organization_id)
-            _require_org_active(db, file_asset.organization_id)
-            if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
-        else:
-            project_id = None
-            link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
-            if link is not None:
-                requirement = db.get(Requirement, link.requirement_id)
-                project_id = requirement.project_id if requirement is not None else None
+    if not is_public_branding:
+        if current_user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+        # Avatars are the one remaining category open to any authenticated
+        # user regardless of org membership (shown in shared UI chrome), but
+        # unlike the public-branding bucket above, not to anonymous callers.
+        is_avatar = db.scalar(select(User).where(User.avatar_file_id == file_id)) is not None
+        if not is_avatar:
+            if file_asset.is_org_resource:
+                # This endpoint resolves the current user via
+                # get_current_user_header_or_query_optional rather than one
+                # of services.rbac's require_* dependency factories (it
+                # needs to accept a ?token= query param for <img src> use,
+                # which those don't support) — so the Personal Access Token
+                # org-scope restriction those factories apply isn't
+                # automatic here and must be checked explicitly, in addition
+                # to (not instead of) the real RBAC role check below.
+                check_pat_scope(request, file_asset.organization_id)
+                _require_org_active(db, file_asset.organization_id)
+                if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
             else:
-                # Not a requirement attachment — check whether it's a
-                # comment attachment instead (routers/requirements.py and
-                # routers/change_requests.py's upload_comment_attachment),
-                # which resolves to a project via whichever entity the
-                # comment itself is on.
-                comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
-                comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
-                if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
-                    requirement = db.get(Requirement, comment.target_id)
+                project_id = None
+                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
+                if link is not None:
+                    requirement = db.get(Requirement, link.requirement_id)
                     project_id = requirement.project_id if requirement is not None else None
-                elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
-                    cr = db.get(ChangeRequest, comment.target_id)
-                    project_id = cr.project_id if cr is not None else None
-            if project_id is not None:
-                check_pat_scope_for_project(request, db, project_id)
-                organization_id = _project_organization_id(db, project_id)
-                if organization_id is not None:
-                    _require_org_active(db, organization_id)
-            has_access = project_id is not None and get_effective_project_roles(db, current_user.id, project_id)
-            if not has_access:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
+                else:
+                    # Not a requirement attachment — check whether it's a
+                    # comment attachment instead (routers/requirements.py and
+                    # routers/change_requests.py's upload_comment_attachment),
+                    # which resolves to a project via whichever entity the
+                    # comment itself is on.
+                    comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
+                    comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
+                    if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
+                        requirement = db.get(Requirement, comment.target_id)
+                        project_id = requirement.project_id if requirement is not None else None
+                    elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
+                        cr = db.get(ChangeRequest, comment.target_id)
+                        project_id = cr.project_id if cr is not None else None
+                if project_id is not None:
+                    check_pat_scope_for_project(request, db, project_id)
+                    organization_id = _project_organization_id(db, project_id)
+                    if organization_id is not None:
+                        _require_org_active(db, organization_id)
+                has_access = project_id is not None and get_effective_project_roles(db, current_user.id, project_id)
+                if not has_access:
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
 
     data = read_file(file_asset)
     disposition = "inline" if file_asset.content_type in _INLINE_SAFE_CONTENT_TYPES else "attachment"
