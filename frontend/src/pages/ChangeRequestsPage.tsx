@@ -674,7 +674,7 @@ export function ChangeRequestsPage() {
             </div>
           )}
           {crs && crs.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {crs.map((cr) => (
                 <div key={cr.id} className="card stack" style={{ gap: "0.5rem" }}>
                   <Link to={`/projects/${projectId}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>

@@ -95,6 +95,14 @@ def calculate_total(items: list[Item]) -> Decimal:
 - These policies document existing gaps candidly (e.g. no CI gate, no account lockout, plaintext OIDC client secret) rather than hiding them — do not treat a documented gap as license to introduce further, unrelated ones. If new work closes one of these gaps, update the corresponding policy's "Known Gaps / Exceptions" section and the control matrix's Status column to reflect it.
 - This section does not change the authority of [docs/requirements.md](docs/requirements.md), which remains the product requirements source of truth; the SOC 2 policies govern *how* changes are made, not *what* the product does.
 
+## Frontend UX Style Guide Adherence
+
+- [docs/ux-style-guide.md](docs/ux-style-guide.md) is binding on new and reworked frontend UI in this repository, not just descriptive — it is the direct output of a full UX audit ([docs/ux-audit-2026-08.md](docs/ux-audit-2026-08.md)) and states the rules the existing UI itself is being brought into line with.
+- Before adding a new settings surface, create/edit flow, confirmation dialog, or destructive action in the frontend, consult the style guide's principles and patterns (settings hierarchy depth model, platform-default override visibility, create-as-a-layer, one-component-per-pattern, confirmation tiers, feedback-on-every-mutation, accessible control naming) and follow them rather than copying the nearest existing inconsistent example — "what did the last screen near this one do" is explicitly the failure mode the style guide exists to stop.
+- Where a shared component the style guide calls for (`Tabs`, `SidePanel`, `Popover`, a two-tier confirm, `Toast`) does not exist yet, check [docs/ux-audit-2026-08.md](docs/ux-audit-2026-08.md)'s roadmap table first — it may already be scoped or in progress. Building a fifth one-off version of a pattern the style guide names is the exact debt this document was written to stop accruing (see that audit's "the newest feature already reproduces the pattern" finding).
+- If a change must deviate from the style guide for a specific reason, say so explicitly to the user rather than silently diverging, and consider whether the style guide itself needs updating.
+- This does not change the authority of [docs/requirements.md](docs/requirements.md); the style guide governs UI *pattern/structure* choices, not product scope.
+
 ## Documentation and Decision Governance
 
 - The requirements document at [docs/requirements.md](docs/requirements.md) is fully authoritative and must not be changed by the agent. All decisions should be made in compliance with the requirements laid out in this document.

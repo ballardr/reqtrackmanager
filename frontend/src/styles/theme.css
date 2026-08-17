@@ -537,6 +537,14 @@ td {
    rail into its existing icon-only layout and stack the sidebar under the
    content, regardless of the user's manual expand/collapse preference. */
 @media (max-width: 860px) {
+  /* The rail is force-collapsed below this breakpoint (see the rules
+     below), so the manual expand/collapse toggle has nothing left to do —
+     leaving it visible reads as a broken button rather than an
+     unavailable one. Hide it rather than show a control that never
+     changes the layout. */
+  .nav-rail-toggle-row {
+    display: none;
+  }
   .nav-rail:not(.nav-rail-icons) {
     width: var(--nav-rail-width-collapsed);
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, apiUrl, fileUrl } from "../api/client";
 import type { OrgLoginInfo } from "../api/types";
@@ -44,6 +44,7 @@ function generateClientNonce(): string {
  */
 export function OrgLoginPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const { login } = useAuth();
   const [info, setInfo] = useState<OrgLoginInfo | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -67,11 +68,16 @@ export function OrgLoginPage() {
     setSubmitting(true);
     try {
       const result = await login(email, password);
-      if (!result.requires2fa) {
+      if (result.requires2fa) {
+        // A 2FA challenge on an org-branded page falls through to the plain
+        // /login flow rather than duplicating the code-entry form here — the
+        // already-issued challenge token travels via router state so LoginPage
+        // opens straight on the code-entry step instead of asking for
+        // email/password again.
+        navigate("/login", { state: { challengeToken: result.challengeToken } });
+      } else {
         window.location.href = await resolveLandingPath(result.user);
       }
-      // A 2FA challenge on an org-branded page falls through to the plain
-      // /login flow rather than duplicating the code-entry form here.
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
     } finally {

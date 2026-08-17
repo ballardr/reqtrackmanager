@@ -481,7 +481,7 @@ export function RequirementsPage() {
           {!requirements && <Spinner />}
           {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
           {requirements && requirements.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {requirements.map((r) => (
                 <div key={r.id} className="card stack" style={{ gap: "0.5rem" }}>
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>

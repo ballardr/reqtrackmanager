@@ -153,7 +153,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           className={`nav-rail stack ${railCollapsed ? "nav-rail-icons" : ""}`}
           style={{ gap: "0.15rem" }}
         >
-          <div className="row" style={{ justifyContent: "flex-end" }}>
+          <div className="row nav-rail-toggle-row" style={{ justifyContent: "flex-end" }}>
             <Tooltip label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}>
               <button
                 className="btn"

@@ -140,6 +140,7 @@ const en = {
     locked: "Locked (approved)",
     lockedNotice: "use a change request to modify",
     archive: "Archive",
+    archiveConfirm: "Archive this requirement? It moves out of the active list, but its history and links are kept.",
     save: "Save",
     changeNote: "Reason for change",
     history: "Change log",

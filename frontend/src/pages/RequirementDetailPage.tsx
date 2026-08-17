@@ -276,6 +276,7 @@ export function RequirementDetailPage() {
   }
 
   async function archive() {
+    if (!window.confirm(strings.requirements.archiveConfirm)) return;
     await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
     navigate(`/projects/${projectId}/requirements`);
   }

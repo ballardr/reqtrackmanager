@@ -16,6 +16,7 @@ import { REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
 
@@ -144,6 +145,8 @@ export function ReportsPage() {
       setGenerating(null);
     }
   }
+
+  if (!project || !reportConfig) return <Spinner />;
 
   return (
     <div className="stack">

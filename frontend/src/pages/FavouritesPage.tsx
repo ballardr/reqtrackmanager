@@ -40,7 +40,7 @@ export function FavouritesPage() {
       {!projects && <Spinner />}
       {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
       {projects && projects.length > 0 && (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
           {projects.map((p) => (
             <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
