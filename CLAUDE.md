@@ -136,6 +136,12 @@ When making significant changes, update the README to include:
 - Use the Playwright MCP browser tools (`mcp__playwright__*`) sparingly — driving a live browser through MCP consumes tokens much faster than reading code or running the Playwright test suite directly.
 - Prefer running the existing Playwright spec suite (via the CLI/Docker Compose stack) for verification. Reserve the MCP browser tools for targeted, one-off investigation of something the spec suite and static code reading can't resolve (e.g. confirming an actual rendered UI state or chasing a hard-to-reproduce bug).
 
+## Agent Tool Isolation
+
+- Do not default to `isolation: "worktree"` when spawning implementation agents in this repo. Edit the working tree directly.
+- Only use `isolation: "worktree"` when there's a concrete reason: multiple agents genuinely running in parallel over the same files, or the user explicitly wants an easy-rollback branch for a risky change.
+- Sequential background agents (one implementation pass after another, even across separate `Agent` calls) do not need isolation — nothing else is touching the repo concurrently, so a worktree adds `git merge`/`git worktree remove` bookkeeping and more complex resume prompts (exact worktree paths) for no benefit.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
