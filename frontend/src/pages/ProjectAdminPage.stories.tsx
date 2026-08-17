@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { Category, Component, OrgGroup, ProjectGroup, ProjectStage } from "../api/types";
-import { buildProject, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import type { ActionTypeDefinition, Category, Component, OrgGroup, ProjectGroup, ProjectStage, ProjectStatusDefinition } from "../api/types";
+import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -19,13 +19,20 @@ const groups: ProjectGroup[] = [
 const orgGroups: OrgGroup[] = [
   { id: "og1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
 ];
+const projectStatuses: ProjectStatusDefinition[] = [
+  buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }),
+  buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 }),
+];
 
-function mockProjectAdminApis() {
+function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[] } = {}) {
+  const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform" });
+    if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
     if (path.includes("/stages")) return stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
+    if (path.includes("/action-types")) return actionTypes;
+    if (path.includes("/project-statuses")) return projectStatuses;
     // Checked before the plain "/groups" check below — /orgs/{id}/groups
     // also contains that substring, and returns a differently-shaped
     // OrgGroup[] (project groups vs. org groups).
@@ -243,6 +250,58 @@ export const ReportSetupTab: Story = {
     await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
+  },
+};
+
+export const OverviewTabChangeStatus: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Status")).toHaveValue("st1"));
+    await userEvent.selectOptions(canvas.getByLabelText("Status"), "st2");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ status_id: "st2" })
+      )
+    );
+  },
+};
+
+export const ActionTypesTabAddAndReorder: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
+    await userEvent.type(canvas.getByPlaceholderText("Name"), "Inspection");
+    await userEvent.click(canvas.getByRole("button", { name: /New action type/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/action-types`,
+        { name: "Inspection" }
+      )
+    );
+  },
+};
+
+/** With only one action type left in the project, delete is disabled
+ * outright — same §4.0 minimum-one-remaining rule as the org-scoped
+ * project statuses/link types on OrgAdminPage. */
+export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
+  beforeEach: () => mockProjectAdminApis({ actionTypes: [buildActionType({ id: "at1", name: "Review", sort_order: 0 })] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
+    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
   },
 };
 

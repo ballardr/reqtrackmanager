@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization } from "../api/types";
-import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition } from "../api/types";
+import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
 const ORG_ID = "org-1";
@@ -37,9 +37,16 @@ const groups: OrgGroup[] = [
   { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
 ];
 
-function mockOrgAdminApis(overrides: { advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig } = {}) {
+function mockOrgAdminApis(overrides: {
+  advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig;
+  projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[];
+} = {}) {
+  const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
+  const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+    if (path.includes("/project-statuses")) return statuses;
+    if (path.includes("/link-types")) return types;
     if (path.includes("/groups")) return groups;
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
@@ -315,6 +322,101 @@ export const PatsSectionNoneReachOrg: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Personal Access Tokens section" }));
     await waitFor(() => expect(canvas.getByText("No tokens currently reach this organisation.")).toBeInTheDocument());
+  },
+};
+
+export const ProjectStatusesAddAndReorder: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Project statuses section" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
+    const nameInput = canvas.getByPlaceholderText("Name");
+    await userEvent.type(nameInput, "Deprecated");
+    await userEvent.click(canvas.getByRole("button", { name: "New status" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/project-statuses`,
+        { name: "Deprecated" }
+      )
+    );
+  },
+};
+
+/** With only one project status left in the org, the delete control is
+ * disabled outright (§4.0's minimum-one-remaining rule) rather than
+ * offered and then rejected round-trip. */
+export const ProjectStatusesDeleteDisabledAtLastRow: Story = {
+  beforeEach: () => mockOrgAdminApis({ projectStatuses: [buildProjectStatus({ id: "st1", name: "Active", sort_order: 0 })] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Project statuses section" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Active")).toBeInTheDocument());
+    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+  },
+};
+
+/** Deleting a status that's currently assigned to a project 409s; the UI
+ * opens a reassignment picker showing the server's own in-use message
+ * instead of a generic confirm, per §4.0's contract. */
+export const ProjectStatusesDeleteInUseOpensReassignPicker: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "delete").mockRejectedValue(new ApiError(409, "This status is used by 3 project(s). Pass reassign_to_id to move them to another status before deleting."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Project statuses section" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
+    const row = canvas.getByDisplayValue("Proposed").closest<HTMLElement>(".stack")!;
+    await userEvent.click(within(row).getByTitle("Delete this status"));
+    await waitFor(() => expect(canvas.getByText(/used by 3 project\(s\)/)).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Confirm delete" })).toBeDisabled();
+  },
+};
+
+export const LinkTypesAddAndRename: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Link types section" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
+    // Two "Forward name"/"Reverse name"-placeholder inputs exist on this
+    // section: the existing row's own rename inputs (first, pre-filled)
+    // and the "add new link type" row at the very bottom (last, empty) —
+    // same convention as ProjectAdminPage's category/component add-rows.
+    const forwardCandidates = canvas.getAllByPlaceholderText("Forward name");
+    const reverseCandidates = canvas.getAllByPlaceholderText("Reverse name");
+    const forwardInput = forwardCandidates[forwardCandidates.length - 1];
+    const reverseInput = reverseCandidates[reverseCandidates.length - 1];
+    await userEvent.type(forwardInput, "Supersedes");
+    await userEvent.type(reverseInput, "Is superseded by");
+    await userEvent.click(canvas.getByRole("button", { name: "New link type" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/link-types`,
+        { forward_name: "Supersedes", reverse_name: "Is superseded by" }
+      )
+    );
+  },
+};
+
+/** Same minimum-one-remaining rule as project statuses, applied to link
+ * types. */
+export const LinkTypesDeleteDisabledAtLastRow: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({ linkTypes: [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Link types section" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
+    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
   },
 };
 

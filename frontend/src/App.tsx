@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
+import { ActionDetailPage } from "./pages/ActionDetailPage";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
 import { FavouritesPage } from "./pages/FavouritesPage";
@@ -15,6 +16,7 @@ import { OrgAdminPage } from "./pages/OrgAdminPage";
 import { OrgListPage } from "./pages/OrgListPage";
 import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
+import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
 import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
@@ -54,6 +56,8 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementDetailPage />} />
         <Route path="/projects/:projectId/change-requests" element={<ChangeRequestsPage />} />
         <Route path="/projects/:projectId/change-requests/:crId" element={<ChangeRequestDetailPage />} />
+        <Route path="/projects/:projectId/actions" element={<ProjectActionsPage />} />
+        <Route path="/projects/:projectId/actions/:actionId" element={<ActionDetailPage />} />
         <Route path="/projects/:projectId/admin" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/reports" element={<ReportsPage />} />

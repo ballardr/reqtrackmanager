@@ -23,16 +23,22 @@ import { AuthContext, type AuthContextValue } from "../context/AuthContextValue"
 import { ProjectContext } from "../context/ProjectContextValue";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
+  ActionTypeDefinition,
   Category,
   ChangeEntry,
   ChangeRequest,
   Comment,
   Component,
+  FileAsset,
+  LinkTypeDefinition,
   Notification,
   Project,
   ProjectListItem,
   ProjectStage,
+  ProjectStatusDefinition,
   Requirement,
+  RequirementAction,
+  RequirementLink,
   User,
 } from "../api/types";
 
@@ -74,8 +80,24 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     allow_member_change_requests: true,
     visibility: "only_specified",
     terminology: {},
+    status_id: "status-1",
     ...overrides,
   };
+}
+
+export function buildProjectStatus(overrides: Partial<ProjectStatusDefinition> = {}): ProjectStatusDefinition {
+  return { id: nextId("status"), organization_id: "org-1", name: "Active", sort_order: 0, ...overrides };
+}
+
+export function buildLinkType(overrides: Partial<LinkTypeDefinition> = {}): LinkTypeDefinition {
+  return {
+    id: nextId("linktype"), organization_id: "org-1", forward_name: "Depends on",
+    reverse_name: "Is a dependency of", sort_order: 0, ...overrides,
+  };
+}
+
+export function buildActionType(overrides: Partial<ActionTypeDefinition> = {}): ActionTypeDefinition {
+  return { id: nextId("actiontype"), project_id: "project-1", name: "Review", sort_order: 0, ...overrides };
 }
 
 export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
@@ -160,6 +182,36 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     review_date: null,
     review_lead_days: null,
     reviewer_id: null,
+    ...overrides,
+  };
+}
+
+export function buildRequirementLink(overrides: Partial<RequirementLink> = {}): RequirementLink {
+  return {
+    id: nextId("link"), source_requirement_id: "requirement-1", target_requirement_id: "requirement-2",
+    link_type_id: "linktype-1", direction: "outgoing", display_name: "Depends on",
+    other_requirement_id: "requirement-2", other_requirement_unique_code: "AUTH-LOG-002",
+    other_requirement_name: "Users can enable two-factor authentication",
+    ...overrides,
+  };
+}
+
+export function buildRequirementAction(overrides: Partial<RequirementAction> = {}): RequirementAction {
+  return {
+    id: nextId("action"), project_id: "project-1", unique_code: "ACT-001", action_type_id: "actiontype-1",
+    title: "Review password reset flow", description: "Confirm the reset link expiry window matches policy.",
+    outcome_status: "pending", assignee_id: "user-1", due_date: "2026-04-01",
+    completed_at: null, completed_by: null, creator_id: "user-1", is_archived: false,
+    archived_at: null, archived_by: null, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
+    comment_count: 0,
+    ...overrides,
+  };
+}
+
+export function buildFileAsset(overrides: Partial<FileAsset> = {}): FileAsset {
+  return {
+    id: nextId("file"), organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf",
+    size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
 }

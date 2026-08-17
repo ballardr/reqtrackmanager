@@ -1,25 +1,30 @@
-import { GitPullRequest, Trash2 } from "lucide-react";
+import { GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { api, fileUrl } from "../api/client";
+import { api } from "../api/client";
 import type {
+  ActionTypeDefinition,
   ChangeEntry,
   Comment,
   CustomFieldDefinition,
   FileAsset,
+  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
   Requirement,
+  RequirementAction,
   RequirementLevel,
+  RequirementLink,
   RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
-import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
@@ -30,8 +35,14 @@ const strings = t();
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
- * thread (C-R-01), and a change log that intentionally excludes discussion
- * comments (C-A-09 clarification).
+ * thread (C-R-01), a change log that intentionally excludes discussion
+ * comments (C-A-09 clarification), a Links card for typed bidirectional
+ * traceability links to other requirements (C-G-09 — server-resolved
+ * direction/display name, so this page never has to guess which of a link
+ * type's forward/reverse names applies), and an Actions card for
+ * requirement actions (review/test/etc.) linked via `RequirementActionLink`
+ * — neither of these is gated by `is_locked`, since links and actions are
+ * metadata about the requirement rather than its own governed content.
  */
 export function RequirementDetailPage() {
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
@@ -67,6 +78,27 @@ export function RequirementDetailPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
 
+  // --- Traceability links (C-G-09) ------------------------------------
+  const [links, setLinks] = useState<RequirementLink[]>([]);
+  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
+  const [projectRequirements, setProjectRequirements] = useState<Requirement[]>([]);
+  const [newLinkTargetId, setNewLinkTargetId] = useState("");
+  const [newLinkTypeId, setNewLinkTypeId] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // --- Linked requirement actions --------------------------------------
+  const [linkedActions, setLinkedActions] = useState<RequirementAction[]>([]);
+  const [projectActionTypes, setProjectActionTypes] = useState<ActionTypeDefinition[]>([]);
+  const [projectActions, setProjectActions] = useState<RequirementAction[]>([]);
+  const [existingActionToLink, setExistingActionToLink] = useState("");
+  const [showCreateAction, setShowCreateAction] = useState(false);
+  const [newActionTitle, setNewActionTitle] = useState("");
+  const [newActionDescription, setNewActionDescription] = useState("");
+  const [newActionTypeId, setNewActionTypeId] = useState("");
+  const [newActionAssigneeId, setNewActionAssigneeId] = useState("");
+  const [newActionDueDate, setNewActionDueDate] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+
   function userDisplayName(userId: string | null): string {
     if (!userId) return strings.reviews.unassigned;
     return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
@@ -74,7 +106,7 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, act] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, act, lnks, actTypes, linkedActs, allActs, reqs] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
@@ -82,6 +114,11 @@ export function RequirementDetailPage() {
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/activity`),
+      api.get<RequirementLink[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`),
+      api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
+      api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
+      api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
+      api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
     ]);
     setRequirement(req);
     setHistory(hist);
@@ -91,6 +128,11 @@ export function RequirementDetailPage() {
     setCustomFieldValues(req.custom_fields);
     setStages(stgs);
     setActivity(act);
+    setLinks(lnks);
+    setProjectActionTypes(actTypes);
+    setLinkedActions(linkedActs);
+    setProjectActions(allActs);
+    setProjectRequirements(reqs);
     setForm({
       name: req.name,
       reasoning: req.reasoning,
@@ -119,6 +161,69 @@ export function RequirementDetailPage() {
     reload();
   }
 
+  async function addLink() {
+    if (!newLinkTargetId || !newLinkTypeId) return;
+    setLinkError(null);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`, {
+        target_requirement_id: newLinkTargetId,
+        link_type_id: newLinkTypeId,
+      });
+      setNewLinkTargetId("");
+      setNewLinkTypeId("");
+      reload();
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function removeLink(linkId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/links/${linkId}`);
+    reload();
+  }
+
+  async function linkExistingAction() {
+    if (!existingActionToLink) return;
+    setActionError(null);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`, {
+        action_id: existingActionToLink,
+      });
+      setExistingActionToLink("");
+      reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function createAndLinkAction() {
+    if (!newActionTitle.trim() || !newActionTypeId) return;
+    setActionError(null);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/create-and-link`, {
+        title: newActionTitle,
+        description: newActionDescription,
+        action_type_id: newActionTypeId,
+        assignee_id: newActionAssigneeId || null,
+        due_date: newActionDueDate || null,
+      });
+      setNewActionTitle("");
+      setNewActionDescription("");
+      setNewActionTypeId("");
+      setNewActionAssigneeId("");
+      setNewActionDueDate("");
+      setShowCreateAction(false);
+      reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  async function unlinkAction(actionId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/${actionId}`);
+    reload();
+  }
+
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,10 +236,13 @@ export function RequirementDetailPage() {
         const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
         setOrgUsers(users);
+        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`));
       } catch {
         // Org member directory isn't reachable for this user (e.g. no org
         // role) — fall back to the plain user-ID input rather than break
-        // the page.
+        // the page. Link types are best-effort from the same call; the
+        // Links card below already handles an empty `linkTypes` list by
+        // simply having nothing to offer in its type picker.
         setReviewerPickerUnavailable(true);
       }
     })();
@@ -487,22 +595,166 @@ export function RequirementDetailPage() {
 
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
-        {files.map((f) => (
-          <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
-            <a href={fileUrl(f.id)} target="_blank" rel="noreferrer">
-              {f.filename}
-            </a>
-            <button className="btn btn-danger" onClick={() => removeFile(f.id)}>
+        <FileAttachmentList
+          files={files}
+          onUpload={uploadFile}
+          onRemove={removeFile}
+          disabled={requirement.is_locked}
+          emptyHint={strings.requirements.attachmentsLockedNotice}
+        />
+      </div>
+
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.links}</h2>
+        {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
+        {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
+        {[...links]
+          .sort((a, b) => a.display_name.localeCompare(b.display_name) || a.other_requirement_unique_code.localeCompare(b.other_requirement_unique_code))
+          .map((link) => (
+            <div key={link.id} className="row" style={{ justifyContent: "space-between" }}>
+              <span>
+                <span className="badge">{link.display_name}</span>{" "}
+                <Link to={`/projects/${projectId}/requirements/${link.other_requirement_id}`}>
+                  {link.other_requirement_unique_code} — {link.other_requirement_name}
+                </Link>
+              </span>
+              <button className="btn btn-danger" title={strings.requirements.removeLink} onClick={() => removeLink(link.id)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        <div className="row">
+          <select
+            className="input" aria-label={strings.requirements.targetRequirement}
+            value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
+          >
+            <option value="">{strings.requirements.selectARequirementToLink}</option>
+            {projectRequirements
+              .filter((r) => r.id !== requirementId)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.unique_code} — {r.name}
+                </option>
+              ))}
+          </select>
+          <select
+            className="input" aria-label={strings.requirements.linkType}
+            value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
+          >
+            <option value="">{strings.requirements.linkType}</option>
+            {linkTypes.map((lt) => (
+              <option key={lt.id} value={lt.id}>
+                {lt.forward_name}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary" onClick={addLink} disabled={!newLinkTargetId || !newLinkTypeId}>
+            <Plus size={14} /> {strings.requirements.addLink}
+          </button>
+        </div>
+      </div>
+
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
+        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+        {linkedActions.length === 0 && (
+          <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinkedActions}</p>
+        )}
+        {linkedActions.map((a) => (
+          <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
+            <span>
+              <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
+              <span className="badge">{REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}</span>
+            </span>
+            <button className="btn btn-danger" title={strings.requirements.unlinkAction} onClick={() => unlinkAction(a.id)}>
               <Trash2 size={14} />
             </button>
           </div>
         ))}
-        {requirement.is_locked ? (
-          <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-            {strings.requirements.attachmentsLockedNotice}
-          </p>
-        ) : (
-          <input type="file" onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
+        <div className="row">
+          <select
+            className="input" aria-label={strings.requirements.linkExistingAction}
+            value={existingActionToLink} onChange={(e) => setExistingActionToLink(e.target.value)}
+          >
+            <option value="">{strings.requirements.selectAnActionToLink}</option>
+            {projectActions
+              .filter((a) => !linkedActions.some((la) => la.id === a.id))
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.unique_code} — {a.title}
+                </option>
+              ))}
+          </select>
+          <button className="btn" onClick={linkExistingAction} disabled={!existingActionToLink}>
+            <Plus size={14} /> {strings.requirements.linkExistingAction}
+          </button>
+          <button className="btn" onClick={() => setShowCreateAction((v) => !v)}>
+            <Plus size={14} /> {strings.requirements.createAndLinkAction}
+          </button>
+        </div>
+        {showCreateAction && (
+          <div className="stack" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+            <input
+              className="input" placeholder={strings.actions.name} value={newActionTitle}
+              onChange={(e) => setNewActionTitle(e.target.value)}
+            />
+            <textarea
+              className="input" rows={2} placeholder={strings.actions.description} value={newActionDescription}
+              onChange={(e) => setNewActionDescription(e.target.value)}
+            />
+            <div className="row">
+              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+                {strings.actions.actionType}
+                {/* An explicit `aria-label` (matching the visible label
+                    text) is required here, not just the wrapping <label>:
+                    a native <select>'s ARIA accessible-name computation
+                    when label-wrapped folds in every descendant <option>'s
+                    text too, not just the selected one, which would
+                    otherwise make this resolve to something like
+                    "TypeTypeReviewTest" instead of "Type" for automated
+                    (Playwright) lookups — an aria-label always wins over
+                    that content-based computation. */}
+                <select
+                  className="input" aria-label={strings.actions.actionType}
+                  value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
+                >
+                  <option value="">{strings.actions.actionType}</option>
+                  {projectActionTypes.map((at) => (
+                    <option key={at.id} value={at.id}>
+                      {at.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+                {strings.actions.assignee}
+                <select
+                  className="input" aria-label={strings.actions.assignee}
+                  value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)}
+                >
+                  <option value="">{strings.reviews.unassigned}</option>
+                  {orgUsers.map((u) => (
+                    <option key={u.user_id} value={u.user_id}>
+                      {u.display_name} ({u.email})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
+                {strings.actions.dueDate}
+                <input
+                  className="input" type="date" value={newActionDueDate}
+                  onChange={(e) => setNewActionDueDate(e.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              className="btn btn-primary" style={{ alignSelf: "flex-start" }}
+              onClick={createAndLinkAction} disabled={!newActionTitle.trim() || !newActionTypeId}
+            >
+              {strings.common.create}
+            </button>
+          </div>
         )}
       </div>
 
