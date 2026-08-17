@@ -131,6 +131,12 @@ When making significant changes, update the README to include:
 - Every backend change must come with a test that verifies the behaviour matches the request and pins it against future deviation/regression.
 - `backend/scripts/seed_demo_data.py` (a small, realistic manual-demo dataset) and `backend/scripts/seed_e2e_dataset.py` (the fixed persona/org/project dataset the Playwright suite is written against) must be kept in sync with the current schema and feature set. Whenever a change adds/renames/removes a model field, table, enum value, or a whole feature area, check whether either script needs a corresponding update — new fields should be populated with a sensible demo value rather than left at a default that hides the feature, and a removed/renamed field or relationship must not be left referencing something that no longer exists. Treat a script that fails to run, or that no longer demonstrates a feature it used to, as a bug the same as a failing test.
 
+## Frontend Dependency Changes
+
+- CI (`ci.yml`) and `frontend/Dockerfile` both install with Node 24; `frontend/.nvmrc` pins the same major version for local use (`nvm use` in `frontend/`). Keep all three in lockstep when bumping Node in future — a mismatched local Node major version bundles a different npm major version, which can resolve transitive optional dependencies differently and write a `package-lock.json` that passes locally but fails CI's `npm ci` with "Missing: `<pkg>` from lock file". This has happened repeatedly.
+- After adding, removing, or bumping a package in `frontend/package.json`, run `frontend/scripts/sync-lockfile.sh` (extra arguments pass through to `npm install`, e.g. a package name to add) rather than a bare `npm install` — it refuses to run under the wrong Node major version and re-verifies with `npm ci` before you commit.
+- A tracked pre-commit hook (`.githooks/pre-commit`, wired up automatically via `frontend`'s `postinstall` script) also runs `npm ci --dry-run` whenever `frontend/package.json` or `package-lock.json` is staged, and blocks the commit if they're out of sync — this doesn't replace the step above, it's the backstop for when it's skipped.
+
 ## Playwright MCP Usage
 
 - Use the Playwright MCP browser tools (`mcp__playwright__*`) sparingly — driving a live browser through MCP consumes tokens much faster than reading code or running the Playwright test suite directly.

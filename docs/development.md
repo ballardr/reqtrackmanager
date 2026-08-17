@@ -89,6 +89,21 @@ npm run test-storybook -- --coverage   # same, plus a v8 coverage report (fronte
 
 Coverage today only reflects the files actually exercised by a story (`*.stories.tsx`) — most page-level logic is instead covered by the Playwright E2E suite below, which this number doesn't measure, so don't read a low frontend-coverage % as "untested."
 
+### Changing frontend dependencies
+
+CI (`ci.yml`) and `frontend/Dockerfile` both install with Node 24; `frontend/.nvmrc` pins the same major version for local use (`nvm use` from `frontend/`, or let `nvm`'s shell integration auto-switch on `cd`). Keep all three in lockstep if Node is bumped again in future — a locally-installed Node on a different major version bundles a different npm major version, which can resolve transitive optional dependencies differently and write a `package-lock.json` that *looks* complete but that a different npm version's `npm ci` rejects with "Missing: `<pkg>` from lock file" — the lockfile is valid, just for a different npm version. See [decisions.md](decisions.md) for a real instance of this.
+
+After adding, removing, or bumping any dependency in `frontend/package.json`, regenerate the lock file with:
+
+```bash
+frontend/scripts/sync-lockfile.sh                    # sync package-lock.json to the current package.json
+frontend/scripts/sync-lockfile.sh some-package@1.2.3  # add/bump a package — args pass through to npm install
+```
+
+It refuses to run if the active Node's major version doesn't match `frontend/.nvmrc`, then reinstalls from scratch and re-verifies the result with `npm ci`.
+
+A pre-commit hook also backstops this automatically: `npm install` in `frontend/` wires up `core.hooksPath` to the repo's tracked `.githooks/` directory (via the `postinstall` script), and `.githooks/pre-commit` runs `npm ci --dry-run` (fast, writes nothing to disk) whenever `frontend/package.json` or `package-lock.json` is staged, blocking the commit if they're out of sync.
+
 ## End-to-end tests
 
 Requires the dev/test stack running:
