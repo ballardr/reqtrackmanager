@@ -57,6 +57,7 @@ class ProjectOut(BaseModel):
     allow_member_change_requests: bool = True
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
+    status_id: UUID
 
 
 class ProjectImportResult(BaseModel):
@@ -78,6 +79,9 @@ class ProjectUpdate(BaseModel):
     allow_member_change_requests: bool | None = None
     is_template: bool | None = None
     visibility: ProjectVisibility | None = None
+    # Must belong to the project's own organisation (400 otherwise) — see
+    # `routers/projects.py::update_project`.
+    status_id: UUID | None = None
 
 
 class TerminologyUpdate(BaseModel):

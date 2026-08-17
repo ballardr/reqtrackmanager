@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import RequirementLevel, RequirementLinkType, RequirementReviewOutcome, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
 
 
 class Requirement(UUIDPKMixin, TimestampMixin, Base):
@@ -162,10 +162,30 @@ class RequirementKeyword(UUIDPKMixin, Base):
 
 
 class RequirementLink(UUIDPKMixin, TimestampMixin, Base):
-    """A traceability link between two requirements (C-G-09)."""
+    """A traceability link between two requirements (C-G-09).
+
+    `link_type_id` replaces the previous fixed `RequirementLinkType` enum
+    (migration 0012) — see `RequirementLinkTypeDefinition`'s docstring for
+    why link types became an org-definable table. Links are **not** gated
+    by a requirement's lock state (`services.requirements.is_locked`):
+    traceability metadata isn't "requirement content" under C-G-12 any more
+    than a `ReviewComment` is (this codebase already treats discussion
+    threads as outside the change-log/lock boundary; links get the same
+    treatment).
+    """
 
     __tablename__ = "requirement_links"
-    __table_args__ = (UniqueConstraint("source_requirement_id", "target_requirement_id", "link_type"),)
+    # Explicit short name: the default-generated name for this 3-column
+    # constraint is 78 bytes, over Postgres's 63-byte NAMEDATALEN limit and
+    # thus silently truncated/unpredictable — see
+    # `RequirementLinkTypeDefinition`'s __table_args__ comment for the same
+    # issue and this codebase's established fix (migration 0009).
+    __table_args__ = (
+        UniqueConstraint(
+            "source_requirement_id", "target_requirement_id", "link_type_id",
+            name="uq_requirement_links_source_target_type",
+        ),
+    )
 
     source_requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
@@ -173,7 +193,9 @@ class RequirementLink(UUIDPKMixin, TimestampMixin, Base):
     target_requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
     )
-    link_type: Mapped[RequirementLinkType] = mapped_column(str_enum(RequirementLinkType), default=RequirementLinkType.RELATES_TO)
+    link_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id")
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 

@@ -101,6 +101,7 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.files import read_file
 from app.services.invites import create_pending_invite
 from app.services.project_export import (
@@ -504,7 +505,7 @@ def _import_projects(
             if resolutions[f"project:{ref}"] == "skip":
                 continue
             name = f"{source_name} (imported)"
-        project = new_project_from_bundle_data(org.id, name, None, project_data)
+        project = new_project_from_bundle_data(db, org.id, name, None, project_data)
         db.add(project)
         db.flush()
         project_id_by_ref[ref] = project.id
@@ -548,6 +549,15 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     )
     db.add(org)
     db.flush()
+    # Default project statuses/link types, same as any other new
+    # organisation (`routers/orgs.py::create_organization`) — a bundle
+    # doesn't currently carry its source organisation's status/link-type
+    # customisations across, so the new organisation simply starts with the
+    # standard defaults. `_import_projects` (below, via
+    # `new_project_from_bundle_data`) needs at least a default status to
+    # exist before it creates this org's first imported project.
+    seed_project_statuses(db, org.id)
+    seed_link_types(db, org.id)
     if data.get("source_sso_only"):
         warnings.add(
             "The source organisation had sso_only enabled; this was not carried over (no working OIDC secret is "

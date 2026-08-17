@@ -24,6 +24,7 @@ from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind
 from app.models.file import FileAsset, RequirementFile
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementKeyword, RequirementLink, RequirementVersion
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.services.csv_safety import csv_safe
 
@@ -120,9 +121,20 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
         if missing_target_ids:
             for r in db.scalars(select(Requirement).where(Requirement.id.in_(missing_target_ids))).all():
                 code_by_id[r.id] = r.unique_code
+        # Displayed by the link's forward name (this requirement is always
+        # the link's source in this export, since `link_rows` was queried by
+        # `source_requirement_id`) — a plain informational column, not
+        # re-imported by CSV import (which has no notion of links).
+        link_type_forward_name_by_id = {
+            lt.id: lt.forward_name
+            for lt in db.scalars(
+                select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id)
+            )
+        }
         for link in link_rows:
             target_code = code_by_id.get(link.target_requirement_id, "?")
-            links_by_req.setdefault(link.source_requirement_id, []).append(f"{link.link_type.value}:{target_code}")
+            type_name = link_type_forward_name_by_id.get(link.link_type_id, "?")
+            links_by_req.setdefault(link.source_requirement_id, []).append(f"{type_name}:{target_code}")
 
     attachments_by_req: dict[UUID, list[str]] = {}
     if req_ids:

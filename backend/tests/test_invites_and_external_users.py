@@ -13,6 +13,7 @@ from app.models.enums import OrgRole
 from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
+from app.services.definitions import get_default_project_status_id, seed_project_statuses
 from app.services.invites import consume_pending_invites, create_pending_invite, provision_sso_invite
 from app.services.oidc_provisioning import find_or_provision_user
 from tests.conftest import auth_headers, create_org_admin_in, create_project
@@ -345,7 +346,9 @@ def test_sso_login_adopts_pre_provisioned_invited_account_and_keeps_its_roles():
         org = Organization(name="DirectSsoOrg", sso_only=True)
         db.add(org)
         db.flush()
-        project = Project(organization_id=org.id, name="Direct SSO Project")
+        seed_project_statuses(db, org.id)
+        db.flush()
+        project = Project(organization_id=org.id, name="Direct SSO Project", status_id=get_default_project_status_id(db, org.id))
         db.add(project)
         inviter = User(email="inviter1@ssoprovision.example.com", display_name="Inviter", auth_backend="native")
         db.add(inviter)
@@ -388,8 +391,11 @@ def test_consume_pending_invites_is_idempotent_across_multiple_invites_to_same_o
         org = Organization(name="DoubleInviteOrg")
         db.add(org)
         db.flush()
-        project_a = Project(organization_id=org.id, name="Project A")
-        project_b = Project(organization_id=org.id, name="Project B")
+        seed_project_statuses(db, org.id)
+        db.flush()
+        default_status_id = get_default_project_status_id(db, org.id)
+        project_a = Project(organization_id=org.id, name="Project A", status_id=default_status_id)
+        project_b = Project(organization_id=org.id, name="Project B", status_id=default_status_id)
         db.add_all([project_a, project_b])
         inviter = User(email="inviter2@doubleinvite.example.com", display_name="Inviter", auth_backend="native")
         db.add(inviter)

@@ -128,6 +128,47 @@ def create_requirement(headers: dict, project_id: str, name: str, reasoning: str
     return r.json()
 
 
+def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_requirement_link(headers: dict, project_id: str, requirement_id: str, target_requirement_id: str, link_type_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/links",
+        json={"target_requirement_id": target_requirement_id, "link_type_id": link_type_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_and_link_action(headers: dict, project_id: str, requirement_id: str, *, title: str, action_type_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/actions/create-and-link",
+        json={"title": title, "description": "E2E seed action.", "action_type_id": action_type_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_status: str) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/actions/{action['id']}",
+        json={
+            "title": action["title"], "description": action["description"], "action_type_id": action["action_type_id"],
+            "outcome_status": outcome_status,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
@@ -264,6 +305,19 @@ def main() -> None:
         )
         r.raise_for_status()
 
+    print("Adding a custom link type and fixed requirement links/actions on Alpha-1, for the requirement-links "
+          "and requirement-actions E2E specs...")
+    e2e_link_type = create_link_type(h_ab, alpha["id"], forward_name="E2E Supersedes", reverse_name="E2E Is superseded by")
+    create_requirement_link(h_ab, alpha1["id"], alpha1_reqs[1]["id"], alpha1_reqs[0]["id"], e2e_link_type["id"])
+    alpha1_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{alpha1['id']}/action-types", headers=h_ab, timeout=30).json()}
+    e2e_review_action = create_and_link_action(
+        h_ab, alpha1["id"], alpha1_reqs[2]["id"], title="E2E Review Action", action_type_id=alpha1_action_types["Review"]["id"],
+    )
+    set_action_outcome(h_ab, alpha1["id"], e2e_review_action, "completed")
+    create_and_link_action(
+        h_ab, alpha1["id"], alpha1_reqs[3]["id"], title="E2E Test Action", action_type_id=alpha1_action_types["Test"]["id"],
+    )
+
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
     print("  e2e-orgadmin-ab@example.com   - org_admin of Alpha + Beta; PM on all 4 of those projects")
@@ -273,6 +327,8 @@ def main() -> None:
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
+    print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
+    print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")
 
 
 if __name__ == "__main__":

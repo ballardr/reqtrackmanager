@@ -17,6 +17,7 @@ from app.models.enums import OrgRole
 from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.security import hash_password
+from app.services.definitions import seed_link_types, seed_project_statuses
 
 settings = get_settings()
 
@@ -48,6 +49,8 @@ def run_bootstrap(db: Session) -> None:
             org = Organization(name="Default Organization")
             db.add(org)
             db.flush()
+            seed_project_statuses(db, org.id)
+            seed_link_types(db, org.id)
             db.add(UserOrgRole(user_id=admin.id, organization_id=org.id, role=OrgRole.ORG_ADMIN))
 
     db.commit()

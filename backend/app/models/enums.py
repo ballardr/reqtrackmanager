@@ -102,18 +102,33 @@ class ChangeRequestStatus(str, enum.Enum):
 
 
 class ReviewTargetType(str, enum.Enum):
-    """What a discussion thread comment is attached to (C-R-01)."""
+    """What a discussion thread comment is attached to (C-R-01).
+
+    ACTION: a `RequirementAction`'s own discussion thread, reusing the same
+    generic `ReviewComment`/`CommentFile` machinery as requirements and
+    change requests rather than a fourth parallel comment model (see
+    `models.requirement_action`'s module docstring).
+    """
 
     REQUIREMENT = "requirement"
     CHANGE_REQUEST = "change_request"
+    ACTION = "action"
 
 
-class RequirementLinkType(str, enum.Enum):
-    """Traceability relationship types between requirements (C-G-09)."""
+class RequirementActionOutcome(str, enum.Enum):
+    """Lifecycle/outcome state of a `RequirementAction`.
 
-    RELATES_TO = "relates_to"
-    DEPENDS_ON = "depends_on"
-    DERIVED_FROM = "derived_from"
+    Kept as a small fixed enum rather than a fourth org/project-configurable
+    definition table (unlike `ProjectStatusDefinition`,
+    `RequirementLinkTypeDefinition`, `ActionTypeDefinition`): nothing in the
+    feature request asks this vocabulary to vary per org/project, and every
+    comparable lifecycle vocabulary already in this codebase
+    (`RequirementReviewOutcome`, `ChangeRequestStatus`) is a fixed enum too.
+    """
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class RequirementReviewOutcome(str, enum.Enum):

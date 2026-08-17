@@ -44,6 +44,7 @@ from app.models.project import (
     StageReviewResponse,
     UserProjectRole,
 )
+from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
@@ -82,8 +83,10 @@ from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.changes import get_project_changes
+from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
 from app.services.notifications import notify
+from app.services.ordering import move_ordered
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.rbac import (
     check_pat_scope,
@@ -167,7 +170,10 @@ def create_project(
             else:
                 db.add(UserProjectRole(user_id=current_user.id, project_id=project.id, role=ProjectRole.PROJECT_MANAGER))
     else:
-        project = Project(organization_id=payload.organization_id, name=payload.name, summary=payload.summary)
+        project = Project(
+            organization_id=payload.organization_id, name=payload.name, summary=payload.summary,
+            status_id=get_default_project_status_id(db, payload.organization_id),
+        )
         db.add(project)
         db.flush()
 
@@ -182,6 +188,14 @@ def create_project(
                 manager_group = group
         if manager_group is not None:
             db.add(ProjectGroupMember(project_group_id=manager_group.id, user_id=current_user.id))
+
+        # Default action types (Review, Test) — mirrors the default project
+        # groups just above (C-U-10): seeded fresh for a manually-created
+        # project. A template-cloned project instead *copies* the template's
+        # own action types (see `clone_project`), the same treatment as its
+        # custom field definitions, so an admin's customisations to a
+        # template carry over rather than being silently reset to defaults.
+        seed_action_types(db, project.id)
 
     if payload.terminology:
         project.terminology = payload.terminology
@@ -348,7 +362,7 @@ def list_projects(
                 created_at=p.created_at, updated_at=p.updated_at,
                 is_archived=p.is_archived, is_template=p.is_template,
                 allow_member_change_requests=p.allow_member_change_requests, visibility=p.visibility,
-                terminology=p.terminology,
+                terminology=p.terminology, status_id=p.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
                 my_roles=list(roles),
@@ -428,7 +442,7 @@ def update_project(
     db: Session = Depends(get_db),
 ):
     """Updates project settings: name/summary, the member change-request
-    toggle (C-U-13), the template flag (C-E-05), and visibility."""
+    toggle (C-U-13), the template flag (C-E-05), visibility, and status."""
     if payload.name is not None:
         project.name = payload.name
     if payload.summary is not None:
@@ -439,6 +453,11 @@ def update_project(
         project.is_template = payload.is_template
     if payload.visibility is not None:
         project.visibility = payload.visibility
+    if payload.status_id is not None:
+        new_status = db.get(ProjectStatusDefinition, payload.status_id)
+        if new_status is None or new_status.organization_id != project.organization_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "status_id must be a project status defined in this project's organisation.")
+        project.status_id = payload.status_id
     log_event(db, entity_type="project", entity_id=project_id, action="settings_updated",
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
               detail={"visibility": payload.visibility.value} if payload.visibility is not None else None)
@@ -1031,7 +1050,7 @@ def move_component(
     db: Session = Depends(get_db)
 ):
     """Moves a component up/down in display order (C-E-01)."""
-    result = _move_ordered(db, ProjectComponent, [ProjectComponent.project_id == project.id], component_id, payload.direction)
+    result = move_ordered(db, ProjectComponent, [ProjectComponent.project_id == project.id], component_id, payload.direction)
     log_event(db, entity_type="project_component", entity_id=component_id, action="reordered",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
               detail={"direction": payload.direction})
@@ -1150,7 +1169,7 @@ def move_category(
     category = db.get(ProjectCategory, category_id)
     if category is None or category.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found.")
-    result = _move_ordered(db, ProjectCategory, [ProjectCategory.component_id == category.component_id], category_id, payload.direction)
+    result = move_ordered(db, ProjectCategory, [ProjectCategory.component_id == category.component_id], category_id, payload.direction)
     log_event(db, entity_type="project_category", entity_id=category_id, action="reordered",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
               detail={"direction": payload.direction})
@@ -1222,45 +1241,6 @@ def delete_category(
               detail={"reassigned_to": str(reassign_to)})
     db.delete(category)
     db.commit()
-
-
-def _move_ordered(db: Session, model, scope_conditions: list, item_id: UUID, direction: str):
-    """Swaps `sort_order` between `item_id` and its neighbour (C-E-01/C-E-02).
-
-    Shared by component and category reordering, since both are plain
-    sort_order-ordered rows, just scoped differently: components are
-    ordered within their project; categories are ordered within their
-    parent component (siblings in the tree), not the whole project. A
-    no-op (not an error) if the item is already at the boundary in the
-    requested direction.
-
-    Args:
-        db: Active database session.
-        model: The SQLAlchemy model class (`ProjectComponent` or
-            `ProjectCategory`).
-        scope_conditions: SQLAlchemy filter expressions identifying the
-            sibling group `item_id` is ordered within (e.g. same
-            `project_id` for components, same `component_id` for
-            categories).
-        item_id: The row being moved.
-        direction: "up" or "down".
-
-    Returns:
-        The moved row, refreshed with its (possibly unchanged) sort_order.
-
-    Raises:
-        HTTPException: 404 if `item_id` isn't found among the scoped siblings.
-    """
-    items = db.scalars(select(model).where(*scope_conditions).order_by(model.sort_order)).all()
-    idx = next((i for i, it in enumerate(items) if it.id == item_id), None)
-    if idx is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found.")
-    swap_idx = idx - 1 if direction == "up" else idx + 1
-    if 0 <= swap_idx < len(items):
-        items[idx].sort_order, items[swap_idx].sort_order = items[swap_idx].sort_order, items[idx].sort_order
-        db.commit()
-    db.refresh(items[idx])
-    return items[idx]
 
 
 # --- Project groups & roles (C-U-10, C-U-11) --------------------------------

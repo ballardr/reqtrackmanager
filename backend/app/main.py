@@ -25,6 +25,8 @@ from app.database import SessionLocal
 from app.metrics import http_request_duration_seconds, http_requests_total
 from app.migrations import run_migrations
 from app.routers import (
+    action_types,
+    actions,
     auth,
     auth_oidc,
     change_requests,
@@ -182,6 +184,8 @@ app.include_router(change_requests.router)
 app.include_router(reports.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
+app.include_router(action_types.router)
+app.include_router(actions.router)
 app.include_router(notifications.router)
 app.include_router(reviews.router)
 app.include_router(pats.router)

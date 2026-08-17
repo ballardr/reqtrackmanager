@@ -70,10 +70,11 @@ def test_cannot_link_to_requirement_in_another_project(client, admin_token, org_
     comp_b, cat_b = create_component_and_category(client, admin_token, project_b["id"])
     requirement_a = _create_requirement(client, admin_token, project_a["id"], comp_a, cat_a, "A req")
     requirement_b = _create_requirement(client, admin_token, project_b["id"], comp_b, cat_b, "B req")
+    link_types = client.get(f"/api/v1/orgs/{org_id}/link-types", headers=auth_headers(admin_token)).json()
 
     resp = client.post(
         f"/api/v1/projects/{project_a['id']}/requirements/{requirement_a['id']}/links",
-        json={"target_requirement_id": requirement_b["id"], "link_type": "relates_to"},
+        json={"target_requirement_id": requirement_b["id"], "link_type_id": link_types[0]["id"]},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 404

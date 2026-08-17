@@ -29,6 +29,18 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
         next_requirement_seq: Monotonically increasing counter used to
             generate unique requirement identifiers (C-G-06). Never reused,
             including for archived requirements.
+        status_id: The project's current org-defined status (e.g.
+            "Proposed", "Active" — see `ProjectStatusDefinition`). NOT NULL
+            with no `ondelete` action (implicit RESTRICT): every project
+            must always have a real status, and the app layer already
+            refuses to delete an in-use status (409) or delete the last
+            remaining status in an org (409) — see
+            `ProjectStatusDefinition`'s own docstring for why the DB-level
+            RESTRICT is kept as a second backstop rather than relied on
+            alone.
+        next_action_seq: Monotonically increasing counter used to generate
+            unique `RequirementAction.unique_code` identifiers, mirroring
+            `next_requirement_seq` exactly (see `services/actions.py`).
     """
 
     __tablename__ = "projects"
@@ -39,6 +51,10 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     summary: Mapped[str] = mapped_column(String(2000), default="")
     next_requirement_seq: Mapped[int] = mapped_column(Integer, default=1)
+    next_action_seq: Mapped[int] = mapped_column(Integer, default=1)
+    status_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_status_definitions.id"), nullable=False
+    )
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
