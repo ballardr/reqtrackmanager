@@ -11,6 +11,7 @@ import {
   buildUser,
   withAuth,
   withRouter,
+  withToast,
 } from "../testing/storybook-helpers";
 import { ActionDetailPage } from "./ActionDetailPage";
 
@@ -47,6 +48,7 @@ const meta: Meta<typeof ActionDetailPage> = {
   decorators: [
     withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     withRouter(`/projects/${PROJECT_ID}/actions/${ACTION_ID}`, "/projects/:projectId/actions/:actionId"),
+    withToast(),
   ],
 };
 export default meta;
@@ -80,6 +82,29 @@ export const TransitionOutcomeToFailed: Story = {
         expect.objectContaining({ outcome_status: "failed" })
       )
     );
+  },
+};
+
+/** Archiving opens the shared `ConfirmDialog`, then shows a success toast
+ * (Principle 7 — "every mutation ends with feedback") and reloads in
+ * place, matching `RequirementDetailPage`'s archive behaviour. */
+export const ArchivingConfirmsAndShowsToast: Story = {
+  beforeEach: () => {
+    mockActionDetailApis(buildRequirementAction({ id: ACTION_ID, title: "Review password reset flow", action_type_id: "at1" }));
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Archive this action?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}/archive`)
+    );
+    await expect(within(document.body).getByText("Action archived")).toBeInTheDocument();
   },
 };
 

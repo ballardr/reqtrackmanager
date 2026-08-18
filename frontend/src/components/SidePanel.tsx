@@ -8,23 +8,17 @@ import { useDialogA11y } from "./dialogA11y";
 const strings = t();
 
 /**
- * A simple centred dialog overlay, rendered through a portal into
- * `document.body` so it's never clipped by a scrollable ancestor (same
- * reasoning as `Tooltip`). Closes on Escape or a click on the backdrop;
- * the dialog itself stops propagation so clicks inside it don't bubble to
- * the backdrop's close handler.
- *
- * Traps Tab/Shift+Tab focus within the dialog while open, and restores
- * focus to whatever triggered it on close (style guide Principle 8 —
- * "every interactive control has a name," extended here to "and keyboard
- * focus never silently escapes it"); see `dialogA11y.ts`, shared with
- * `SidePanel` and `Popover`. Initial focus only moves into the dialog if
- * nothing inside already has it — a child that sets its own `autoFocus`
- * (e.g. `RichTextEditor`'s link-URL field) wins; this only takes over as a
- * fallback for content with no such field of its own (e.g. the read-only
- * vote-comments viewer).
+ * A right-anchored sliding-in panel for a multi-field create/edit flow —
+ * the "layer, not a page reflow" half of style guide Principle 3
+ * (`docs/ux-style-guide.md`, "Pattern: create panels, popovers, and one
+ * door for bulk"), for content too field-heavy for `Popover`. Structurally
+ * the same dialog chrome as `Modal` — portalled to `document.body`,
+ * backdrop click and Escape close it, focus is trapped and restored (see
+ * `dialogA11y.ts`) — but anchored to the right edge and full-height instead
+ * of centred, so the page underneath stays visible and in place rather
+ * than being replaced.
  */
-export function Modal({
+export function SidePanel({
   title,
   onClose,
   children,
@@ -45,10 +39,8 @@ export function Modal({
         inset: 0,
         background: "rgba(0, 0, 0, 0.5)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "flex-end",
         zIndex: 1100,
-        padding: "1rem",
       }}
     >
       <div
@@ -59,7 +51,15 @@ export function Modal({
         aria-label={title}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 560, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          height: "100%",
+          maxHeight: "100vh",
+          overflowY: "auto",
+          borderRadius: 0,
+          margin: 0,
+        }}
       >
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>

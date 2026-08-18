@@ -79,6 +79,9 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.getByRole("navigation")).toBeInTheDocument();
     await expect(canvas.queryByText("Project")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
+    // The only path to org administration for a non-server-admin (2026-08
+    // UX audit finding: /orgs previously had no rail entry at all).
+    await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
   },
 };
 

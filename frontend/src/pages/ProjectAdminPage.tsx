@@ -25,6 +25,7 @@ import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_L
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
+import { Tabs, tabPanelProps } from "../components/Tabs";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
@@ -502,27 +503,17 @@ export function ProjectAdminPage() {
     { key: "actionTypes", label: strings.admin.actionTypes },
     { key: "groups", label: strings.admin.groups },
     { key: "terminology", label: strings.admin.terminology },
-    { key: "reportSetup", label: "Report Setup" },
+    { key: "reportSetup", label: strings.admin.reportSetup },
   ];
 
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.nav.admin}</h1>
 
-      <div className="row" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            className={`btn ${tab === tb.key ? "btn-primary" : ""}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
+      <Tabs idPrefix="project-admin-tabs" tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "overview" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "overview")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.name}
@@ -580,7 +571,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "terminology" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "terminology")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         {TERMINOLOGY_KEYS.map((key) => (
@@ -601,7 +592,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "stages" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "stages")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.stages}</h2>
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         {stages.map((s) => {
@@ -616,7 +607,12 @@ export function ProjectAdminPage() {
                   onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
                 />
                 {nameEdit !== s.name && nameEdit && (
-                  <button className="btn" onClick={() => renameStage(s.id, nameEdit)} title={strings.admin.rename}>
+                  <button
+                    className="btn"
+                    onClick={() => renameStage(s.id, nameEdit)}
+                    title={strings.admin.rename}
+                    aria-label={strings.admin.rename}
+                  >
                     <Pencil size={14} />
                   </button>
                 )}
@@ -627,6 +623,7 @@ export function ProjectAdminPage() {
                   className="btn btn-danger"
                   disabled={otherStages.length === 0}
                   title={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
+                  aria-label={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
                   onClick={() => setDeletingStageId(s.id)}
                 >
                   <Trash2 size={14} />
@@ -715,7 +712,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "categories" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "categories")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.components}</h2>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.admin.componentTreeHint}</p>
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
@@ -738,22 +735,46 @@ export function ProjectAdminPage() {
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
                   />
                   {componentDirty && componentEdit.name && componentEdit.prefix && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}>
+                    <button
+                      className="btn"
+                      title={strings.admin.rename}
+                      aria-label={strings.admin.rename}
+                      onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
                 </div>
                 <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveComponent(c.id, "up")}>
+                  <button
+                    className="btn"
+                    disabled={idx === 0}
+                    title={strings.common.up}
+                    aria-label={strings.common.up}
+                    onClick={() => moveComponent(c.id, "up")}
+                  >
                     <ArrowUp size={14} />
                   </button>
-                  <button className="btn" disabled={idx === components.length - 1} onClick={() => moveComponent(c.id, "down")}>
+                  <button
+                    className="btn"
+                    disabled={idx === components.length - 1}
+                    title={strings.common.down}
+                    aria-label={strings.common.down}
+                    onClick={() => moveComponent(c.id, "down")}
+                  >
                     <ArrowDown size={14} />
                   </button>
                   <button
                     className="btn btn-danger"
                     disabled={ownCategories.length > 0 || otherComponents.length === 0}
                     title={
+                      ownCategories.length > 0
+                        ? strings.admin.deleteComponentHasCategoriesHint
+                        : otherComponents.length === 0
+                        ? strings.admin.deleteLastOneHint
+                        : strings.admin.deleteComponent
+                    }
+                    aria-label={
                       ownCategories.length > 0
                         ? strings.admin.deleteComponentHasCategoriesHint
                         : otherComponents.length === 0
@@ -795,18 +816,31 @@ export function ProjectAdminPage() {
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
                         />
                         {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
-                          <button className="btn" title={strings.admin.rename} onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}>
+                          <button
+                            className="btn"
+                            title={strings.admin.rename}
+                            aria-label={strings.admin.rename}
+                            onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}
+                          >
                             <Pencil size={14} />
                           </button>
                         )}
                       </div>
                       <div className="row">
-                        <button className="btn" disabled={catIdx === 0} onClick={() => moveCategory(cat.id, "up")}>
+                        <button
+                          className="btn"
+                          disabled={catIdx === 0}
+                          title={strings.common.up}
+                          aria-label={strings.common.up}
+                          onClick={() => moveCategory(cat.id, "up")}
+                        >
                           <ArrowUp size={14} />
                         </button>
                         <button
                           className="btn"
                           disabled={catIdx === ownCategories.length - 1}
+                          title={strings.common.down}
+                          aria-label={strings.common.down}
                           onClick={() => moveCategory(cat.id, "down")}
                         >
                           <ArrowDown size={14} />
@@ -815,6 +849,7 @@ export function ProjectAdminPage() {
                           className="btn btn-danger"
                           disabled={otherCategories.length === 0}
                           title={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
+                          aria-label={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
                           onClick={() => setDeletingCategoryId(cat.id)}
                         >
                           <Trash2 size={14} />
@@ -891,7 +926,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "customFields" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "customFields")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.customFields}</h2>
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
@@ -899,7 +934,12 @@ export function ProjectAdminPage() {
               {f.name} <span className="badge">{CUSTOM_FIELD_ENTITY_KIND_LABEL[f.entity_kind]}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
               {f.required && <span className="badge">{strings.admin.required}</span>}
             </span>
-            <button className="btn btn-danger" onClick={() => deleteCustomField(f.id)}>
+            <button
+              className="btn btn-danger"
+              title={strings.admin.deleteCustomField(f.name)}
+              aria-label={strings.admin.deleteCustomField(f.name)}
+              onClick={() => deleteCustomField(f.id)}
+            >
               <Trash2 size={14} />
             </button>
           </div>
@@ -936,7 +976,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "actionTypes" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "actionTypes")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.actionTypes}</h2>
         {actionTypeError && <div style={{ color: "var(--color-danger)" }}>{actionTypeError}</div>}
         {actionTypes.map((at, idx) => {
@@ -951,22 +991,40 @@ export function ProjectAdminPage() {
                     onChange={(e) => setActionTypeNameEdits((m) => ({ ...m, [at.id]: e.target.value }))}
                   />
                   {nameEdit !== at.name && nameEdit.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameActionType(at.id, nameEdit)}>
+                    <button
+                      className="btn"
+                      title={strings.admin.rename}
+                      aria-label={strings.admin.rename}
+                      onClick={() => renameActionType(at.id, nameEdit)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
                 </div>
                 <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveActionType(at.id, "up")}>
+                  <button
+                    className="btn"
+                    disabled={idx === 0}
+                    title={strings.common.up}
+                    aria-label={strings.common.up}
+                    onClick={() => moveActionType(at.id, "up")}
+                  >
                     <ArrowUp size={14} />
                   </button>
-                  <button className="btn" disabled={idx === actionTypes.length - 1} onClick={() => moveActionType(at.id, "down")}>
+                  <button
+                    className="btn"
+                    disabled={idx === actionTypes.length - 1}
+                    title={strings.common.down}
+                    aria-label={strings.common.down}
+                    onClick={() => moveActionType(at.id, "down")}
+                  >
                     <ArrowDown size={14} />
                   </button>
                   <button
                     className="btn btn-danger"
                     disabled={otherActionTypes.length === 0}
                     title={otherActionTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteActionType}
+                    aria-label={otherActionTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteActionType}
                     onClick={() => attemptDeleteActionType(at.id)}
                   >
                     <Trash2 size={14} />
@@ -1007,7 +1065,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "groups" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "groups")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
         {externalAddResult && (
           <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
@@ -1033,7 +1091,12 @@ export function ProjectAdminPage() {
                     return (
                       <li key={userId} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
                         <span>{u ? `${u.display_name} (${u.email})` : userId}</span>
-                        <button className="btn btn-danger" onClick={() => removeGroupMember(g.id, userId)}>
+                        <button
+                          className="btn btn-danger"
+                          title={strings.admin.removeMember(u ? u.display_name : userId)}
+                          aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
+                          onClick={() => removeGroupMember(g.id, userId)}
+                        >
                           <Trash2 size={14} />
                         </button>
                       </li>
@@ -1054,7 +1117,12 @@ export function ProjectAdminPage() {
                   {nestedOrgGroups.map((og) => (
                     <li key={og.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
                       <span>{strings.admin.viaOrgGroup(og.name, orgLabel)}</span>
-                      <button className="btn btn-danger" onClick={() => removeOrgGroupMember(g.id, og.id)}>
+                      <button
+                        className="btn btn-danger"
+                        title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                        aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                        onClick={() => removeOrgGroupMember(g.id, og.id)}
+                      >
                         <Trash2 size={14} />
                       </button>
                     </li>
@@ -1078,6 +1146,8 @@ export function ProjectAdminPage() {
                   <button
                     className="btn"
                     disabled={!orgGroupSelections[g.id]}
+                    title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                    aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                     onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                   >
                     <Plus size={14} />
@@ -1091,7 +1161,7 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "reportSetup" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "reportSetup")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Report Setup</h2>
         <p className="text-muted" style={{ margin: 0 }}>
           This intro, these chapters, and these appendices are used as the default content when a report is

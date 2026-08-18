@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { Tabs, tabPanelProps } from "../components/Tabs";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
@@ -499,22 +500,28 @@ export function ServerManagementPage() {
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.nav.serverManagement}</h1>
 
-      <div className="row" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            className={`btn ${tab === tb.key ? "btn-primary" : ""}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
+      <Tabs idPrefix="server-management-tabs" tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === "accessReview" && <AccessReviewTab />}
-      {tab === "branding" && <PlatformBrandingTab />}
-      {tab === "signup" && <SignupModeTab />}
-      {tab === "email" && <TestEmailTab />}
+      {tab === "accessReview" && (
+        <div {...tabPanelProps("server-management-tabs", "accessReview")}>
+          <AccessReviewTab />
+        </div>
+      )}
+      {tab === "branding" && (
+        <div {...tabPanelProps("server-management-tabs", "branding")}>
+          <PlatformBrandingTab />
+        </div>
+      )}
+      {tab === "signup" && (
+        <div {...tabPanelProps("server-management-tabs", "signup")}>
+          <SignupModeTab />
+        </div>
+      )}
+      {tab === "email" && (
+        <div {...tabPanelProps("server-management-tabs", "email")}>
+          <TestEmailTab />
+        </div>
+      )}
     </div>
   );
 }

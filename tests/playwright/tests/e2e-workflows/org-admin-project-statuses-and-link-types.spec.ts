@@ -38,7 +38,7 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("navigate to Beta's org admin page via Preferences > Your access", async () => {
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Your access" }).click();
+      await page.getByRole("tab", { name: "Your access" }).click();
       const betaRow = page.locator(".stack", { hasText: "E2E Beta Software" }).last();
       await betaRow.getByRole("link", { name: "Manage organisation" }).click();
       await expect(page.getByRole("heading", { name: "E2E Beta Software" })).toBeVisible();
@@ -78,7 +78,7 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("an unused status (Abandoned) deletes immediately, with no reassignment prompt", async () => {
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Your access" }).click();
+      await page.getByRole("tab", { name: "Your access" }).click();
       const betaRow = page.locator(".stack", { hasText: "E2E Beta Software" }).last();
       await betaRow.getByRole("link", { name: "Manage organisation" }).click();
       await ensureExpanded(page, "Project statuses");

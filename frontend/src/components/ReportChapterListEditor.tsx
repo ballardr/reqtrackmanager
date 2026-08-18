@@ -47,13 +47,30 @@ export function ReportChapterListEditor({
               }}
             />
             <div className="row" style={{ gap: "0.25rem" }}>
-              <button className="btn" disabled={idx === 0} onClick={() => move(idx, "up")}>
+              <button
+                className="btn"
+                disabled={idx === 0}
+                title="Move chapter up"
+                aria-label="Move chapter up"
+                onClick={() => move(idx, "up")}
+              >
                 <ArrowUp size={14} />
               </button>
-              <button className="btn" disabled={idx === list.length - 1} onClick={() => move(idx, "down")}>
+              <button
+                className="btn"
+                disabled={idx === list.length - 1}
+                title="Move chapter down"
+                aria-label="Move chapter down"
+                onClick={() => move(idx, "down")}
+              >
                 <ArrowDown size={14} />
               </button>
-              <button className="btn btn-danger" onClick={() => setList(list.filter((_, i) => i !== idx))}>
+              <button
+                className="btn btn-danger"
+                title="Delete chapter"
+                aria-label="Delete chapter"
+                onClick={() => setList(list.filter((_, i) => i !== idx))}
+              >
                 <Trash2 size={14} />
               </button>
             </div>

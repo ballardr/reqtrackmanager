@@ -1,6 +1,6 @@
 import { Download, Upload } from "lucide-react";
 import Papa from "papaparse";
-import { useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import type { Category, Component, CustomFieldDefinition, ProjectStage } from "../api/types";
@@ -86,6 +86,14 @@ function buildTemplateCsv(
   return Papa.unparse({ fields, data });
 }
 
+/** Imperative handle so a caller-supplied "Import from CSV" trigger
+ * elsewhere on the page (see `showImportTrigger`) can open this
+ * component's own file picker without either component needing to know
+ * about the other's internal state. */
+export interface CsvImportWizardHandle {
+  openFilePicker: () => void;
+}
+
 /**
  * Full-fidelity CSV bulk-import/export for requirements: import parses the
  * file client-side (Papaparse) so the user can map their own column headers
@@ -98,9 +106,7 @@ function buildTemplateCsv(
  * user's original file. Export downloads the server-generated file as-is
  * (it's already canonically headed and directly re-importable).
  */
-export function CsvImportWizard({
-  projectId, projectName, components, categories, stages, customFields, importing, onImport,
-}: {
+export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   projectId: string;
   projectName: string;
   components: Component[];
@@ -109,11 +115,28 @@ export function CsvImportWizard({
   customFields: CustomFieldDefinition[];
   importing: boolean;
   onImport: (file: File) => Promise<void>;
-}) {
+  /** Style guide "Pattern: create panels, popovers, and one door for
+   * bulk" — `RequirementsPage` renders its own single "+ Add requirement"
+   * split trigger (Add one / Import from CSV) instead of this component's
+   * own always-visible "Import CSV" button competing with it. Defaults to
+   * true so any other future caller gets the previous, self-contained
+   * behaviour without having to opt in. Export/template stay visible
+   * either way — they're downloads, not part of the create flow this
+   * pattern is about. */
+  showImportTrigger?: boolean;
+}>(function CsvImportWizard(
+  { projectId, projectName, components, categories, stages, customFields, importing, onImport, showImportTrigger = true },
+  ref
+) {
   const [headers, setHeaders] = useState<string[] | null>(null);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    openFilePicker: () => fileInputRef.current?.click(),
+  }));
 
   const mappableKeys = [...FIELDS.map((f) => f.key), ...customFields.map(customFieldColumnKey)];
 
@@ -164,19 +187,28 @@ export function CsvImportWizard({
 
   const missingRequired = FIELDS.filter((f) => f.required && !mapping[f.key]);
 
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept=".csv,text/csv"
+      style={{ display: "none" }}
+      disabled={importing}
+      onChange={(e) => e.target.files?.[0] && pickFile(e.target.files[0])}
+    />
+  );
+
   return (
     <div className="stack" style={{ gap: "0.5rem" }}>
       <div className="row">
-        <label className="btn" style={{ cursor: importing ? "wait" : "pointer" }}>
-          <Upload size={16} /> {importing ? "Importing…" : "Import CSV"}
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            style={{ display: "none" }}
-            disabled={importing}
-            onChange={(e) => e.target.files?.[0] && pickFile(e.target.files[0])}
-          />
-        </label>
+        {showImportTrigger ? (
+          <label className="btn" style={{ cursor: importing ? "wait" : "pointer" }}>
+            <Upload size={16} /> {importing ? "Importing…" : "Import CSV"}
+            {fileInput}
+          </label>
+        ) : (
+          fileInput
+        )}
         <button
           type="button" className="btn" disabled={exporting}
           onClick={exportCsv}
@@ -297,4 +329,4 @@ export function CsvImportWizard({
       )}
     </div>
   );
-}
+});

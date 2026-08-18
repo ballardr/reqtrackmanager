@@ -32,6 +32,13 @@ test.describe("mobile: card/tile grids never overflow the viewport width", () =>
     await page.getByRole("button", { name: "Tile view" }).click();
     await expect(page.locator(".card").first()).toBeVisible();
     await expectNoHorizontalOverflow(page);
+
+    // View mode is a server-persisted per-user preference (useViewMode),
+    // not local to this page load — leaving it on "tiles" would affect
+    // this shared persona in every later spec that assumes list view
+    // (e.g. project-history.spec.ts's openRequirementByCode helper, which
+    // isn't tile-view-safe). Restore it for any later spec.
+    await page.getByRole("button", { name: "List view" }).click();
   });
 
   test("Change Requests tile view", async ({ page }) => {
@@ -42,6 +49,9 @@ test.describe("mobile: card/tile grids never overflow the viewport width", () =>
     await page.getByRole("button", { name: "Tile view" }).click();
     await expect(page.locator(".card").first()).toBeVisible();
     await expectNoHorizontalOverflow(page);
+
+    // Same server-persisted view-mode caveat as the Requirements test above.
+    await page.getByRole("button", { name: "List view" }).click();
   });
 
   test("Project List tile view", async ({ page }) => {

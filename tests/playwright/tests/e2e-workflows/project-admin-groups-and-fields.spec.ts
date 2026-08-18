@@ -18,7 +18,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
 
     await test.step("create a custom field of each type", async () => {
-      await page.getByRole("button", { name: "Custom fields" }).click();
+      await page.getByRole("tab", { name: "Custom fields" }).click();
 
       const fieldNameInput = page.getByPlaceholder("Field name");
 
@@ -57,6 +57,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     await test.step("a new custom field shows up on the requirement create form", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
+      await page.getByRole("button", { name: "Add one" }).click();
       await expect(page.getByText("Verification method")).toBeVisible();
       // Anchored regex, not a plain substring match: `csv-import-wizard.
       // spec.ts` creates its own `E2E Priority <timestamp>` field on this
@@ -69,14 +70,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("delete a custom field", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Custom fields" }).click();
+      await page.getByRole("tab", { name: "Custom fields" }).click();
       const row = page.locator(".row", { hasText: "Safety critical" });
       await row.getByRole("button").click();
       await expect(page.getByText("Safety critical")).toHaveCount(0);
     });
 
     await test.step("add and remove a project group member", async () => {
-      await page.getByRole("button", { name: "Project groups" }).click();
+      await page.getByRole("tab", { name: "Project groups" }).click();
       // Default project groups are created in a fixed order — Project
       // Managers, Project Administrators, Stakeholders, Members — so the
       // "Members" group's own add-member input is reliably the last one.
@@ -108,7 +109,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // created via a direct API call isn't in that state until reloaded.
       await page.reload();
 
-      await page.getByRole("button", { name: "Project groups" }).click();
+      await page.getByRole("tab", { name: "Project groups" }).click();
       // Default project groups are created in a fixed order — Project
       // Managers, Project Administrators, Stakeholders, Members — so the
       // "Members" group's own org-group picker is reliably the last one
@@ -124,18 +125,18 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
 
     await test.step("override and then revert a terminology term", async () => {
-      await page.getByRole("button", { name: "Terminology" }).click();
+      await page.getByRole("tab", { name: "Terminology" }).click();
       await page.getByPlaceholder("requirement").fill("Spec");
       await page.getByRole("button", { name: "Save settings" }).click();
       await page.reload();
-      await page.getByRole("button", { name: "Terminology" }).click();
+      await page.getByRole("tab", { name: "Terminology" }).click();
       await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
 
       await page.getByRole("link", { name: "Specs", exact: true }).click();
       await expect(page.url()).toContain("/requirements");
 
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Terminology" }).click();
+      await page.getByRole("tab", { name: "Terminology" }).click();
       await page.getByPlaceholder("requirement").fill("");
       await page.getByRole("button", { name: "Save settings" }).click();
     });

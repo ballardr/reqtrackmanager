@@ -42,7 +42,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     // as a plain rename `<input>` with no placeholder, not an
     // additional "Name"-placeholder match).
     await test.step("build a two-component tree", async () => {
-      await page.getByRole("button", { name: "Categories" }).click();
+      await page.getByRole("tab", { name: "Categories" }).click();
 
       await page.getByPlaceholder("Name", { exact: true }).last().fill("Firmware");
       await page.getByPlaceholder("Prefix").last().fill("FW");
@@ -120,7 +120,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     });
 
     await test.step("a stage with an approved baseline cannot be deleted, even with a reassignment target", async () => {
-      await page.getByRole("button", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Project stages" }).click();
       await page.locator('input[value="Scoping"]').fill("Milestone 1");
       await page.getByRole("button", { name: "Rename" }).click();
       await expect(page.locator('input.input[value="Milestone 1"]:not([placeholder])')).toBeVisible();
@@ -144,7 +144,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       await page.reload();
-      await page.getByRole("button", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Project stages" }).click();
 
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await page.getByTitle("Delete this stage").nth(0).click();
@@ -160,7 +160,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     });
 
     await test.step("the project can be archived then unarchived", async () => {
-      await page.getByRole("button", { name: "Project settings" }).click();
+      await page.getByRole("tab", { name: "Project settings" }).click();
       await page.getByRole("button", { name: "Archive project" }).click();
       await expect(page.getByRole("button", { name: "Unarchive project" })).toBeVisible();
       await page.goto("/projects");

@@ -14,9 +14,11 @@ import type {
 } from "../api/types";
 import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
 import { CommentThread } from "../components/CommentThread";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -33,6 +35,7 @@ const strings = t();
 export function ActionDetailPage() {
   const { projectId, actionId } = useParams<{ projectId: string; actionId: string }>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [action, setAction] = useState<RequirementAction | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -42,6 +45,7 @@ export function ActionDetailPage() {
 
   const [form, setForm] = useState({ title: "", description: "", actionTypeId: "", assigneeId: "", dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   async function reload() {
     if (!projectId || !actionId) return;
@@ -128,9 +132,14 @@ export function ActionDetailPage() {
   }
 
   async function archive() {
-    if (!window.confirm(strings.actions.archiveConfirm)) return;
-    await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/archive`);
-    reload();
+    setArchiveDialogOpen(false);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/archive`);
+      showToast(strings.actions.archivedToast);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function uploadFile(file: File) {
@@ -182,11 +191,21 @@ export function ActionDetailPage() {
           {action.unique_code} — {action.title}
         </h1>
         {!action.is_archived && (
-          <button className="btn btn-danger" onClick={archive}>
+          <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
             <Archive size={14} /> {strings.actions.archiveAction}
           </button>
         )}
       </div>
+
+      {archiveDialogOpen && (
+        <ConfirmDialog
+          title={strings.actions.archiveTitle}
+          message={strings.actions.archiveConfirm}
+          confirmLabel={strings.actions.archiveAction}
+          onConfirm={archive}
+          onCancel={() => setArchiveDialogOpen(false)}
+        />
+      )}
 
       <div className="side-grid">
         <div className="stack">

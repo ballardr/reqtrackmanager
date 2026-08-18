@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition } from "../api/types";
-import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
 const ORG_ID = "org-1";
@@ -38,13 +38,13 @@ const groups: OrgGroup[] = [
 ];
 
 function mockOrgAdminApis(overrides: {
-  advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig;
+  advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+    if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/project-statuses")) return statuses;
     if (path.includes("/link-types")) return types;
     if (path.includes("/groups")) return groups;
@@ -65,7 +65,11 @@ function mockOrgAdminApis(overrides: {
 const meta: Meta<typeof OrgAdminPage> = {
   title: "Pages/OrgAdminPage",
   component: OrgAdminPage,
-  decorators: [withStatefulAuth(buildUser({ id: "user-1", is_server_admin: false })), withRouter(`/orgs/${ORG_ID}/admin`, "/orgs/:orgId/admin")],
+  decorators: [
+    withStatefulAuth(buildUser({ id: "user-1", is_server_admin: false })),
+    withRouter(`/orgs/${ORG_ID}/admin`, "/orgs/:orgId/admin"),
+    withToast(),
+  ],
 };
 export default meta;
 
@@ -157,6 +161,31 @@ export const BrandingSectionSave: Story = {
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ header_title: "Acme Requirements" }))
     );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Branding saved")).toBeInTheDocument();
+  },
+};
+
+/** Style guide "Pattern: platform default vs. override" (2026-08 UX audit):
+ * a field with a saved custom value shows a "Custom" pill and an explicit
+ * "Reset to platform default" action, instead of the field just quietly
+ * accepting an emptied-out value with no indication of what that does. */
+export const BrandingSectionOverridePillAndReset: Story = {
+  beforeEach: () => mockOrgAdminApis({ org: { ...org, header_title: "Acme Requirements", email_footer_company_name: "Acme Ltd" } }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Branding section" }));
+    await waitFor(() => expect(canvas.getByLabelText(/^Header title/)).toBeInTheDocument());
+
+    // Overridden fields show "Custom" + a reset action…
+    await expect(canvas.getAllByText("Custom")).toHaveLength(2);
+    await expect(canvas.getAllByRole("button", { name: "Reset to platform default" })).toHaveLength(2);
+    // …fields still on the platform default show the pill with no reset.
+    await expect(canvas.getAllByText("Platform default").length).toBeGreaterThan(0);
+
+    await expect(canvas.getByLabelText(/^Header title/)).toHaveValue("Acme Requirements");
+    await userEvent.click(canvas.getAllByRole("button", { name: "Reset to platform default" })[0]);
+    await expect(canvas.getByLabelText(/^Header title/)).toHaveValue("");
   },
 };
 
@@ -313,6 +342,36 @@ export const GroupsSectionNestGroup: Story = {
         { member_org_group_id: "grp2" }
       )
     );
+  },
+};
+
+/** Style guide "Pattern: create panels, popovers, and one door for bulk":
+ * "+ New group" opens a small popover with just a name field, instead of a
+ * permanently-visible inline form pinned below the group list. */
+export const GroupsSectionCreateGroupViaPopover: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Organisation groups section" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New group" })).toBeInTheDocument());
+
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "New group" }));
+    const dialog = body.getByRole("dialog", { name: "New group" });
+    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByPlaceholderText("e.g. Engineering"), "Design");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/groups`, { name: "Design" }));
+    // Principle 7 — every mutation ends with feedback.
+    await expect(body.getByText("Group created")).toBeInTheDocument();
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
 

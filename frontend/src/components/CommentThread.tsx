@@ -127,6 +127,8 @@ export function CommentThread({
                         <button
                           className="btn"
                           style={{ padding: "0.1rem", border: "none" }}
+                          title={strings.requirements.removeAttachment}
+                          aria-label={strings.requirements.removeAttachment}
                           onClick={() => setEditPendingFiles((files) => files.filter((_, i) => i !== idx))}
                         >
                           <X size={12} />
@@ -182,7 +184,12 @@ export function CommentThread({
                     {c.reaction_count > 0 ? c.reaction_count : ""}
                   </button>
                   {onEdit && currentUserId === c.author_id && (
-                    <button className="btn" title={strings.requirements.editComment} onClick={() => startEdit(c)}>
+                    <button
+                      className="btn"
+                      title={strings.requirements.editComment}
+                      aria-label={strings.requirements.editComment}
+                      onClick={() => startEdit(c)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
@@ -226,6 +233,8 @@ export function CommentThread({
                 <button
                   className="btn"
                   style={{ padding: "0.1rem", border: "none" }}
+                  title={strings.requirements.removeAttachment}
+                  aria-label={strings.requirements.removeAttachment}
                   onClick={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))}
                 >
                   <X size={12} />

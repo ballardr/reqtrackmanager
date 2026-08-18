@@ -73,7 +73,7 @@ test("project admin invites a brand-new external user by email, and they can sig
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await page.getByRole("button", { name: "Project groups", exact: true }).click();
+  await page.getByRole("tab", { name: "Project groups", exact: true }).click();
 
   await test.step("invite the new email via the project group's user picker", async () => {
     const picker = page.getByPlaceholder("Type a name or email to add…").first();

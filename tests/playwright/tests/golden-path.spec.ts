@@ -48,7 +48,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Categories" }).click();
+    await page.getByRole("tab", { name: "Categories" }).click();
     // Component/category tree (C-G-07): with no components yet, the only
     // Name/Prefix inputs on the page are the "add component" form's own.
     await page.getByPlaceholder("Name").fill("Software");
@@ -86,6 +86,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("add requirement", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("SW-PERF-001")).toBeVisible();
@@ -93,7 +94,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Project stages" }).click();
+    await page.getByRole("tab", { name: "Project stages" }).click();
     // A stage must enter review before it can be approved (C-R-05's
     // review-deadline/response workflow lives in that state) — approving
     // straight from scoping is no longer a valid transition.

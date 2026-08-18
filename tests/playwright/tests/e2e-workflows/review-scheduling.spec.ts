@@ -24,6 +24,7 @@ test.describe("requirement review scheduling", () => {
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
+      await page.getByRole("button", { name: "Add one" }).click();
       await expect(page.getByRole("combobox").first()).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
       await page.getByRole("button", { name: "Create", exact: true }).click();

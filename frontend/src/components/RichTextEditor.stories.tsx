@@ -71,5 +71,27 @@ export const ImagePickerLoadError: Story = {
   },
 };
 
+/** The link toolbar button opens the app's own Modal rather than the
+ * browser's native `window.prompt()` (2026-08 UX audit finding — this was
+ * the one native-prompt usage in the app) — portalled to `document.body`,
+ * same as every other Modal usage in this codebase. */
+export const InsertLink: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Rich text" }));
+    await userEvent.click(canvas.getByLabelText("Link"));
+
+    const modal = within(document.body).getByRole("dialog");
+    await expect(within(modal).getByText("Insert link")).toBeInTheDocument();
+    const insertButton = within(modal).getByRole("button", { name: "Insert" });
+    await expect(insertButton).toBeDisabled();
+
+    await userEvent.type(within(modal).getByLabelText("Link URL"), "https://example.com");
+    await expect(insertButton).toBeEnabled();
+    await userEvent.click(insertButton);
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+  },
+};
+
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };

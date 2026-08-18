@@ -44,7 +44,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
 
   await test.step("add a component and category via the Categories admin tab", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Categories" }).click();
+    await page.getByRole("tab", { name: "Categories" }).click();
     await page.getByPlaceholder("Name").first().fill("Web");
     await page.getByPlaceholder("Prefix").first().fill("WEB");
     await page.getByRole("button", { name: "New component" }).click();
@@ -78,6 +78,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("create a requirement and open its card from the card-based list", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Users can export their data");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("WEB-FN-001")).toBeVisible();

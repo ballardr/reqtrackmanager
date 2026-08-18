@@ -71,7 +71,7 @@ test.describe("deployment-wide organisation label override", () => {
     await test.step("set a custom label via the platform branding admin form", async () => {
       await loginAs(page, PERSONAS.serverAdmin.email);
       await page.goto("/server/management");
-      await page.getByRole("button", { name: "Platform branding" }).click();
+      await page.getByRole("tab", { name: "Platform branding" }).click();
       await page.getByLabel(/^Organisation label \(singular\)/).fill("tenant");
       await page.getByLabel(/^Organisation label \(plural\)/).fill("Tenants");
       await Promise.all([
@@ -83,18 +83,22 @@ test.describe("deployment-wide organisation label override", () => {
 
     await test.step("the nav rail now reads the custom label", async () => {
       await page.reload();
-      await expect(page.getByRole("link", { name: "Tenants" })).toBeVisible();
+      // exact: true — the nav rail's own "My {org label}" link (linking to
+      // the personal org directory, /orgs) now also contains "Tenants" as
+      // a substring ("My tenants"), so a non-exact match would resolve to
+      // both it and this server-admin-only "Tenants" directory link.
+      await expect(page.getByRole("link", { name: "Tenants", exact: true })).toBeVisible();
     });
 
     await test.step("the server organisations page title and list use the custom label", async () => {
-      await page.getByRole("link", { name: "Tenants" }).click();
+      await page.getByRole("link", { name: "Tenants", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Tenants" })).toBeVisible();
       await expect(page.getByPlaceholder("Search tenants")).toBeVisible();
     });
 
     await test.step("restoring the default (blank) label reverts the nav to \"Organisations\"", async () => {
       await page.goto("/server/management");
-      await page.getByRole("button", { name: "Platform branding" }).click();
+      await page.getByRole("tab", { name: "Platform branding" }).click();
       await page.getByLabel(/^Organisation label \(singular\)/).fill("");
       await page.getByLabel(/^Organisation label \(plural\)/).fill("");
       await Promise.all([

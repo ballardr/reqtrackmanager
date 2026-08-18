@@ -88,7 +88,7 @@ export const SecurityTabChangePassword: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Security" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Security" }));
     // "Change password" is a `variant="plain"` CollapsibleSection with no
     // `defaultCollapsed`, so it's already expanded — no click needed.
     await userEvent.type(canvas.getByPlaceholderText("Current password"), "old-password");
@@ -110,7 +110,7 @@ export const SecurityTabStart2FAEnrollment: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Security" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Security" }));
     await expect(canvas.getByText("Not enabled")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("switch", { name: "Enable 2FA" }));
     await waitFor(() => expect(canvas.getByText(/Scan this QR code/)).toBeInTheDocument());
@@ -122,7 +122,7 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   beforeEach: () => mockPreferencesApis("user-1"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Your access" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Manage organisation" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Atlas Platform" })).toBeInTheDocument();
@@ -136,7 +136,7 @@ export const PatsTabNoneYet: Story = {
   beforeEach: () => mockPreferencesApis("user-1", { pats: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
     await waitFor(() => expect(canvas.getByText("You haven't created any Personal Access Tokens yet.")).toBeInTheDocument());
   },
 };
@@ -152,7 +152,7 @@ export const PatsTabCreateToken: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
     // "Create" is a `variant="plain"` CollapsibleSection with no
     // `defaultCollapsed`, so it's already expanded — no click needed.
     await waitFor(() => expect(canvas.getByPlaceholderText('e.g. "MCP server"')).toBeInTheDocument());
@@ -172,7 +172,7 @@ export const PatsTabCreateRequiresOrg: Story = {
   beforeEach: () => mockPreferencesApis("user-1", { pats: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Create token" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Create token" }));
     await waitFor(() => expect(canvas.getByText("Select at least one organisation.")).toBeInTheDocument());
@@ -186,7 +186,7 @@ export const NotificationsTabToggleAndSave: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Notification preferences" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Notification preferences" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save preferences" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Save preferences" })).toBeDisabled();
     const [firstCheckbox] = canvas.getAllByRole("checkbox");

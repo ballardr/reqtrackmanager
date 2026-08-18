@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { Organization, OrgImportResult } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
@@ -44,7 +45,6 @@ export function ServerOrganisationsPage() {
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   async function reload() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
@@ -101,21 +101,18 @@ export function ServerOrganisationsPage() {
 
   function startDelete(org: Organization) {
     setActionError(null);
-    setDeleteConfirmText("");
     setDeletingOrgId(org.id);
   }
 
   function cancelDelete() {
     setDeletingOrgId(null);
-    setDeleteConfirmText("");
   }
 
   async function confirmDelete(org: Organization) {
     await runAction(async () => {
-      await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: deleteConfirmText });
+      await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: org.name });
     });
     setDeletingOrgId(null);
-    setDeleteConfirmText("");
   }
 
   if (!orgs) return <Spinner />;
@@ -252,28 +249,14 @@ export function ServerOrganisationsPage() {
           const org = orgs.find((o) => o.id === deletingOrgId);
           if (!org) return null;
           return (
-            <div className="card stack" style={{ borderColor: "var(--color-danger)" }}>
-              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.deleteTitle(orgLabel)}</h2>
-              <p className="text-muted">{strings.serverOrgs.deleteHint(org.name, orgLabel)}</p>
-              <input
-                className="input"
-                placeholder={org.name}
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-              />
-              <div className="row">
-                <button
-                  className="btn btn-danger"
-                  onClick={() => confirmDelete(org)}
-                  disabled={deleteConfirmText !== org.name}
-                >
-                  {strings.serverOrgs.deleteConfirmButton}
-                </button>
-                <button className="btn" onClick={cancelDelete}>
-                  {strings.common.cancel}
-                </button>
-              </div>
-            </div>
+            <ConfirmDialog
+              title={strings.serverOrgs.deleteTitle(orgLabel)}
+              message={strings.serverOrgs.deleteHint(org.name, orgLabel)}
+              confirmLabel={strings.serverOrgs.deleteConfirmButton}
+              requireTypedText={org.name}
+              onConfirm={() => confirmDelete(org)}
+              onCancel={cancelDelete}
+            />
           );
         })()}
     </div>

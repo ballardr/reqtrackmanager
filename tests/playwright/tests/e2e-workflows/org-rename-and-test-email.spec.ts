@@ -181,7 +181,7 @@ test.describe("organisation rename and test-email actions", () => {
 
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.goto("/server/management");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
+    await page.getByRole("tab", { name: "Email", exact: true }).click();
 
     await page.getByPlaceholder("Recipient email (defaults to your own account)").fill(recipient);
     await Promise.all([

@@ -32,8 +32,15 @@ test.describe("org group nesting", () => {
 
     await test.step("create two groups", async () => {
       for (const name of [parentName, childName]) {
-        await groupsSection.getByPlaceholder("Name", { exact: true }).fill(name);
+        // "New group" opens a popover (style guide "Pattern: create panels,
+        // popovers, and one door for bulk") rather than exposing an
+        // always-visible inline form — the popover itself is portalled to
+        // <body>, so it's located from `page`, not scoped to groupsSection.
         await groupsSection.getByRole("button", { name: "New group" }).click();
+        const dialog = page.getByRole("dialog", { name: "New group" });
+        await dialog.getByPlaceholder("e.g. Engineering").fill(name);
+        await dialog.getByRole("button", { name: "Create" }).click();
+        await expect(dialog).not.toBeVisible();
         // Scoped to the group-name <span> specifically — once both groups
         // exist, each also appears as an <option> in the other's nesting
         // picker, so a plain text match becomes ambiguous.

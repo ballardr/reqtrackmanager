@@ -116,7 +116,7 @@ export const TerminologyTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Terminology" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Terminology" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("requirement")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("requirement"), "story");
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
@@ -136,7 +136,7 @@ export const StagesTabAddAndTransition: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project stages" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Project stages" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Start review" })).toBeInTheDocument());
     // Deleting the only stage is blocked — there's nothing else to reassign to.
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
@@ -151,7 +151,7 @@ export const CategoriesTabDeleteBlockedWhileHasCategories: Story = {
   beforeEach: () => mockProjectAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Categories" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Categories" }));
     // Component/category names are editable <input>s here, not static text.
     await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
     await expect(canvas.getByTitle("Delete or reassign this component's categories first.")).toBeDisabled();
@@ -165,7 +165,7 @@ export const CategoriesTabAddCategory: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Categories" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Categories" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: /New category/ })).toBeInTheDocument());
     // Two "Name"/"Prefix"-placeholder inputs exist on this tab: the
     // per-component "add category" row (first, inside the component's own
@@ -191,7 +191,7 @@ export const CustomFieldsTabAddField: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Custom fields" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Custom fields" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("Field name")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Field name"), "Priority");
     await userEvent.click(canvas.getByRole("button", { name: /New field/ }));
@@ -211,7 +211,7 @@ export const GroupsTabAddMember: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
     await expect(canvas.getByText("Stakeholder")).toBeInTheDocument();
   },
@@ -224,7 +224,7 @@ export const GroupsTabAddOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
     const select = canvas.getByRole("combobox");
     await userEvent.selectOptions(select, "og1");
@@ -246,7 +246,7 @@ export const ReportSetupTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Report Setup" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Report Setup" }));
     await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
@@ -279,7 +279,7 @@ export const ActionTypesTabAddAndReorder: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Action types" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Name"), "Inspection");
     await userEvent.click(canvas.getByRole("button", { name: /New action type/ }));
@@ -299,7 +299,7 @@ export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
   beforeEach: () => mockProjectAdminApis({ actionTypes: [buildActionType({ id: "at1", name: "Review", sort_order: 0 })] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Action types" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
   },

@@ -62,11 +62,11 @@ test.describe("org report templates and project report setup", () => {
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Report Setup" }).click();
+      await page.getByRole("tab", { name: "Report Setup" }).click();
       await page.getByLabel("Default report template").selectOption({ label: revisedName });
       await page.getByRole("button", { name: "Save settings" }).click();
       await page.reload();
-      await page.getByRole("button", { name: "Report Setup" }).click();
+      await page.getByRole("tab", { name: "Report Setup" }).click();
       await expect(page.getByLabel("Default report template")).toHaveValue(/.+/);
     });
 

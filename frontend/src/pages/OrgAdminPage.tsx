@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   ExternalUserPolicy,
   FileAsset,
@@ -33,6 +34,8 @@ import type {
 import { ORG_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { OverridePill } from "../components/OverridePill";
+import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
@@ -64,6 +67,7 @@ export function OrgAdminPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
@@ -110,6 +114,8 @@ export function OrgAdminPage() {
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupPopoverOpen, setNewGroupPopoverOpen] = useState(false);
+  const newGroupTriggerRef = useRef<HTMLButtonElement>(null);
 
   const [advanced, setAdvanced] = useState<OrgAdvancedSettings | null>(null);
   const [smtpHost, setSmtpHost] = useState("");
@@ -637,9 +643,15 @@ export function OrgAdminPage() {
   }
 
   async function createGroup() {
-    await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
-    setNewGroupName("");
-    reload();
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
+      setNewGroupName("");
+      setNewGroupPopoverOpen(false);
+      showToast(strings.orgAdmin.groupCreated);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function addGroupMember(groupId: string, userId: string) {
@@ -718,9 +730,11 @@ export function OrgAdminPage() {
         email_footer_website: emailFooterWebsiteInput || null,
         email_footer_address: emailFooterAddressInput || null,
       });
+      showToast(strings.orgAdmin.brandingSaved);
       reload();
     } catch (err) {
       setBrandingError(err instanceof Error ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -1266,7 +1280,12 @@ export function OrgAdminPage() {
                               <li key={u.user_id} style={{ listStyle: "disc" }}>
                                 <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
                                   <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
-                                  <button className="btn" onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}>
+                                  <button
+                                    className="btn"
+                                    title={strings.admin.removeMember(u.display_name)}
+                                    aria-label={strings.admin.removeMember(u.display_name)}
+                                    onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}
+                                  >
                                     <Trash2 size={14} />
                                   </button>
                                 </span>
@@ -1304,22 +1323,40 @@ export function OrgAdminPage() {
                     onChange={(e) => setStatusNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
                   />
                   {nameEdit !== s.name && nameEdit.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameProjectStatus(s.id, nameEdit)}>
+                    <button
+                      className="btn"
+                      title={strings.admin.rename}
+                      aria-label={strings.admin.rename}
+                      onClick={() => renameProjectStatus(s.id, nameEdit)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
                 </div>
                 <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveProjectStatus(s.id, "up")}>
+                  <button
+                    className="btn"
+                    disabled={idx === 0}
+                    title={strings.common.up}
+                    aria-label={strings.common.up}
+                    onClick={() => moveProjectStatus(s.id, "up")}
+                  >
                     <ArrowUp size={14} />
                   </button>
-                  <button className="btn" disabled={idx === projectStatuses.length - 1} onClick={() => moveProjectStatus(s.id, "down")}>
+                  <button
+                    className="btn"
+                    disabled={idx === projectStatuses.length - 1}
+                    title={strings.common.down}
+                    aria-label={strings.common.down}
+                    onClick={() => moveProjectStatus(s.id, "down")}
+                  >
                     <ArrowDown size={14} />
                   </button>
                   <button
                     className="btn btn-danger"
                     disabled={otherStatuses.length === 0}
                     title={otherStatuses.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteProjectStatus}
+                    aria-label={otherStatuses.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteProjectStatus}
                     onClick={() => attemptDeleteProjectStatus(s.id)}
                   >
                     <Trash2 size={14} />
@@ -1378,22 +1415,40 @@ export function OrgAdminPage() {
                     onChange={(e) => setLinkTypeEdits((m) => ({ ...m, [lt.id]: { ...edit, reverse: e.target.value } }))}
                   />
                   {dirty && edit.forward.trim() && edit.reverse.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameLinkType(lt.id, edit.forward, edit.reverse)}>
+                    <button
+                      className="btn"
+                      title={strings.admin.rename}
+                      aria-label={strings.admin.rename}
+                      onClick={() => renameLinkType(lt.id, edit.forward, edit.reverse)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
                 </div>
                 <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveLinkType(lt.id, "up")}>
+                  <button
+                    className="btn"
+                    disabled={idx === 0}
+                    title={strings.common.up}
+                    aria-label={strings.common.up}
+                    onClick={() => moveLinkType(lt.id, "up")}
+                  >
                     <ArrowUp size={14} />
                   </button>
-                  <button className="btn" disabled={idx === linkTypes.length - 1} onClick={() => moveLinkType(lt.id, "down")}>
+                  <button
+                    className="btn"
+                    disabled={idx === linkTypes.length - 1}
+                    title={strings.common.down}
+                    aria-label={strings.common.down}
+                    onClick={() => moveLinkType(lt.id, "down")}
+                  >
                     <ArrowDown size={14} />
                   </button>
                   <button
                     className="btn btn-danger"
                     disabled={otherLinkTypes.length === 0}
                     title={otherLinkTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteLinkType}
+                    aria-label={otherLinkTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteLinkType}
                     onClick={() => attemptDeleteLinkType(lt.id)}
                   >
                     <Trash2 size={14} />
@@ -1454,14 +1509,18 @@ export function OrgAdminPage() {
         {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
         {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
         {org.logo_file_id && <img src={fileUrl(org.logo_file_id)} alt="" style={{ height: 40 }} />}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.headerTitle}
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <label htmlFor="org-header-title">{strings.orgAdmin.headerTitle}</label>
+            <OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />
+          </span>
           <input
+            id="org-header-title"
             className="input" placeholder={strings.appName}
             value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
           />
           <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
-        </label>
+        </div>
         <label className="row">
           <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
           {strings.orgAdmin.useOwnAccentColor(orgLabel)}
@@ -1475,27 +1534,39 @@ export function OrgAdminPage() {
         <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
         <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterCompanyName}
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <label htmlFor="org-email-footer-company">{strings.orgAdmin.emailFooterCompanyName}</label>
+            <OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />
+          </span>
           <input
+            id="org-email-footer-company"
             className="input"
             value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
           />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterWebsite}
+        </div>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <label htmlFor="org-email-footer-website">{strings.orgAdmin.emailFooterWebsite}</label>
+            <OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />
+          </span>
           <input
+            id="org-email-footer-website"
             className="input"
             value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
           />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterAddress}
+        </div>
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <label htmlFor="org-email-footer-address">{strings.orgAdmin.emailFooterAddress}</label>
+            <OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />
+          </span>
           <textarea
+            id="org-email-footer-address"
             className="input" rows={3}
             value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
           />
-        </label>
+        </div>
         {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
         <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
           {strings.orgAdmin.saveBranding}
@@ -1534,7 +1605,12 @@ export function OrgAdminPage() {
               <button className="btn" onClick={() => startEditTemplate(tpl)}>
                 {strings.common.edit}
               </button>
-              <button className="btn btn-danger" onClick={() => deleteReportTemplate(tpl.id)}>
+              <button
+                className="btn btn-danger"
+                title={strings.orgAdmin.deleteReportTemplate(tpl.name)}
+                aria-label={strings.orgAdmin.deleteReportTemplate(tpl.name)}
+                onClick={() => deleteReportTemplate(tpl.id)}
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -1722,6 +1798,42 @@ export function OrgAdminPage() {
       )}
 
       <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)} defaultCollapsed>
+        <button
+          ref={newGroupTriggerRef}
+          className="btn btn-primary"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setNewGroupPopoverOpen((o) => !o)}
+        >
+          <Plus size={14} /> {strings.orgAdmin.newGroup}
+        </button>
+        {newGroupPopoverOpen && (
+          <Popover
+            anchorRef={newGroupTriggerRef}
+            title={strings.orgAdmin.newGroup}
+            onClose={() => setNewGroupPopoverOpen(false)}
+          >
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.admin.name}
+              <input
+                className="input"
+                placeholder={strings.orgAdmin.groupNamePlaceholder}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newGroupName) createGroup();
+                }}
+              />
+            </label>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setNewGroupPopoverOpen(false)}>
+                {strings.common.cancel}
+              </button>
+              <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
+                {strings.common.create}
+              </button>
+            </div>
+          </Popover>
+        )}
         {groups.map((g) => {
           const memberIds = new Set(g.member_user_ids);
           const members = users.filter((u) => memberIds.has(u.user_id));
@@ -1740,7 +1852,12 @@ export function OrgAdminPage() {
                         <span>
                           {u.display_name} <span className="text-muted">({u.email})</span>
                         </span>
-                        <button className="btn" onClick={() => removeGroupMember(g.id, u.user_id)}>
+                        <button
+                          className="btn"
+                          title={strings.admin.removeMember(u.display_name)}
+                          aria-label={strings.admin.removeMember(u.display_name)}
+                          onClick={() => removeGroupMember(g.id, u.user_id)}
+                        >
                           <Trash2 size={14} />
                         </button>
                       </span>
@@ -1759,7 +1876,12 @@ export function OrgAdminPage() {
                     <li key={og.id} style={{ listStyle: "circle" }}>
                       <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
                         <span>{strings.orgAdmin.nestedGroupLabel(og.name)}</span>
-                        <button className="btn" onClick={() => removeNestedGroupMember(g.id, og.id)}>
+                        <button
+                          className="btn"
+                          title={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
+                          aria-label={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
+                          onClick={() => removeNestedGroupMember(g.id, og.id)}
+                        >
                           <Trash2 size={14} />
                         </button>
                       </span>
@@ -1784,6 +1906,8 @@ export function OrgAdminPage() {
                   <button
                     className="btn"
                     disabled={!nestSelections[g.id]}
+                    title={strings.orgAdmin.addNestedGroup}
+                    aria-label={strings.orgAdmin.addNestedGroup}
                     onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
                   >
                     <Plus size={14} />
@@ -1807,12 +1931,6 @@ export function OrgAdminPage() {
             </div>
           );
         })}
-        <div className="row">
-          <input className="input" placeholder={strings.admin.name} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-          <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
-            <Plus size={14} /> {strings.orgAdmin.newGroup}
-          </button>
-        </div>
       </CollapsibleSection>
 
       <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed>
@@ -1821,7 +1939,12 @@ export function OrgAdminPage() {
             <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
               {r.filename}
             </a>
-            <button className="btn btn-danger" onClick={() => deleteResource(r.id)}>
+            <button
+              className="btn btn-danger"
+              title={strings.orgAdmin.deleteResource(r.filename)}
+              aria-label={strings.orgAdmin.deleteResource(r.filename)}
+              onClick={() => deleteResource(r.id)}
+            >
               <Trash2 size={14} />
             </button>
           </div>
@@ -1958,7 +2081,12 @@ export function OrgAdminPage() {
                 <span>
                   {m.sso_group} <span className="badge">{ORG_ROLE_LABEL[m.org_role]}</span>
                 </span>
-                <button className="btn btn-danger" onClick={() => removeMapping(idx)}>
+                <button
+                  className="btn btn-danger"
+                  title={strings.orgAdmin.removeSsoMapping(m.sso_group)}
+                  aria-label={strings.orgAdmin.removeSsoMapping(m.sso_group)}
+                  onClick={() => removeMapping(idx)}
+                >
                   <Trash2 size={14} />
                 </button>
               </div>

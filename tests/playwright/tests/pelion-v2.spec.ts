@@ -57,7 +57,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("add component, category, and a custom field, then mark as template", async () => {
     await page.getByText("Project Admin").click();
 
-    await page.getByRole("button", { name: "Categories" }).click();
+    await page.getByRole("tab", { name: "Categories" }).click();
     await page.getByPlaceholder("Name").first().fill("Software");
     await page.getByPlaceholder("Prefix").first().fill("SW");
     await page.getByRole("button", { name: "New component" }).click();
@@ -87,12 +87,12 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await softwareRow.getByRole("button", { name: "New category" }).click();
     await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Custom fields" }).click();
+    await page.getByRole("tab", { name: "Custom fields" }).click();
     await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Project settings" }).click();
+    await page.getByRole("tab", { name: "Project settings" }).click();
     await page.getByRole("checkbox", { name: "Usable as a project template" }).check();
     await page.getByRole("button", { name: "Save settings" }).click();
   });
@@ -100,6 +100,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("create a requirement with a custom field value", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Ship the widget");
     await page.getByLabel("Priority").fill("High");
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -133,7 +134,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // revert (and re-login as ADMIN_PASSWORD) must happen even if the
     // notification assertion below fails.
     await page.getByTitle("Preferences").click();
-    await page.getByRole("button", { name: "Security", exact: true }).click();
+    await page.getByRole("tab", { name: "Security", exact: true }).click();
     await page.getByPlaceholder("Current password").fill(ADMIN_PASSWORD);
     await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
     const changeResponsePromise = page.waitForResponse(
@@ -160,7 +161,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       // ADMIN_PASSWORD afterwards to leave the shared admin account usable
       // for the rest of this spec and every other spec that logs in with it.
       await page.getByTitle("Preferences").click();
-      await page.getByRole("button", { name: "Security", exact: true }).click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
       await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
       await page.getByPlaceholder("New password").fill(ADMIN_PASSWORD);
       const revertResponsePromise = page.waitForResponse(
@@ -230,9 +231,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Categories" }).click();
+    await page.getByRole("tab", { name: "Categories" }).click();
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    await page.getByRole("button", { name: "Custom fields" }).click();
+    await page.getByRole("tab", { name: "Custom fields" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
   });
 });

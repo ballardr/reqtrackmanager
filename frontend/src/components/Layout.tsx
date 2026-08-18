@@ -184,6 +184,14 @@ function LayoutShell({ children }: { children: ReactNode }) {
           )}
           <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railCollapsed} />
           <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railCollapsed} />
+          {/* The only path to org administration (U-P-02-adjacent IA gap
+              found in the 2026-08 UX audit): /orgs already auto-redirects
+              straight to a single org's admin page, or lists every org a
+              user belongs to otherwise — it just had no rail entry before
+              this, for anyone but a server admin drilling in through
+              /server/organisations. See docs/ux-style-guide.md, "Pattern:
+              wayfinding". */}
+          <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
           {user.is_server_admin && (
             <>
               <div className="nav-section-label">Administration</div>

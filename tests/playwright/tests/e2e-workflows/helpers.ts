@@ -70,9 +70,28 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
  * specifically must not hard-code its original name. Matches either the
  * tile (`.card`) or list (`tr`) row layout, whichever RequirementsPage's
  * persisted per-user view-mode preference currently renders.
+ *
+ * Finds the code's own text node first, then walks up to its *nearest*
+ * `tr`/`.card` ancestor, rather than a flat `page.locator(".card, tr", {
+ * hasText: code })` — that shape has a real bug, not just a tile-view
+ * quirk: list view's whole `<table>` is itself wrapped in one outer
+ * `<div class="card">` (`RequirementsPage.tsx`'s `overflowX: "auto"`
+ * wrapper), which also "has text" matching any code found in any row and
+ * sits before every `<tr>` in document order — so `.first()` silently
+ * resolved to that outer wrapper, not the specific row, the moment a
+ * project had more than one requirement whose text happened to satisfy
+ * the match (invisible with few requirements, since the outer wrapper's
+ * lone matching link and the correct row's link were then the same
+ * element; a real strict-mode violation once a project accumulates
+ * enough requirements across a full suite run for the outer wrapper to
+ * contain more than one link).
  */
 export async function openRequirementByCode(page: Page, code: string): Promise<void> {
-  await page.locator(".card, tr", { hasText: code }).first().getByRole("link").click();
+  await page
+    .getByText(code, { exact: true })
+    .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
+    .getByRole("link")
+    .click();
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor

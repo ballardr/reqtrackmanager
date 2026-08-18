@@ -94,9 +94,13 @@ export const DeleteRequiresTypedConfirmation: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Delete" }));
-    const confirmButton = canvas.getByRole("button", { name: "Permanently delete" });
+
+    // The confirmation is now the shared `ConfirmDialog`, portalled into
+    // document.body rather than rendered inline in the page.
+    const dialog = within(document.body).getByRole("dialog");
+    const confirmButton = within(dialog).getByRole("button", { name: "Permanently delete" });
     await expect(confirmButton).toBeDisabled();
-    await userEvent.type(canvas.getByPlaceholderText("Acme Corp"), "Acme Corp");
+    await userEvent.type(within(dialog).getByLabelText('Type "Acme Corp" to confirm'), "Acme Corp");
     await expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/v1/orgs/org-1", { confirm_name: "Acme Corp" }));

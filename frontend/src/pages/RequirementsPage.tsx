@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -16,11 +16,12 @@ import type {
   RequirementStatus,
 } from "../api/types";
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
-import { CsvImportWizard } from "../components/CsvImportWizard";
+import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { Popover } from "../components/Popover";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -71,6 +72,9 @@ export function RequirementsPage() {
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addTriggerRef = useRef<HTMLButtonElement>(null);
+  const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newName, setNewName] = useState("");
   const [newReasoning, setNewReasoning] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -274,12 +278,40 @@ export function RequirementsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{requirementsTerm}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+        <button ref={addTriggerRef} className="btn btn-primary" onClick={() => setAddMenuOpen((v) => !v)}>
           <Plus size={16} /> New {requirementTerm}
         </button>
+        {addMenuOpen && (
+          <Popover anchorRef={addTriggerRef} title={`New ${requirementTerm}`} onClose={() => setAddMenuOpen(false)}>
+            <div className="stack" style={{ gap: "0.25rem", minWidth: 160 }}>
+              <button
+                className="btn"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => {
+                  setShowNewForm(true);
+                  setAddMenuOpen(false);
+                }}
+              >
+                {strings.requirements.addOne}
+              </button>
+              <button
+                className="btn"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => {
+                  csvWizardRef.current?.openFilePicker();
+                  setAddMenuOpen(false);
+                }}
+              >
+                {strings.requirements.importFromCsv}
+              </button>
+            </div>
+          </Popover>
+        )}
       </div>
 
       <CsvImportWizard
+        ref={csvWizardRef}
+        showImportTrigger={false}
         projectId={projectId ?? ""} projectName={project?.name ?? ""}
         components={components} categories={categories} stages={stages} customFields={customFieldDefs}
         importing={importing} onImport={importCsv}

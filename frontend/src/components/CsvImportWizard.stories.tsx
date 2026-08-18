@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useRef, type ComponentProps } from "react";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildCategory, buildComponent, buildStage } from "../testing/storybook-helpers";
-import { CsvImportWizard } from "./CsvImportWizard";
+import { CsvImportWizard, type CsvImportWizardHandle } from "./CsvImportWizard";
 
 const component = buildComponent({ id: "c1", prefix: "AUTH" });
 const category = buildCategory({ id: "cat1", component_id: "c1", prefix: "LOG" });
@@ -89,6 +90,38 @@ export const ImportingState: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Importing…")).toBeInTheDocument();
+  },
+};
+
+/** `RequirementsPage`'s single "+ Add requirement" split trigger opens
+ * this component's file picker via `openFilePicker()` rather than its own
+ * "Import CSV" button, which `showImportTrigger={false}` hides — Export
+ * and the template download stay visible either way, since those are
+ * downloads, not part of the create flow the split trigger consolidates. */
+function HiddenTriggerHarness(props: ComponentProps<typeof CsvImportWizard>) {
+  const ref = useRef<CsvImportWizardHandle>(null);
+  return (
+    <div className="stack">
+      <button onClick={() => ref.current?.openFilePicker()}>Open file picker externally</button>
+      <CsvImportWizard {...props} ref={ref} showImportTrigger={false} />
+    </div>
+  );
+}
+
+export const HiddenImportTriggerOpensViaRef: Story = {
+  render: (args) => <HiddenTriggerHarness {...args} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText("Import CSV")).not.toBeInTheDocument();
+    await expect(canvas.getByText("Export CSV")).toBeInTheDocument();
+
+    const csv = "name,component_prefix,category_prefix\nReset password,AUTH,LOG\n";
+    const file = new File([csv], "requirements.csv", { type: "text/csv" });
+    const input = canvasElement.querySelector('input[type="file"][accept=".csv,text/csv"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    await waitFor(() => expect(canvas.getByText("Map your CSV columns")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /Import 1 row/ }));
+    await waitFor(() => expect(args.onImport).toHaveBeenCalledOnce());
   },
 };
 

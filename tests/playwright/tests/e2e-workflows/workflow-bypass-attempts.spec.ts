@@ -17,7 +17,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Project stages" }).click();
       // A stage must be in review before it can be approved — start review
       // first if the stage is still in scoping (idempotent against a
       // re-run: only clicked when the button is actually present).
@@ -83,11 +83,18 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: "Must log all state transitions", exact: true }).click();
       archivedCode = (await page.locator("h1").textContent())!.split(" — ")[0].trim();
+      // Archiving a requirement now confirms first, via the shared
+      // ConfirmDialog (2026-08 UX audit fix — see
+      // requirement-archive-confirm.spec.ts for the dedicated coverage of
+      // that dialog itself).
       await page.getByRole("button", { name: "Archive" }).click();
+      const archiveDialog = page.getByRole("dialog", { name: "Archive this requirement?" });
+      await archiveDialog.getByRole("button", { name: "Archive", exact: true }).click();
       await page.waitForURL(/\/requirements$/);
       await expect(page.getByText("Must log all state transitions", { exact: true })).toHaveCount(0);
 
       await page.getByRole("button", { name: "New Requirement" }).click();
+      await page.getByRole("button", { name: "Add one" }).click();
       // Component/category selects default asynchronously once project data
       // loads — wait so Create doesn't submit with an empty component_id.
       await expect(page.getByRole("combobox").first()).toContainText("Hardware");
