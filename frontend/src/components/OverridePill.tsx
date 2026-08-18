@@ -15,7 +15,9 @@ const strings = t();
  * field in these forms already batches edits behind one Save button rather
  * than saving per-field.
  */
-export function OverridePill({ custom, onReset }: { custom: boolean; onReset?: () => void }) {
+export function OverridePill({
+  custom, onReset, disabled,
+}: { custom: boolean; onReset?: () => void; disabled?: boolean }) {
   if (!custom) {
     return <span className="badge">{strings.common.platformDefault}</span>;
   }
@@ -23,7 +25,7 @@ export function OverridePill({ custom, onReset }: { custom: boolean; onReset?: (
     <span className="row" style={{ gap: "0.5rem", display: "inline-flex" }}>
       <span className="badge">{strings.common.customValue}</span>
       {onReset && (
-        <button type="button" className="btn" onClick={onReset}>
+        <button type="button" className="btn" onClick={onReset} disabled={disabled}>
           {strings.common.resetToPlatformDefault}
         </button>
       )}

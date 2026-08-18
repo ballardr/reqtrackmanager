@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { notificationLink } from "../api/types";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
@@ -73,43 +74,46 @@ export function NotificationsPage() {
         )}
       </div>
 
-      <div className="row">
-        <input
-          className="input"
-          style={{ maxWidth: 320 }}
-          placeholder={strings.notifications.search}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <label className="row" style={{ gap: "0.4rem" }}>
-          <input type="checkbox" checked={unreadOnly} onChange={(e) => setUnreadOnly(e.target.checked)} />
-          {strings.notifications.unreadOnly}
-        </label>
-      </div>
-
-      {!notifications && <Spinner />}
-      {notifications && notifications.length === 0 && <p className="text-muted">{strings.notifications.empty}</p>}
-      {notifications && notifications.length > 0 && (
+      <div className="side-grid">
         <div className="stack">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className="card"
-              style={{ cursor: notificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.7 : 1 }}
-              onClick={() => openNotification(n)}
-            >
-              <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>
-              {n.body && <div className="text-muted" style={{ fontSize: "0.85rem" }}>{n.body}</div>}
-              <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                {new Date(n.created_at).toLocaleString()}
-              </div>
+          <input
+            className="input"
+            style={{ maxWidth: 320 }}
+            placeholder={strings.notifications.search}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          {!notifications && <Spinner />}
+          {notifications && notifications.length === 0 && <p className="text-muted">{strings.notifications.empty}</p>}
+          {notifications && notifications.length > 0 && (
+            <div className="stack">
+              {notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className="card"
+                  style={{ cursor: notificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.7 : 1 }}
+                  onClick={() => openNotification(n)}
+                >
+                  <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>
+                  {n.body && <div className="text-muted" style={{ fontSize: "0.85rem" }}>{n.body}</div>}
+                  <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                    {new Date(n.created_at).toLocaleString()}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+          {notifications && (
+            <LoadMoreButton loaded={notifications.length} total={total} onClick={() => load(notifications.length, true)} />
+          )}
         </div>
-      )}
-      {notifications && (
-        <LoadMoreButton loaded={notifications.length} total={total} onClick={() => load(notifications.length, true)} />
-      )}
+
+        <FilterPanel>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
+        </FilterPanel>
+      </div>
     </div>
   );
 }

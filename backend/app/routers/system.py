@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
@@ -135,15 +135,27 @@ def set_server_admin(
 
 @router.get("/users", response_model=list[SystemUserOut])
 def list_system_users(
+    response: Response,
     no_org_membership: bool | None = None,
     stale_since_days: int | None = Query(None, ge=0),
     is_active: bool | None = None,
     has_2fa: bool | None = None,
     is_server_admin: bool | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
     """System-wide user directory for the server-admin access review (C-A-13).
+
+    `limit`/`offset` (U-P-06) are optional, same contract as
+    `list_requirements`: omitting both returns every matching user,
+    unchanged from before pagination existed. When `limit` is given, the
+    total match count (before slicing) is returned in the `X-Total-Count`
+    response header. Slicing happens immediately after the filtered query,
+    before the per-user organisation/group name lookups below, so a
+    deployment with thousands of users doesn't pay for resolving names on
+    rows outside the requested page.
 
     `no_org_membership` is the requirement's literal "orphaned account"
     clarification: an enabled user who belongs to no organisation and
@@ -176,6 +188,9 @@ def list_system_users(
         query = query.where((User.last_login_at.is_(None)) | (User.last_login_at < cutoff))
 
     users = db.scalars(query).all()
+    response.headers["X-Total-Count"] = str(len(users))
+    if limit is not None:
+        users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:

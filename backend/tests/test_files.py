@@ -231,6 +231,60 @@ def test_org_logo_and_login_background_are_downloadable_with_no_authentication(c
     assert client.get(f"/api/v1/files/{background['login_background_file_id']}").status_code == 200
 
 
+def test_delete_org_logo_and_login_background_revert_to_the_platform_default(client, admin_token, org_id):
+    """UX audit finding: logo and login background had no revert path at
+    all, in the UI or the API — unlike the text-based branding overrides
+    (`OverridePill`). These new `DELETE` endpoints close that gap: clearing
+    the override falls back to the platform default (`GET /system/branding`)
+    the same way a null `header_title`/`email_footer_*` already does, and
+    the now-orphaned file is actually removed from storage, not just
+    unlinked — matching `delete_org_resource`'s cleanup."""
+    logo = client.post(
+        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+    background = client.post(
+        f"/api/v1/orgs/{org_id}/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    ).json()
+    logo_file_id = logo["logo_file_id"]
+    background_file_id = background["login_background_file_id"]
+
+    delete_logo = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(admin_token))
+    assert delete_logo.status_code == 200
+    assert delete_logo.json()["logo_file_id"] is None
+    assert client.get(f"/api/v1/files/{logo_file_id}").status_code == 404
+
+    delete_background = client.delete(f"/api/v1/orgs/{org_id}/login-background", headers=auth_headers(admin_token))
+    assert delete_background.status_code == 200
+    assert delete_background.json()["login_background_file_id"] is None
+    assert client.get(f"/api/v1/files/{background_file_id}").status_code == 404
+
+
+def test_delete_org_logo_is_a_noop_when_nothing_is_set(client, admin_token, org_id):
+    """Reverting a setting that's already at the platform default is a
+    legitimate no-op (200, unchanged), not a 404 — this isn't deleting a
+    specific known record, it's asserting an end state that may already
+    hold."""
+    resp = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.json()["logo_file_id"] is None
+
+
+def test_org_member_cannot_delete_org_logo(client, admin_token, org_id):
+    from tests.conftest import create_org_user, login
+
+    client.post(
+        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    create_org_user(client, admin_token, org_id, "logo-member@example.com", role="member")
+    member_token = login(client, "logo-member@example.com", "Password123!")
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(member_token))
+    assert resp.status_code == 403
+
+
 def test_platform_default_logo_and_login_background_are_downloadable_with_no_authentication(client, admin_token):
     """Same regression as above, for the platform-wide defaults shown on the
     plain `/login` page (no single org's branding applies)."""

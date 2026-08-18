@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS } from "./helpers";
+import { ensureExpanded, loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can nest one organisation group inside
@@ -19,6 +19,10 @@ test.describe("org group nesting", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
+    // Groups moved into the "People" resource-menu group (2026-08 UX audit's
+    // Org Admin restructure) — a real navigation, so it must be selected
+    // before the section is reachable at all.
+    await selectOrgAdminGroup(page, "People");
     await ensureExpanded(page, "Organisation groups");
     // Scoped to this section specifically — its "Name" placeholder isn't
     // page-unique (the "Organisation users" section's create-user form has
@@ -57,15 +61,18 @@ test.describe("org group nesting", () => {
     const parentRow = page.locator("span", { hasText: parentName }).locator("xpath=..");
     const childRow = page.locator("span", { hasText: childName }).locator("xpath=..");
 
+    // Each row also has its own "add member" `UserAutocomplete`, whose text
+    // input is `role="combobox"` too (WAI-ARIA combobox pattern) — `select`
+    // here specifically means the nesting picker's `<select>`.
     await test.step("nest the child group inside the parent", async () => {
-      const select = parentRow.getByRole("combobox");
+      const select = parentRow.locator("select");
       await select.selectOption({ label: childName });
       await select.locator("xpath=../button").click();
       await expect(page.getByText(`${childName} (nested group)`)).toBeVisible();
     });
 
     await test.step("attempting the reverse nesting (would create a cycle) shows an error", async () => {
-      const select = childRow.getByRole("combobox");
+      const select = childRow.locator("select");
       await select.selectOption({ label: parentName });
       await select.locator("xpath=../button").click();
       await expect(page.getByText(/cycle/i)).toBeVisible();

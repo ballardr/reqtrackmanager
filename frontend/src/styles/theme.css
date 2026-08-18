@@ -519,6 +519,33 @@ textarea.input {
   background: var(--color-border);
 }
 
+/* In-page resource menu (ResourceMenu.tsx) — the enterprise-console shape
+   from the UX style guide's "Pattern: settings hierarchy", first used to
+   split Org Admin's 15-way flat accordion into 6 groups. Reuses
+   .nav-link/.nav-link.active for its items so the visual language matches
+   the app's own persistent nav rail exactly (style guide Principle 4: one
+   component per pattern), but unlike .nav-rail this sits in normal
+   document flow (not position: fixed) since it's scoped to one page's
+   content area, not the whole app shell.
+   Deliberately its own class rather than the shared .row utility (which
+   this otherwise resembles) — see ResourceMenu.tsx's own comment on its
+   root element for why reusing .row here broke a real Playwright locator. */
+.resource-menu {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 1.5rem;
+}
+
+.resource-menu-nav {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  width: 220px;
+  flex-shrink: 0;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -567,6 +594,12 @@ td {
   }
   .side-grid {
     grid-template-columns: 1fr;
+  }
+  .resource-menu {
+    flex-direction: column;
+  }
+  .resource-menu-nav {
+    width: 100%;
   }
 }
 

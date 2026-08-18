@@ -22,7 +22,7 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     // Disabled orgs are hidden by default (UI/UX pass) — this test watches
     // one org through its whole lifecycle including a disabled state, so
     // it needs the "All" filter rather than the default "Active" one.
-    await page.getByRole("button", { name: "All", exact: true }).click();
+    await page.getByLabel("Status").selectOption("all");
 
     await test.step("create the organisation", async () => {
       await page.getByRole("button", { name: "New organisation" }).click();

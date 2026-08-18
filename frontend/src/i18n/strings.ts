@@ -57,6 +57,7 @@ const en = {
   userAutocomplete: {
     addExisting: (email: string, org: string) => `Add ${email} (existing account, not yet in this ${org})`,
     inviteNew: "Invite {email}",
+    canInviteHint: "Not a member yet? Type their email to invite them.",
   },
   signup: {
     title: "Create an account",
@@ -268,6 +269,12 @@ const en = {
     saveSettings: "Save settings",
     terminology: "Terminology",
     terminologyHint: "Override how these terms are labelled in this project's UI. Leave blank to use the default.",
+    // Distinct from `saveSettings` only because Terminology's Save button
+    // now shares a screen with Overview's own "Save settings" button
+    // (2026-08 UX audit roadmap: 8 tabs -> 5) — two identically-labelled
+    // buttons on one view is an accessible-naming collision (style guide
+    // Principle 8), not just a test-locator inconvenience.
+    saveTerminology: "Save terminology",
     archiveProject: "Archive project",
     unarchiveProject: "Unarchive project",
     exportProject: "Export project bundle",
@@ -276,6 +283,16 @@ const en = {
     customFields: "Custom fields",
     newCustomField: "New field",
     reportSetup: "Report Setup",
+    reportContent: "Report content",
+    // Distinct wording from `defaultReportTemplate` (the field's own
+    // label, kept as-is for accessibility) deliberately — an identical
+    // CollapsibleSection title would make its own aria-label ("Default
+    // report template section") a substring match for `getByLabel`
+    // queries targeting the field itself, a real ambiguity, not just an
+    // accessible-naming nicety.
+    defaultTemplateSection: "Default template",
+    structure: "Structure",
+    fieldsAndActions: "Fields & actions",
     stages: "Project stages",
     startReview: "Start review",
     approveStage: "Approve stage",
@@ -304,11 +321,17 @@ const en = {
     defaultReportTemplate: "Default report template",
     defaultReportTemplateHint: "Pre-selected on this project's report generation page — a user can still pick a different template, or none, for a specific report.",
     components: "Components",
+    componentsAndCategories: "Components & categories",
     componentTreeHint: "Categories are nested under one component each. A requirement's identifier combines its component's and category's prefixes, e.g. SW-PERF-014.",
     categories: "Categories",
     groups: "Project groups",
+    newGroup: "New group",
+    groupNamePlaceholder: "e.g. Reviewers",
+    groupRole: "Role",
+    groupCreated: "Group created",
     addMember: "Add member",
     addMemberPlaceholder: "Type a name or email to add…",
+    addOrInviteMemberPlaceholder: "Type a name to add, or an email to invite…",
     externalAddedDirectly: (email: string, role: string, org: string) =>
       `${email} was added directly to the project with the '${role}' role (not to this specific group, since they weren't already an ${org} member).`,
     externalInvited: (email: string, role: string) =>
@@ -348,6 +371,7 @@ const en = {
     removeMember: (name: string) => `Remove ${name}`,
     removeNestedGroup: (label: string) => `Remove ${label}`,
     deleteCustomField: (name: string) => `Delete ${name}`,
+    deleteCustomFieldConfirm: (name: string) => `This removes the "${name}" field and its values from every requirement/change request that has it set. This cannot be undone.`,
   },
   serverSettings: {
     title: "Platform branding",
@@ -401,6 +425,17 @@ const en = {
     empty: (orgPlural: string) => `No ${orgPlural.toLowerCase()} match these filters.`,
   },
   orgAdmin: {
+    // Resource-menu group labels (2026-08 UX audit, style guide "Pattern:
+    // settings hierarchy") — Org Admin's 15 flat accordions regrouped into
+    // 6 route-addressable groups. Static text, not org-dependent, matching
+    // the style guide's own "after" diagram exactly.
+    groupOverview: "Overview",
+    groupPeople: "People",
+    groupProjectsWorkflow: "Projects & workflow",
+    groupBrandingDefaults: "Branding & defaults",
+    groupTemplatesReports: "Templates & reports",
+    groupIntegrationsSecurity: "Integrations & security",
+    sectionsNav: "Organisation admin sections",
     organizations: (orgPlural: string) => orgPlural,
     rename: "Rename",
     renameHint: (org: string) => `The new name is used everywhere this ${org} is displayed, including its own delete-confirmation prompt.`,
@@ -450,7 +485,14 @@ const en = {
     resourcesHint: (org: string) => `Uploaded resources can be linked to requirements in any project in this ${org}.`,
     lockDisplayName: "Lock display name",
     unlockDisplayName: "Unlock display name",
-    advanced: "Advanced settings",
+    // The old "Advanced settings" catch-all doesn't survive the resource-
+    // menu regrouping as one item — its settings domains split by what
+    // they actually govern (style guide "Pattern: settings hierarchy"):
+    // SMTP/email gets its own card, and 2FA/self-signup/external-user-
+    // policy becomes "Security". PAT lifetime joins the existing PAT list
+    // (see `pats` below) rather than getting a heading of its own.
+    smtpEmailTitle: "SMTP & email",
+    securityTitle: "Security",
     smtpHost: "SMTP host",
     smtpPort: "SMTP port",
     smtpUsername: "SMTP username",
@@ -496,7 +538,9 @@ const en = {
     scimTokenShownOnce: "Copy this token now — it won't be shown again. Configure it as the bearer token in your identity provider's SCIM app settings.",
     loginBackground: "Login page background image",
     loginBackgroundUploaded: "Background image uploaded.",
+    loginBackgroundRemoved: "Background image reset to the platform default.",
     logoUploaded: "Logo uploaded.",
+    logoRemoved: "Logo reset to the platform default.",
     pats: "Personal Access Tokens",
     patMaxLifetime: "Maximum Personal Access Token lifetime (days)",
     patMaxLifetimeHint: (org: string) => `Leave blank to use the deployment default. Lowering this immediately shortens the effective lifetime of tokens already issued for this ${org}, not just new ones.`,
@@ -736,6 +780,7 @@ const en = {
     error: "Something went wrong.",
     cancel: "Cancel",
     create: "Create",
+    delete: "Delete",
     edit: "Edit",
     save: "Save",
     up: "Move up",

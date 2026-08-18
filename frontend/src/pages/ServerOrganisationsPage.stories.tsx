@@ -49,7 +49,7 @@ export const ShowAllIncludesDisabled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "All" }));
+    await userEvent.selectOptions(canvas.getByLabelText("Status"), "All");
     await expect(canvas.getByText("Acme Corp")).toBeInTheDocument();
     await expect(canvas.getByText("Beta Inc")).toBeInTheDocument();
   },

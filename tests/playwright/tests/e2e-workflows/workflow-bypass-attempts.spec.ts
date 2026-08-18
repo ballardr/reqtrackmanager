@@ -17,7 +17,9 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project stages" }).click();
+      // Project stages now lives inside the merged "Structure" tab
+      // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
+      await page.getByRole("tab", { name: "Structure" }).click();
       // A stage must be in review before it can be approved — start review
       // first if the stage is still in scoping (idempotent against a
       // re-run: only clicked when the button is actually present).

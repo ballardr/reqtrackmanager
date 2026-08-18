@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildChangeEntry, withRouter } from "../testing/storybook-helpers";
@@ -16,15 +16,18 @@ type Story = StoryObj<typeof ProjectHistoryPage>;
 
 export const ChangeHistory: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([
-      buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" }),
-      buildChangeEntry({
-        entity_type: "change_request",
-        entity_id: "cr-1",
-        action: "approved",
-        actor_display_name: "Jamie Lee",
-      }),
-    ]);
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [
+        buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" }),
+        buildChangeEntry({
+          entity_type: "change_request",
+          entity_id: "cr-1",
+          action: "approved",
+          actor_display_name: "Jamie Lee",
+        }),
+      ],
+      total: 2,
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -35,14 +38,42 @@ export const ChangeHistory: Story = {
 
 export const FilterByEntityType: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([]);
+    spyOn(api, "getPage").mockResolvedValue({ items: [], total: 0 });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("No changes in this range.")).toBeInTheDocument();
     const select = canvas.getByLabelText("Type");
     await userEvent.selectOptions(select, "Requirement");
-    await expect(api.get).toHaveBeenLastCalledWith(expect.stringContaining("entity_type=requirement"));
+    await expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("entity_type=requirement"));
+  },
+};
+
+/** U-P-06 / 2026-08 UX audit "Scale: two unbounded lists" — this timeline
+ * previously fetched every change with no `limit`/`offset` at all. Clicking
+ * "Load more" requests the next page at the correct offset and appends its
+ * items below the first page's, rather than replacing them. */
+export const LoadMoreAppendsTheNextPage: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      const offset = Number(new URL(path, "http://x").searchParams.get("offset"));
+      if (offset === 0) {
+        return { items: [buildChangeEntry({ entity_id: "req-1", action: "created", actor_display_name: "Alex Morgan" })], total: 2 };
+      }
+      return { items: [buildChangeEntry({ entity_id: "req-2", action: "updated", actor_display_name: "Jamie Lee" })], total: 2 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Alex Morgan created")).toBeInTheDocument());
+    const loadMore = canvas.getByRole("button", { name: /Load more/ });
+    await expect(loadMore).toBeInTheDocument();
+
+    await userEvent.click(loadMore);
+    await waitFor(() => expect(canvas.getByText("Jamie Lee updated")).toBeInTheDocument());
+    // The first page's entry is still there — appended, not replaced.
+    await expect(canvas.getByText("Alex Morgan created")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
   },
 };
 

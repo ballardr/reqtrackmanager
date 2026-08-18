@@ -62,6 +62,26 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
+ * Selects a group in `OrgAdminPage`'s resource menu (`ResourceMenu.tsx`,
+ * 2026-08 UX audit "Org Admin resource-menu restructure"). Each group is a
+ * real route segment under `/orgs/:orgId/admin/:group?`, not client-only
+ * state — the link's own `aria-current="page"` says whether it's already
+ * selected, so this is idempotent the same way `ensureExpanded` is:
+ * clicking an already-active group would be a harmless no-op navigation,
+ * but the guard keeps this a true no-op instead of an extra history entry.
+ * A section within the selected group is otherwise unreachable — unlike
+ * `CollapsibleSection`'s own per-user collapse preference, group selection
+ * isn't persisted, so this must run before every interaction with a
+ * section that isn't in Org Admin's default "Overview" group.
+ */
+export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
+  const link = page.getByRole("link", { name: groupLabel });
+  if ((await link.getAttribute("aria-current")) !== "page") {
+    await link.click();
+  }
+}
+
+/**
  * Opens a requirement's detail page by its stable `unique_code` (e.g.
  * "HW-FN-001") rather than its `name` — a requirement's name can be
  * changed by an approved change request (see

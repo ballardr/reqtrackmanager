@@ -28,9 +28,12 @@ const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organ
 
 function mockServerManagementApis(users: SystemUser[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/system/users")) return users;
     if (path.includes("/system/branding")) return SERVER_SETTINGS;
     if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+    throw new Error(`unmocked path: ${path}`);
+  });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    if (path.includes("/system/users")) return { items: users, total: users.length };
     throw new Error(`unmocked path: ${path}`);
   });
 }
@@ -92,6 +95,37 @@ export const AccessReviewGrantServerAdmin: Story = {
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Grant server admin" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/users/u1/server-admin", { is_server_admin: true }));
+  },
+};
+
+/** U-P-06 / 2026-08 UX audit "Scale: two unbounded lists" — the deployment's
+ * cross-org user directory previously fetched every matching user with no
+ * `limit`/`offset` at all. Clicking "Load more" requests the next page at
+ * the correct offset and appends its rows below the first page's. */
+export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/system/branding")) return SERVER_SETTINGS;
+      if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      const offset = Number(new URL(path, "http://x").searchParams.get("offset"));
+      if (offset === 0) return { items: [systemUser({ user_id: "u1", email: "first@example.com" })], total: 2 };
+      return { items: [systemUser({ user_id: "u2", email: "second@example.com" })], total: 2 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("first@example.com")).toBeInTheDocument());
+    const loadMore = canvas.getByRole("button", { name: /Load more/ });
+    await expect(loadMore).toBeInTheDocument();
+
+    await userEvent.click(loadMore);
+    await waitFor(() => expect(canvas.getByText("second@example.com")).toBeInTheDocument());
+    // The first page's row is still there — appended, not replaced.
+    await expect(canvas.getByText("first@example.com")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
   },
 };
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS } from "./helpers";
+import { ensureExpanded, loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can generate a SCIM 2.0 bearer token through
@@ -25,10 +25,15 @@ test.describe("SCIM provisioning token", () => {
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
+    // SCIM moved into the "Integrations & security" resource-menu group
+    // (2026-08 UX audit's Org Admin restructure) — a real navigation, so
+    // it must be selected before the section is reachable at all.
+    //
     // CollapsibleSection's expand/collapse choice persists server-side per
     // user across specs sharing a persona — an unconditional click can
     // toggle an already-expanded section shut on a re-run (see
     // ensureExpanded's own docstring in helpers.ts).
+    await selectOrgAdminGroup(page, "Integrations & security");
     await ensureExpanded(page, "SCIM provisioning");
     await expect(page.getByText("Not enabled.")).toBeVisible();
 

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
+import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
 
@@ -43,51 +44,60 @@ export function ProjectReviewsDuePage() {
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.reviews.projectTitle}</h1>
 
-      <div className="row">
-        <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
-          <option value="">{strings.reviews.allComponents}</option>
-          {components.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <select className="input" value={reviewerId} onChange={(e) => setReviewerId(e.target.value)}>
-          <option value="">{strings.reviews.allReviewers}</option>
-          {reviewers.map(([id, name]) => (
-            <option key={id} value={id}>{name}</option>
-          ))}
-        </select>
-      </div>
-
-      {items.length === 0 ? (
-        <p className="text-muted">{strings.reviews.empty}</p>
-      ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>{strings.requirements.name}</th>
-                <th>{strings.admin.components}</th>
-                <th>{strings.reviews.reviewDate}</th>
-                <th>{strings.reviews.reviewer}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.requirement_id}>
-                  <td>{item.unique_code}</td>
-                  <td>
-                    <Link to={`/projects/${item.project_id}/requirements/${item.requirement_id}`}>{item.name}</Link>
-                  </td>
-                  <td>{item.component_name}</td>
-                  <td>{item.review_date}</td>
-                  <td>{item.reviewer_name ?? strings.reviews.unassigned}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="side-grid">
+        <div className="stack">
+          {items.length === 0 ? (
+            <p className="text-muted">{strings.reviews.empty}</p>
+          ) : (
+            <div className="card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>{strings.requirements.name}</th>
+                    <th>{strings.admin.components}</th>
+                    <th>{strings.reviews.reviewDate}</th>
+                    <th>{strings.reviews.reviewer}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.requirement_id}>
+                      <td>{item.unique_code}</td>
+                      <td>
+                        <Link to={`/projects/${item.project_id}/requirements/${item.requirement_id}`}>{item.name}</Link>
+                      </td>
+                      <td>{item.component_name}</td>
+                      <td>{item.review_date}</td>
+                      <td>{item.reviewer_name ?? strings.reviews.unassigned}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+
+        <FilterPanel>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterField label="Component">
+            <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+              <option value="">{strings.reviews.allComponents}</option>
+              {components.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Reviewer">
+            <select className="input" value={reviewerId} onChange={(e) => setReviewerId(e.target.value)}>
+              <option value="">{strings.reviews.allReviewers}</option>
+              {reviewers.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+          </FilterField>
+        </FilterPanel>
+      </div>
     </div>
   );
 }

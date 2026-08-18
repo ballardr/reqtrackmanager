@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
@@ -9,10 +10,13 @@ import { t } from "../i18n/strings";
 
 const strings = t();
 
+const PAGE_SIZE = 30;
+
 type ReviewView = "orphaned" | "server_admins" | "all";
 
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [view, setView] = useState<ReviewView>("orphaned");
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -20,13 +24,23 @@ function AccessReviewTab() {
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
 
-  async function reload() {
-    const params = new URLSearchParams();
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (view === "orphaned") params.set("no_org_membership", "true");
     if (view === "server_admins") params.set("is_server_admin", "true");
     if (!includeDeactivated) params.set("is_active", "true");
-    const result = await api.get<SystemUser[]>(`/api/v1/system/users?${params.toString()}`);
-    setUsers(result);
+    return params;
+  }
+
+  async function loadUsers(offset: number, append: boolean) {
+    const page = await api.getPage<SystemUser>(`/api/v1/system/users?${listParams(offset).toString()}`);
+    setUsers((prev) => (append && prev ? [...prev, ...page.items] : page.items));
+    setTotal(page.total);
+  }
+
+  async function reload() {
+    setUsers(null);
+    await loadUsers(0, false);
   }
 
   useEffect(() => {
@@ -178,6 +192,7 @@ function AccessReviewTab() {
             </table>
           </div>
         )}
+        {users && <LoadMoreButton loaded={users.length} total={total} onClick={() => loadUsers(users.length, true)} />}
       </div>
 
       <div className="card stack">

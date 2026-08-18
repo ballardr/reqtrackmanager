@@ -41,5 +41,17 @@ export const CustomWithoutReset: Story = {
   },
 };
 
+/** For overrides with no local edit state to revert to (the org logo and
+ * login-background image, which reset via an immediate `DELETE` call
+ * rather than a batched Save) — `disabled` prevents a double-submit while
+ * that request is in flight. */
+export const CustomWithResetDisabledWhileSaving: Story = {
+  args: { custom: true, onReset: fn(), disabled: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Reset to platform default" })).toBeDisabled();
+  },
+};
+
 export const LightTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "light" } };
 export const DarkTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "dark" } };

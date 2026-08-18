@@ -47,7 +47,7 @@ function ProtectedRoutes() {
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
-        <Route path="/orgs/:orgId/admin" element={<OrgAdminPage />} />
+        <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
         <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
         <Route path="/server/management" element={<ServerManagementPage />} />
         <Route path="/my-reviews" element={<MyReviewsDuePage />} />

@@ -3,11 +3,14 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
+import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
+
+const PAGE_SIZE = 30;
 
 // "organization" is a valid `entity_type` an org-scoped audit event can
 // report but isn't in `ENTITY_TYPE_LABEL` (its label depends on the
@@ -24,21 +27,31 @@ export function ProjectHistoryPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const orgLabelCap = useOrgLabelCapitalized();
   const [changes, setChanges] = useState<ChangeEntry[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
   const [includeComments, setIncludeComments] = useState(false);
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
 
-  async function reload() {
-    if (!projectId) return;
-    setChanges(null);
-    const params = new URLSearchParams();
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (since) params.set("since", new Date(since).toISOString());
     if (until) params.set("until", new Date(until).toISOString());
     if (includeComments) params.set("include_comments", "true");
     if (entityTypeFilter) params.set("entity_type", entityTypeFilter);
-    const result = await api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes?${params.toString()}`);
-    setChanges(result);
+    return params;
+  }
+
+  async function loadChanges(offset: number, append: boolean) {
+    if (!projectId) return;
+    const page = await api.getPage<ChangeEntry>(`/api/v1/projects/${projectId}/changes?${listParams(offset).toString()}`);
+    setChanges((prev) => (append && prev ? [...prev, ...page.items] : page.items));
+    setTotal(page.total);
+  }
+
+  async function reload() {
+    setChanges(null);
+    await loadChanges(0, false);
   }
 
   useEffect(() => {
@@ -98,6 +111,7 @@ export function ProjectHistoryPage() {
           })}
         </div>
       )}
+      {changes && <LoadMoreButton loaded={changes.length} total={total} onClick={() => loadChanges(changes.length, true)} />}
     </div>
   );
 }

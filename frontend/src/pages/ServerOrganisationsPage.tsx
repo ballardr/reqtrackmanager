@@ -6,6 +6,7 @@ import { ApiError, api } from "../api/client";
 import type { Organization, OrgImportResult } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
+import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
@@ -133,25 +134,6 @@ export function ServerOrganisationsPage() {
         </button>
       </div>
 
-      <div className="row">
-        <input
-          className="input"
-          style={{ maxWidth: 280 }}
-          placeholder={strings.serverOrgs.search(orgLabelPlural)}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className={`btn ${statusFilter === "active" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("active")}>
-          {strings.serverOrgs.active}
-        </button>
-        <button className={`btn ${statusFilter === "disabled" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("disabled")}>
-          {strings.serverOrgs.disabled}
-        </button>
-        <button className={`btn ${statusFilter === "all" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("all")}>
-          {strings.serverOrgs.filterAll}
-        </button>
-      </div>
-
       {showNewForm && (
         <div className="card stack">
           <input
@@ -187,61 +169,84 @@ export function ServerOrganisationsPage() {
 
       {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
 
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {filteredOrgs.map((o) => (
-              <tr key={o.id}>
-                <td>{o.name}</td>
-                <td>
-                  {o.is_active ? (
-                    <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-                      {strings.serverOrgs.active}
-                    </FilterBadge>
-                  ) : (
-                    <FilterBadge
-                      active={statusFilter === "disabled"}
-                      onClick={() => setStatusFilter("disabled")}
-                      style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-                    >
-                      {strings.serverOrgs.disabled}
-                    </FilterBadge>
-                  )}
-                </td>
-                <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
-                <td>
-                  <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
-                    <Link to={`/orgs/${o.id}/admin`} className="btn">
-                      Edit
-                    </Link>
-                    {o.is_active ? (
-                      <button className="btn" onClick={() => disableOrg(o)}>
-                        {strings.serverOrgs.disable}
-                      </button>
-                    ) : (
-                      <button className="btn" onClick={() => enableOrg(o)}>
-                        {strings.serverOrgs.enable}
-                      </button>
-                    )}
-                    <button className="btn btn-danger" onClick={() => startDelete(o)}>
-                      {strings.serverOrgs.delete}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
-        {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
+      <div className="side-grid">
+        <div className="stack">
+          <input
+            className="input"
+            style={{ maxWidth: 280 }}
+            placeholder={strings.serverOrgs.search(orgLabelPlural)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrgs.map((o) => (
+                  <tr key={o.id}>
+                    <td>{o.name}</td>
+                    <td>
+                      {o.is_active ? (
+                        <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+                          {strings.serverOrgs.active}
+                        </FilterBadge>
+                      ) : (
+                        <FilterBadge
+                          active={statusFilter === "disabled"}
+                          onClick={() => setStatusFilter("disabled")}
+                          style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                        >
+                          {strings.serverOrgs.disabled}
+                        </FilterBadge>
+                      )}
+                    </td>
+                    <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
+                        <Link to={`/orgs/${o.id}/admin`} className="btn">
+                          Edit
+                        </Link>
+                        {o.is_active ? (
+                          <button className="btn" onClick={() => disableOrg(o)}>
+                            {strings.serverOrgs.disable}
+                          </button>
+                        ) : (
+                          <button className="btn" onClick={() => enableOrg(o)}>
+                            {strings.serverOrgs.enable}
+                          </button>
+                        )}
+                        <button className="btn btn-danger" onClick={() => startDelete(o)}>
+                          {strings.serverOrgs.delete}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
+            {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
+          </div>
+        </div>
+
+        <FilterPanel>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterField label="Status">
+            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+              <option value="active">{strings.serverOrgs.active}</option>
+              <option value="disabled">{strings.serverOrgs.disabled}</option>
+              <option value="all">{strings.serverOrgs.filterAll}</option>
+            </select>
+          </FilterField>
+        </FilterPanel>
       </div>
 
       {deletingOrgId &&

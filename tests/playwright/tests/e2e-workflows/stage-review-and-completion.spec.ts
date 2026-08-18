@@ -28,7 +28,9 @@ test.describe("stage review deadlines and completion", () => {
       await page.getByText(PROJECT_NAMES.alpha2).click();
       projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project stages" }).click();
+      // Project stages now lives inside the merged "Structure" tab
+      // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
+      await page.getByRole("tab", { name: "Structure" }).click();
       await page.getByRole("button", { name: "Start review" }).click();
       await expect(page.getByText("In review", { exact: true })).toBeVisible();
 
@@ -78,7 +80,7 @@ test.describe("stage review deadlines and completion", () => {
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       await page.goto(`/projects/${projectId}/admin`);
-      await page.getByRole("tab", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Structure" }).click();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
       await expect(page.getByText("In review", { exact: true })).toBeVisible();
     });
@@ -87,7 +89,7 @@ test.describe("stage review deadlines and completion", () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(`/projects/${projectId}/admin`);
-      await page.getByRole("tab", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Structure" }).click();
       await page.getByRole("button", { name: "Approve stage" }).click();
       await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
 
@@ -107,7 +109,7 @@ test.describe("stage review deadlines and completion", () => {
 
     await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project stages" }).click();
+      await page.getByRole("tab", { name: "Structure" }).click();
       await page.getByLabel("Also mark this stage's approved requirements as completed").check();
       await page.getByRole("button", { name: "Mark stage completed" }).click();
       await expect(page.getByText("Implemented", { exact: true })).toBeVisible();

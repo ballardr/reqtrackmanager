@@ -193,6 +193,11 @@ class RequirementReviewOut(BaseModel):
 class RequirementDueForReviewOut(BaseModel):
     requirement_id: UUID
     project_id: UUID
+    # Only populated by the cross-project `/me/reviews/due` listing — the
+    # project-scoped `/projects/{id}/requirements/reviews/due` equivalent
+    # already has the project in context (it's in the URL), so showing its
+    # own name back to the caller would be redundant there.
+    project_name: str | None = None
     unique_code: str
     name: str
     review_date: date

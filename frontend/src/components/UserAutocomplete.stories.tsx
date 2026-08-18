@@ -70,5 +70,55 @@ export const NoMatches: Story = {
   },
 };
 
+/** Arrow keys move the highlighted option (wrapping at the ends) and Enter
+ * selects it — no mouse required. */
+export const KeyboardNavigationSelectsHighlightedOption: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText("Add a user…");
+    await userEvent.type(input, "a");
+    await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
+    await expect(canvas.getByText("Jamie Lee")).toBeInTheDocument();
+
+    const combobox = canvas.getByRole("combobox");
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(combobox).toHaveAttribute("aria-activedescendant", canvas.getByRole("option", { name: /Alex Morgan/ }).id);
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(combobox).toHaveAttribute("aria-activedescendant", canvas.getByRole("option", { name: /Jamie Lee/ }).id);
+    await userEvent.keyboard("{Enter}");
+    await expect(args.onSelect).toHaveBeenCalledWith("u2");
+  },
+};
+
+export const EscapeClosesTheDropdown: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByPlaceholderText("Add a user…");
+    await userEvent.type(input, "jamie");
+    await expect(canvas.getByRole("listbox")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.queryByRole("listbox")).not.toBeInTheDocument();
+  },
+};
+
+/** The invite-capable hint is visible up front (before typing anything) so
+ * the invite path is discoverable without already knowing the trick — and
+ * steps aside once a query is in progress, replaced by the dropdown itself. */
+export const InviteHintVisibleBeforeTyping: Story = {
+  args: {
+    organizationId: "org-1",
+    onSelectExternal: fn(),
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ members: [], external: null });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Type their email to invite them/)).toBeInTheDocument();
+    await userEvent.type(canvas.getByPlaceholderText("Add a user…"), "someone");
+    await expect(canvas.queryByText(/Type their email to invite them/)).not.toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...LocalFilterMode, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...LocalFilterMode, globals: { theme: "dark" } };

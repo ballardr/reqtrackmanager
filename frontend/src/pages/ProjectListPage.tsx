@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import type { Organization, Project, ProjectImportResult, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
 import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
+import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -231,159 +232,173 @@ export function ProjectListPage() {
         </div>
       )}
 
-      <div className="row">
-        <input
-          className="input"
-          style={{ maxWidth: 280 }}
-          placeholder={strings.projects.search}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className={`btn ${!showArchived ? "btn-primary" : ""}`} onClick={() => setShowArchived(false)}>
-          {strings.projects.active}
-        </button>
-        <button className={`btn ${showArchived ? "btn-primary" : ""}`} onClick={() => setShowArchived(true)}>
-          {strings.projects.archived}
-        </button>
-        {orgs.length > 1 && (
-          <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
-            <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
-            {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
-          </select>
-        )}
-        <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
-          <option value="">{strings.projects.allRoles}</option>
-          <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-          <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-          <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-          <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-        </select>
-        <select
-          className="input"
-          value={stageStatusFilter}
-          onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
-        >
-          <option value="">{strings.projects.allStages}</option>
-          <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
-          <option value="review">{STAGE_STATUS_LABEL.review}</option>
-          <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
-          <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
-          <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
-        </select>
-        <ViewToggle mode={viewMode} onChange={setViewMode} />
-      </div>
+      <div className="side-grid">
+        <div className="stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <input
+              className="input"
+              style={{ maxWidth: 280 }}
+              placeholder={strings.projects.search}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
 
-      {!projects && <Spinner />}
-      {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
-      {projects && projects.length > 0 && viewMode === "tiles" && (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-          {projects.map((p) => (
-            <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
-                <Link
-                  to={`/projects/${p.id}`}
-                  style={{
-                    fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}
-                  title={p.name}
-                >
-                  {p.name}
-                </Link>
-                <button
-                  className="btn"
-                  onClick={() => toggleFavorite(p)}
-                  title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                  aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                  style={{ flexShrink: 0 }}
-                >
-                  <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
-                </button>
-              </div>
-              {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
-              {p.current_stage_name && (
-                <FilterBadge
-                  active={stageStatusFilter === p.current_stage_status}
-                  onClick={() => toggleStageStatusFilter(p.current_stage_status)}
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                </FilterBadge>
-              )}
-              <p className="text-muted" style={{ margin: 0, flex: 1 }}>
-                {p.summary || "—"}
-              </p>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {strings.projects.requirementCount}: {p.requirement_count}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {projects && projects.length > 0 && viewMode === "list" && (
-        <div className="card" style={{ overflowX: "auto" }}>
-          <table>
-            <thead>
-              <tr>
-                <th />
-                <th>Name</th>
-                {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
-                <th>Stage</th>
-                <th>{strings.projects.roles}</th>
-                <th>{strings.projects.requirementCount}</th>
-                <th>{strings.projects.updated}</th>
-              </tr>
-            </thead>
-            <tbody>
+          {!projects && <Spinner />}
+          {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
+          {projects && projects.length > 0 && viewMode === "tiles" && (
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {projects.map((p) => (
-                <tr key={p.id}>
-                  <td>
+                <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                    <Link
+                      to={`/projects/${p.id}`}
+                      style={{
+                        fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}
+                      title={p.name}
+                    >
+                      {p.name}
+                    </Link>
                     <button
                       className="btn"
                       onClick={() => toggleFavorite(p)}
                       title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                       aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                      style={{ flexShrink: 0 }}
                     >
-                      <Star size={14} fill={p.is_favorite ? "currentColor" : "none"} />
+                      <Star size={16} fill={p.is_favorite ? "currentColor" : "none"} />
                     </button>
-                  </td>
-                  <td>
-                    <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                      {p.summary || "—"}
-                    </div>
-                  </td>
-                  {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
-                  <td>
-                    {p.current_stage_name && (
-                      <FilterBadge
-                        active={stageStatusFilter === p.current_stage_status}
-                        onClick={() => toggleStageStatusFilter(p.current_stage_status)}
-                      >
-                        {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                      </FilterBadge>
-                    )}
-                  </td>
-                  <td className="text-muted">{p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
-                  <td className="text-muted">{p.requirement_count}</td>
-                  <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
-                </tr>
+                  </div>
+                  {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
+                  {p.current_stage_name && (
+                    <FilterBadge
+                      active={stageStatusFilter === p.current_stage_status}
+                      onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                    </FilterBadge>
+                  )}
+                  <p className="text-muted" style={{ margin: 0, flex: 1 }}>
+                    {p.summary || "—"}
+                  </p>
+                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    {strings.projects.requirementCount}: {p.requirement_count}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                    {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
+          {projects && projects.length > 0 && viewMode === "list" && (
+            <div className="card" style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th />
+                    <th>Name</th>
+                    {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
+                    <th>Stage</th>
+                    <th>{strings.projects.roles}</th>
+                    <th>{strings.projects.requirementCount}</th>
+                    <th>{strings.projects.updated}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <button
+                          className="btn"
+                          onClick={() => toggleFavorite(p)}
+                          title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                          aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                        >
+                          <Star size={14} fill={p.is_favorite ? "currentColor" : "none"} />
+                        </button>
+                      </td>
+                      <td>
+                        <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                        <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                          {p.summary || "—"}
+                        </div>
+                      </td>
+                      {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
+                      <td>
+                        {p.current_stage_name && (
+                          <FilterBadge
+                            active={stageStatusFilter === p.current_stage_status}
+                            onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                          >
+                            {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                          </FilterBadge>
+                        )}
+                      </td>
+                      <td className="text-muted">{p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
+                      <td className="text-muted">{p.requirement_count}</td>
+                      <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {projects && (
+            <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
+          )}
         </div>
-      )}
-      {projects && (
-        <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
-      )}
+
+        <FilterPanel>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterField label="Status">
+            <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
+              <option value="active">{strings.projects.active}</option>
+              <option value="archived">{strings.projects.archived}</option>
+            </select>
+          </FilterField>
+          {orgs.length > 1 && (
+            <FilterField label="Organisation">
+              <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+                <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            </FilterField>
+          )}
+          <FilterField label="Role">
+            <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
+              <option value="">{strings.projects.allRoles}</option>
+              <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+              <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+              <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+              <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+            </select>
+          </FilterField>
+          <FilterField label="Stage status">
+            <select
+              className="input"
+              value={stageStatusFilter}
+              onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
+            >
+              <option value="">{strings.projects.allStages}</option>
+              <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
+              <option value="review">{STAGE_STATUS_LABEL.review}</option>
+              <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
+              <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
+              <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
+            </select>
+          </FilterField>
+        </FilterPanel>
+      </div>
     </div>
   );
 }

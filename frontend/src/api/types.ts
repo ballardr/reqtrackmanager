@@ -540,6 +540,10 @@ export interface RequirementReview {
 export interface RequirementDueForReview {
   requirement_id: string;
   project_id: string;
+  // Only populated by the cross-project `/me/reviews/due` listing
+  // (`MyReviewsDuePage`) — its project-scoped sibling has the project in
+  // context already (it's in the URL) and never sets this.
+  project_name?: string | null;
   unique_code: string;
   name: string;
   review_date: string;

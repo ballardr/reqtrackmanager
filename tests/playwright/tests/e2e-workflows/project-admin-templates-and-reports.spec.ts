@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin defines a reusable report template (accent
@@ -24,26 +24,34 @@ test.describe("org report templates and project report setup", () => {
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
     // Scoped to the Report templates section itself, not the whole page —
-    // other CollapsibleSections on this page (e.g. "Organisation users",
-    // "Advanced settings") can be left expanded server-side by an earlier
-    // spec sharing this same Gamma admin persona (org-security-controls.spec.ts
-    // does exactly this), and several of them have their own "Name"-
-    // placeholder field; "Advanced settings" also has an "SMTP username"
-    // field, which getByPlaceholder("Name") substring-matches without
-    // exact:true. A page-wide, unscoped query is a strict-mode violation
-    // waiting to happen whenever those sections are already open.
+    // other CollapsibleSections within the same "Templates & reports"
+    // resource-menu group (2026-08 UX audit's Org Admin restructure) can be
+    // left expanded/collapsed server-side by an earlier spec sharing this
+    // same Gamma admin persona, and "Report Defaults" — the other section
+    // in this group — has its own "Name"-adjacent fields too. A page-wide,
+    // unscoped query is a strict-mode violation waiting to happen whenever
+    // that section is already open. (Sections in *other* resource-menu
+    // groups, e.g. "Organisation users" or "SMTP & email", are unmounted
+    // entirely while this group is selected, so they're no longer a
+    // concern here the way they were before the restructure — but the
+    // scoping is still worth keeping for the sibling section that remains.)
     const reportTemplatesSection = page.locator(".card", {
       has: page.getByRole("button", { name: "Report templates section" }),
     });
 
     await test.step("create a report template", async () => {
+      // Report templates moved into the "Templates & reports" resource-menu
+      // group (2026-08 UX audit's Org Admin restructure) — a real
+      // navigation, so it must be selected before the section is reachable
+      // at all.
+      await selectOrgAdminGroup(page, "Templates & reports");
       await ensureExpanded(page, "Report templates");
       await reportTemplatesSection.getByPlaceholder("Name", { exact: true }).fill(templateName);
       await reportTemplatesSection.getByLabel("Include cover page").check();
       await reportTemplatesSection.getByLabel("Include organisation logo").check();
       await reportTemplatesSection.getByPlaceholder("Footer text").fill("Confidential — E2E Gamma Labs");
       await reportTemplatesSection.getByLabel("Chapter per component by default").check();
-      await reportTemplatesSection.getByRole("button", { name: "New template", exact: true }).click();
+      await reportTemplatesSection.getByRole("button", { name: "Create", exact: true }).click();
       await expect(reportTemplatesSection.getByText(templateName)).toBeVisible();
     });
 
@@ -77,6 +85,7 @@ test.describe("org report templates and project report setup", () => {
 
     await test.step("delete the template", async () => {
       await page.goto("/orgs");
+      await selectOrgAdminGroup(page, "Templates & reports");
       await ensureExpanded(page, "Report templates");
       const row = page.locator(".row", { hasText: revisedName }).first();
       await row.getByRole("button").last().click();

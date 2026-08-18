@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an organisation's project statuses and requirement link
@@ -45,6 +45,12 @@ test.describe("org admin: project statuses and link types", () => {
     });
 
     await test.step("Project statuses: the 4 seeded defaults are present", async () => {
+      // Project statuses and Link types both moved into the "Projects &
+      // workflow" resource-menu group (2026-08 UX audit's Org Admin
+      // restructure) — selecting the group is a real navigation, not a
+      // client-side toggle, and must happen before either section is
+      // reachable at all.
+      await selectOrgAdminGroup(page, "Projects & workflow");
       await ensureExpanded(page, "Project statuses");
       for (const name of ["Proposed", "Active", "Abandoned", "Completed"]) {
         await expect(inputWithValue(page, name)).toBeVisible();
@@ -81,6 +87,7 @@ test.describe("org admin: project statuses and link types", () => {
       await page.getByRole("tab", { name: "Your access" }).click();
       const betaRow = page.locator(".stack", { hasText: "E2E Beta Software" }).last();
       await betaRow.getByRole("link", { name: "Manage organisation" }).click();
+      await selectOrgAdminGroup(page, "Projects & workflow");
       await ensureExpanded(page, "Project statuses");
 
       const abandonedRow = inputWithValue(page, "Abandoned").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
@@ -99,6 +106,7 @@ test.describe("org admin: project statuses and link types", () => {
     });
 
     await test.step("Link types: add a new type, rename it, then delete it (unused, no prompt)", async () => {
+      await selectOrgAdminGroup(page, "Projects & workflow");
       await ensureExpanded(page, "Link types");
       await expect(inputWithValue(page, "Depends on")).toBeVisible();
 

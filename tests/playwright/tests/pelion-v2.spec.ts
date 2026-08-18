@@ -33,17 +33,47 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // spec is testing.
     await page.waitForURL(/\/projects(\/|$)/);
     await page.goto("/projects");
+    // ProjectListPage's own org list (which the "New project" form's org
+    // picker depends on — see the next step) loads asynchronously after
+    // mount, separately from the "Name"/"Summary" inputs that render
+    // unconditionally and immediately once the form opens. Waiting for the
+    // Name input alone doesn't wait for that org fetch, so clicking "New
+    // project" too soon after this navigation can see zero orgs loaded yet
+    // (the picker correctly absent at that instant) even though a picker
+    // will exist moments later — settle network activity first.
+    await page.waitForLoadState("networkidle");
   });
 
   await test.step("create the project that will become a template", async () => {
     await page.getByRole("button", { name: "New project" }).click();
     // The org picker only renders at all when the caller belongs to more
-    // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
-    // used here belongs to exactly one ("Default Organization"), so it's
-    // implicit rather than offered as a choice. Select explicitly only if
-    // a picker is actually present, so this still works if the admin ever
-    // gains a second org membership in some other stack/seed configuration.
-    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    // than one organisation (see ProjectListPage.tsx) — select explicitly
+    // only if a picker is actually present, so this still works whether the
+    // bootstrap admin belongs to exactly one org or several (e.g. seeded
+    // orgs the admin API-created directly, which grants the creator
+    // membership). Explicit selection matters as soon as a picker exists:
+    // ProjectListPage defaults `newOrgId` to whichever org happens to sort
+    // first, not specifically "Default Organization", so leaving the
+    // picker untouched when it's present could create this template
+    // project under the wrong org and silently break the "create from
+    // template" step below (which only offers templates belonging to
+    // whichever org it explicitly selects). Scoped to the "New project"
+    // form card itself, not page-wide — once the admin belongs to more
+    // than one org, ProjectListPage's own "Organisation" FilterPanel select
+    // (persistent sidebar) *also* lists every org name as an option,
+    // including "Default Organization", so an unscoped locator is
+    // ambiguous between the two the moment that's true.
+    //
+    // `waitFor()` on the Name input first, not just a bare `.count()` on
+    // the org picker: `.count()` takes an immediate, non-retrying snapshot
+    // rather than auto-waiting, so checking it right after `.click()` races
+    // the form's own re-render — invisible with a single org (the check
+    // always legitimately came back 0 either way) but a real, silent
+    // "picker missed, wrong org used" failure now that a picker can
+    // actually be present.
+    await page.getByPlaceholder("Name").waitFor();
+    const newProjectForm = page.getByPlaceholder("Name").locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    const orgPicker = newProjectForm.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
@@ -57,10 +87,15 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("add component, category, and a custom field, then mark as template", async () => {
     await page.getByText("Project Admin").click();
 
-    await page.getByRole("tab", { name: "Categories" }).click();
-    await page.getByPlaceholder("Name").first().fill("Software");
-    await page.getByPlaceholder("Prefix").first().fill("SW");
-    await page.getByRole("button", { name: "New component" }).click();
+    // Categories now lives inside the merged "Structure" tab (2026-08 UX
+    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
+    // stages" section that also has its own "Name"-placeholder "add stage"
+    // field — scope to "Components & categories" specifically.
+    await page.getByRole("tab", { name: "Structure" }).click();
+    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
+    await componentsSection.getByPlaceholder("Name").first().fill("Software");
+    await componentsSection.getByPlaceholder("Prefix").first().fill("SW");
+    await componentsSection.getByRole("button", { name: "New component" }).click();
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
     // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
     // concurrently, then two more awaited *sequentially* afterwards (org
@@ -81,13 +116,37 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // "Software"'s own container (input -> row -> row -> the component's
     // own stack div, three levels up) so this can't cross-hit the wrong
     // form.
-    const softwareRow = page.locator('input[value="Software"]').locator("xpath=../../..");
+    // `:not([placeholder])`: see golden-path.spec.ts's identical guard —
+    // the "add component" row's own Name field transiently shares this
+    // value right after creating "Software", which would otherwise let
+    // the xpath ancestor climb escape up to the shared "Structure" tab
+    // panel (Stages + Components & categories, 2026-08 UX audit roadmap:
+    // 8 tabs -> 5) and pick up Stages' own "Name" field too.
+    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
     await softwareRow.getByPlaceholder("Name").fill("Performance");
     await softwareRow.getByPlaceholder("Prefix").fill("PERF");
+    // The comment above describes *two* waves in this same reload()
+    // cascade — 7 requests concurrently, then 2 more awaited sequentially
+    // afterwards — and the first `waitForLoadState("networkidle")` above
+    // can resolve during the brief gap between those waves, not only after
+    // both. A real run caught this exact gap: "Prefix" (filled last)
+    // survived, but "Name" (filled first) had been silently reset back to
+    // empty by the second wave's re-render, leaving "New category"
+    // permanently disabled. Wait for the network to settle a second time,
+    // and only re-fill whichever field actually got wiped, rather than
+    // assuming which one (if either) was hit.
+    await page.waitForLoadState("networkidle");
+    if ((await softwareRow.getByPlaceholder("Name").inputValue()) !== "Performance") {
+      await softwareRow.getByPlaceholder("Name").fill("Performance");
+    }
+    if ((await softwareRow.getByPlaceholder("Prefix").inputValue()) !== "PERF") {
+      await softwareRow.getByPlaceholder("Prefix").fill("PERF");
+    }
     await softwareRow.getByRole("button", { name: "New category" }).click();
     await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Custom fields" }).click();
+    // Custom fields now lives inside the merged "Fields & actions" tab.
+    await page.getByRole("tab", { name: "Fields & actions" }).click();
     await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
@@ -200,6 +259,10 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // ambiguous between that heading and this nav link.
     await page.getByRole("link", { name: "Projects", exact: true }).click();
     await expect(page).toHaveURL(/\/projects$/);
+    // Same reasoning as the login step's wait above — settle this fresh
+    // ProjectListPage mount's org fetch before the org-picker-dependent
+    // "create a new project from the template" step below.
+    await page.waitForLoadState("networkidle");
 
     const card = page.locator("main .card", { hasText: templateProjectName });
     await card.getByRole("button", { name: "Favourite" }).click();
@@ -210,15 +273,16 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("create a new project from the template and verify configuration was copied", async () => {
     await page.getByRole("button", { name: "New project" }).click();
     // The template dropdown only lists templates belonging to the
-    // currently-selected org. The org picker itself only renders when the
-    // caller belongs to more than one organisation (see ProjectListPage.tsx)
-    // — the bootstrap admin used here belongs to exactly one ("Default
-    // Organization"), which is auto-selected as soon as it's the only
-    // option, so the template project created above is still on offer
-    // without needing to select it explicitly. Select explicitly only if a
-    // picker is actually present, so this still works if the admin ever
-    // gains a second org membership in some other stack/seed configuration.
-    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    // currently-selected org — must explicitly select the same org the
+    // template project above was created under (see the identical picker
+    // in the "create the project that will become a template" step above
+    // for the full reasoning on why this can't be left implicit, and why
+    // it's scoped to the form card rather than page-wide, and why
+    // `waitFor()` runs first rather than racing `.count()` against the
+    // form's own render).
+    await page.getByPlaceholder("Name").waitFor();
+    const newProjectForm = page.getByPlaceholder("Name").locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    const orgPicker = newProjectForm.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
@@ -231,9 +295,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 
     await page.getByText("Project Admin").click();
-    await page.getByRole("tab", { name: "Categories" }).click();
+    await page.getByRole("tab", { name: "Structure" }).click();
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    await page.getByRole("tab", { name: "Custom fields" }).click();
+    await page.getByRole("tab", { name: "Fields & actions" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
   });
 });
