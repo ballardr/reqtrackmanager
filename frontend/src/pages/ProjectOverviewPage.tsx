@@ -8,16 +8,13 @@ import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREM
 import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
-import { useTerm } from "../context/TerminologyContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. */
 export function ProjectOverviewPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
-  const requirementTerm = useTerm("requirement");
   const orgLabelCap = useOrgLabelCapitalized();
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
@@ -34,7 +31,7 @@ export function ProjectOverviewPage() {
       .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
       .then((entries) => setActivity(entries.slice(0, 8)))
       .catch(onError);
-  }, [projectId]);
+  }, [projectId, strings.common.error]);
 
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!project || !metrics) return <Spinner />;
@@ -56,7 +53,7 @@ export function ProjectOverviewPage() {
           <p className="text-muted">{project.summary}</p>
         </div>
         <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
-          <Plus size={16} /> New {requirementTerm}
+          <Plus size={16} /> {strings.requirements.newRequirement}
         </Link>
       </div>
       <div className="grid grid-metrics">

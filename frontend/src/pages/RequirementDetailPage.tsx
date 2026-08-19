@@ -29,11 +29,9 @@ import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
+import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -47,6 +45,7 @@ const strings = t();
  * metadata about the requirement rather than its own governed content.
  */
 export function RequirementDetailPage() {
+  const strings = useStrings();
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();

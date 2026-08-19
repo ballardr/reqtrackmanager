@@ -12,9 +12,7 @@ import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 const PAGE_SIZE = 30;
 
@@ -29,6 +27,7 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
  * creation (C-G-02), and incremental "load more" pagination (U-P-06).
  */
 export function ProjectListPage() {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { user } = useAuth();
   const orgLabel = useOrgLabel();
@@ -306,7 +305,7 @@ export function ProjectListPage() {
                     <th />
                     <th>Name</th>
                     {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
-                    <th>Stage</th>
+                    <th>{strings.projects.stage}</th>
                     <th>{strings.projects.roles}</th>
                     <th>{strings.projects.requirementCount}</th>
                     <th>{strings.projects.updated}</th>
@@ -383,7 +382,7 @@ export function ProjectListPage() {
               <option value="member">{PROJECT_ROLE_LABEL.member}</option>
             </select>
           </FilterField>
-          <FilterField label="Stage status">
+          <FilterField label={strings.projects.stageStatusLabel}>
             <select
               className="input"
               value={stageStatusFilter}

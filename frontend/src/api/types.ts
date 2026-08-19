@@ -65,10 +65,6 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   project_creator: "Project creator",
   member: "Member",
 };
-export const CUSTOM_FIELD_ENTITY_KIND_LABEL: Record<CustomFieldEntityKind, string> = {
-  requirement: "Requirement",
-  change_request: "Change request",
-};
 export const CUSTOM_FIELD_TYPE_LABEL: Record<CustomFieldType, string> = {
   short_text: "Short text",
   long_text: "Long text",

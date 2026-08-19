@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ActionTypeDefinition, Category, Component, CustomFieldDefinition, OrgGroup, ProjectGroup, ProjectStage, ProjectStatusDefinition } from "../api/types";
-import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -404,6 +404,52 @@ export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
     await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+  },
+};
+
+/** Proves `pluralize()`'s irregular-plural fix (`frontend/src/i18n/
+ * terminology.ts`) against the *default* English terminology, not an
+ * override — a naive `+s` pluralisation would render this section's title
+ * as "Components & categorys" instead of "Components & categories". No
+ * `withTerminology` decorator here on purpose: the bug this guards is in
+ * the default-term pluralisation path itself. */
+export const StructureTabPluralisesCategoryCorrectly: Story = {
+  beforeEach: () => mockProjectAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await expect(canvas.getByText("Components & categories")).toBeInTheDocument();
+    await expect(canvas.queryByText(/categorys/i)).not.toBeInTheDocument();
+  },
+};
+
+/**
+ * C-C-03, the 2026-08 UX audit's single most visible example: the
+ * custom-fields entity-kind dropdown/badge used to read "Requirement" /
+ * "Change request" literally — one tab over from the Terminology settings
+ * meant to rename those exact words (`CUSTOM_FIELD_ENTITY_KIND_LABEL` in
+ * `api/types.ts`, a static export, could never be terminology-aware; both
+ * call sites now read `strings.admin.entityKindRequirement`/
+ * `entityKindChangeRequest` via `useStrings()` instead).
+ */
+export const CustomFieldsTabEntityKindDropdownReflectsTerminology: Story = {
+  decorators: [withTerminology({ requirement: "Spec", change_request: "ECR" })],
+  beforeEach: () => {
+    mockProjectAdminApis({
+      customFields: [
+        { id: "cf1", project_id: PROJECT_ID, entity_kind: "requirement", name: "Safety critical", field_type: "checkbox", options: null, required: false, sort_order: 0 },
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
+    // The existing field's own entity-kind badge.
+    await expect(canvas.getByText("Spec", { selector: "span.badge" })).toBeInTheDocument();
+    // The "New field" row's entity-kind <select> options.
+    await expect(canvas.getByRole("option", { name: "Spec" })).toBeInTheDocument();
+    await expect(canvas.getByRole("option", { name: "ECR" })).toBeInTheDocument();
   },
 };
 

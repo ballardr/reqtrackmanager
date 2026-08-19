@@ -25,11 +25,8 @@ import { Popover } from "../components/Popover";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
-import { useTerm, useTermPlural } from "../context/TerminologyContext";
+import { useStrings } from "../context/TerminologyContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 const PAGE_SIZE = 30;
 
@@ -42,6 +39,7 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "c
  * incremental "load more" pagination (U-P-06) for large requirement sets.
  */
 export function RequirementsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -84,8 +82,6 @@ export function RequirementsPage() {
   const [newLevel, setNewLevel] = useState<RequirementLevel>("requirement");
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const requirementTerm = useTerm("requirement");
-  const requirementsTerm = useTermPlural("requirement");
   const [viewMode, setViewMode] = useViewMode("requirements");
   const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
   const [importing, setImporting] = useState(false);
@@ -277,12 +273,12 @@ export function RequirementsPage() {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{requirementsTerm}</h1>
+        <h1 style={{ margin: 0 }}>{strings.requirements.title}</h1>
         <button ref={addTriggerRef} className="btn btn-primary" onClick={() => setAddMenuOpen((v) => !v)}>
-          <Plus size={16} /> New {requirementTerm}
+          <Plus size={16} /> {strings.requirements.newRequirement}
         </button>
         {addMenuOpen && (
-          <Popover anchorRef={addTriggerRef} title={`New ${requirementTerm}`} onClose={() => setAddMenuOpen(false)}>
+          <Popover anchorRef={addTriggerRef} title={strings.requirements.newRequirement} onClose={() => setAddMenuOpen(false)}>
             <div className="stack" style={{ gap: "0.25rem", minWidth: 160 }}>
               <button
                 className="btn"
@@ -638,9 +634,9 @@ export function RequirementsPage() {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Category">
+          <FilterField label={strings.requirements.category}>
             <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">All categories</option>
+              <option value="">{strings.requirements.allCategories}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

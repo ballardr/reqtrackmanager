@@ -2,7 +2,7 @@
 
 This document catalogues the jobs-to-be-done this suite verifies, the exact personas and credentials it uses, and how to re-run the whole thing from scratch. The suite exists to answer one question with evidence, not assertion: **do ReqTrackManager's permission boundaries and requirement-lifecycle guarantees actually hold, in the real browser UI, under realistic multi-tenant data?**
 
-It complements the existing `tests/playwright/tests/{golden-path,pelion-v2,mockup-engagement}.spec.ts` specs, which exercise the feature set as the single bootstrap admin in one organisation. This suite instead spans three organisations, six projects, and seven distinct personas whose access differs in specific, deliberate ways, plus a dedicated pass at trying to break the rules a well-behaved user would never test.
+It complements the existing `tests/playwright/tests/{golden-path,pelion-v2,mockup-engagement}.spec.ts` specs, which exercise the feature set as the single bootstrap admin in one organisation. This suite instead spans three organisations, seven projects, and seven distinct personas whose access differs in specific, deliberate ways, plus a dedicated pass at trying to break the rules a well-behaved user would never test.
 
 A later, broader pass (see the "Full-product coverage pass" section below) added specs for every remaining page and workflow not already covered by the above — review scheduling, change-request tasks/voting, stage review deadlines and completion, the structural/groups/fields/templates halves of Project and Org Admin, org-wide 2FA, the server-admin user directory and bans, notifications/favourites, project history, comment editing/attachments, the CSV import wizard, requirement list filters, and preferences/theme/landing-page — following the same "prove it against the real UI, and prove the server enforces it independent of the UI" discipline established here.
 
@@ -39,7 +39,7 @@ All seeded by `backend/scripts/seed_e2e_dataset.py` through the real API (not di
 | Member, two orgs | `e2e-member-ab@example.com` | `member` in Alpha + Beta | `member` on Alpha-1 and Beta-1 | A user whose access spans two different organisations' projects, with no admin/creator rights anywhere. |
 | Orphan candidate | `e2e-orphan@example.com` | *none* (left Alpha via the same self-service endpoint the zero-org server admin uses) | *none* | A second, independent zero-org-membership account (distinct from the server admin persona) for the user-directory/deactivate/ban workflow, so exercising deactivation and bans doesn't touch an account other specs also log in as. |
 
-Orgs: **E2E Alpha Robotics**, **E2E Beta Software**, **E2E Gamma Labs**, two projects each (Alpha-1/2, Beta-1/2, Gamma-1/2), 6-8 requirements per project across 2 components × 2 categories, plus a couple of pre-existing change requests for volume. Alpha-1's first requirement (`HW-FN-001`) is locked (status `approved`) by the seed script specifically to give the change-request and bypass-attempt workflows something to target immediately.
+Orgs: **E2E Alpha Robotics**, **E2E Beta Software**, **E2E Gamma Labs**, two projects each (Alpha-1/2, Beta-1/2, Gamma-1/2), 6-8 requirements per project across 2 components × 2 categories, plus a couple of pre-existing change requests for volume. Alpha-1's first requirement (`HW-FN-001`) is locked (status `approved`) by the seed script specifically to give the change-request and bypass-attempt workflows something to target immediately. A 7th project, **Delta-1 Terminology Demo** (in Alpha, 3 requirements, no cross-references to the other 6), is seeded with a fixed C-C-03 terminology override (`stage`→"Phase", `requirement`→"Spec", `change_request`→"ECR") dedicated solely to `terminology-override.spec.ts` — no other spec may depend on it being at, or away from, that override.
 
 ## Workflows
 
@@ -169,6 +169,11 @@ Search narrows by name substring, by unique ID, and shows an empty state for no 
 **Persona:** Org Admin AlphaBeta. **Spec:** `preferences-and-theme.spec.ts` (U-U-01, C-U-18, U-U-03).
 
 Theme persists across a reload; pronouns save and persist; all three landing-page-after-login modes (a specific project, the project list, automatic) are proven by actually logging out and back in for each — the preference is only resolved at the moment of login, not applied to ordinary in-app navigation like the brand logo (see gap below). The Help page is checked here as a light page visit rather than earning its own spec file.
+
+### 23. Terminology overrides reach their own surfaces
+**Persona:** Org Admin AlphaBeta. **Spec:** `terminology-coverage.spec.ts` (C-C-03).
+
+Uses the dedicated Delta-1 project (see "Personas" above), seeded with a permanent `stage`/`requirement`/`change_request` override, to prove the override reaches surfaces beyond the nav label + list-page heading it already worked on before this fix: the requirement detail page's "Make a change request" link, Project Admin's custom-fields entity-kind dropdown (the 2026-08 UX audit's single most visible example — it used to read "Requirement"/"Change request" literally, one tab over from the Terminology settings meant to rename those exact words), and the project's review-due list heading. `project-admin-groups-and-fields.spec.ts` (#12 above) separately proves the *save flow* itself (set-then-revert on Beta-2); this spec is about *consumption*, not the save mechanism.
 
 ## Product gaps found
 

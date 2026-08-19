@@ -6,9 +6,7 @@ import { activityEntityLabel, activityEntryLink, describeActivityEntry, ENTITY_T
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 const PAGE_SIZE = 30;
 
@@ -24,6 +22,7 @@ const ENTITY_TYPE_FILTER_OPTIONS = [...Object.keys(ENTITY_TYPE_LABEL), "organiza
  * included.
  */
 export function ProjectHistoryPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const orgLabelCap = useOrgLabelCapitalized();
   const [changes, setChanges] = useState<ChangeEntry[] | null>(null);

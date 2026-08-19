@@ -1,9 +1,10 @@
 import { Download, Upload } from "lucide-react";
 import Papa from "papaparse";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import type { Category, Component, CustomFieldDefinition, ProjectStage } from "../api/types";
+import { useTerm } from "../context/TerminologyContext";
 import { downloadBlob } from "../utils/download";
 
 type CanonicalField =
@@ -11,35 +12,51 @@ type CanonicalField =
   | "component_prefix" | "category_prefix" | "level" | "target_version"
   | "owner_email" | "keywords" | "review_date" | "review_lead_days" | "reviewer_email";
 
+type FieldDef = { key: CanonicalField; label: string; required: boolean; hint: string };
+
 const CUSTOM_FIELD_COLUMN_PREFIX = "cf_";
 
-const FIELDS: { key: CanonicalField; label: string; required: boolean; hint: string }[] = [
-  { key: "name", label: "Name", required: true, hint: "The requirement's title." },
-  {
-    key: "component_prefix", label: "Component", required: true,
-    hint: "Must exactly match an existing component's prefix (case-sensitive).",
-  },
-  {
-    key: "category_prefix", label: "Category", required: true,
-    hint: "Must exactly match an existing category's prefix (case-sensitive).",
-  },
-  { key: "reasoning", label: "Reasoning", required: false, hint: "Why the requirement exists." },
-  { key: "clarification", label: "Clarification", required: false, hint: "Additional scope notes." },
-  { key: "description", label: "Description", required: false, hint: "Further elaboration." },
-  {
-    key: "level", label: "Level", required: false,
-    hint: '"requirement" or "recommended" — defaults to "requirement" if left blank.',
-  },
-  {
-    key: "target_version", label: "Target version", required: false,
-    hint: "Must exactly match an existing stage's name, if set.",
-  },
-  { key: "owner_email", label: "Owner email", required: false, hint: "Must match an existing user's email, if set." },
-  { key: "keywords", label: "Keywords", required: false, hint: "Semicolon-separated, e.g. \"safety;power\"." },
-  { key: "review_date", label: "Review date", required: false, hint: "YYYY-MM-DD, if set." },
-  { key: "review_lead_days", label: "Review lead days", required: false, hint: "Whole number of days, if set." },
-  { key: "reviewer_email", label: "Reviewer email", required: false, hint: "Must match an existing user's email, if set." },
-];
+/**
+ * Canonical field order shared by the mapping UI, the CSV preview, and
+ * `buildTemplateCsv`'s generated columns — this ordering (and every `key`,
+ * the machine-readable CSV column name the backend import/export endpoints
+ * expect) is a stable identifier, not display text, so it stays a plain
+ * module-level constant. Only `label`/`hint` for `component_prefix`/
+ * `category_prefix` are terminology-aware (C-C-03) and built per-render
+ * inside the component via `buildFields` below, since a project can rename
+ * "component"/"category" — every other field name (Name, Reasoning, Level,
+ * ...) isn't one of the six overridable nouns.
+ */
+function buildFields(componentTerm: string, categoryTerm: string): FieldDef[] {
+  const capitalize = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+  return [
+    { key: "name", label: "Name", required: true, hint: "The requirement's title." },
+    {
+      key: "component_prefix", label: capitalize(componentTerm), required: true,
+      hint: `Must exactly match an existing ${componentTerm}'s prefix (case-sensitive).`,
+    },
+    {
+      key: "category_prefix", label: capitalize(categoryTerm), required: true,
+      hint: `Must exactly match an existing ${categoryTerm}'s prefix (case-sensitive).`,
+    },
+    { key: "reasoning", label: "Reasoning", required: false, hint: "Why the requirement exists." },
+    { key: "clarification", label: "Clarification", required: false, hint: "Additional scope notes." },
+    { key: "description", label: "Description", required: false, hint: "Further elaboration." },
+    {
+      key: "level", label: "Level", required: false,
+      hint: '"requirement" or "recommended" — defaults to "requirement" if left blank.',
+    },
+    {
+      key: "target_version", label: "Target version", required: false,
+      hint: "Must exactly match an existing stage's name, if set.",
+    },
+    { key: "owner_email", label: "Owner email", required: false, hint: "Must match an existing user's email, if set." },
+    { key: "keywords", label: "Keywords", required: false, hint: "Semicolon-separated, e.g. \"safety;power\"." },
+    { key: "review_date", label: "Review date", required: false, hint: "YYYY-MM-DD, if set." },
+    { key: "review_lead_days", label: "Review lead days", required: false, hint: "Whole number of days, if set." },
+    { key: "reviewer_email", label: "Reviewer email", required: false, hint: "Must match an existing user's email, if set." },
+  ];
+}
 
 const PREVIEW_ROWS = 5;
 
@@ -58,6 +75,7 @@ function guessMapping(headers: string[], keys: string[]): Record<string, string>
 }
 
 function buildTemplateCsv(
+  fields: FieldDef[],
   components: Component[], categories: Category[], stages: ProjectStage[], customFields: CustomFieldDefinition[]
 ): string {
   // A category belonging to the example component specifically — the tree
@@ -81,9 +99,9 @@ function buildTemplateCsv(
     reviewer_email: "",
   };
   const customFieldKeys = customFields.map(customFieldColumnKey);
-  const fields = [...FIELDS.map((f) => f.key), ...customFieldKeys];
-  const data = [[...FIELDS.map((f) => exampleRow[f.key]), ...customFieldKeys.map(() => "")]];
-  return Papa.unparse({ fields, data });
+  const columnKeys = [...fields.map((f) => f.key), ...customFieldKeys];
+  const data = [[...fields.map((f) => exampleRow[f.key]), ...customFieldKeys.map(() => "")]];
+  return Papa.unparse({ fields: columnKeys, data });
 }
 
 /** Imperative handle so a caller-supplied "Import from CSV" trigger
@@ -133,6 +151,9 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const componentTerm = useTerm("component");
+  const categoryTerm = useTerm("category");
+  const FIELDS = useMemo(() => buildFields(componentTerm, categoryTerm), [componentTerm, categoryTerm]);
 
   useImperativeHandle(ref, () => ({
     openFilePicker: () => fileInputRef.current?.click(),
@@ -218,7 +239,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
         <button
           type="button" className="btn"
           onClick={() => downloadBlob(
-            new Blob([buildTemplateCsv(components, categories, stages, customFields)], { type: "text/csv" }),
+            new Blob([buildTemplateCsv(FIELDS, components, categories, stages, customFields)], { type: "text/csv" }),
             "requirements-import-template.csv"
           )}
         >

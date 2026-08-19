@@ -5,9 +5,7 @@ import { api } from "../api/client";
 import type { RequirementDueForReview } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 const PAGE_SIZE = 30;
 
@@ -17,6 +15,7 @@ const PAGE_SIZE = 30;
  * the reviewer has a role on, so each row shows which project it belongs
  * to. */
 export function MyReviewsDuePage() {
+  const strings = useStrings();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [total, setTotal] = useState(0);
 

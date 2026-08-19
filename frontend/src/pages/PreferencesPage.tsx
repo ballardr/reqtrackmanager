@@ -8,8 +8,8 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
+import { useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
-import { t } from "../i18n/strings";
 import type {
   DigestMode,
   MyMemberships,
@@ -32,14 +32,13 @@ function landingModeFor(preference: string | undefined): LandingMode {
   return "project";
 }
 
-const strings = t();
-
 /**
  * User preferences: theme (U-U-01), post-login landing page (U-U-03),
  * pronouns (C-U-18), email digest mode (C-N-05), password change, and
  * TOTP two-factor enrollment (C-U-14).
  */
 export function PreferencesPage() {
+  const strings = useStrings();
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();

@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
+import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   ExternalUserPolicy,
@@ -44,11 +45,8 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
-import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
-
-const strings = t();
 
 /**
  * The 6 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -94,6 +92,7 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
  * status/type before the delete retries.
  */
 export function OrgAdminPage() {
+  const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();

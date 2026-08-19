@@ -231,7 +231,7 @@ def generate_csv(
     """Generates a CSV requirements export (R-F-02)."""
     project = db.get(Project, project_id)
     rows = _collect_rows(db, project_id, payload)
-    csv_bytes = generate_csv_report(rows)
+    csv_bytes = generate_csv_report(rows, terminology=project.terminology)
     return Response(
         content=csv_bytes, media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.csv"'},

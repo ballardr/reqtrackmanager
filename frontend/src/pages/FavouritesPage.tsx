@@ -7,9 +7,7 @@ import type { ProjectListItem, StageStatus } from "../api/types";
 import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 const PAGE_SIZE = 30;
 
@@ -24,6 +22,7 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
  * pagination/search shape (`favorite_only` on the same `/projects`
  * endpoint) rather than fetching and filtering every project client-side. */
 export function FavouritesPage() {
+  const strings = useStrings();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");

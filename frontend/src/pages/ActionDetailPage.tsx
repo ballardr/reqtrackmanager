@@ -18,10 +18,8 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
+import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -33,6 +31,7 @@ const strings = t();
  * way a requirement does), and a reused `CommentThread` discussion.
  */
 export function ActionDetailPage() {
+  const strings = useStrings();
   const { projectId, actionId } = useParams<{ projectId: string; actionId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();

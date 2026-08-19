@@ -9,9 +9,7 @@ import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -30,6 +28,7 @@ const strings = t();
 type StatusFilter = "active" | "disabled" | "all";
 
 export function ServerOrganisationsPage() {
+  const strings = useStrings();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();

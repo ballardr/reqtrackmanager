@@ -39,6 +39,7 @@ export default tseslint.config(
             "useTheme",
             "useTerm",
             "useTermPlural",
+            "useStrings",
             "useOrgLogoFileId",
             "useViewMode",
             "resolveLandingPath",

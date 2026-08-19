@@ -1,23 +1,12 @@
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
 import type { Project } from "../api/types";
+import { DEFAULT_TERMS, pluralize, resolveTerminologyDeep, type TerminologyKey } from "../i18n/terminology";
+import { t, type Strings } from "../i18n/strings";
 import { ProjectContext, type ProjectContextValue } from "./ProjectContextValue";
 
-export type TerminologyKey = "project" | "stage" | "component" | "category" | "requirement" | "change_request";
-
-// Lower case: these are substituted mid-phrase ("New requirement") as often
-// as they're used standalone (a nav label, a page heading) — `useTerm`
-// returns the raw lower-case form for the former; `useTermPlural` (below)
-// capitalises, since every current standalone usage is plural.
-const DEFAULT_TERMS: Record<TerminologyKey, string> = {
-  project: "project",
-  stage: "stage",
-  component: "component",
-  category: "category",
-  requirement: "requirement",
-  change_request: "change request",
-};
+export type { TerminologyKey };
 
 /**
  * Provides the current project's terminology overrides (C-C-03) to
@@ -50,15 +39,25 @@ export function useTerm(key: TerminologyKey): string {
   return terminology[key] || DEFAULT_TERMS[key];
 }
 
-/** Naively pluralises a resolved term (adds "s") and capitalises it —
- * every current call site uses the plural as a standalone heading or nav
- * label (the first word of its own text), never mid-phrase, so
- * capitalising here once covers all of them rather than at each site.
- * Pluralisation is good enough for the regular nouns this app ships by
- * default; a project overriding a term with an irregular plural (e.g.
- * "Story"/"Stories") would need to type the plural form as its override to
- * read correctly everywhere it's used. */
+/** Pluralises (see `pluralize`) and capitalises a resolved term — every
+ * current call site uses the plural as a standalone heading or nav label
+ * (the first word of its own text), never mid-phrase, so capitalising here
+ * once covers all of them rather than at each site. */
 export function useTermPlural(key: TerminologyKey): string {
-  const plural = `${useTerm(key)}s`;
+  const plural = pluralize(useTerm(key));
   return plural.charAt(0).toUpperCase() + plural.slice(1);
+}
+
+/**
+ * Returns the UI string table (`strings.ts`) with every terminology token
+ * (C-C-03) substituted for the current project's resolved term, or its
+ * English default outside a project context / where no override is set.
+ * This is the terminology-aware replacement for calling `t()` directly —
+ * any component whose strings include a `{requirement}`/`{Stage}`/etc.
+ * token must use this hook, not `t()`, or the raw token renders literally.
+ * Strings with no token in them read identically either way.
+ */
+export function useStrings(): Strings {
+  const { terminology } = useContext(ProjectContext);
+  return useMemo(() => resolveTerminologyDeep(t(), terminology), [terminology]);
 }

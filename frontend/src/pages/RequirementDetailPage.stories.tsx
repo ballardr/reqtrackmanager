@@ -14,6 +14,7 @@ import {
   buildUser,
   withAuth,
   withRouter,
+  withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
 import { RequirementDetailPage } from "./RequirementDetailPage";
@@ -300,6 +301,33 @@ export const CreateAndLinkAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
+  },
+};
+
+/**
+ * C-C-03: this page was one of the 2026-08 UX audit's explicitly named
+ * terminology leak sites — "Make change request", the archive confirm
+ * dialog, and every other `strings.requirements.*` string on the page used
+ * to hardcode the English noun regardless of the project's own Terminology
+ * settings, even though `strings.ts`'s `{requirement}`/`{changeRequest}`
+ * tokens already existed for the list page and nav. With the page now
+ * reading through `useStrings()` instead of a module-scope `t()`, an
+ * override actually reaches this page too.
+ */
+export const TerminologyOverrideAppliesThroughoutPage: Story = {
+  decorators: [withTerminology({ requirement: "Spec", change_request: "ECR" })],
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "approved" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    // The "Make a change request" link picks up the {changeRequest} token.
+    await expect(canvas.getByRole("link", { name: "Make ECR" })).toBeInTheDocument();
+
+    // The archive confirm dialog's title picks up the {requirement} token.
+    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Archive this Spec?" })).toBeInTheDocument();
   },
 };
 

@@ -103,6 +103,29 @@ def assign_project_role(headers: dict, project_id: str, user_id: str, role: str)
     r.raise_for_status()
 
 
+def set_project_terminology(headers: dict, project_id: str, terminology: dict[str, str]) -> dict:
+    """Sets a project's per-project terminology overrides (C-C-03), the same
+    `PUT /projects/{id}/terminology` endpoint Project Admin's Terminology tab
+    uses. See TERMINOLOGY_PROJECT_NAME's docstring below for why this is a
+    dedicated, 7th seeded project rather than applied to one of the 6
+    projects every other spec already reuses."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/terminology", json={"terminology": terminology}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+# Fixed, deliberate values the terminology-override Playwright spec asserts
+# against verbatim (see docs/decisions.md's terminology entry) — a project
+# dedicated solely to that spec, not one of the 6 "Alpha/Beta/Gamma-N"
+# projects every other e2e-workflows spec already reuses for its own
+# assertions (several of which check exact default-English button/nav text
+# that a terminology override would otherwise break). No other spec may
+# depend on this project's terminology staying at, or moving away from,
+# these values.
+TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
+TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
+
+
 def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
     r.raise_for_status()
@@ -262,6 +285,13 @@ def main() -> None:
     gamma1 = create_project(h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.")
     gamma2 = create_project(h_g, gamma["id"], "Gamma-2 Data Pipeline", "E2E seed project.")
 
+    print(f"Creating {TERMINOLOGY_PROJECT_NAME!r} and setting its terminology override (C-C-03)...")
+    delta1 = create_project(
+        h_ab, alpha["id"], TERMINOLOGY_PROJECT_NAME,
+        "E2E seed project dedicated to the terminology-override Playwright spec.",
+    )
+    set_project_terminology(h_ab, delta1["id"], TERMINOLOGY_OVERRIDE)
+
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
@@ -275,6 +305,7 @@ def main() -> None:
     seed_project_content(h_ab, beta2, 6)
     gamma1_reqs = seed_project_content(h_g, gamma1, 7)
     seed_project_content(h_g, gamma2, 6)
+    seed_project_content(h_ab, delta1, 3)
 
     print("Locking one Alpha-1 requirement (approves it directly) for the CR-approval and bypass-attempt workflows...")
     locked_req = alpha1_reqs[0]

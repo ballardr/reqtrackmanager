@@ -33,7 +33,16 @@ export const PROJECT_NAMES = {
   beta2: "Beta-2 Customer Portal",
   gamma1: "Gamma-1 Lab Instrument Suite",
   gamma2: "Gamma-2 Data Pipeline",
+  /** Dedicated to the terminology-override spec (terminology-override.spec.ts)
+   * — see TERMINOLOGY_PROJECT_NAME/TERMINOLOGY_OVERRIDE in
+   * backend/scripts/seed_e2e_dataset.py. No other spec may depend on this
+   * project's terminology staying at, or moving away from, that override. */
+  delta1: "Delta-1 Terminology Demo",
 } as const;
+
+/** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the
+ * fixed override PROJECT_NAMES.delta1 is seeded with. */
+export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", changeRequest: "ECR" } as const;
 
 /** Logs in through the real UI form as the given persona. */
 export async function loginAs(page: Page, email: string, password: string = PASSWORD): Promise<void> {

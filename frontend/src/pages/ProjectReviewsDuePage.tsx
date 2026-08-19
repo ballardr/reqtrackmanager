@@ -5,14 +5,13 @@ import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 /** Requirements due or overdue for review, project-basis (C-R-09), with a
  * filter panel (component/reviewer) for projects with enough due reviews
  * that a flat list stops being scannable. */
 export function ProjectReviewsDuePage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
@@ -80,7 +79,7 @@ export function ProjectReviewsDuePage() {
 
         <FilterPanel>
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
-          <FilterField label="Component">
+          <FilterField label={strings.requirements.component}>
             <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
               <option value="">{strings.reviews.allComponents}</option>
               {components.map((c) => (

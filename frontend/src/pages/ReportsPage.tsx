@@ -17,10 +17,8 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
-import { t } from "../i18n/strings";
+import { useStrings } from "../context/TerminologyContext";
 import { downloadBlob } from "../utils/download";
-
-const strings = t();
 
 /** Same joining `services/reports.py::_chapters_markdown` does server-side
  * — kept in sync deliberately: this page sends whatever's currently in the
@@ -44,6 +42,7 @@ function chaptersToMarkdown(chapters: ReportChapter[]): string {
  * resource sections (R-G-04).
  */
 export function ReportsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [includeArchived, setIncludeArchived] = useState(false);
   const [generating, setGenerating] = useState<"pdf" | "csv" | null>(null);

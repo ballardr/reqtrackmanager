@@ -22,7 +22,7 @@ import type {
   ReportChapter,
   ReportTemplate,
 } from "../api/types";
-import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
@@ -33,11 +33,9 @@ import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
+import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
-
-const strings = t();
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
@@ -52,6 +50,7 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
  * and project groups (C-U-11).
  */
 export function ProjectAdminPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
@@ -932,7 +931,7 @@ export function ProjectAdminPage() {
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {f.name} <span className="badge">{CUSTOM_FIELD_ENTITY_KIND_LABEL[f.entity_kind]}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
+              {f.name} <span className="badge">{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
               {f.required && <span className="badge">{strings.admin.required}</span>}
             </span>
             <button

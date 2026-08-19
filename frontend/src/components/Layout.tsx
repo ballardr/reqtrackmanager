@@ -7,13 +7,10 @@ import type { ProjectListItem } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
-import { TerminologyProvider, useTermPlural } from "../context/TerminologyContext";
+import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
-import { t } from "../i18n/strings";
 import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
-
-const strings = t();
 
 /**
  * One nav-rail row. The tooltip only wraps the link while the rail is
@@ -75,11 +72,10 @@ export function Layout({ children }: { children: ReactNode }) {
 
 function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const strings = useStrings();
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
-  const requirementsTerm = useTermPlural("requirement");
-  const changeRequestsTerm = useTermPlural("change_request");
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
   const [hasFavourites, setHasFavourites] = useState(false);
@@ -166,10 +162,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
           </div>
           {projectId && (
             <>
-              <div className="nav-section-label">Project</div>
+              <div className="nav-section-label">{strings.nav.projectSectionLabel}</div>
               <NavRailLink to={`/projects/${projectId}`} exact label={strings.nav.overview} icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/requirements`} label={requirementsTerm} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/change-requests`} label={changeRequestsTerm} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railCollapsed} />

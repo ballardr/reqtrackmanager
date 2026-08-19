@@ -23,10 +23,8 @@ import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
+import { useStrings } from "../context/TerminologyContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -37,6 +35,7 @@ const strings = t();
  * possible field.
  */
 export function ChangeRequestDetailPage() {
+  const strings = useStrings();
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
   const myRoles = useMyProjectRoles(projectId);

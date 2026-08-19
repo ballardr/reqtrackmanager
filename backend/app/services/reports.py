@@ -415,18 +415,29 @@ def generate_pdf_report(
     return buffer.getvalue()
 
 
-def generate_csv_report(rows: list[ReportRequirementRow]) -> bytes:
+def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> bytes:
     """Builds a CSV export of requirement rows (R-F-02).
 
     Args:
         rows: The requirement rows to export.
+        terminology: The owning project's terminology overrides (C-C-03),
+            keyed by the fixed `TERMINOLOGY_KEYS` set. Used to render the
+            "Component"/"Category" header cells in the project's own
+            configured vocabulary instead of always the English default;
+            every other header cell is a fixed report column, not one of
+            the six overridable nouns, so it stays literal regardless of
+            override. `None` (or a dict missing a key) falls back to the
+            English default the same as an unset override would.
 
     Returns:
         The generated CSV file content as bytes.
     """
+    terminology = terminology or {}
+    component_label = (terminology.get("component") or "component").capitalize()
+    category_label = (terminology.get("category") or "category").capitalize()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["ID", "Name", "Component", "Category", "Status", "Reasoning", "Clarification"])
+    writer.writerow(["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification"])
     for row in rows:
         writer.writerow([
             csv_safe(row.unique_code), csv_safe(row.name), csv_safe(row.component_name),

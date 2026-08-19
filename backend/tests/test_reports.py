@@ -6,6 +6,7 @@ from app.services.reports import (
     ReportRequirementRow,
     _group_rows_by_component_and_category,
     default_chapters_per_component,
+    generate_csv_report,
     resolve_report_config,
 )
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
@@ -152,6 +153,44 @@ def test_csv_report_contains_requirement_row(client, admin_token, org_id):
     text = resp.content.decode("utf-8")
     assert "SW-PERF-001" in text
     assert "Boot fast" in text
+
+
+def test_csv_report_header_uses_project_terminology_overrides_for_component_and_category():
+    """C-C-03: a project that renamed "component"/"category" (Project
+    Admin's Terminology tab) should see its own vocabulary in the CSV
+    header, not always the English default — this is the fix for the
+    hardcoded ["ID", "Name", "Component", "Category", ...] header row the
+    2026-08 UX audit's "Terminology coverage" finding named. Every other
+    header cell (ID/Name/Status/Reasoning/Clarification) isn't one of the
+    six overridable nouns, so it must stay literal regardless of override."""
+    rows = [_row("SW-PERF-001", "Software", 0, "Performance", 0)]
+    csv_bytes = generate_csv_report(rows, terminology={"component": "module", "category": "topic"})
+    header_line = csv_bytes.decode("utf-8").splitlines()[0]
+    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification"
+
+
+def test_csv_report_header_falls_back_to_english_default_with_no_terminology_override():
+    rows = [_row("SW-PERF-001", "Software", 0, "Performance", 0)]
+    assert generate_csv_report(rows).decode("utf-8").splitlines()[0] == "ID,Name,Component,Category,Status,Reasoning,Clarification"
+    assert generate_csv_report(rows, terminology={}).decode("utf-8").splitlines()[0] == (
+        "ID,Name,Component,Category,Status,Reasoning,Clarification"
+    )
+
+
+def test_csv_report_endpoint_reflects_projects_saved_terminology_override(client, admin_token, org_id):
+    """Router-level: proves `generate_csv` (routers/reports.py) actually
+    passes the project's *persisted* terminology through, not just that the
+    service function accepts the parameter in isolation."""
+    project = _seed_requirement(client, admin_token, org_id)
+    client.put(
+        f"/api/v1/projects/{project['id']}/terminology",
+        json={"terminology": {"component": "module", "category": "topic"}},
+        headers=auth_headers(admin_token),
+    )
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports/csv", json={}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    header_line = resp.content.decode("utf-8").splitlines()[0]
+    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification"
 
 
 def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, org_id):
