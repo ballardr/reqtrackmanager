@@ -592,8 +592,26 @@ td {
     text-indent: -9999px;
     background: var(--color-border);
   }
+  /* `minmax(0, 1fr)`, not bare `1fr` (shorthand for `minmax(auto, 1fr)`):
+     a bare `1fr`'s automatic minimum is the column's content's min-content
+     size, and one of this class's users nests another `repeat(auto-fill,
+     minmax(min(280px, 100%), 1fr))` grid inside it (ProjectListPage's tile
+     view) — that inner grid's own `100%` can't resolve while an ancestor
+     grid is computing ITS min-content contribution (the container size
+     it'd resolve against is, at that point, exactly what's being
+     computed), so it falls back to the literal `280px` floor instead of
+     the intended container-clamped value. On content wide enough to need
+     that clamp (e.g. a role list of "Member, Project administrator,
+     Project manager, Stakeholder"), that forced the whole `.side-grid`
+     column — everything in it, not just the nested grid — wider than the
+     viewport at narrow widths, defeating the collapse this rule exists to
+     do. `minmax(0, 1fr)` overrides the automatic minimum to 0 so nothing
+     inside this column can force it wider than the space actually
+     available. Confirmed empirically (`document.documentElement.
+     scrollWidth - clientWidth` at a 375px viewport, ProjectListPage tile
+     view): 44px of overflow with `1fr`, 0px with `minmax(0, 1fr)`. */
   .side-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .resource-menu {
     flex-direction: column;
