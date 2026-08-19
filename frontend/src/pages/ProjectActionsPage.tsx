@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { ActionTypeDefinition, OrgUser, Project, RequirementAction, RequirementActionOutcome } from "../api/types";
 import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
+import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { t } from "../i18n/strings";
@@ -45,6 +46,10 @@ export function ProjectActionsPage() {
     if (includeArchived) params.set("include_archived", "true");
     const qs = params.toString();
     return qs ? `?${qs}` : "";
+  }
+
+  function toggleOutcomeFilter(outcome: RequirementActionOutcome) {
+    setOutcomeFilter((current) => (current === outcome ? "" : outcome));
   }
 
   async function reload() {
@@ -191,7 +196,9 @@ export function ProjectActionsPage() {
                       </td>
                       <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
                       <td>
-                        <span className="badge">{REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}</span>
+                        <FilterBadge active={outcomeFilter === a.outcome_status} onClick={() => toggleOutcomeFilter(a.outcome_status)}>
+                          {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
+                        </FilterBadge>
                       </td>
                       <td className="text-muted">{assigneeName(a.assignee_id)}</td>
                       <td className="text-muted">{a.due_date ?? "—"}</td>

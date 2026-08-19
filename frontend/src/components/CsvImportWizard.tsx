@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import type { Category, Component, CustomFieldDefinition, ProjectStage } from "../api/types";
 import { useTerm } from "../context/TerminologyContext";
 import { downloadBlob } from "../utils/download";
+import { Popover } from "./Popover";
 
 type CanonicalField =
   | "name" | "reasoning" | "clarification" | "description"
@@ -150,6 +151,8 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const componentTerm = useTerm("component");
   const categoryTerm = useTerm("category");
@@ -231,20 +234,39 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
           fileInput
         )}
         <button
-          type="button" className="btn" disabled={exporting}
-          onClick={exportCsv}
-        >
-          <Download size={16} /> {exporting ? "Exporting…" : "Export CSV"}
-        </button>
-        <button
+          ref={exportTriggerRef}
           type="button" className="btn"
-          onClick={() => downloadBlob(
-            new Blob([buildTemplateCsv(FIELDS, components, categories, stages, customFields)], { type: "text/csv" }),
-            "requirements-import-template.csv"
-          )}
+          onClick={() => setExportMenuOpen((v) => !v)}
         >
-          <Download size={16} /> Download template
+          <Download size={16} /> {exporting ? "Exporting…" : "Export"}
         </button>
+        {exportMenuOpen && (
+          <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
+            <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+              <button
+                type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={exporting}
+                onClick={() => {
+                  setExportMenuOpen(false);
+                  exportCsv();
+                }}
+              >
+                <Download size={14} /> {exporting ? "Exporting…" : "Export CSV"}
+              </button>
+              <button
+                type="button" className="btn" style={{ justifyContent: "flex-start" }}
+                onClick={() => {
+                  setExportMenuOpen(false);
+                  downloadBlob(
+                    new Blob([buildTemplateCsv(FIELDS, components, categories, stages, customFields)], { type: "text/csv" }),
+                    "requirements-import-template.csv"
+                  );
+                }}
+              >
+                <Download size={14} /> Download template
+              </button>
+            </div>
+          </Popover>
+        )}
       </div>
 
       {headers && (

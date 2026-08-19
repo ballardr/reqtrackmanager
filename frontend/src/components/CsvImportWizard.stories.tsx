@@ -32,8 +32,25 @@ export const InitialState: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Import CSV")).toBeInTheDocument();
-    await expect(canvas.getByText("Export CSV")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Export CSV")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Map your CSV columns")).not.toBeInTheDocument();
+  },
+};
+
+/** "Export CSV" and "Download template" used to sit as two permanently-
+ * visible, unlabelled buttons next to each other — the same "two blocks
+ * competing for the same job" shape Principle 5 was written against for
+ * create flows, just for downloads instead. They now live behind one
+ * "Export" popover, the same shape `RequirementsPage`'s own "+ New
+ * requirement" trigger uses for Add one / Import from CSV. */
+export const ExportMenuOffersCsvAndTemplate: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await expect(within(menu).getByRole("button", { name: "Export CSV" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("button", { name: "Download template" })).toBeInTheDocument();
   },
 };
 
@@ -80,7 +97,9 @@ export const ExportDownloadsServerCsv: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /Export CSV/ }));
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: /Export CSV/ }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/requirements/export"));
   },
 };
@@ -113,7 +132,7 @@ export const HiddenImportTriggerOpensViaRef: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByText("Import CSV")).not.toBeInTheDocument();
-    await expect(canvas.getByText("Export CSV")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument();
 
     const csv = "name,component_prefix,category_prefix\nReset password,AUTH,LOG\n";
     const file = new File([csv], "requirements.csv", { type: "text/csv" });

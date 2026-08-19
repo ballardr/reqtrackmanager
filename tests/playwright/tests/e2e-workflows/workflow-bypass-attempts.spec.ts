@@ -13,9 +13,29 @@ import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
  */
 test.describe("attempts to bypass requirement/change-request workflow guarantees", () => {
   test("locking a stage, then probing edit/archive/approve boundaries", async ({ page }) => {
-    await test.step("PM approves Alpha-1's stage, locking all its requirements", async () => {
+    // A throwaway requirement created fresh by this run, rather than the
+    // seeded "Must log all state transitions" — this step's own later
+    // steps archive it and recreate it under a derived name, which isn't
+    // reversible from the UI, so reusing a fixed seeded name would leave
+    // this test unable to pass a second time against the same database
+    // (the seeded name would already be archived from the prior run). See
+    // CLAUDE.md's non-idempotent-test convention.
+    const targetReqName = `E2E Bypass Target ${Date.now()}`;
+
+    await test.step("create the throwaway requirement this test will lock and archive", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
+      await page.getByRole("link", { name: "Requirements", exact: true }).click();
+      await page.getByRole("button", { name: "New Requirement" }).click();
+      await page.getByRole("button", { name: "Add one" }).click();
+      const createPanel = page.getByRole("dialog", { name: "New Requirement" });
+      await expect(createPanel.getByRole("combobox").first()).toContainText("Hardware");
+      await page.getByPlaceholder("Name", { exact: true }).fill(targetReqName);
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByText(targetReqName)).toBeVisible();
+    });
+
+    await test.step("PM approves Alpha-1's stage, locking all its requirements", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       // Project stages now lives inside the merged "Structure" tab
       // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
@@ -71,19 +91,19 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByRole("link", { name: "Must log all state transitions", exact: true }).click();
+      await page.getByRole("link", { name: targetReqName, exact: true }).click();
       await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(0);
     });
 
     let archivedCode = "";
     let newCode = "";
-    const newReqName = `Must log all state transitions (E2E recreated ${Date.now()})`;
+    const newReqName = `${targetReqName} (recreated)`;
     await test.step("PM archives it, then a same-named recreation gets a distinct identity — no way to 'become' the old one", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByRole("link", { name: "Must log all state transitions", exact: true }).click();
+      await page.getByRole("link", { name: targetReqName, exact: true }).click();
       archivedCode = (await page.locator("h1").textContent())!.split(" — ")[0].trim();
       // Archiving a requirement now confirms first, via the shared
       // ConfirmDialog (2026-08 UX audit fix — see
@@ -93,13 +113,19 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       const archiveDialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await archiveDialog.getByRole("button", { name: "Archive", exact: true }).click();
       await page.waitForURL(/\/requirements$/);
-      await expect(page.getByText("Must log all state transitions", { exact: true })).toHaveCount(0);
+      await expect(page.getByText(targetReqName, { exact: true })).toHaveCount(0);
 
       await page.getByRole("button", { name: "New Requirement" }).click();
       await page.getByRole("button", { name: "Add one" }).click();
+      // The create form is a `SidePanel` portalled to the end of
+      // `document.body` — scope to it rather than an unscoped
+      // `getByRole("combobox").first()`, which would otherwise resolve to
+      // the filter sidebar's own Status select (it precedes the panel in
+      // DOM order once the form is a portal instead of an inline block).
       // Component/category selects default asynchronously once project data
       // loads — wait so Create doesn't submit with an empty component_id.
-      await expect(page.getByRole("combobox").first()).toContainText("Hardware");
+      const panel = page.getByRole("dialog", { name: "New Requirement" });
+      await expect(panel.getByRole("combobox").first()).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(newReqName);
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText(newReqName)).toBeVisible();
