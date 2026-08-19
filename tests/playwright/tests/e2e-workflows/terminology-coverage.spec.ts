@@ -36,7 +36,13 @@ test.describe("terminology overrides reach their own surfaces", () => {
     await test.step("requirement detail page: 'Make a change request' link uses the override, not the audit's named leak", async () => {
       await page.getByRole("link", { name: "Specs", exact: true }).click();
       await expect(page.url()).toContain("/requirements");
-      await page.getByText("Must respond to input within 50ms").click();
+      // A bare `getByText` here is ambiguous: the seeded requirement's own
+      // "Reasoning" field restates its name in lowercase prose ("Reasoning:
+      // must respond to input within 50ms."), and `getByText`'s default
+      // substring match is case-insensitive, so it resolves to both that
+      // paragraph and the actual requirement link. Scoped to the link role,
+      // which is the only one of the two that's actually clickable/correct.
+      await page.getByRole("link", { name: "Must respond to input within 50ms" }).click();
       await expect(page.url()).toContain("/requirements/");
       await expect(page.getByRole("link", { name: "Make ECR" })).toBeVisible();
     });
