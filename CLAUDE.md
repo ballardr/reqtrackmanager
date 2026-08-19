@@ -158,6 +158,12 @@ When making significant changes, update the README to include:
 - Only use `isolation: "worktree"` when there's a concrete reason: multiple agents genuinely running in parallel over the same files, or the user explicitly wants an easy-rollback branch for a risky change.
 - Sequential background agents (one implementation pass after another, even across separate `Agent` calls) do not need isolation — nothing else is touching the repo concurrently, so a worktree adds `git merge`/`git worktree remove` bookkeeping and more complex resume prompts (exact worktree paths) for no benefit.
 
+## Git Commits
+
+- Never run `git commit` in this repo as the agent, even when a fix is small, already verified, or clearly needed to unblock CI/a PR. Staging and diffing (`git add` to inspect, `git diff`, `git status`) is fine; creating the commit itself is not.
+- Finish the work, verify it, and hand it back described and ready to commit — the user commits it themselves. If the work is urgent (e.g. a failing PR check), say so and let them decide the timing, rather than committing to save a round trip.
+- This applies regardless of how confident the fix is or how many times committing has been fine before in this session — each commit is the user's call, every time, not something a prior "yes" in the conversation extends to.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
