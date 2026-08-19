@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { api } from "../api/client";
 import type { ExternalUserMatch, OrgUser, OrgUserSearchResult } from "../api/types";
@@ -6,6 +6,8 @@ import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
+
+type Option = { kind: "user"; user: OrgUser } | { kind: "external"; match: ExternalUserMatch };
 
 /**
  * Type-to-filter picker over org users — replaces asking the caller to
@@ -45,8 +47,10 @@ export function UserAutocomplete({
   const [open, setOpen] = useState(false);
   const [serverMatches, setServerMatches] = useState<OrgUser[]>([]);
   const [external, setExternal] = useState<ExternalUserMatch | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const orgLabel = useOrgLabel();
+  const listboxId = useId();
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -98,10 +102,22 @@ export function UserAutocomplete({
           .filter((u) => u.display_name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle))
           .slice(0, 8);
 
+  // Whether this instance is wired up to invite an external user at all
+  // (vs. only ever adding an existing member) — drives the persistent hint,
+  // shown before a query narrows things down to an actual external match.
+  const inviteCapable = !!(organizationId && onSelectExternal);
+  const canInvite = !!(external && onSelectExternal);
+  const options: Option[] = [
+    ...matches.map((user): Option => ({ kind: "user", user })),
+    ...(canInvite ? [{ kind: "external", match: external! } as Option] : []),
+  ];
+  const showDropdown = open && options.length > 0;
+
   function pick(user: OrgUser) {
     onSelect(user.user_id);
     setQuery("");
     setOpen(false);
+    setHighlightedIndex(-1);
   }
 
   function pickExternal(match: ExternalUserMatch) {
@@ -109,51 +125,112 @@ export function UserAutocomplete({
     setQuery("");
     setOpen(false);
     setExternal(null);
+    setHighlightedIndex(-1);
   }
 
-  const showDropdown = open && (matches.length > 0 || (external && onSelectExternal));
+  function selectOption(option: Option) {
+    if (option.kind === "user") pick(option.user);
+    else pickExternal(option.match);
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      if (options.length > 0) setHighlightedIndex((i) => (i + 1) % options.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (options.length > 0) setHighlightedIndex((i) => (i - 1 + options.length) % options.length);
+    } else if (e.key === "Enter") {
+      if (showDropdown && highlightedIndex >= 0 && highlightedIndex < options.length) {
+        e.preventDefault();
+        selectOption(options[highlightedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setHighlightedIndex(-1);
+      }
+    }
+  }
+
+  function optionId(index: number): string {
+    return `${listboxId}-option-${index}`;
+  }
 
   return (
     <div ref={containerRef} style={{ position: "relative", maxWidth: 280, width: "100%" }}>
       <input
         className="input"
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={showDropdown && highlightedIndex >= 0 ? optionId(highlightedIndex) : undefined}
         placeholder={placeholder}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
+          setHighlightedIndex(-1);
         }}
         onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
       />
+      {inviteCapable && !query && (
+        <p className="text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
+          {strings.userAutocomplete.canInviteHint}
+        </p>
+      )}
       {showDropdown && (
         <div
+          id={listboxId}
+          role="listbox"
           className="card stack"
           style={{
             position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "0.25rem",
             padding: "0.25rem", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
           }}
         >
-          {matches.map((u) => (
+          {matches.map((u, i) => (
             <button
               key={u.user_id}
+              id={optionId(i)}
+              role="option"
+              aria-selected={highlightedIndex === i}
               type="button"
               className="btn"
-              style={{ border: "none", justifyContent: "flex-start", textAlign: "left" }}
+              style={{
+                border: "none", justifyContent: "flex-start", textAlign: "left",
+                background: highlightedIndex === i ? "var(--color-surface-alt)" : undefined,
+              }}
+              onMouseEnter={() => setHighlightedIndex(i)}
               onClick={() => pick(u)}
             >
               {u.display_name} <span className="text-muted">({u.email})</span>
             </button>
           ))}
-          {external && onSelectExternal && (
+          {canInvite && (
             <button
+              id={optionId(matches.length)}
+              role="option"
+              aria-selected={highlightedIndex === matches.length}
               type="button"
               className="btn"
-              style={{ border: "none", justifyContent: "flex-start", textAlign: "left" }}
-              onClick={() => pickExternal(external)}
+              style={{
+                border: "none", justifyContent: "flex-start", textAlign: "left",
+                background: highlightedIndex === matches.length ? "var(--color-surface-alt)" : undefined,
+              }}
+              onMouseEnter={() => setHighlightedIndex(matches.length)}
+              onClick={() => pickExternal(external!)}
             >
-              {external.exists
-                ? strings.userAutocomplete.addExisting(external.email, orgLabel)
-                : strings.userAutocomplete.inviteNew.replace("{email}", external.email)}
+              {external!.exists
+                ? strings.userAutocomplete.addExisting(external!.email, orgLabel)
+                : strings.userAutocomplete.inviteNew.replace("{email}", external!.email)}
             </button>
           )}
         </div>

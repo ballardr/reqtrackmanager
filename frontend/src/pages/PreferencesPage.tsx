@@ -3,12 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { Tabs, tabPanelProps } from "../components/Tabs";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
+import { useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
-import { t } from "../i18n/strings";
 import type {
   DigestMode,
   MyMemberships,
@@ -31,14 +32,13 @@ function landingModeFor(preference: string | undefined): LandingMode {
   return "project";
 }
 
-const strings = t();
-
 /**
  * User preferences: theme (U-U-01), post-login landing page (U-U-03),
  * pronouns (C-U-18), email digest mode (C-N-05), password change, and
  * TOTP two-factor enrollment (C-U-14).
  */
 export function PreferencesPage() {
+  const strings = useStrings();
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
@@ -323,20 +323,10 @@ export function PreferencesPage() {
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.preferences.title}</h1>
 
-      <div className="row" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            className={`btn ${tab === tb.key ? "btn-primary" : ""}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
+      <Tabs idPrefix="preferences-tabs" tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === "profile" && (
-      <div className="card stack">
+      <div {...tabPanelProps("preferences-tabs", "profile")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.profile}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.avatar}
@@ -434,7 +424,7 @@ export function PreferencesPage() {
       )}
 
       {tab === "security" && (
-      <div className="card stack">
+      <div {...tabPanelProps("preferences-tabs", "security")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
         <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
           <input
@@ -523,7 +513,7 @@ export function PreferencesPage() {
       )}
 
       {tab === "access" && (
-      <div className="card stack">
+      <div {...tabPanelProps("preferences-tabs", "access")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.access}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.accessHint(orgLabel)}</p>
         {myOrgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations(orgLabelPlural)}</p>}
@@ -575,7 +565,7 @@ export function PreferencesPage() {
       )}
 
       {tab === "pats" && (
-      <div className="card stack">
+      <div {...tabPanelProps("preferences-tabs", "pats")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
         <p className="text-muted">{strings.preferences.patsHint(orgLabel)}</p>
 
@@ -715,7 +705,7 @@ export function PreferencesPage() {
       )}
 
       {tab === "notifications" && (
-      <div className="card stack">
+      <div {...tabPanelProps("preferences-tabs", "notifications")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.notifications.preferencesTitle}</h2>
         <table>
           <thead>

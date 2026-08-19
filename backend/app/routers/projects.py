@@ -256,12 +256,19 @@ def list_projects(
     role: ProjectRole | None = None,
     stage_status: StageStatus | None = None,
     organization_id: UUID | None = None,
+    favorite_only: bool = False,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Project list view (U-E-03, U-E-04): active/archived projects the user can access.
+
+    `favorite_only` powers `FavouritesPage`, the same shape as every other
+    filter here rather than a separate endpoint — a favourited-projects
+    listing is otherwise identical to this one (search, org filter, and
+    pagination all still make sense over it, and it needs sorted-favourites-
+    first no more or less than the unfiltered list already gets below).
 
     Supports an optional `role` filter (only projects where the caller holds
     the given effective project role), `stage_status` filter (only projects
@@ -371,6 +378,8 @@ def list_projects(
                 requirement_count=requirement_counts.get(p.id, 0),
             )
         )
+    if favorite_only:
+        out = [item for item in out if item.is_favorite]
     out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
 
     response.headers["X-Total-Count"] = str(len(out))
@@ -574,20 +583,38 @@ def unarchive_project(
 @router.get("/{project_id}/changes", response_model=list[ChangeEntryOut])
 def get_project_changes_endpoint(
     project_id: UUID,
+    response: Response,
     since: datetime | None = None,
     until: datetime | None = None,
     include_comments: bool = False,
     entity_type: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
     """Project changes-over-time view (C-A-10): a unified timeline of
     requirement/change-request/audit events, with an optional time range
     and entity-type filter. Discussion comments are excluded unless
-    `include_comments=true`."""
-    return get_project_changes(
+    `include_comments=true`.
+
+    `limit`/`offset` (U-P-06) are optional, same contract as
+    `list_requirements`: omitting both returns the full timeline unchanged
+    from before pagination existed. When `limit` is given, the total match
+    count (before slicing) is returned in the `X-Total-Count` response
+    header. Slicing happens here rather than in `get_project_changes`
+    itself, since that function has two other, unpaginated callers
+    (`requirements.py`/`change_requests.py`'s per-entity activity panels)
+    that need its complete merged-and-sorted result to filter down
+    themselves.
+    """
+    entries = get_project_changes(
         db, project_id, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
     )
+    response.headers["X-Total-Count"] = str(len(entries))
+    if limit is not None:
+        entries = entries[offset:offset + limit]
+    return entries
 
 
 @router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)

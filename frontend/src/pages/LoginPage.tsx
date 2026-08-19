@@ -29,11 +29,16 @@ export function LoginPage() {
   const { login, verify2fa } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const reauthMessage = (location.state as { message?: string } | null)?.message ?? null;
+  const routerState = location.state as { message?: string; challengeToken?: string } | null;
+  const reauthMessage = routerState?.message ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  // Pre-populated when arriving from OrgLoginPage's own 2FA branch (E-P-03) —
+  // that page never duplicates the code-entry form, it hands off its
+  // already-issued challenge token here via router state so this page opens
+  // straight on step two instead of asking for email/password again.
+  const [challengeToken, setChallengeToken] = useState<string | null>(routerState?.challengeToken ?? null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loginBackgroundFileId, setLoginBackgroundFileId] = useState<string | null>(null);

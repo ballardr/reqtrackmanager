@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
@@ -16,21 +16,26 @@ import type {
   Project,
   ProjectGroup,
   ProjectReportConfig,
+  ProjectRole,
   ProjectStage,
   ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
 } from "../api/types";
-import { CUSTOM_FIELD_ENTITY_KIND_LABEL, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CollapsibleSection } from "../components/CollapsibleSection";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DefinitionList } from "../components/DefinitionList";
+import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
+import { Tabs, tabPanelProps } from "../components/Tabs";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
-import { t } from "../i18n/strings";
+import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
-
-const strings = t();
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
@@ -45,8 +50,10 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
  * and project groups (C-U-11).
  */
 export function ProjectAdminPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const orgLabel = useOrgLabel();
+  const { showToast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
@@ -55,6 +62,17 @@ export function ProjectAdminPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [orgGroupSelections, setOrgGroupSelections] = useState<Record<string, string>>({});
+  // "New group" create popover (style guide "Pattern: create panels,
+  // popovers, and one door for bulk" — mirrors OrgAdminPage's own "New
+  // group" popover, just pointed at the project-scoped endpoint). Unlike
+  // the org-scoped equivalent, `ProjectGroupCreate` also requires a role
+  // up front (a project group's role can't be changed after creation —
+  // there's no update endpoint for it), so this popover has a role select
+  // the org-scoped one doesn't need.
+  const [newGroupPopoverOpen, setNewGroupPopoverOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupRole, setNewGroupRole] = useState<ProjectRole>("member");
+  const newGroupTriggerRef = useRef<HTMLButtonElement>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
@@ -91,12 +109,6 @@ export function ProjectAdminPage() {
 
   // --- Action types (project-scoped, per docs/decisions.md) ------------
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
-  const [newActionTypeName, setNewActionTypeName] = useState("");
-  const [actionTypeNameEdits, setActionTypeNameEdits] = useState<Record<string, string>>({});
-  const [deletingActionTypeId, setDeletingActionTypeId] = useState<string | null>(null);
-  const [actionTypeInUseMessage, setActionTypeInUseMessage] = useState<string | null>(null);
-  const [reassignActionTypeTo, setReassignActionTypeTo] = useState("");
-  const [actionTypeError, setActionTypeError] = useState<string | null>(null);
 
   const [reportIntro, setReportIntro] = useState("");
   const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
@@ -115,6 +127,7 @@ export function ProjectAdminPage() {
   const [newFieldType, setNewFieldType] = useState<CustomFieldType>("short_text");
   const [newFieldOptions, setNewFieldOptions] = useState("");
   const [newFieldRequired, setNewFieldRequired] = useState(false);
+  const [deletingFieldId, setDeletingFieldId] = useState<string | null>(null);
 
   async function reload() {
     if (!projectId) return;
@@ -372,10 +385,8 @@ export function ProjectAdminPage() {
     }
   }
 
-  async function addActionType() {
-    if (!newActionTypeName.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/action-types`, { name: newActionTypeName });
-    setNewActionTypeName("");
+  async function addActionType(name: string) {
+    await api.post(`/api/v1/projects/${projectId}/action-types`, { name });
     reload();
   }
 
@@ -385,50 +396,33 @@ export function ProjectAdminPage() {
   }
 
   async function renameActionType(id: string, name: string) {
-    setActionTypeError(null);
-    try {
-      await api.patch(`/api/v1/projects/${projectId}/action-types/${id}`, { name });
-      setActionTypeNameEdits((m) => {
-        const next = { ...m };
-        delete next[id];
-        return next;
-      });
-      reload();
-    } catch (err) {
-      setActionTypeError(err instanceof Error ? err.message : strings.common.error);
-    }
+    await api.patch(`/api/v1/projects/${projectId}/action-types/${id}`, { name });
+    reload();
   }
 
   /** Plain delete first (no `reassign_to_id`) per §4.0's shared contract —
-   * a 409 means it's in use, opening the reassignment picker with the
-   * server's own count message rather than a generic one (mirrors
+   * a 409 means it's in use; `DefinitionList` opens the reassignment
+   * picker itself with the server's own count message (mirrors
    * OrgAdminPage's project-statuses/link-types delete flow). */
-  async function attemptDeleteActionType(id: string) {
-    setActionTypeError(null);
-    try {
-      await api.delete(`/api/v1/projects/${projectId}/action-types/${id}`);
-      reload();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setDeletingActionTypeId(id);
-        setActionTypeInUseMessage(err.message);
-      } else {
-        setActionTypeError(err instanceof Error ? err.message : strings.common.error);
-      }
-    }
+  async function deleteActionType(id: string, reassignToId?: string) {
+    await api.delete(`/api/v1/projects/${projectId}/action-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    reload();
   }
 
-  async function confirmDeleteActionType(id: string) {
-    if (!reassignActionTypeTo) return;
-    setActionTypeError(null);
+  /** Creates a new project group with `newGroupName`/`newGroupRole` — the
+   * frontend gap the 2026-08 UX audit flagged (Groups tab could manage
+   * membership but had no create form at all). `POST
+   * /projects/{id}/groups` already existed and required no backend change. */
+  async function createProjectGroup() {
     try {
-      await api.delete(`/api/v1/projects/${projectId}/action-types/${id}?reassign_to_id=${reassignActionTypeTo}`);
-      setDeletingActionTypeId(null);
-      setActionTypeInUseMessage(null);
-      setReassignActionTypeTo("");
+      await api.post(`/api/v1/projects/${projectId}/groups`, { name: newGroupName, role: newGroupRole });
+      setNewGroupName("");
+      setNewGroupRole("member");
+      setNewGroupPopoverOpen(false);
+      showToast(strings.admin.groupCreated);
       reload();
     } catch (err) {
-      setActionTypeError(err instanceof Error ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -488,41 +482,36 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  const [tab, setTab] = useState<
-    "overview" | "stages" | "categories" | "customFields" | "actionTypes" | "groups" | "terminology" | "reportSetup"
-  >("overview");
+  // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
+  // Project Admin's 8-tab bar against the 5-tab ceiling"), per the style
+  // guide's own 5-tab ceiling for the Tabs pattern. Terminology's content
+  // moved into Overview (a sub-block, not its own tab); Stages +
+  // Components/Categories merged into Structure; Custom Fields + Action
+  // Types merged into Fields & Actions; Groups and Report Setup keep their
+  // own tabs unchanged. See `docs/decisions.md` for the full rationale.
+  const [tab, setTab] = useState<"overview" | "structure" | "fieldsActions" | "groups" | "reportSetup">("overview");
 
   if (!stages || !project) return <Spinner />;
 
   const tabs: { key: typeof tab; label: string }[] = [
     { key: "overview", label: strings.admin.settings },
-    { key: "stages", label: strings.admin.stages },
-    { key: "categories", label: strings.admin.categories },
-    { key: "customFields", label: strings.admin.customFields },
-    { key: "actionTypes", label: strings.admin.actionTypes },
+    { key: "structure", label: strings.admin.structure },
+    { key: "fieldsActions", label: strings.admin.fieldsAndActions },
     { key: "groups", label: strings.admin.groups },
-    { key: "terminology", label: strings.admin.terminology },
-    { key: "reportSetup", label: "Report Setup" },
+    { key: "reportSetup", label: strings.admin.reportSetup },
   ];
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.nav.admin}</h1>
-
-      <div className="row" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            className={`btn ${tab === tb.key ? "btn-primary" : ""}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
+      <div className="stack" style={{ gap: "0.15rem" }}>
+        <h1 style={{ margin: 0 }}>{project.name}</h1>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
       </div>
 
+      <Tabs idPrefix="project-admin-tabs" tabs={tabs} active={tab} onChange={setTab} />
+
       {tab === "overview" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "overview")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.name}
@@ -576,11 +565,15 @@ export function ProjectAdminPage() {
             {project.is_archived ? strings.admin.unarchiveProject : strings.admin.archiveProject}
           </button>
         </div>
-      </div>
-      )}
 
-      {tab === "terminology" && (
-      <div className="card stack">
+        {/* Terminology (2026-08 UX audit roadmap: Project Admin's 8 tabs ->
+            5) — pure relocation of the previously-standalone Terminology
+            tab's own JSX/state/handlers into Overview, unchanged. The
+            architecture that would make custom terms actually take effect
+            across the app is a separate, deliberately-deferred roadmap
+            item (see docs/decisions.md); this is only where its existing
+            (still mostly-inert) UI lives now. */}
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         {TERMINOLOGY_KEYS.map((key) => (
@@ -595,15 +588,15 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
-          {strings.admin.saveSettings}
+          {strings.admin.saveTerminology}
         </button>
       </div>
       )}
 
-      {tab === "stages" && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.stages}</h2>
+      {tab === "structure" && (
+      <div {...tabPanelProps("project-admin-tabs", "structure")} className="stack">
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
+        <CollapsibleSection sectionKey="projectAdmin.structure.stages" title={strings.admin.stages} defaultCollapsed={false}>
         {stages.map((s) => {
           const nameEdit = stageNameEdits[s.id] ?? s.name;
           const otherStages = stages.filter((other) => other.id !== s.id);
@@ -616,7 +609,12 @@ export function ProjectAdminPage() {
                   onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
                 />
                 {nameEdit !== s.name && nameEdit && (
-                  <button className="btn" onClick={() => renameStage(s.id, nameEdit)} title={strings.admin.rename}>
+                  <button
+                    className="btn"
+                    onClick={() => renameStage(s.id, nameEdit)}
+                    title={strings.admin.rename}
+                    aria-label={strings.admin.rename}
+                  >
                     <Pencil size={14} />
                   </button>
                 )}
@@ -627,6 +625,7 @@ export function ProjectAdminPage() {
                   className="btn btn-danger"
                   disabled={otherStages.length === 0}
                   title={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
+                  aria-label={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
                   onClick={() => setDeletingStageId(s.id)}
                 >
                   <Trash2 size={14} />
@@ -711,14 +710,14 @@ export function ProjectAdminPage() {
             <Plus size={14} /> {strings.admin.newStage}
           </button>
         </div>
-      </div>
-      )}
+        </CollapsibleSection>
 
-      {tab === "categories" && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.components}</h2>
+        {/* Audit finding: the tab bar used to call this "Categories" while
+            its content opened with an <h2> reading "Components" — actually
+            a two-level component -> category tree. This section's own
+            title now names both levels accurately instead of either alone. */}
+        <CollapsibleSection sectionKey="projectAdmin.structure.componentsCategories" title={strings.admin.componentsAndCategories} defaultCollapsed={false}>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.admin.componentTreeHint}</p>
-        {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         {components.map((c, idx) => {
           const ownCategories = categories.filter((cat) => cat.component_id === c.id);
           const categoryInput = newCategoryInputs[c.id] ?? { name: "", prefix: "" };
@@ -738,22 +737,46 @@ export function ProjectAdminPage() {
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
                   />
                   {componentDirty && componentEdit.name && componentEdit.prefix && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}>
+                    <button
+                      className="btn"
+                      title={strings.admin.rename}
+                      aria-label={strings.admin.rename}
+                      onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}
+                    >
                       <Pencil size={14} />
                     </button>
                   )}
                 </div>
                 <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveComponent(c.id, "up")}>
+                  <button
+                    className="btn"
+                    disabled={idx === 0}
+                    title={strings.common.up}
+                    aria-label={strings.common.up}
+                    onClick={() => moveComponent(c.id, "up")}
+                  >
                     <ArrowUp size={14} />
                   </button>
-                  <button className="btn" disabled={idx === components.length - 1} onClick={() => moveComponent(c.id, "down")}>
+                  <button
+                    className="btn"
+                    disabled={idx === components.length - 1}
+                    title={strings.common.down}
+                    aria-label={strings.common.down}
+                    onClick={() => moveComponent(c.id, "down")}
+                  >
                     <ArrowDown size={14} />
                   </button>
                   <button
                     className="btn btn-danger"
                     disabled={ownCategories.length > 0 || otherComponents.length === 0}
                     title={
+                      ownCategories.length > 0
+                        ? strings.admin.deleteComponentHasCategoriesHint
+                        : otherComponents.length === 0
+                        ? strings.admin.deleteLastOneHint
+                        : strings.admin.deleteComponent
+                    }
+                    aria-label={
                       ownCategories.length > 0
                         ? strings.admin.deleteComponentHasCategoriesHint
                         : otherComponents.length === 0
@@ -795,18 +818,31 @@ export function ProjectAdminPage() {
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
                         />
                         {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
-                          <button className="btn" title={strings.admin.rename} onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}>
+                          <button
+                            className="btn"
+                            title={strings.admin.rename}
+                            aria-label={strings.admin.rename}
+                            onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}
+                          >
                             <Pencil size={14} />
                           </button>
                         )}
                       </div>
                       <div className="row">
-                        <button className="btn" disabled={catIdx === 0} onClick={() => moveCategory(cat.id, "up")}>
+                        <button
+                          className="btn"
+                          disabled={catIdx === 0}
+                          title={strings.common.up}
+                          aria-label={strings.common.up}
+                          onClick={() => moveCategory(cat.id, "up")}
+                        >
                           <ArrowUp size={14} />
                         </button>
                         <button
                           className="btn"
                           disabled={catIdx === ownCategories.length - 1}
+                          title={strings.common.down}
+                          aria-label={strings.common.down}
                           onClick={() => moveCategory(cat.id, "down")}
                         >
                           <ArrowDown size={14} />
@@ -815,6 +851,7 @@ export function ProjectAdminPage() {
                           className="btn btn-danger"
                           disabled={otherCategories.length === 0}
                           title={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
+                          aria-label={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
                           onClick={() => setDeletingCategoryId(cat.id)}
                         >
                           <Trash2 size={14} />
@@ -887,21 +924,36 @@ export function ProjectAdminPage() {
             <Plus size={14} /> {strings.admin.newComponent}
           </button>
         </div>
+        </CollapsibleSection>
       </div>
       )}
 
-      {tab === "customFields" && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.customFields}</h2>
+      {tab === "fieldsActions" && (
+      <div {...tabPanelProps("project-admin-tabs", "fieldsActions")} className="stack">
+        <CollapsibleSection sectionKey="projectAdmin.fieldsActions.customFields" title={strings.admin.customFields} defaultCollapsed={false}>
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {f.name} <span className="badge">{CUSTOM_FIELD_ENTITY_KIND_LABEL[f.entity_kind]}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
+              {f.name} <span className="badge">{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
               {f.required && <span className="badge">{strings.admin.required}</span>}
             </span>
-            <button className="btn btn-danger" onClick={() => deleteCustomField(f.id)}>
+            <button
+              className="btn btn-danger"
+              title={strings.admin.deleteCustomField(f.name)}
+              aria-label={strings.admin.deleteCustomField(f.name)}
+              onClick={() => setDeletingFieldId(f.id)}
+            >
               <Trash2 size={14} />
             </button>
+            {deletingFieldId === f.id && (
+              <ConfirmDialog
+                title={strings.admin.deleteCustomField(f.name)}
+                message={strings.admin.deleteCustomFieldConfirm(f.name)}
+                confirmLabel={strings.common.delete}
+                onConfirm={() => { setDeletingFieldId(null); deleteCustomField(f.id); }}
+                onCancel={() => setDeletingFieldId(null)}
+              />
+            )}
           </div>
         ))}
         <div className="row">
@@ -932,83 +984,72 @@ export function ProjectAdminPage() {
             <Plus size={14} /> {strings.admin.newCustomField}
           </button>
         </div>
-      </div>
-      )}
+        </CollapsibleSection>
 
-      {tab === "actionTypes" && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.actionTypes}</h2>
-        {actionTypeError && <div style={{ color: "var(--color-danger)" }}>{actionTypeError}</div>}
-        {actionTypes.map((at, idx) => {
-          const nameEdit = actionTypeNameEdits[at.id] ?? at.name;
-          const otherActionTypes = actionTypes.filter((other) => other.id !== at.id);
-          return (
-            <div key={at.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <input
-                    className="input" style={{ maxWidth: 220 }} value={nameEdit}
-                    onChange={(e) => setActionTypeNameEdits((m) => ({ ...m, [at.id]: e.target.value }))}
-                  />
-                  {nameEdit !== at.name && nameEdit.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameActionType(at.id, nameEdit)}>
-                      <Pencil size={14} />
-                    </button>
-                  )}
-                </div>
-                <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveActionType(at.id, "up")}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button className="btn" disabled={idx === actionTypes.length - 1} onClick={() => moveActionType(at.id, "down")}>
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={otherActionTypes.length === 0}
-                    title={otherActionTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteActionType}
-                    onClick={() => attemptDeleteActionType(at.id)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-              {deletingActionTypeId === at.id && (
-                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                  <span>{actionTypeInUseMessage}</span>
-                  <span>{strings.admin.reassignExistingTo}</span>
-                  <select className="input" style={{ maxWidth: 220 }} value={reassignActionTypeTo} onChange={(e) => setReassignActionTypeTo(e.target.value)}>
-                    <option value="">—</option>
-                    {otherActionTypes.map((other) => (
-                      <option key={other.id} value={other.id}>{other.name}</option>
-                    ))}
-                  </select>
-                  <button className="btn btn-danger" disabled={!reassignActionTypeTo} onClick={() => confirmDeleteActionType(at.id)}>
-                    {strings.admin.confirmDelete}
-                  </button>
-                  <button className="btn" onClick={() => { setDeletingActionTypeId(null); setActionTypeInUseMessage(null); setReassignActionTypeTo(""); }}>
-                    {strings.common.cancel}
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.admin.name} value={newActionTypeName}
-            onChange={(e) => setNewActionTypeName(e.target.value)}
-          />
-          <button className="btn btn-primary" onClick={addActionType} disabled={!newActionTypeName.trim()}>
-            <Plus size={14} /> {strings.admin.newActionType}
-          </button>
-        </div>
+        <CollapsibleSection sectionKey="projectAdmin.fieldsActions.actionTypes" title={strings.admin.actionTypes} defaultCollapsed={false}>
+        <DefinitionList
+          items={actionTypes}
+          fields={[{ key: "name", getValue: (i) => i.name, placeholder: strings.admin.name, maxWidth: 220 }]}
+          getReassignLabel={(i) => i.name}
+          onMove={moveActionType}
+          onRename={(id, values) => renameActionType(id, values.name)}
+          onAdd={(values) => addActionType(values.name)}
+          onDelete={deleteActionType}
+          deleteLabel={strings.admin.deleteActionType}
+          addLabel={strings.admin.newActionType}
+        />
+        </CollapsibleSection>
       </div>
       )}
 
       {tab === "groups" && (
-      <div className="card stack">
+      <div {...tabPanelProps("project-admin-tabs", "groups")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
+        <button
+          ref={newGroupTriggerRef}
+          className="btn btn-primary"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setNewGroupPopoverOpen((o) => !o)}
+        >
+          <Plus size={14} /> {strings.admin.newGroup}
+        </button>
+        {newGroupPopoverOpen && (
+          <Popover
+            anchorRef={newGroupTriggerRef}
+            title={strings.admin.newGroup}
+            onClose={() => setNewGroupPopoverOpen(false)}
+          >
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.admin.name}
+              <input
+                className="input"
+                placeholder={strings.admin.groupNamePlaceholder}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newGroupName) createProjectGroup();
+                }}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.admin.groupRole}
+              <select className="input" value={newGroupRole} onChange={(e) => setNewGroupRole(e.target.value as ProjectRole)}>
+                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+              </select>
+            </label>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setNewGroupPopoverOpen(false)}>
+                {strings.common.cancel}
+              </button>
+              <button className="btn btn-primary" onClick={createProjectGroup} disabled={!newGroupName}>
+                {strings.common.create}
+              </button>
+            </div>
+          </Popover>
+        )}
         {externalAddResult && (
           <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
             {externalAddResult.message}
@@ -1033,7 +1074,12 @@ export function ProjectAdminPage() {
                     return (
                       <li key={userId} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
                         <span>{u ? `${u.display_name} (${u.email})` : userId}</span>
-                        <button className="btn btn-danger" onClick={() => removeGroupMember(g.id, userId)}>
+                        <button
+                          className="btn btn-danger"
+                          title={strings.admin.removeMember(u ? u.display_name : userId)}
+                          aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
+                          onClick={() => removeGroupMember(g.id, userId)}
+                        >
                           <Trash2 size={14} />
                         </button>
                       </li>
@@ -1043,7 +1089,7 @@ export function ProjectAdminPage() {
               )}
               <UserAutocomplete
                 users={availableUsers}
-                placeholder={strings.admin.addMemberPlaceholder}
+                placeholder={strings.admin.addOrInviteMemberPlaceholder}
                 onSelect={(userId) => addGroupMember(g.id, userId)}
                 organizationId={project?.organization_id}
                 projectId={project?.id}
@@ -1054,7 +1100,12 @@ export function ProjectAdminPage() {
                   {nestedOrgGroups.map((og) => (
                     <li key={og.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
                       <span>{strings.admin.viaOrgGroup(og.name, orgLabel)}</span>
-                      <button className="btn btn-danger" onClick={() => removeOrgGroupMember(g.id, og.id)}>
+                      <button
+                        className="btn btn-danger"
+                        title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                        aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                        onClick={() => removeOrgGroupMember(g.id, og.id)}
+                      >
                         <Trash2 size={14} />
                       </button>
                     </li>
@@ -1078,6 +1129,8 @@ export function ProjectAdminPage() {
                   <button
                     className="btn"
                     disabled={!orgGroupSelections[g.id]}
+                    title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                    aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                     onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                   >
                     <Plus size={14} />
@@ -1091,29 +1144,32 @@ export function ProjectAdminPage() {
       )}
 
       {tab === "reportSetup" && (
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Report Setup</h2>
+      <div {...tabPanelProps("project-admin-tabs", "reportSetup")} className="stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportSetup}</h2>
         <p className="text-muted" style={{ margin: 0 }}>
           This intro, these chapters, and these appendices are used as the default content when a report is
           generated for this project, unless overridden at generation time.
         </p>
         {reportTemplates.length > 0 && (
-          <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
-            {strings.admin.defaultReportTemplate}
-            <select
-              className="input" value={defaultReportTemplateId}
-              onChange={(e) => setDefaultReportTemplateId(e.target.value)}
-            >
-              <option value="">{strings.reports.noTemplate}</option>
-              {reportTemplates.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.name}
-                </option>
-              ))}
-            </select>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.defaultReportTemplateHint}</span>
-          </label>
+          <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
+            <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
+              {strings.admin.defaultReportTemplate}
+              <select
+                className="input" value={defaultReportTemplateId}
+                onChange={(e) => setDefaultReportTemplateId(e.target.value)}
+              >
+                <option value="">{strings.reports.noTemplate}</option>
+                {reportTemplates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.defaultReportTemplateHint}</span>
+            </label>
+          </CollapsibleSection>
         )}
+        <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span>
             Project intro
@@ -1139,6 +1195,7 @@ export function ProjectAdminPage() {
             organizationId={project?.organization_id}
           />
         </div>
+        </CollapsibleSection>
         <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveSettings}
         </button>

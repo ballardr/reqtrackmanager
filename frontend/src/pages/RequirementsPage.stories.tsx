@@ -64,6 +64,35 @@ export const TilesView: Story = {
   },
 };
 
+/** Style guide "Pattern: create panels, popovers, and one door for bulk":
+ * "New requirement" opens a popover offering "Add one" (the existing
+ * inline form) and "Import from CSV" (the wizard's own file picker,
+ * triggered externally — see CsvImportWizard.stories.tsx's
+ * HiddenImportTriggerOpensViaRef for that half), instead of the inline
+ * form and the CSV wizard's own "Import CSV" button competing as two
+ * separate, permanently-visible blocks above the list. */
+export const NewRequirementMenuOffersOneOrBulk: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+
+    // The CSV wizard's own "Import CSV" trigger is hidden now that this
+    // page's split button is the one door for both — Export/template stay.
+    await expect(canvas.queryByText("Import CSV")).not.toBeInTheDocument();
+    await expect(canvas.getByText("Export CSV")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    const menu = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await expect(within(menu).getByRole("button", { name: "Add one" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("button", { name: "Import from CSV" })).toBeInTheDocument();
+
+    await userEvent.click(within(menu).getByRole("button", { name: "Add one" }));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(canvas.getByPlaceholderText("Name")).toBeInTheDocument();
+  },
+};
+
 export const ListView: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -107,6 +136,7 @@ export const NoComponentsManagerCanCreateInline: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
     await waitFor(() => expect(canvas.getByText("This project has no components or categories yet.")).toBeInTheDocument());
     await expect(canvas.getByPlaceholderText("Prefix")).toBeInTheDocument();
   },
@@ -121,6 +151,7 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
     await waitFor(() => expect(canvas.getByRole("link", { name: "Add one in Project Admin before creating requirements." })).toBeInTheDocument());
     await expect(canvas.queryByPlaceholderText("Prefix")).not.toBeInTheDocument();
   },
@@ -134,6 +165,7 @@ export const CreateFormCascadesCategoryOnComponentChange: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /New/ }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("Name")).toBeInTheDocument());
     // "Category" also labels the filter sidebar's own select — the create
     // form's is the first of the two in DOM order.

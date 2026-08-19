@@ -63,7 +63,7 @@ test("insert an image into a project's report intro and generate a PDF", async (
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await page.getByRole("button", { name: "Report Setup", exact: true }).click();
+  await page.getByRole("tab", { name: "Report Setup", exact: true }).click();
 
   await test.step("upload and insert an image into the report intro", async () => {
     await page.getByRole("button", { name: "Insert image" }).first().click();

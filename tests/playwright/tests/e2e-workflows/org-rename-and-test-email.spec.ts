@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can rename their own organisation, and can
@@ -136,7 +136,11 @@ test.describe("organisation rename and test-email actions", () => {
     });
 
     await test.step("send test email is disabled until an SMTP host is configured", async () => {
-      await page.getByRole("button", { name: "Advanced settings section" }).click();
+      // SMTP/test-email moved into the "SMTP & email" card under
+      // "Integrations & security" (2026-08 UX audit's Org Admin
+      // restructure), open by default there — no section-toggle click
+      // needed, just select the group.
+      await selectOrgAdminGroup(page, "Integrations & security");
       await expect(page.getByRole("button", { name: "Send test email" })).toBeDisabled();
       await expect(page.getByText("Set an SMTP host above first.")).toBeVisible();
     });
@@ -181,7 +185,7 @@ test.describe("organisation rename and test-email actions", () => {
 
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.goto("/server/management");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
+    await page.getByRole("tab", { name: "Email", exact: true }).click();
 
     await page.getByPlaceholder("Recipient email (defaults to your own account)").fill(recipient);
     await Promise.all([

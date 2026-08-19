@@ -34,7 +34,11 @@ test.describe("project admin: action types", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.beta1).click();
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
-    await page.getByRole("button", { name: "Action types" }).click();
+    // Action types now lives inside the merged "Fields & actions" tab
+    // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5), alongside
+    // Custom Fields — the two-select ("Name"-exact) locators below stay
+    // unambiguous since Custom Fields has no "Name"-exact field itself.
+    await page.getByRole("tab", { name: "Fields & actions" }).click();
 
     await test.step("Review and Test are seeded by default", async () => {
       await expect(inputWithValue(page, "Review")).toBeVisible();
@@ -71,7 +75,7 @@ test.describe("project admin: action types", () => {
 
     await test.step("deleting Review now 409s and opens the reassignment picker", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Action types" }).click();
+      await page.getByRole("tab", { name: "Fields & actions" }).click();
       const reviewRow = inputWithValue(page, "Review").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await reviewRow.getByTitle("Delete this action type").click();
       await expect(page.getByText(/used by 1 action\(s\)/)).toBeVisible();
@@ -88,7 +92,7 @@ test.describe("project admin: action types", () => {
 
     await test.step("with only Test remaining, its delete control is disabled", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Action types" }).click();
+      await page.getByRole("tab", { name: "Fields & actions" }).click();
       await expect(inputWithValue(page, "Test")).toBeVisible();
       await expect(page.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
     });

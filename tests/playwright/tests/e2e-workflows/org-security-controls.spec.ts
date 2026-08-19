@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can require 2FA org-wide (blocking every
@@ -22,6 +22,10 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
     await test.step("member directory filters: stale, no-2FA, no-project-access", async () => {
+      // Users moved into the "People" resource-menu group (2026-08 UX
+      // audit's Org Admin restructure) — a real navigation, so it must be
+      // selected before the section is reachable at all.
+      await selectOrgAdminGroup(page, "People");
       await ensureExpanded(page, "Organisation users");
       await page.getByRole("button", { name: "No 2FA" }).click();
       await expect(page.getByText(PERSONAS.orgAdminGamma.email)).toBeVisible();
@@ -41,7 +45,12 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
 
     let gamma1Id = "";
     await test.step("enabling org-wide 2FA blocks the admin's own project/settings access until they enrol", async () => {
-      await ensureExpanded(page, "Advanced settings");
+      // The old "Advanced settings" accordion split into separate cards
+      // under "Integrations & security" (2026-08 UX audit's Org Admin
+      // restructure) — 2FA/self-signup/external-user-policy now live in
+      // the "Security" card specifically.
+      await selectOrgAdminGroup(page, "Integrations & security");
+      await ensureExpanded(page, "Security");
       await page.getByRole("switch", { name: "Require two-factor authentication" }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
@@ -83,7 +92,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     let recoverySecret = "";
     await test.step("the blocked admin's self-service way out: /auth/2fa isn't org-scoped, so they can still enrol themselves", async () => {
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Security", exact: true }).click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
       await ensureTwoFactorSectionExpanded(page);
       const [enrollResponse] = await Promise.all([
         page.waitForResponse((r) => r.url().includes("/auth/2fa/enroll") && r.request().method() === "POST"),
@@ -101,7 +110,8 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await expect(page.getByText(PROJECT_NAMES.gamma1)).toBeVisible();
 
       await page.goto("/orgs");
-      await ensureExpanded(page, "Advanced settings");
+      await selectOrgAdminGroup(page, "Integrations & security");
+      await ensureExpanded(page, "Security");
       await page.getByRole("switch", { name: "Require two-factor authentication" }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
@@ -113,7 +123,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // path above — leaving it on would break this persona's plain
       // loginAs() in any spec that runs after this one.
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Security", exact: true }).click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
       await ensureTwoFactorSectionExpanded(page);
       await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(recoverySecret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
@@ -129,7 +139,8 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
 
     await test.step("external-user-on-project policy: 'anyone' allows adding a not-yet-member by email", async () => {
       await page.goto("/orgs");
-      await ensureExpanded(page, "Advanced settings");
+      await selectOrgAdminGroup(page, "Integrations & security");
+      await ensureExpanded(page, "Security");
       await page.getByLabel("External users on projects").selectOption("anyone");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
@@ -139,12 +150,12 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Project groups" }).click();
+      await page.getByRole("tab", { name: "Project groups" }).click();
       // Default project groups are created in a fixed order — Project
       // Managers, Project Administrators, Stakeholders, Members — so the
       // "Members" group's own add-member input is reliably the last one.
       const outsideEmail = `e2e-external-${Date.now()}@example.com`;
-      await page.getByPlaceholder("Type a name or email to add…").last().fill(outsideEmail);
+      await page.getByPlaceholder("Type a name to add, or an email to invite…").last().fill(outsideEmail);
       // A brand-new email with no account anywhere shows an "Invite"
       // option (not "Add"), per UserAutocomplete's existing/new distinction.
       await page.getByText(`Invite ${outsideEmail}`, { exact: true }).click();

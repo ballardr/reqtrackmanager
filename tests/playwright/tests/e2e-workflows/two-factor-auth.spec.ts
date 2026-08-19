@@ -27,7 +27,7 @@ test.describe("two-factor authentication enrollment", () => {
       await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Security", exact: true }).click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
       await ensureTwoFactorSectionExpanded(page);
 
       const [enrollResponse] = await Promise.all([
@@ -62,7 +62,7 @@ test.describe("two-factor authentication enrollment", () => {
 
     await test.step("disable 2FA again with a fresh code, restoring single-step login", async () => {
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Security", exact: true }).click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
       await ensureTwoFactorSectionExpanded(page);
       await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();

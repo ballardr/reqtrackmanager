@@ -21,6 +21,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { ProjectContext } from "../context/ProjectContextValue";
+import { ToastProvider } from "../context/ToastContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
@@ -360,5 +361,16 @@ export function withRouter(initialPath: string, routePath = "*"): Decorator {
         <Route path={routePath} element={<Story />} />
       </Routes>
     </MemoryRouter>
+  );
+}
+
+/** Wraps a story in a real `ToastProvider` — for any page/component whose
+ * play function asserts a toast appears after a mutation (`useToast()`
+ * throws outside a provider, same as every other context hook here). */
+export function withToast(): Decorator {
+  return (Story) => (
+    <ToastProvider>
+      <Story />
+    </ToastProvider>
   );
 }

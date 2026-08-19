@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, Category, Component, OrgGroup, ProjectGroup, ProjectStage, ProjectStatusDefinition } from "../api/types";
-import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import type { ActionTypeDefinition, Category, Component, CustomFieldDefinition, OrgGroup, ProjectGroup, ProjectStage, ProjectStatusDefinition } from "../api/types";
+import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -24,8 +24,9 @@ const projectStatuses: ProjectStatusDefinition[] = [
   buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 }),
 ];
 
-function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[] } = {}) {
+function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[]; customFields?: CustomFieldDefinition[] } = {}) {
   const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
+  const customFields = overrides.customFields ?? [];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
     if (path.includes("/stages")) return stages;
@@ -38,7 +39,7 @@ function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[] 
     // OrgGroup[] (project groups vs. org groups).
     if (path.includes("/orgs/") && path.includes("/groups")) return orgGroups;
     if (path.includes("/groups")) return groups;
-    if (path.includes("/custom-fields")) return [];
+    if (path.includes("/custom-fields")) return customFields;
     if (path.includes("/report-config")) return {
       intro: "", chapters: [], appendices: [],
       intro_is_organisation_default: false, chapters_is_organisation_default: false, appendices_is_organisation_default: false,
@@ -53,7 +54,11 @@ function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[] 
 const meta: Meta<typeof ProjectAdminPage> = {
   title: "Pages/ProjectAdminPage",
   component: ProjectAdminPage,
-  decorators: [withStatefulAuth(buildUser()), withRouter(`/projects/${PROJECT_ID}/admin`, "/projects/:projectId/admin")],
+  decorators: [
+    withStatefulAuth(buildUser()),
+    withRouter(`/projects/${PROJECT_ID}/admin`, "/projects/:projectId/admin"),
+    withToast(),
+  ],
 };
 export default meta;
 
@@ -109,6 +114,10 @@ export const OverviewTabArchive: Story = {
   },
 };
 
+// Terminology's own JSX/state/handlers are unchanged — only its location
+// moved (2026-08 UX audit roadmap: 8 tabs -> 5), from its own tab into a
+// sub-block underneath Overview's settings. No tab click needed any more:
+// Overview is the default tab.
 export const TerminologyTab: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -116,10 +125,9 @@ export const TerminologyTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Terminology" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("requirement")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("requirement"), "story");
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save terminology" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/terminology`,
@@ -136,10 +144,19 @@ export const StagesTabAddAndTransition: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project stages" }));
+    // Stages now lives inside the merged "Structure" tab, as a
+    // `CollapsibleSection` that's expanded by default — no separate expand
+    // step needed.
+    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Start review" })).toBeInTheDocument());
+    // Scoped to the "Project stages" section specifically: the sibling
+    // "Components & categories" section (now mounted alongside it on the
+    // same merged "Structure" tab) also has exactly one category in this
+    // mock, which reuses the same "only one left" disabled-hint title —
+    // an unscoped query is ambiguous between the two.
+    const stagesSection = within(canvas.getByRole("button", { name: "Project stages section" }).closest(".card")!);
     // Deleting the only stage is blocked — there's nothing else to reassign to.
-    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+    await expect(stagesSection.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
     await userEvent.click(canvas.getByRole("button", { name: "Start review" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition?new_status=review`));
   },
@@ -151,7 +168,9 @@ export const CategoriesTabDeleteBlockedWhileHasCategories: Story = {
   beforeEach: () => mockProjectAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Categories" }));
+    // Categories now lives inside the merged "Structure" tab, alongside
+    // Stages, as a "Components & categories" `CollapsibleSection`.
+    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
     // Component/category names are editable <input>s here, not static text.
     await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
     await expect(canvas.getByTitle("Delete or reassign this component's categories first.")).toBeDisabled();
@@ -165,16 +184,23 @@ export const CategoriesTabAddCategory: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Categories" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: /New category/ })).toBeInTheDocument());
-    // Two "Name"/"Prefix"-placeholder inputs exist on this tab: the
-    // per-component "add category" row (first, inside the component's own
-    // block) and the "add component" row at the very bottom (last).
-    const [nameInput] = canvas.getAllByPlaceholderText("Name");
-    const [prefixInput] = canvas.getAllByPlaceholderText("Prefix");
+    // Scoped to the "Components & categories" section specifically: Stages
+    // (now a sibling section on the same merged "Structure" tab) has its
+    // own "Name"-placeholder "add stage" field, so an unscoped query is
+    // ambiguous. Within this section, two "Name"/"Prefix"-placeholder
+    // inputs exist: the per-component "add category" row (first, inside
+    // the component's own block) and the "add component" row at the very
+    // bottom (last).
+    const componentsSection = within(
+      canvas.getByRole("button", { name: "Components & categories section" }).closest(".card")!
+    );
+    const [nameInput] = componentsSection.getAllByPlaceholderText("Name");
+    const [prefixInput] = componentsSection.getAllByPlaceholderText("Prefix");
     await userEvent.type(nameInput, "Sessions");
     await userEvent.type(prefixInput, "SES");
-    await userEvent.click(canvas.getByRole("button", { name: /New category/ }));
+    await userEvent.click(componentsSection.getByRole("button", { name: /New category/ }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/categories`,
@@ -191,7 +217,8 @@ export const CustomFieldsTabAddField: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Custom fields" }));
+    // Custom fields now lives inside the merged "Fields & actions" tab.
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("Field name")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Field name"), "Priority");
     await userEvent.click(canvas.getByRole("button", { name: /New field/ }));
@@ -204,6 +231,76 @@ export const CustomFieldsTabAddField: Story = {
   },
 };
 
+export const CustomFieldsTabDeleteRequiresConfirmation: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      customFields: [
+        { id: "cf1", project_id: PROJECT_ID, entity_kind: "requirement", name: "Safety critical", field_type: "checkbox", options: null, required: false, sort_order: 0 },
+      ],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    // Custom fields now lives inside the merged "Fields & actions" tab.
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Delete Safety critical" }));
+    const dialog = body.getByRole("dialog", { name: "Delete Safety critical" });
+    await expect(dialog).toBeInTheDocument();
+
+    // Cancelling leaves the field in place and makes no request.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.delete).not.toHaveBeenCalled();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Delete Safety critical" }));
+    await userEvent.click(within(body.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/custom-fields/cf1`));
+  },
+};
+
+/** Style guide "Pattern: create panels, popovers, and one door for bulk":
+ * "+ New group" opens a small popover instead of the Groups tab having no
+ * create form at all (2026-08 UX audit finding) — mirrors OrgAdminPage's
+ * own "New group" popover, just against the project-scoped endpoint, which
+ * also requires a role up front (`ProjectGroupCreate.role`) since a
+ * project group's role can't be changed after creation. */
+export const GroupsTabCreateGroupViaPopover: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New group" })).toBeInTheDocument());
+
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "New group" }));
+    const dialog = body.getByRole("dialog", { name: "New group" });
+    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByPlaceholderText("e.g. Reviewers"), "Reviewers");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Role"), "stakeholder");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/groups`,
+        { name: "Reviewers", role: "stakeholder" }
+      )
+    );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(body.getByText("Group created")).toBeInTheDocument();
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
 export const GroupsTabAddMember: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -211,7 +308,7 @@ export const GroupsTabAddMember: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
     await expect(canvas.getByText("Stakeholder")).toBeInTheDocument();
   },
@@ -224,9 +321,12 @@ export const GroupsTabAddOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
-    const select = canvas.getByRole("combobox");
+    // `getAllByRole` + a tag filter: `UserAutocomplete`'s own text input in
+    // the same tab is also `role="combobox"` (WAI-ARIA combobox pattern),
+    // so a bare `getByRole("combobox")` is ambiguous here.
+    const select = canvas.getAllByRole("combobox").find((el) => el.tagName === "SELECT")!;
     await userEvent.selectOptions(select, "og1");
     const row = select.closest<HTMLElement>(".row")!;
     await userEvent.click(within(row).getByRole("button"));
@@ -246,7 +346,7 @@ export const ReportSetupTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Report Setup" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Report Setup" }));
     await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
@@ -279,7 +379,8 @@ export const ActionTypesTabAddAndReorder: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    // Action types now lives inside the merged "Fields & actions" tab.
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Name"), "Inspection");
     await userEvent.click(canvas.getByRole("button", { name: /New action type/ }));
@@ -299,9 +400,56 @@ export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
   beforeEach: () => mockProjectAdminApis({ actionTypes: [buildActionType({ id: "at1", name: "Review", sort_order: 0 })] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Action types" }));
+    // Action types now lives inside the merged "Fields & actions" tab.
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+  },
+};
+
+/** Proves `pluralize()`'s irregular-plural fix (`frontend/src/i18n/
+ * terminology.ts`) against the *default* English terminology, not an
+ * override — a naive `+s` pluralisation would render this section's title
+ * as "Components & categorys" instead of "Components & categories". No
+ * `withTerminology` decorator here on purpose: the bug this guards is in
+ * the default-term pluralisation path itself. */
+export const StructureTabPluralisesCategoryCorrectly: Story = {
+  beforeEach: () => mockProjectAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await expect(canvas.getByText("Components & categories")).toBeInTheDocument();
+    await expect(canvas.queryByText(/categorys/i)).not.toBeInTheDocument();
+  },
+};
+
+/**
+ * C-C-03, the 2026-08 UX audit's single most visible example: the
+ * custom-fields entity-kind dropdown/badge used to read "Requirement" /
+ * "Change request" literally — one tab over from the Terminology settings
+ * meant to rename those exact words (`CUSTOM_FIELD_ENTITY_KIND_LABEL` in
+ * `api/types.ts`, a static export, could never be terminology-aware; both
+ * call sites now read `strings.admin.entityKindRequirement`/
+ * `entityKindChangeRequest` via `useStrings()` instead).
+ */
+export const CustomFieldsTabEntityKindDropdownReflectsTerminology: Story = {
+  decorators: [withTerminology({ requirement: "Spec", change_request: "ECR" })],
+  beforeEach: () => {
+    mockProjectAdminApis({
+      customFields: [
+        { id: "cf1", project_id: PROJECT_ID, entity_kind: "requirement", name: "Safety critical", field_type: "checkbox", options: null, required: false, sort_order: 0 },
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
+    // The existing field's own entity-kind badge.
+    await expect(canvas.getByText("Spec", { selector: "span.badge" })).toBeInTheDocument();
+    // The "New field" row's entity-kind <select> options.
+    await expect(canvas.getByRole("option", { name: "Spec" })).toBeInTheDocument();
+    await expect(canvas.getByRole("option", { name: "ECR" })).toBeInTheDocument();
   },
 };
 

@@ -32,12 +32,19 @@ test.describe("server admin with zero org memberships", () => {
     });
 
     await test.step("opening an org's admin page shows a degraded view, not its content", async () => {
-      // /orgs isn't linked from the nav any more (see docs/decisions.md) —
-      // as a server admin with zero memberships, GET /orgs still returns
-      // every org, so navigating there directly still lists Alpha as a
-      // real link to click into, same as before this nav link existed.
-      await page.goto("/orgs");
-      await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+      // Reached via the server-wide org directory (`/server/organisations`,
+      // already visited above), the real nav-linked path for a server admin
+      // to reach any org's admin page regardless of membership — not
+      // `/orgs`. That page backs the nav rail's *personal* "My
+      // organisations" link and is scoped to the caller's own memberships
+      // (`GET /orgs?mine=true`, a real bug fix: it previously called the
+      // unfiltered `GET /orgs`, which deliberately returns every org for a
+      // server admin — I-M-05's platform-wide directory bypass, correct for
+      // `/server/organisations` but wrong for a *personal* list, where a
+      // zero-membership server admin should see the same empty state
+      // anyone else with no orgs would).
+      await page.getByRole("link", { name: "Organisations", exact: true }).click();
+      await page.getByRole("row", { name: new RegExp(ORG_NAMES.alpha) }).getByRole("link", { name: "Edit" }).click();
       // Org details alone are server-admin-visible (GET /orgs/{id} has a
       // documented bypass) — the degraded view shows the org's name so the
       // admin knows which org this is before deciding to join/bootstrap it

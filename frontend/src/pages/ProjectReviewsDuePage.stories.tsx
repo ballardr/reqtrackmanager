@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
-import { withRouter } from "../testing/storybook-helpers";
+import { withRouter, withTerminology } from "../testing/storybook-helpers";
 import { ProjectReviewsDuePage } from "./ProjectReviewsDuePage";
 
 const components: Component[] = [
@@ -47,6 +47,21 @@ export const DueReviewsWithFilters: Story = {
     const [componentFilter] = canvas.getAllByRole("combobox");
     await userEvent.selectOptions(componentFilter, "Authentication");
     await expect(componentFilter).toHaveValue("c1");
+  },
+};
+
+/** C-C-03, the audit's named "review-due lists" leak: the page heading
+ * (`strings.reviews.projectTitle`) and the component-filter column heading/
+ * "All X" option (`strings.admin.components`/`strings.reviews.allComponents`)
+ * used to hardcode "Requirements"/"Component(s)" regardless of the
+ * project's own Terminology settings. */
+export const TerminologyOverrideAppliesToHeadingAndFilters: Story = {
+  decorators: [withTerminology({ requirement: "Spec", component: "Module" })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: "Specs due for review" })).toBeInTheDocument();
+    await expect(canvas.getByText("Modules")).toBeInTheDocument();
+    await expect(canvas.getByRole("option", { name: "All Modules" })).toBeInTheDocument();
   },
 };
 

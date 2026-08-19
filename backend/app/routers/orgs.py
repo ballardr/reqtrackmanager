@@ -1346,6 +1346,57 @@ async def upload_org_logo(
     return org
 
 
+@router.delete("/{organization_id}/logo", response_model=OrganizationOut)
+def delete_org_logo(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Reverts this organisation's logo back to the platform default by
+    clearing the override (U-C-02's missing revert path). A no-op, not a
+    404, when there's nothing set — this is a "make sure it's unset" action,
+    not a delete of a specific known record."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.logo_file_id is not None:
+        asset = db.get(FileAsset, org.logo_file_id)
+        org.logo_file_id = None
+        db.flush()
+        if asset is not None:
+            delete_file(db, asset)
+        log_event(db, entity_type="organization", entity_id=organization_id, action="logo_removed",
+                  actor_id=current_user.id, organization_id=organization_id)
+        db.commit()
+        db.refresh(org)
+    return org
+
+
+@router.delete("/{organization_id}/login-background", response_model=OrganizationOut)
+def delete_org_login_background(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Reverts this organisation's login-page background image back to the
+    platform default (E-P-03's missing revert path), same shape as
+    `delete_org_logo`."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.login_background_file_id is not None:
+        asset = db.get(FileAsset, org.login_background_file_id)
+        org.login_background_file_id = None
+        db.flush()
+        if asset is not None:
+            delete_file(db, asset)
+        log_event(db, entity_type="organization", entity_id=organization_id, action="login_background_removed",
+                  actor_id=current_user.id, organization_id=organization_id)
+        db.commit()
+        db.refresh(org)
+    return org
+
+
 @router.put("/{organization_id}/branding", response_model=OrganizationOut)
 def update_org_branding(
     organization_id: UUID, payload: OrgBrandingUpdate,

@@ -1,9 +1,10 @@
 import { Bold, Heading1, Heading2, Heading3, Image as ImageIcon, Italic, Link as LinkIcon, List } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { api } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdown";
+import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
 
 type Mode = "markdown" | "rich";
@@ -92,9 +93,18 @@ export function RichTextEditor({
     handleRichInput();
   }
 
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+
   function insertLink() {
-    const url = window.prompt("Link URL");
-    if (url) exec("createLink", url);
+    setLinkUrl("");
+    setLinkModalOpen(true);
+  }
+
+  function confirmInsertLink(e: FormEvent) {
+    e.preventDefault();
+    if (linkUrl) exec("createLink", linkUrl);
+    setLinkModalOpen(false);
   }
 
   function insertMarkdownAtCursor(text: string) {
@@ -284,6 +294,31 @@ export function RichTextEditor({
             />
           </label>
         </div>
+      )}
+      {linkModalOpen && (
+        <Modal title="Insert link" onClose={() => setLinkModalOpen(false)}>
+          <form className="stack" onSubmit={confirmInsertLink}>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              Link URL
+              <input
+                className="input"
+                type="url"
+                autoFocus
+                placeholder="https://…"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+              />
+            </label>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn" onClick={() => setLinkModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={!linkUrl}>
+                Insert
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
       {mode === "markdown" ? (
         <textarea

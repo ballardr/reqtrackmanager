@@ -282,6 +282,17 @@ def set_project_status(headers: dict, project_id: str, status_id: str) -> dict:
     return r.json()
 
 
+def set_project_terminology(headers: dict, project_id: str, terminology: dict[str, str]) -> dict:
+    """Sets a project's per-project terminology overrides (C-C-03) via
+    Project Admin's Terminology tab endpoint — demonstrates the feature in
+    the manual-demo dataset the same way every other admin-settable field
+    here does, rather than leaving every seeded project on the English
+    defaults that would otherwise hide it entirely."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/terminology", json={"terminology": terminology}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_link_type(headers: dict, org_id: str, *, forward_name: str, reverse_name: str) -> dict:
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/link-types", json={"forward_name": forward_name, "reverse_name": reverse_name},
@@ -526,6 +537,14 @@ def main() -> None:
         "Autonomous multirotor platform for utility and infrastructure visual inspection.",
     )
     set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
+    # Demonstrates C-C-03's terminology overrides with aerospace-engineering
+    # vocabulary that reads naturally for a hardware programme — "stage"
+    # becomes "Phase", "requirement" becomes "Spec", and "change_request"
+    # becomes "ECR" (Engineering Change Request), while "project"/
+    # "component"/"category" are left at their English defaults on purpose,
+    # so the demo also shows a *partial* override (not every one of the six
+    # keys has to be set).
+    set_project_terminology(h_pm, drone["id"], {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"})
     assign_project_role(h_pm, drone["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, drone["id"], demo_stakeholder["user_id"], "stakeholder")
     drone_components = {

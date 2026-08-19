@@ -1,10 +1,12 @@
-import { ArrowDown, ArrowUp, Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
+import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   ExternalUserPolicy,
   FileAsset,
@@ -32,17 +34,46 @@ import type {
 } from "../api/types";
 import { ORG_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { DefinitionList } from "../components/DefinitionList";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { OverridePill } from "../components/OverridePill";
+import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
+import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
-import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
-const strings = t();
+/**
+ * The 6 resource-menu groups Org Admin's previous 15 flat accordions were
+ * regrouped into (2026-08 UX audit, style guide "Pattern: settings
+ * hierarchy" — see its "after" diagram). Each key is also the route
+ * segment under `/orgs/:orgId/admin/:group?` (App.tsx), so a group
+ * selection is a real navigation, not client-only state: back/forward and
+ * a bookmark to one specific group both work. An unrecognised or absent
+ * `:group` (including the bare `/orgs/:orgId/admin` used by every existing
+ * link into this page) falls back to "overview".
+ */
+type OrgAdminGroupKey =
+  | "overview"
+  | "people"
+  | "projects-workflow"
+  | "branding-defaults"
+  | "templates-reports"
+  | "integrations-security";
+
+const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
+  "overview",
+  "people",
+  "projects-workflow",
+  "branding-defaults",
+  "templates-reports",
+  "integrations-security",
+];
 
 /**
  * Organisation administration: users (C-U-01), groups (C-U-08), shared
@@ -61,9 +92,11 @@ const strings = t();
  * status/type before the delete retries.
  */
 export function OrgAdminPage() {
-  const { orgId } = useParams<{ orgId: string }>();
+  const strings = useStrings();
+  const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
@@ -89,27 +122,16 @@ export function OrgAdminPage() {
 
   // --- Project statuses (C-G-XX) ---------------------------------------
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
-  const [newStatusName, setNewStatusName] = useState("");
-  const [statusNameEdits, setStatusNameEdits] = useState<Record<string, string>>({});
-  const [deletingStatusId, setDeletingStatusId] = useState<string | null>(null);
-  const [statusInUseMessage, setStatusInUseMessage] = useState<string | null>(null);
-  const [reassignStatusTo, setReassignStatusTo] = useState("");
-  const [projectStatusError, setProjectStatusError] = useState<string | null>(null);
 
   // --- Requirement link types (C-G-09) ---------------------------------
   const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
-  const [newLinkTypeForward, setNewLinkTypeForward] = useState("");
-  const [newLinkTypeReverse, setNewLinkTypeReverse] = useState("");
-  const [linkTypeEdits, setLinkTypeEdits] = useState<Record<string, { forward: string; reverse: string }>>({});
-  const [deletingLinkTypeId, setDeletingLinkTypeId] = useState<string | null>(null);
-  const [linkTypeInUseMessage, setLinkTypeInUseMessage] = useState<string | null>(null);
-  const [reassignLinkTypeTo, setReassignLinkTypeTo] = useState("");
-  const [linkTypeError, setLinkTypeError] = useState<string | null>(null);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupPopoverOpen, setNewGroupPopoverOpen] = useState(false);
+  const newGroupTriggerRef = useRef<HTMLButtonElement>(null);
 
   const [advanced, setAdvanced] = useState<OrgAdvancedSettings | null>(null);
   const [smtpHost, setSmtpHost] = useState("");
@@ -444,10 +466,9 @@ export function OrgAdminPage() {
     setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
   }
 
-  async function addProjectStatus() {
-    if (!newStatusName.trim() || !orgId) return;
-    await api.post(`/api/v1/orgs/${orgId}/project-statuses`, { name: newStatusName });
-    setNewStatusName("");
+  async function addProjectStatus(name: string) {
+    if (!orgId) return;
+    await api.post(`/api/v1/orgs/${orgId}/project-statuses`, { name });
     reload();
   }
 
@@ -457,60 +478,22 @@ export function OrgAdminPage() {
   }
 
   async function renameProjectStatus(id: string, name: string) {
-    setProjectStatusError(null);
-    try {
-      await api.patch(`/api/v1/orgs/${orgId}/project-statuses/${id}`, { name });
-      setStatusNameEdits((m) => {
-        const next = { ...m };
-        delete next[id];
-        return next;
-      });
-      reload();
-    } catch (err) {
-      setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
-    }
+    await api.patch(`/api/v1/orgs/${orgId}/project-statuses/${id}`, { name });
+    reload();
   }
 
   /** Attempts a plain delete first (no `reassign_to_id`) per §4.0's server
-   * contract: a 204 means done; a 409 means the status is in use, at which
-   * point the reassignment picker opens showing the server's own count
-   * message rather than a generic one. */
-  async function attemptDeleteProjectStatus(id: string) {
-    setProjectStatusError(null);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}`);
-      reload();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setDeletingStatusId(id);
-        setStatusInUseMessage(err.message);
-      } else {
-        setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
-      }
-    }
+   * contract: a 204 means done; a 409 means the status is in use;
+   * `DefinitionList` opens the reassignment picker itself, showing the
+   * server's own count message rather than a generic one. */
+  async function deleteProjectStatus(id: string, reassignToId?: string) {
+    await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    reload();
   }
 
-  async function confirmDeleteProjectStatus(id: string) {
-    if (!reassignStatusTo) return;
-    setProjectStatusError(null);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}?reassign_to_id=${reassignStatusTo}`);
-      setDeletingStatusId(null);
-      setStatusInUseMessage(null);
-      setReassignStatusTo("");
-      reload();
-    } catch (err) {
-      setProjectStatusError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  async function addLinkType() {
-    if (!newLinkTypeForward.trim() || !newLinkTypeReverse.trim() || !orgId) return;
-    await api.post(`/api/v1/orgs/${orgId}/link-types`, {
-      forward_name: newLinkTypeForward, reverse_name: newLinkTypeReverse,
-    });
-    setNewLinkTypeForward("");
-    setNewLinkTypeReverse("");
+  async function addLinkType(forward: string, reverse: string) {
+    if (!orgId) return;
+    await api.post(`/api/v1/orgs/${orgId}/link-types`, { forward_name: forward, reverse_name: reverse });
     reload();
   }
 
@@ -519,48 +502,14 @@ export function OrgAdminPage() {
     reload();
   }
 
-  async function renameLinkType(id: string, forwardName: string, reverseName: string) {
-    setLinkTypeError(null);
-    try {
-      await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forwardName, reverse_name: reverseName });
-      setLinkTypeEdits((m) => {
-        const next = { ...m };
-        delete next[id];
-        return next;
-      });
-      reload();
-    } catch (err) {
-      setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
-    }
+  async function renameLinkType(id: string, forward: string, reverse: string) {
+    await api.patch(`/api/v1/orgs/${orgId}/link-types/${id}`, { forward_name: forward, reverse_name: reverse });
+    reload();
   }
 
-  async function attemptDeleteLinkType(id: string) {
-    setLinkTypeError(null);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}`);
-      reload();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setDeletingLinkTypeId(id);
-        setLinkTypeInUseMessage(err.message);
-      } else {
-        setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
-      }
-    }
-  }
-
-  async function confirmDeleteLinkType(id: string) {
-    if (!reassignLinkTypeTo) return;
-    setLinkTypeError(null);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}?reassign_to_id=${reassignLinkTypeTo}`);
-      setDeletingLinkTypeId(null);
-      setLinkTypeInUseMessage(null);
-      setReassignLinkTypeTo("");
-      reload();
-    } catch (err) {
-      setLinkTypeError(err instanceof Error ? err.message : strings.common.error);
-    }
+  async function deleteLinkType(id: string, reassignToId?: string) {
+    await api.delete(`/api/v1/orgs/${orgId}/link-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    reload();
   }
 
   useEffect(() => {
@@ -637,9 +586,15 @@ export function OrgAdminPage() {
   }
 
   async function createGroup() {
-    await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
-    setNewGroupName("");
-    reload();
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
+      setNewGroupName("");
+      setNewGroupPopoverOpen(false);
+      showToast(strings.orgAdmin.groupCreated);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function addGroupMember(groupId: string, userId: string) {
@@ -708,6 +663,22 @@ export function OrgAdminPage() {
     }
   }
 
+  async function removeLogo() {
+    setLogoError(null);
+    setLogoUploaded(false);
+    setLogoUploading(true);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/logo`);
+      await reload();
+      showToast(strings.orgAdmin.logoRemoved);
+    } catch (err) {
+      setLogoError(err instanceof ApiError ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    } finally {
+      setLogoUploading(false);
+    }
+  }
+
   async function saveBranding() {
     setBrandingError(null);
     try {
@@ -718,9 +689,11 @@ export function OrgAdminPage() {
         email_footer_website: emailFooterWebsiteInput || null,
         email_footer_address: emailFooterAddressInput || null,
       });
+      showToast(strings.orgAdmin.brandingSaved);
       reload();
     } catch (err) {
       setBrandingError(err instanceof Error ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -738,6 +711,22 @@ export function OrgAdminPage() {
       setLoginBackgroundUploaded(true);
     } catch (err) {
       setLoginBackgroundError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setLoginBackgroundUploading(false);
+    }
+  }
+
+  async function removeLoginBackground() {
+    setLoginBackgroundError(null);
+    setLoginBackgroundUploaded(false);
+    setLoginBackgroundUploading(true);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/login-background`);
+      await reload();
+      showToast(strings.orgAdmin.loginBackgroundRemoved);
+    } catch (err) {
+      setLoginBackgroundError(err instanceof ApiError ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     } finally {
       setLoginBackgroundUploading(false);
     }
@@ -1027,1032 +1016,1091 @@ export function OrgAdminPage() {
   // the round trip instead of only after a 422.
   const selfSignupConflict = allowSelfSignup && ssoOnly;
 
+  const activeGroup: OrgAdminGroupKey = ORG_ADMIN_GROUP_KEYS.includes(groupParam as OrgAdminGroupKey)
+    ? (groupParam as OrgAdminGroupKey)
+    : "overview";
+  const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
+    { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
+    { key: "people", label: strings.orgAdmin.groupPeople, href: `/orgs/${orgId}/admin/people` },
+    { key: "projects-workflow", label: strings.orgAdmin.groupProjectsWorkflow, href: `/orgs/${orgId}/admin/projects-workflow` },
+    { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
+    { key: "templates-reports", label: strings.orgAdmin.groupTemplatesReports, href: `/orgs/${orgId}/admin/templates-reports` },
+    { key: "integrations-security", label: strings.orgAdmin.groupIntegrationsSecurity, href: `/orgs/${orgId}/admin/integrations-security` },
+  ];
+
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div className="stack" style={{ gap: "0.35rem" }}>
-          <h1 style={{ margin: 0 }}>{org.name}</h1>
-          {advanced && (
-            <div className="row" style={{ gap: "0.4rem" }}>
-              <input
-                className="input"
-                style={{ maxWidth: 280 }}
-                value={orgNameEdit}
-                onChange={(e) => setOrgNameEdit(e.target.value)}
-                aria-label={strings.orgAdmin.rename}
-                title={strings.orgAdmin.renameHint(orgLabel)}
-              />
-              {orgNameEdit.trim() && orgNameEdit !== org.name && (
-                <button className="btn" onClick={renameOrg} title={strings.orgAdmin.rename}>
-                  <Pencil size={14} /> {strings.orgAdmin.rename}
+      <ResourceMenu
+        title={org.name}
+        subtitle={strings.orgAdmin.adminSubtitle(orgLabelCap)}
+        ariaLabel={strings.orgAdmin.sectionsNav}
+        groups={orgAdminGroups}
+        active={activeGroup}
+      >
+        {activeGroup === "overview" && (
+          <div className="stack">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <div className="stack" style={{ gap: "0.35rem" }}>
+                {/* Org name is now shown once, universally, as `ResourceMenu`'s
+                    own title above every group — repeating it here as a
+                    second <h1> (previously the only place it appeared at
+                    all — every other group had no page title whatsoever)
+                    would just duplicate that same text on this one group. */}
+                {advanced && (
+                  <div className="row" style={{ gap: "0.4rem" }}>
+                    <input
+                      className="input"
+                      style={{ maxWidth: 280 }}
+                      value={orgNameEdit}
+                      onChange={(e) => setOrgNameEdit(e.target.value)}
+                      aria-label={strings.orgAdmin.rename}
+                      title={strings.orgAdmin.renameHint(orgLabel)}
+                    />
+                    {orgNameEdit.trim() && orgNameEdit !== org.name && (
+                      <button className="btn" onClick={renameOrg} title={strings.orgAdmin.rename}>
+                        <Pencil size={14} /> {strings.orgAdmin.rename}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="row">
+                {org.logo_file_id && (
+                  <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
+                )}
+                <button
+                  className="btn" onClick={exportOrg} disabled={exportingOrg}
+                  title={`Downloads a self-contained .zip with this ${orgLabel}'s settings, members, report templates, and every project's full structure/history — re-importable as a new ${orgLabel} from the server ${orgLabelPlural.toLowerCase()} page.`}
+                >
+                  <Download size={14} /> {exportingOrg ? "Exporting…" : `Export ${orgLabel} bundle`}
                 </button>
+                <button className="btn btn-danger" onClick={leaveOrg} title={`Remove your own membership in this ${orgLabel}`}>
+                  <LogOut size={14} /> Leave {orgLabel}
+                </button>
+              </div>
+            </div>
+            {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
+            {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
+
+            <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed>
+              <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
+              {!importMergeConflicts && !importMergeResult && (
+                <div className="stack">
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.importMerge.chooseFile}
+                    <input
+                      type="file" accept=".zip,application/zip"
+                      onChange={(e) => setImportMergeFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-primary" onClick={previewImportMerge}
+                    disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
+                  >
+                    <Upload size={14} /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
+                  </button>
+                </div>
               )}
-            </div>
-          )}
-        </div>
-        <div className="row">
-          {org.logo_file_id && (
-            <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
-          )}
-          <button
-            className="btn" onClick={exportOrg} disabled={exportingOrg}
-            title={`Downloads a self-contained .zip with this ${orgLabel}'s settings, members, report templates, and every project's full structure/history — re-importable as a new ${orgLabel} from the server ${orgLabelPlural.toLowerCase()} page.`}
-          >
-            <Download size={14} /> {exportingOrg ? "Exporting…" : `Export ${orgLabel} bundle`}
-          </button>
-          <button className="btn btn-danger" onClick={leaveOrg} title={`Remove your own membership in this ${orgLabel}`}>
-            <LogOut size={14} /> Leave {orgLabel}
-          </button>
-        </div>
-      </div>
-      {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
-      {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
+              {importMergeConflicts && !importMergeResult && (
+                <div className="stack">
+                  {importMergeConflicts.length === 0 ? (
+                    <p>{strings.importMerge.noConflicts}</p>
+                  ) : (
+                    <ImportConflictPanel
+                      conflicts={importMergeConflicts}
+                      resolutions={importMergeResolutions}
+                      onResolutionChange={(id, value) => setImportMergeResolutions((r) => ({ ...r, [id]: value }))}
+                    />
+                  )}
+                  <div className="row">
+                    <button
+                      className="btn btn-primary" onClick={confirmImportMerge} disabled={importMergeSubmitting}
+                    >
+                      {importMergeSubmitting ? strings.importMerge.importing : strings.importMerge.confirmImport}
+                    </button>
+                    <button className="btn" onClick={cancelImportMerge} disabled={importMergeSubmitting}>
+                      {strings.importMerge.cancel}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {importMergeResult && (
+                <div className="card stack">
+                  <strong>{strings.importMerge.resultTitle}</strong>
+                  <ul style={{ margin: 0 }}>
+                    <li>{strings.importMerge.projectsImported(importMergeResult.projects_imported)}</li>
+                    <li>{strings.importMerge.projectsSkipped(importMergeResult.projects_skipped)}</li>
+                    <li>{strings.importMerge.reportTemplatesImported(importMergeResult.report_templates_imported)}</li>
+                    <li>{strings.importMerge.reportTemplatesOverwritten(importMergeResult.report_templates_overwritten)}</li>
+                  </ul>
+                  {importMergeResult.warnings.length > 0 && (
+                    <ul style={{ margin: 0, color: "var(--color-warning, #b58900)" }}>
+                      {importMergeResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  )}
+                  <button className="btn" onClick={() => setImportMergeResult(null)} style={{ alignSelf: "flex-start" }}>
+                    {strings.common.close}
+                  </button>
+                </div>
+              )}
+              {importMergeError && <div style={{ color: "var(--color-danger)" }}>{importMergeError}</div>}
+            </CollapsibleSection>
 
-      <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
-        {!importMergeConflicts && !importMergeResult && (
-          <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.importMerge.chooseFile}
+            <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed>
+              {resources.map((r) => (
+                <div key={r.id} className="row" style={{ justifyContent: "space-between" }}>
+                  <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
+                    {r.filename}
+                  </a>
+                  <button
+                    className="btn btn-danger"
+                    title={strings.orgAdmin.deleteResource(r.filename)}
+                    aria-label={strings.orgAdmin.deleteResource(r.filename)}
+                    onClick={() => deleteResource(r.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
               <input
-                type="file" accept=".zip,application/zip"
-                onChange={(e) => setImportMergeFile(e.target.files?.[0] ?? null)}
+                ref={resourceInputRef}
+                type="file"
+                onChange={(e) => e.target.files?.[0] && uploadResource(e.target.files[0])}
               />
-            </label>
-            <button
-              className="btn btn-primary" onClick={previewImportMerge}
-              disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
-            >
-              <Upload size={14} /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
-            </button>
+              <span className="text-muted row">
+                <Upload size={14} /> {strings.orgAdmin.resourcesHint(orgLabel)}
+              </span>
+            </CollapsibleSection>
           </div>
         )}
-        {importMergeConflicts && !importMergeResult && (
-          <div className="stack">
-            {importMergeConflicts.length === 0 ? (
-              <p>{strings.importMerge.noConflicts}</p>
-            ) : (
-              <ImportConflictPanel
-                conflicts={importMergeConflicts}
-                resolutions={importMergeResolutions}
-                onResolutionChange={(id, value) => setImportMergeResolutions((r) => ({ ...r, [id]: value }))}
-              />
-            )}
-            <div className="row">
-              <button
-                className="btn btn-primary" onClick={confirmImportMerge} disabled={importMergeSubmitting}
-              >
-                {importMergeSubmitting ? strings.importMerge.importing : strings.importMerge.confirmImport}
-              </button>
-              <button className="btn" onClick={cancelImportMerge} disabled={importMergeSubmitting}>
-                {strings.importMerge.cancel}
-              </button>
-            </div>
-          </div>
-        )}
-        {importMergeResult && (
-          <div className="card stack">
-            <strong>{strings.importMerge.resultTitle}</strong>
-            <ul style={{ margin: 0 }}>
-              <li>{strings.importMerge.projectsImported(importMergeResult.projects_imported)}</li>
-              <li>{strings.importMerge.projectsSkipped(importMergeResult.projects_skipped)}</li>
-              <li>{strings.importMerge.reportTemplatesImported(importMergeResult.report_templates_imported)}</li>
-              <li>{strings.importMerge.reportTemplatesOverwritten(importMergeResult.report_templates_overwritten)}</li>
-            </ul>
-            {importMergeResult.warnings.length > 0 && (
-              <ul style={{ margin: 0, color: "var(--color-warning, #b58900)" }}>
-                {importMergeResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
-              </ul>
-            )}
-            <button className="btn" onClick={() => setImportMergeResult(null)} style={{ alignSelf: "flex-start" }}>
-              {strings.common.close}
-            </button>
-          </div>
-        )}
-        {importMergeError && <div style={{ color: "var(--color-danger)" }}>{importMergeError}</div>}
-      </CollapsibleSection>
 
-      <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)} defaultCollapsed>
-        <div className="row">
-          <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
-            {strings.orgAdmin.filterStale}
-          </button>
-          <button className={`btn${userFilter === "no2fa" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("no2fa")}>
-            {strings.orgAdmin.filterNo2fa}
-          </button>
-          <button className={`btn${userFilter === "noaccess" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("noaccess")}>
-            {strings.orgAdmin.filterNoProjectAccess}
-          </button>
-          {userFilter && (
-            <button className="btn" onClick={() => applyUserFilter("")}>
-              {strings.orgAdmin.filterClear}
-            </button>
-          )}
-          {advanced?.auto_accept_email_domain && (
-            <button
-              className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
-              onClick={toggleOutsideDomainUsers}
-            >
-              {strings.orgAdmin.showOutsideDomainUsers}
-            </button>
-          )}
-        </div>
-        {outsideDomainError && <div style={{ color: "var(--color-danger)" }}>{outsideDomainError}</div>}
-        {outsideDomainUsers !== null && (
-          <div className="card stack">
-            <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
-            <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint(orgLabel)}</p>
-            {outsideDomainUsers.length === 0 ? (
-              <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>
-            ) : (
+        {activeGroup === "people" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
+              <div className="row">
+                <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
+                  {strings.orgAdmin.filterStale}
+                </button>
+                <button className={`btn${userFilter === "no2fa" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("no2fa")}>
+                  {strings.orgAdmin.filterNo2fa}
+                </button>
+                <button className={`btn${userFilter === "noaccess" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("noaccess")}>
+                  {strings.orgAdmin.filterNoProjectAccess}
+                </button>
+                {userFilter && (
+                  <button className="btn" onClick={() => applyUserFilter("")}>
+                    {strings.orgAdmin.filterClear}
+                  </button>
+                )}
+                {advanced?.auto_accept_email_domain && (
+                  <button
+                    className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
+                    onClick={toggleOutsideDomainUsers}
+                  >
+                    {strings.orgAdmin.showOutsideDomainUsers}
+                  </button>
+                )}
+              </div>
+              {outsideDomainError && <div style={{ color: "var(--color-danger)" }}>{outsideDomainError}</div>}
+              {outsideDomainUsers !== null && (
+                <div className="card stack">
+                  <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
+                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint(orgLabel)}</p>
+                  {outsideDomainUsers.length === 0 ? (
+                    <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{strings.orgAdmin.email}</th>
+                          <th>{strings.orgAdmin.name}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {outsideDomainUsers.map((u) => (
+                          <tr key={u.user_id}>
+                            <td>{u.email}</td>
+                            <td>{u.display_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
               <table>
                 <thead>
                   <tr>
                     <th>{strings.orgAdmin.email}</th>
                     <th>{strings.orgAdmin.name}</th>
+                    <th>{strings.orgAdmin.roles}</th>
+                    <th>{strings.orgAdmin.status}</th>
+                    <th>{strings.orgAdmin.lastLogin}</th>
+                    <th>{strings.orgAdmin.twoFactor}</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {outsideDomainUsers.map((u) => (
+                  {users.map((u) => (
                     <tr key={u.user_id}>
                       <td>{u.email}</td>
                       <td>{u.display_name}</td>
+                      <td>{u.roles.map((r) => ORG_ROLE_LABEL[r]).join(", ")}</td>
+                      <td>
+                        {u.is_archived
+                          ? strings.orgAdmin.statusArchived
+                          : u.is_active
+                            ? strings.orgAdmin.statusActive
+                            : strings.orgAdmin.statusDeactivated}
+                      </td>
+                      <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
+                      <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
+                      <td>
+                        <button
+                          className="btn"
+                          onClick={() => toggleDisplayNameLock(u)}
+                          title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                          aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                        >
+                          {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        )}
-        <table>
-          <thead>
-            <tr>
-              <th>{strings.orgAdmin.email}</th>
-              <th>{strings.orgAdmin.name}</th>
-              <th>{strings.orgAdmin.roles}</th>
-              <th>{strings.orgAdmin.status}</th>
-              <th>{strings.orgAdmin.lastLogin}</th>
-              <th>{strings.orgAdmin.twoFactor}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.user_id}>
-                <td>{u.email}</td>
-                <td>{u.display_name}</td>
-                <td>{u.roles.map((r) => ORG_ROLE_LABEL[r]).join(", ")}</td>
-                <td>
-                  {u.is_archived
-                    ? strings.orgAdmin.statusArchived
-                    : u.is_active
-                      ? strings.orgAdmin.statusActive
-                      : strings.orgAdmin.statusDeactivated}
-                </td>
-                <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
-                <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
-                <td>
-                  <button
-                    className="btn"
-                    onClick={() => toggleDisplayNameLock(u)}
-                    title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                    aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                  >
-                    {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="row">
-          <input className="input" placeholder={strings.orgAdmin.email} value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
-          <input className="input" placeholder={strings.orgAdmin.name} value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-          <input className="input" type="password" placeholder={strings.orgAdmin.password} value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
-          <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
-            <Plus size={14} /> {strings.orgAdmin.newUser}
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      {orgProjects && (
-        <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects} defaultCollapsed>
-          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint(orgLabel)}</p>
-          {orgProjects.map((p) => (
-            <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <span className="row" style={{ gap: "0.5rem" }}>
-                  {p.name}
-                  {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
-                </span>
-                <button className="btn" onClick={() => toggleExpandedProject(p.id)}>
-                  {expandedProjectId === p.id ? strings.common.cancel : strings.orgAdmin.manageUsers}
+              <div className="row">
+                <input className="input" placeholder={strings.orgAdmin.email} value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
+                <input className="input" placeholder={strings.orgAdmin.name} value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
+                <input className="input" type="password" placeholder={strings.orgAdmin.password} value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
+                <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
+                  <Plus size={14} /> {strings.orgAdmin.newUser}
                 </button>
               </div>
-              {expandedProjectId === p.id && (
-                <div className="stack" style={{ paddingLeft: "1rem" }}>
-                  {expandedProjectGroups.map((g) => {
-                    const memberIds = new Set(g.member_user_ids);
-                    const members = users.filter((u) => memberIds.has(u.user_id));
-                    const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
-                    return (
-                      <div key={g.id} className="stack">
-                        <span>
-                          {g.name} <span className="badge">{g.role}</span>
-                        </span>
-                        {members.length > 0 && (
-                          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                            {members.map((u) => (
-                              <li key={u.user_id} style={{ listStyle: "disc" }}>
-                                <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
-                                  <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
-                                  <button className="btn" onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}>
-                                    <Trash2 size={14} />
-                                  </button>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <UserAutocomplete
-                          users={nonMembers}
-                          placeholder={strings.admin.addMemberPlaceholder}
-                          onSelect={(userId) => addExpandedProjectGroupMember(g.id, userId)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </CollapsibleSection>
-      )}
+            </CollapsibleSection>
 
-      <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses} defaultCollapsed>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>
-        {projectStatusError && <div style={{ color: "var(--color-danger)" }}>{projectStatusError}</div>}
-        {projectStatuses.map((s, idx) => {
-          const nameEdit = statusNameEdits[s.id] ?? s.name;
-          const otherStatuses = projectStatuses.filter((other) => other.id !== s.id);
-          return (
-            <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <input
-                    className="input" style={{ maxWidth: 220 }} value={nameEdit}
-                    onChange={(e) => setStatusNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
-                  />
-                  {nameEdit !== s.name && nameEdit.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameProjectStatus(s.id, nameEdit)}>
-                      <Pencil size={14} />
+            <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)}>
+              <button
+                ref={newGroupTriggerRef}
+                className="btn btn-primary"
+                style={{ alignSelf: "flex-start" }}
+                onClick={() => setNewGroupPopoverOpen((o) => !o)}
+              >
+                <Plus size={14} /> {strings.orgAdmin.newGroup}
+              </button>
+              {newGroupPopoverOpen && (
+                <Popover
+                  anchorRef={newGroupTriggerRef}
+                  title={strings.orgAdmin.newGroup}
+                  onClose={() => setNewGroupPopoverOpen(false)}
+                >
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.admin.name}
+                    <input
+                      className="input"
+                      placeholder={strings.orgAdmin.groupNamePlaceholder}
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newGroupName) createGroup();
+                      }}
+                    />
+                  </label>
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setNewGroupPopoverOpen(false)}>
+                      {strings.common.cancel}
                     </button>
-                  )}
-                </div>
-                <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveProjectStatus(s.id, "up")}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button className="btn" disabled={idx === projectStatuses.length - 1} onClick={() => moveProjectStatus(s.id, "down")}>
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={otherStatuses.length === 0}
-                    title={otherStatuses.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteProjectStatus}
-                    onClick={() => attemptDeleteProjectStatus(s.id)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-              {deletingStatusId === s.id && (
-                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                  <span>{statusInUseMessage}</span>
-                  <span>{strings.admin.reassignExistingTo}</span>
-                  <select className="input" style={{ maxWidth: 220 }} value={reassignStatusTo} onChange={(e) => setReassignStatusTo(e.target.value)}>
-                    <option value="">—</option>
-                    {otherStatuses.map((other) => (
-                      <option key={other.id} value={other.id}>{other.name}</option>
-                    ))}
-                  </select>
-                  <button className="btn btn-danger" disabled={!reassignStatusTo} onClick={() => confirmDeleteProjectStatus(s.id)}>
-                    {strings.admin.confirmDelete}
-                  </button>
-                  <button className="btn" onClick={() => { setDeletingStatusId(null); setStatusInUseMessage(null); setReassignStatusTo(""); }}>
-                    {strings.common.cancel}
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.admin.name} value={newStatusName}
-            onChange={(e) => setNewStatusName(e.target.value)}
-          />
-          <button className="btn btn-primary" onClick={addProjectStatus} disabled={!newStatusName.trim()}>
-            <Plus size={14} /> {strings.orgAdmin.newProjectStatus}
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes} defaultCollapsed>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
-        {linkTypeError && <div style={{ color: "var(--color-danger)" }}>{linkTypeError}</div>}
-        {linkTypes.map((lt, idx) => {
-          const edit = linkTypeEdits[lt.id] ?? { forward: lt.forward_name, reverse: lt.reverse_name };
-          const dirty = edit.forward !== lt.forward_name || edit.reverse !== lt.reverse_name;
-          const otherLinkTypes = linkTypes.filter((other) => other.id !== lt.id);
-          return (
-            <div key={lt.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <input
-                    className="input" style={{ maxWidth: 200 }} aria-label={strings.orgAdmin.forwardName} value={edit.forward}
-                    onChange={(e) => setLinkTypeEdits((m) => ({ ...m, [lt.id]: { ...edit, forward: e.target.value } }))}
-                  />
-                  <input
-                    className="input" style={{ maxWidth: 200 }} aria-label={strings.orgAdmin.reverseName} value={edit.reverse}
-                    onChange={(e) => setLinkTypeEdits((m) => ({ ...m, [lt.id]: { ...edit, reverse: e.target.value } }))}
-                  />
-                  {dirty && edit.forward.trim() && edit.reverse.trim() && (
-                    <button className="btn" title={strings.admin.rename} onClick={() => renameLinkType(lt.id, edit.forward, edit.reverse)}>
-                      <Pencil size={14} />
+                    <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
+                      {strings.common.create}
                     </button>
-                  )}
-                </div>
-                <div className="row">
-                  <button className="btn" disabled={idx === 0} onClick={() => moveLinkType(lt.id, "up")}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button className="btn" disabled={idx === linkTypes.length - 1} onClick={() => moveLinkType(lt.id, "down")}>
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={otherLinkTypes.length === 0}
-                    title={otherLinkTypes.length === 0 ? strings.admin.deleteLastOneHint : strings.orgAdmin.deleteLinkType}
-                    onClick={() => attemptDeleteLinkType(lt.id)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-              {deletingLinkTypeId === lt.id && (
-                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                  <span>{linkTypeInUseMessage}</span>
-                  <span>{strings.admin.reassignExistingTo}</span>
-                  <select className="input" style={{ maxWidth: 220 }} value={reassignLinkTypeTo} onChange={(e) => setReassignLinkTypeTo(e.target.value)}>
-                    <option value="">—</option>
-                    {otherLinkTypes.map((other) => (
-                      <option key={other.id} value={other.id}>{other.forward_name}</option>
-                    ))}
-                  </select>
-                  <button className="btn btn-danger" disabled={!reassignLinkTypeTo} onClick={() => confirmDeleteLinkType(lt.id)}>
-                    {strings.admin.confirmDelete}
-                  </button>
-                  <button className="btn" onClick={() => { setDeletingLinkTypeId(null); setLinkTypeInUseMessage(null); setReassignLinkTypeTo(""); }}>
-                    {strings.common.cancel}
-                  </button>
-                </div>
+                  </div>
+                </Popover>
               )}
-            </div>
-          );
-        })}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.orgAdmin.forwardName} value={newLinkTypeForward}
-            onChange={(e) => setNewLinkTypeForward(e.target.value)}
-          />
-          <input
-            className="input" placeholder={strings.orgAdmin.reverseName} value={newLinkTypeReverse}
-            onChange={(e) => setNewLinkTypeReverse(e.target.value)}
-          />
-          <button
-            className="btn btn-primary" onClick={addLinkType}
-            disabled={!newLinkTypeForward.trim() || !newLinkTypeReverse.trim()}
-          >
-            <Plus size={14} /> {strings.orgAdmin.newLinkType}
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding} defaultCollapsed>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.logo(orgLabel)}
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/*"
-            disabled={logoUploading}
-            onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-          />
-        </label>
-        {logoUploading && <Spinner />}
-        {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
-        {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
-        {org.logo_file_id && <img src={fileUrl(org.logo_file_id)} alt="" style={{ height: 40 }} />}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.headerTitle}
-          <input
-            className="input" placeholder={strings.appName}
-            value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
-          />
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
-        </label>
-        <label className="row">
-          <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
-          {strings.orgAdmin.useOwnAccentColor(orgLabel)}
-        </label>
-        {useOwnAccentColor && (
-          <input
-            type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
-            style={{ width: 60, height: 36, padding: 2 }}
-          />
-        )}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
-        <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterCompanyName}
-          <input
-            className="input"
-            value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
-          />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterWebsite}
-          <input
-            className="input"
-            value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
-          />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.orgAdmin.emailFooterAddress}
-          <textarea
-            className="input" rows={3}
-            value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
-          />
-        </label>
-        {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
-        <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
-          {strings.orgAdmin.saveBranding}
-        </button>
-      </CollapsibleSection>
-
-      {orgReportDefaultsAvailable && (
-      <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults" defaultCollapsed>
-        <p className="text-muted" style={{ margin: 0 }}>
-          Used as the default intro, body chapters, and appendices for any project in this {orgLabel} that
-          hasn't set its own — see each project's Report Setup tab.
-        </p>
-        <div className="stack" style={{ gap: "0.25rem" }}>
-          <span>Default intro</span>
-          <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} organizationId={orgId} />
-        </div>
-        <ReportChapterListEditor
-          label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} organizationId={orgId}
-        />
-        <ReportChapterListEditor
-          label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} organizationId={orgId}
-        />
-        <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
-          {strings.admin.saveSettings}
-        </button>
-      </CollapsibleSection>
-      )}
-
-      <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates} defaultCollapsed>
-        {reportTemplates.map((tpl) => (
-          <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span>
-              {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
-            </span>
-            <div className="row" style={{ gap: "0.4rem" }}>
-              <button className="btn" onClick={() => startEditTemplate(tpl)}>
-                {strings.common.edit}
-              </button>
-              <button className="btn btn-danger" onClick={() => deleteReportTemplate(tpl.id)}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        ))}
-        <CollapsibleSection
-          sectionKey="orgAdmin.reportTemplates.form"
-          variant="plain"
-          title={editingTemplateId ? strings.admin.editReportTemplate : strings.admin.newReportTemplate}
-        >
-          <div className="row">
-            <input
-              className="input" placeholder={strings.admin.templateName}
-              value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
-            />
-            <label className="row" style={{ gap: "0.4rem" }}>
-              {strings.admin.accentColor}
-              <input
-                type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
-                style={{ width: 44, height: 32, padding: 2 }}
-              />
-            </label>
-          </div>
-          <div className="row">
-            <label className="row" style={{ gap: "0.4rem" }}>
-              <input
-                type="checkbox" checked={newTemplateIncludeCoverPage}
-                onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
-              />
-              {strings.admin.includeCoverPage}
-            </label>
-            <label className="row" style={{ gap: "0.4rem" }}>
-              <input
-                type="checkbox" checked={newTemplateIncludeLogo}
-                onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
-              />
-              {strings.admin.includeLogo(orgLabel)}
-            </label>
-          </div>
-          <input
-            className="input" placeholder={strings.admin.footerText}
-            value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
-          />
-          <div className="stack" style={{ gap: "0.25rem" }}>
-            <span>{strings.admin.templateIntro}</span>
-            <RichTextEditor rows={3} value={newTemplateIntro} onChange={setNewTemplateIntro} organizationId={orgId} />
-          </div>
-          <ReportChapterListEditor
-            label={strings.admin.templateChapters} list={newTemplateChapters} setList={setNewTemplateChapters}
-            organizationId={orgId}
-          />
-          <ReportChapterListEditor
-            label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
-            organizationId={orgId}
-          />
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
-          <label className="row" style={{ gap: "0.4rem" }}>
-            <input
-              type="checkbox" checked={newTemplateChaptersPerComponent}
-              onChange={(e) => setNewTemplateChaptersPerComponent(e.target.checked)}
-            />
-            {strings.admin.templateChaptersPerComponent}
-          </label>
-          <div className="row">
-            <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
-              <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.admin.newReportTemplate}
-            </button>
-            {editingTemplateId && (
-              <button className="btn" onClick={resetTemplateForm}>
-                {strings.common.cancel}
-              </button>
-            )}
-          </div>
-        </CollapsibleSection>
-      </CollapsibleSection>
-
-      {ssoConfig && (
-        <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig} defaultCollapsed>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.slug}
-            <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              {strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
-            </span>
-          </label>
-          <label className="row">
-            <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
-            {strings.orgAdmin.ssoEnabled}
-          </label>
-          <label className="row">
-            <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
-            {strings.orgAdmin.ssoOnly}
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcIssuerUrl}
-            <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcClientId}
-            <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcClientSecret}
-            <input
-              className="input" type="password" value={oidcClientSecret}
-              onChange={(e) => setOidcClientSecret(e.target.value)}
-            />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.oidcRequiredGroup}
-            <input
-              className="input" value={oidcRequiredGroup}
-              onChange={(e) => setOidcRequiredGroup(e.target.value)}
-            />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.loginBackground}
-            <input
-              ref={loginBackgroundInputRef} type="file" accept="image/*"
-              disabled={loginBackgroundUploading}
-              onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
-            />
-          </label>
-          {loginBackgroundUploading && <Spinner />}
-          {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
-          {loginBackgroundUploaded && (
-            <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.loginBackgroundUploaded}</div>
-          )}
-          {org.login_background_file_id && (
-            <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
-          )}
-          {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
-          <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
-            {strings.orgAdmin.saveSso}
-          </button>
-        </CollapsibleSection>
-      )}
-
-      {scimStatus && (
-        <CollapsibleSection sectionKey="orgAdmin.scim" title={strings.orgAdmin.scimProvisioning} defaultCollapsed>
-          <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.scimHint}</p>
-          <div className="row">
-            <span>
-              {scimStatus.enabled
-                ? strings.orgAdmin.scimEnabledWithPrefix(scimStatus.token_prefix ?? "")
-                : strings.orgAdmin.scimDisabled}
-            </span>
-          </div>
-          {scimGeneratedToken && (
-            <div className="stack" style={{ gap: "0.25rem" }}>
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
-              <input className="input" readOnly value={scimGeneratedToken} onFocus={(e) => e.target.select()} />
-            </div>
-          )}
-          {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
-          <div className="row">
-            <button className="btn btn-primary" onClick={regenerateScimToken}>
-              {scimStatus.enabled ? strings.orgAdmin.scimRegenerate : strings.orgAdmin.scimGenerate}
-            </button>
-            {scimStatus.enabled && (
-              <button className="btn btn-danger" onClick={revokeScimToken}>
-                {strings.orgAdmin.scimRevoke}
-              </button>
-            )}
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {templateProjects.length > 0 && (
-        <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate} defaultCollapsed>
-          <select
-            className="input"
-            value={org.default_template_project_id ?? ""}
-            onChange={(e) => setDefaultTemplate(e.target.value)}
-          >
-            <option value="">{strings.projects.noTemplate}</option>
-            {templateProjects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </CollapsibleSection>
-      )}
-
-      <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)} defaultCollapsed>
-        {groups.map((g) => {
-          const memberIds = new Set(g.member_user_ids);
-          const members = users.filter((u) => memberIds.has(u.user_id));
-          const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
-          const nestedGroupIds = new Set(g.member_org_group_ids);
-          const nestedGroups = groups.filter((og) => nestedGroupIds.has(og.id));
-          const nestableGroups = groups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
-          return (
-            <div key={g.id} className="stack">
-              <span>{g.name}</span>
-              {members.length > 0 && (
-                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                  {members.map((u) => (
-                    <li key={u.user_id} style={{ listStyle: "disc" }}>
-                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
-                        <span>
-                          {u.display_name} <span className="text-muted">({u.email})</span>
-                        </span>
-                        <button className="btn" onClick={() => removeGroupMember(g.id, u.user_id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <UserAutocomplete
-                users={nonMembers}
-                placeholder={strings.admin.addMemberPlaceholder}
-                onSelect={(userId) => addGroupMember(g.id, userId)}
-              />
-              {nestedGroups.length > 0 && (
-                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                  {nestedGroups.map((og) => (
-                    <li key={og.id} style={{ listStyle: "circle" }}>
-                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
-                        <span>{strings.orgAdmin.nestedGroupLabel(og.name)}</span>
-                        <button className="btn" onClick={() => removeNestedGroupMember(g.id, og.id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {nestableGroups.length > 0 && (
-                <div className="row">
-                  <select
-                    className="input"
-                    value={nestSelections[g.id] ?? ""}
-                    onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                  >
-                    <option value="">{strings.orgAdmin.addNestedGroup}</option>
-                    {nestableGroups.map((og) => (
-                      <option key={og.id} value={og.id}>
-                        {og.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn"
-                    disabled={!nestSelections[g.id]}
-                    onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              )}
-              {nestErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{nestErrors[g.id]}</div>}
-              <label className="row" style={{ gap: "0.25rem" }}>
-                {strings.orgAdmin.idpSyncedGroupName}
-                <input
-                  className="input"
-                  placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
-                  value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
-                  onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                />
-                <button className="btn" onClick={() => saveIdpSync(g.id, idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "")}>
-                  {strings.orgAdmin.saveIdpSync}
-                </button>
-              </label>
-              {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
-            </div>
-          );
-        })}
-        <div className="row">
-          <input className="input" placeholder={strings.admin.name} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-          <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
-            <Plus size={14} /> {strings.orgAdmin.newGroup}
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed>
-        {resources.map((r) => (
-          <div key={r.id} className="row" style={{ justifyContent: "space-between" }}>
-            <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
-              {r.filename}
-            </a>
-            <button className="btn btn-danger" onClick={() => deleteResource(r.id)}>
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-        <input
-          ref={resourceInputRef}
-          type="file"
-          onChange={(e) => e.target.files?.[0] && uploadResource(e.target.files[0])}
-        />
-        <span className="text-muted row">
-          <Upload size={14} /> {strings.orgAdmin.resourcesHint(orgLabel)}
-        </span>
-      </CollapsibleSection>
-
-      {advanced && (
-        <CollapsibleSection sectionKey="orgAdmin.advanced" title={strings.orgAdmin.advanced} defaultCollapsed>
-          <div className="row">
-            <input
-              className="input"
-              placeholder={strings.orgAdmin.smtpHost}
-              value={smtpHost}
-              onChange={(e) => setSmtpHost(e.target.value)}
-            />
-            <input
-              className="input"
-              style={{ maxWidth: 120 }}
-              placeholder={strings.orgAdmin.smtpPort}
-              value={smtpPort}
-              onChange={(e) => setSmtpPort(e.target.value)}
-            />
-          </div>
-          <div className="row">
-            <input
-              className="input"
-              placeholder={strings.orgAdmin.smtpUsername}
-              value={smtpUsername}
-              onChange={(e) => setSmtpUsername(e.target.value)}
-            />
-            <input
-              className="input"
-              type="password"
-              placeholder={strings.orgAdmin.smtpPassword}
-              value={smtpPassword}
-              onChange={(e) => setSmtpPassword(e.target.value)}
-            />
-          </div>
-          <label className="row">
-            <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
-            {strings.orgAdmin.smtpUseTls}
-          </label>
-
-          <div className="stack" style={{ gap: "0.4rem" }}>
-            <strong>{strings.orgAdmin.testEmail}</strong>
-            <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
-            <div className="row">
-              <input
-                className="input"
-                type="email"
-                placeholder={strings.orgAdmin.testEmailRecipientPlaceholder}
-                value={testEmailRecipient}
-                onChange={(e) => setTestEmailRecipient(e.target.value)}
-              />
-              <button className="btn" onClick={sendOrgTestEmail} disabled={!smtpHost || sendingTestEmail}>
-                {sendingTestEmail ? strings.orgAdmin.testEmailSending : strings.orgAdmin.testEmail}
-              </button>
-            </div>
-            {!smtpHost && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.testEmailNoSmtp}</span>}
-            {testEmailError && <div style={{ color: "var(--color-danger)" }}>{testEmailError}</div>}
-            {testEmailSuccess && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.testEmailSent}</div>}
-          </div>
-
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.patMaxLifetime}
-            <input
-              className="input"
-              type="number"
-              min={1}
-              max={3650}
-              style={{ maxWidth: 160 }}
-              value={patMaxLifetimeDays}
-              onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
-            />
-            <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
-          </label>
-
-          <label className="row" style={{ gap: "0.6rem" }}>
-            <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
-            <span className="stack" style={{ gap: 0 }}>
-              {strings.orgAdmin.require2fa}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
-            </span>
-          </label>
-
-          <label className="row" style={{ gap: "0.6rem" }}>
-            <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
-            <span className="stack" style={{ gap: 0 }}>
-              {strings.orgAdmin.allowSelfSignup}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
-            </span>
-          </label>
-
-          {selfSignupConflict && (
-            <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
-          )}
-
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.autoAcceptEmailDomain}
-            <input
-              className="input"
-              placeholder="acme.com"
-              value={autoAcceptEmailDomain}
-              onChange={(e) => setAutoAcceptEmailDomain(e.target.value)}
-            />
-            <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
-          </label>
-
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.orgAdmin.externalUserPolicy}
-            <select
-              className="input"
-              value={externalUserPolicy}
-              onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
-            >
-              <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
-              <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
-              <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
-            </select>
-          </label>
-
-          <div className="stack">
-            <strong>{strings.orgAdmin.ssoMappings}</strong>
-            {advanced.sso_group_mappings.map((m, idx) => (
-              <div key={idx} className="row" style={{ justifyContent: "space-between" }}>
-                <span>
-                  {m.sso_group} <span className="badge">{ORG_ROLE_LABEL[m.org_role]}</span>
-                </span>
-                <button className="btn btn-danger" onClick={() => removeMapping(idx)}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            <div className="row">
-              <input
-                className="input"
-                placeholder={strings.orgAdmin.ssoGroup}
-                value={newMappingGroup}
-                onChange={(e) => setNewMappingGroup(e.target.value)}
-              />
-              <select className="input" value={newMappingRole} onChange={(e) => setNewMappingRole(e.target.value as OrgRole)}>
-                <option value="member">{ORG_ROLE_LABEL.member}</option>
-                <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-              </select>
-              <button className="btn" onClick={addMapping} disabled={!newMappingGroup}>
-                <Plus size={14} /> {strings.orgAdmin.addMapping}
-              </button>
-            </div>
-          </div>
-
-          {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-          <button
-            className="btn btn-primary"
-            onClick={saveAdvanced}
-            disabled={selfSignupConflict}
-            style={{ alignSelf: "flex-start" }}
-          >
-            {strings.orgAdmin.saveAdvanced}
-          </button>
-        </CollapsibleSection>
-      )}
-
-      {advanced && (
-        <CollapsibleSection sectionKey="orgAdmin.pats" title={strings.orgAdmin.pats} defaultCollapsed>
-          {orgPats.length === 0 ? (
-            <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>{strings.orgAdmin.patUser}</th>
-                  <th>{strings.orgAdmin.patName}</th>
-                  <th>{strings.orgAdmin.patExpires}</th>
-                  <th>{strings.orgAdmin.patLastUsed}</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {orgPats.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      {p.user_display_name} <span className="text-muted">({p.user_email})</span>
-                    </td>
-                    <td>
-                      {p.name}
-                      {p.other_org_count > 0 && (
-                        <div className="text-muted">{strings.orgAdmin.patOtherOrgs(p.other_org_count, orgLabelPlural)}</div>
-                      )}
-                    </td>
-                    <td>{new Date(p.expires_at).toLocaleDateString()}</td>
-                    <td>{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never}</td>
-                    <td>
+              {groups.map((g) => {
+                const memberIds = new Set(g.member_user_ids);
+                const members = users.filter((u) => memberIds.has(u.user_id));
+                const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+                const nestedGroupIds = new Set(g.member_org_group_ids);
+                const nestedGroups = groups.filter((og) => nestedGroupIds.has(og.id));
+                const nestableGroups = groups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
+                return (
+                  <div key={g.id} className="stack">
+                    <span>{g.name}</span>
+                    {members.length > 0 && (
+                      <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                        {members.map((u) => (
+                          <li key={u.user_id} style={{ listStyle: "disc" }}>
+                            <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                              <span>
+                                {u.display_name} <span className="text-muted">({u.email})</span>
+                              </span>
+                              <button
+                                className="btn"
+                                title={strings.admin.removeMember(u.display_name)}
+                                aria-label={strings.admin.removeMember(u.display_name)}
+                                onClick={() => removeGroupMember(g.id, u.user_id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <UserAutocomplete
+                      users={nonMembers}
+                      placeholder={strings.admin.addMemberPlaceholder}
+                      onSelect={(userId) => addGroupMember(g.id, userId)}
+                    />
+                    {nestedGroups.length > 0 && (
+                      <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                        {nestedGroups.map((og) => (
+                          <li key={og.id} style={{ listStyle: "circle" }}>
+                            <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                              <span>{strings.orgAdmin.nestedGroupLabel(og.name)}</span>
+                              <button
+                                className="btn"
+                                title={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
+                                aria-label={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
+                                onClick={() => removeNestedGroupMember(g.id, og.id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {nestableGroups.length > 0 && (
                       <div className="row">
-                        {p.other_org_count > 0 && (
-                          <button className="btn" onClick={() => descopeOrgPat(p.id)}>
-                            {strings.orgAdmin.patDescope}
-                          </button>
-                        )}
+                        <select
+                          className="input"
+                          value={nestSelections[g.id] ?? ""}
+                          onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                        >
+                          <option value="">{strings.orgAdmin.addNestedGroup}</option>
+                          {nestableGroups.map((og) => (
+                            <option key={og.id} value={og.id}>
+                              {og.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn"
+                          disabled={!nestSelections[g.id]}
+                          title={strings.orgAdmin.addNestedGroup}
+                          aria-label={strings.orgAdmin.addNestedGroup}
+                          onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {nestErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{nestErrors[g.id]}</div>}
+                    <label className="row" style={{ gap: "0.25rem" }}>
+                      {strings.orgAdmin.idpSyncedGroupName}
+                      <input
+                        className="input"
+                        placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
+                        value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
+                        onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                      />
+                      <button className="btn" onClick={() => saveIdpSync(g.id, idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "")}>
+                        {strings.orgAdmin.saveIdpSync}
+                      </button>
+                    </label>
+                    {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
+                  </div>
+                );
+              })}
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "projects-workflow" && (
+          <div className="stack">
+            {orgProjects && (
+              <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects}>
+                <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint(orgLabel)}</p>
+                {orgProjects.map((p) => (
+                  <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <span className="row" style={{ gap: "0.5rem" }}>
+                        {p.name}
+                        {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
+                      </span>
+                      <button className="btn" onClick={() => toggleExpandedProject(p.id)}>
+                        {expandedProjectId === p.id ? strings.common.cancel : strings.orgAdmin.manageUsers}
+                      </button>
+                    </div>
+                    {expandedProjectId === p.id && (
+                      <div className="stack" style={{ paddingLeft: "1rem" }}>
+                        {expandedProjectGroups.map((g) => {
+                          const memberIds = new Set(g.member_user_ids);
+                          const members = users.filter((u) => memberIds.has(u.user_id));
+                          const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+                          return (
+                            <div key={g.id} className="stack">
+                              <span>
+                                {g.name} <span className="badge">{g.role}</span>
+                              </span>
+                              {members.length > 0 && (
+                                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                                  {members.map((u) => (
+                                    <li key={u.user_id} style={{ listStyle: "disc" }}>
+                                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                                        <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
+                                        <button
+                                          className="btn"
+                                          title={strings.admin.removeMember(u.display_name)}
+                                          aria-label={strings.admin.removeMember(u.display_name)}
+                                          onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              <UserAutocomplete
+                                users={nonMembers}
+                                placeholder={strings.admin.addMemberPlaceholder}
+                                onSelect={(userId) => addExpandedProjectGroupMember(g.id, userId)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CollapsibleSection>
+            )}
+
+            <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
+              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>
+              <DefinitionList
+                items={projectStatuses}
+                fields={[{ key: "name", getValue: (i) => i.name, placeholder: strings.admin.name, maxWidth: 220 }]}
+                getReassignLabel={(i) => i.name}
+                onMove={moveProjectStatus}
+                onRename={(id, values) => renameProjectStatus(id, values.name)}
+                onAdd={(values) => addProjectStatus(values.name)}
+                onDelete={deleteProjectStatus}
+                deleteLabel={strings.orgAdmin.deleteProjectStatus}
+                addLabel={strings.orgAdmin.newProjectStatus}
+              />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
+              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.linkTypesHint}</p>
+              <DefinitionList
+                items={linkTypes}
+                fields={[
+                  { key: "forward", getValue: (i) => i.forward_name, placeholder: strings.orgAdmin.forwardName, ariaLabel: strings.orgAdmin.forwardName, maxWidth: 200 },
+                  { key: "reverse", getValue: (i) => i.reverse_name, placeholder: strings.orgAdmin.reverseName, ariaLabel: strings.orgAdmin.reverseName, maxWidth: 200 },
+                ]}
+                getReassignLabel={(i) => i.forward_name}
+                onMove={moveLinkType}
+                onRename={(id, values) => renameLinkType(id, values.forward, values.reverse)}
+                onAdd={(values) => addLinkType(values.forward, values.reverse)}
+                onDelete={deleteLinkType}
+                deleteLabel={strings.orgAdmin.deleteLinkType}
+                addLabel={strings.orgAdmin.newLinkType}
+              />
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "branding-defaults" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-logo-input">{strings.orgAdmin.logo(orgLabel)}</label>
+                  <OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />
+                </span>
+                <input
+                  id="org-logo-input"
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  disabled={logoUploading}
+                  onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
+                />
+              </div>
+              {logoUploading && <Spinner />}
+              {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
+              {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
+              {org.logo_file_id && <img src={fileUrl(org.logo_file_id)} alt="" style={{ height: 40 }} />}
+
+              {/* Login-background sits alongside the org logo (style guide
+                  "after" diagram, G4a: "Branding — logo, colour, footer") —
+                  moved here from the SSO section, where it previously sat
+                  for no reason connected to SSO/OIDC itself. */}
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-login-background-input">{strings.orgAdmin.loginBackground}</label>
+                  <OverridePill
+                    custom={org.login_background_file_id != null}
+                    onReset={removeLoginBackground}
+                    disabled={loginBackgroundUploading}
+                  />
+                </span>
+                <input
+                  id="org-login-background-input"
+                  ref={loginBackgroundInputRef} type="file" accept="image/*"
+                  disabled={loginBackgroundUploading}
+                  onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
+                />
+              </div>
+              {loginBackgroundUploading && <Spinner />}
+              {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
+              {loginBackgroundUploaded && (
+                <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.loginBackgroundUploaded}</div>
+              )}
+              {org.login_background_file_id && (
+                <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
+              )}
+
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-header-title">{strings.orgAdmin.headerTitle}</label>
+                  <OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />
+                </span>
+                <input
+                  id="org-header-title"
+                  className="input" placeholder={strings.appName}
+                  value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
+                />
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
+              </div>
+              <label className="row">
+                <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
+                {strings.orgAdmin.useOwnAccentColor(orgLabel)}
+              </label>
+              {useOwnAccentColor && (
+                <input
+                  type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
+                  style={{ width: 60, height: 36, padding: 2 }}
+                />
+              )}
+              <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
+              <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
+              <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-email-footer-company">{strings.orgAdmin.emailFooterCompanyName}</label>
+                  <OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />
+                </span>
+                <input
+                  id="org-email-footer-company"
+                  className="input"
+                  value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
+                />
+              </div>
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-email-footer-website">{strings.orgAdmin.emailFooterWebsite}</label>
+                  <OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />
+                </span>
+                <input
+                  id="org-email-footer-website"
+                  className="input"
+                  value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
+                />
+              </div>
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <label htmlFor="org-email-footer-address">{strings.orgAdmin.emailFooterAddress}</label>
+                  <OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />
+                </span>
+                <textarea
+                  id="org-email-footer-address"
+                  className="input" rows={3}
+                  value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
+                />
+              </div>
+              {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
+              <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
+                {strings.orgAdmin.saveBranding}
+              </button>
+            </CollapsibleSection>
+
+            {templateProjects.length > 0 && (
+              <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
+                <select
+                  className="input"
+                  value={org.default_template_project_id ?? ""}
+                  onChange={(e) => setDefaultTemplate(e.target.value)}
+                >
+                  <option value="">{strings.projects.noTemplate}</option>
+                  {templateProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </CollapsibleSection>
+            )}
+          </div>
+        )}
+
+        {activeGroup === "templates-reports" && (
+          <div className="stack">
+            {orgReportDefaultsAvailable && (
+              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title="Report Defaults">
+                <p className="text-muted" style={{ margin: 0 }}>
+                  Used as the default intro, body chapters, and appendices for any project in this {orgLabel} that
+                  hasn't set its own — see each project's Report Setup tab.
+                </p>
+                <div className="stack" style={{ gap: "0.25rem" }}>
+                  <span>Default intro</span>
+                  <RichTextEditor rows={3} value={orgReportIntro} onChange={setOrgReportIntro} organizationId={orgId} />
+                </div>
+                <ReportChapterListEditor
+                  label="Default body chapters" list={orgReportChapters} setList={setOrgReportChapters} organizationId={orgId}
+                />
+                <ReportChapterListEditor
+                  label="Default appendices" list={orgReportAppendices} setList={setOrgReportAppendices} organizationId={orgId}
+                />
+                <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
+                  {strings.admin.saveSettings}
+                </button>
+              </CollapsibleSection>
+            )}
+
+            <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates}>
+              {reportTemplates.map((tpl) => (
+                <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
+                  <span>
+                    {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
+                  </span>
+                  <div className="row" style={{ gap: "0.4rem" }}>
+                    <button className="btn" onClick={() => startEditTemplate(tpl)}>
+                      {strings.common.edit}
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      title={strings.orgAdmin.deleteReportTemplate(tpl.name)}
+                      aria-label={strings.orgAdmin.deleteReportTemplate(tpl.name)}
+                      onClick={() => deleteReportTemplate(tpl.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <CollapsibleSection
+                sectionKey="orgAdmin.reportTemplates.form"
+                variant="plain"
+                title={editingTemplateId ? strings.admin.editReportTemplate : strings.admin.newReportTemplate}
+              >
+                <div className="row">
+                  <input
+                    className="input" placeholder={strings.admin.templateName}
+                    value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
+                  />
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    {strings.admin.accentColor}
+                    <input
+                      type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
+                      style={{ width: 44, height: 32, padding: 2 }}
+                    />
+                  </label>
+                </div>
+                <div className="row">
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    <input
+                      type="checkbox" checked={newTemplateIncludeCoverPage}
+                      onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
+                    />
+                    {strings.admin.includeCoverPage}
+                  </label>
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    <input
+                      type="checkbox" checked={newTemplateIncludeLogo}
+                      onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
+                    />
+                    {strings.admin.includeLogo(orgLabel)}
+                  </label>
+                </div>
+                <input
+                  className="input" placeholder={strings.admin.footerText}
+                  value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
+                />
+                <div className="stack" style={{ gap: "0.25rem" }}>
+                  <span>{strings.admin.templateIntro}</span>
+                  <RichTextEditor rows={3} value={newTemplateIntro} onChange={setNewTemplateIntro} organizationId={orgId} />
+                </div>
+                <ReportChapterListEditor
+                  label={strings.admin.templateChapters} list={newTemplateChapters} setList={setNewTemplateChapters}
+                  organizationId={orgId}
+                />
+                <ReportChapterListEditor
+                  label={strings.admin.templateAppendices} list={newTemplateAppendices} setList={setNewTemplateAppendices}
+                  organizationId={orgId}
+                />
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
+                <label className="row" style={{ gap: "0.4rem" }}>
+                  <input
+                    type="checkbox" checked={newTemplateChaptersPerComponent}
+                    onChange={(e) => setNewTemplateChaptersPerComponent(e.target.checked)}
+                  />
+                  {strings.admin.templateChaptersPerComponent}
+                </label>
+                <div className="row">
+                  <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
+                    <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.common.create}
+                  </button>
+                  {editingTemplateId && (
+                    <button className="btn" onClick={resetTemplateForm}>
+                      {strings.common.cancel}
+                    </button>
+                  )}
+                </div>
+              </CollapsibleSection>
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "integrations-security" && (
+          <div className="stack">
+            {ssoConfig && (
+              <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.slug}
+                  <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                    {strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
+                  </span>
+                </label>
+                <label className="row">
+                  <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
+                  {strings.orgAdmin.ssoEnabled}
+                </label>
+                <label className="row">
+                  <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
+                  {strings.orgAdmin.ssoOnly}
+                </label>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.oidcIssuerUrl}
+                  <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
+                </label>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.oidcClientId}
+                  <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
+                </label>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.oidcClientSecret}
+                  <input
+                    className="input" type="password" value={oidcClientSecret}
+                    onChange={(e) => setOidcClientSecret(e.target.value)}
+                  />
+                </label>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.oidcRequiredGroup}
+                  <input
+                    className="input" value={oidcRequiredGroup}
+                    onChange={(e) => setOidcRequiredGroup(e.target.value)}
+                  />
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
+                </label>
+
+                {/* SSO group → org-role mapping — an SSO/OIDC concept, moved
+                    here from the old catch-all "Advanced" section rather
+                    than staying lumped in with unrelated SMTP/2FA/self-
+                    signup settings (style guide "after" diagram, G6a). */}
+                {advanced && (
+                  <div className="stack">
+                    <strong>{strings.orgAdmin.ssoMappings}</strong>
+                    {advanced.sso_group_mappings.map((m, idx) => (
+                      <div key={idx} className="row" style={{ justifyContent: "space-between" }}>
+                        <span>
+                          {m.sso_group} <span className="badge">{ORG_ROLE_LABEL[m.org_role]}</span>
+                        </span>
                         <button
                           className="btn btn-danger"
-                          onClick={() => {
-                            if (window.confirm(strings.orgAdmin.patRevokeOneConfirm)) revokeOrgPat(p.id);
-                          }}
+                          title={strings.orgAdmin.removeSsoMapping(m.sso_group)}
+                          aria-label={strings.orgAdmin.removeSsoMapping(m.sso_group)}
+                          onClick={() => removeMapping(idx)}
                         >
-                          {strings.orgAdmin.patRevoke}
+                          <Trash2 size={14} />
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                    ))}
+                    <div className="row">
+                      <input
+                        className="input"
+                        placeholder={strings.orgAdmin.ssoGroup}
+                        value={newMappingGroup}
+                        onChange={(e) => setNewMappingGroup(e.target.value)}
+                      />
+                      <select className="input" value={newMappingRole} onChange={(e) => setNewMappingRole(e.target.value as OrgRole)}>
+                        <option value="member">{ORG_ROLE_LABEL.member}</option>
+                        <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                        <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
+                      </select>
+                      <button className="btn" onClick={addMapping} disabled={!newMappingGroup}>
+                        <Plus size={14} /> {strings.orgAdmin.addMapping}
+                      </button>
+                    </div>
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      Mappings are saved with the Security settings below.
+                    </span>
+                  </div>
+                )}
 
-          {orgPats.length > 0 && (
-            <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
-              {strings.orgAdmin.patRevokeAll(orgLabel)}
-            </button>
-          )}
-          {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
-        </CollapsibleSection>
-      )}
+                {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
+                <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
+                  {strings.orgAdmin.saveSso}
+                </button>
+              </CollapsibleSection>
+            )}
+
+            {scimStatus && (
+              <CollapsibleSection sectionKey="orgAdmin.scim" title={strings.orgAdmin.scimProvisioning}>
+                <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.scimHint}</p>
+                <div className="row">
+                  <span>
+                    {scimStatus.enabled
+                      ? strings.orgAdmin.scimEnabledWithPrefix(scimStatus.token_prefix ?? "")
+                      : strings.orgAdmin.scimDisabled}
+                  </span>
+                </div>
+                {scimGeneratedToken && (
+                  <div className="stack" style={{ gap: "0.25rem" }}>
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
+                    <input className="input" readOnly value={scimGeneratedToken} onFocus={(e) => e.target.select()} />
+                  </div>
+                )}
+                {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
+                <div className="row">
+                  <button className="btn btn-primary" onClick={regenerateScimToken}>
+                    {scimStatus.enabled ? strings.orgAdmin.scimRegenerate : strings.orgAdmin.scimGenerate}
+                  </button>
+                  {scimStatus.enabled && (
+                    <button className="btn btn-danger" onClick={revokeScimToken}>
+                      {strings.orgAdmin.scimRevoke}
+                    </button>
+                  )}
+                </div>
+              </CollapsibleSection>
+            )}
+
+            {advanced && (
+              <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder={strings.orgAdmin.smtpHost}
+                    value={smtpHost}
+                    onChange={(e) => setSmtpHost(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    style={{ maxWidth: 120 }}
+                    placeholder={strings.orgAdmin.smtpPort}
+                    value={smtpPort}
+                    onChange={(e) => setSmtpPort(e.target.value)}
+                  />
+                </div>
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder={strings.orgAdmin.smtpUsername}
+                    value={smtpUsername}
+                    onChange={(e) => setSmtpUsername(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder={strings.orgAdmin.smtpPassword}
+                    value={smtpPassword}
+                    onChange={(e) => setSmtpPassword(e.target.value)}
+                  />
+                </div>
+                <label className="row">
+                  <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
+                  {strings.orgAdmin.smtpUseTls}
+                </label>
+
+                <div className="stack" style={{ gap: "0.4rem" }}>
+                  <strong>{strings.orgAdmin.testEmail}</strong>
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
+                  <div className="row">
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder={strings.orgAdmin.testEmailRecipientPlaceholder}
+                      value={testEmailRecipient}
+                      onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    />
+                    <button className="btn" onClick={sendOrgTestEmail} disabled={!smtpHost || sendingTestEmail}>
+                      {sendingTestEmail ? strings.orgAdmin.testEmailSending : strings.orgAdmin.testEmail}
+                    </button>
+                  </div>
+                  {!smtpHost && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.testEmailNoSmtp}</span>}
+                  {testEmailError && <div style={{ color: "var(--color-danger)" }}>{testEmailError}</div>}
+                  {testEmailSuccess && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.testEmailSent}</div>}
+                </div>
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                  Saved with the Security settings below.
+                </span>
+              </CollapsibleSection>
+            )}
+
+            {advanced && (
+              <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
+                <label className="row" style={{ gap: "0.6rem" }}>
+                  <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
+                  <span className="stack" style={{ gap: 0 }}>
+                    {strings.orgAdmin.require2fa}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
+                  </span>
+                </label>
+
+                <label className="row" style={{ gap: "0.6rem" }}>
+                  <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
+                  <span className="stack" style={{ gap: 0 }}>
+                    {strings.orgAdmin.allowSelfSignup}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
+                  </span>
+                </label>
+
+                {selfSignupConflict && (
+                  <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
+                )}
+
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.autoAcceptEmailDomain}
+                  <input
+                    className="input"
+                    placeholder="acme.com"
+                    value={autoAcceptEmailDomain}
+                    onChange={(e) => setAutoAcceptEmailDomain(e.target.value)}
+                  />
+                  <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
+                </label>
+
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.externalUserPolicy}
+                  <select
+                    className="input"
+                    value={externalUserPolicy}
+                    onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
+                  >
+                    <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
+                    <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
+                    <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
+                  </select>
+                </label>
+
+                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
+                {/* One shared save button for the whole OrgAdvancedSettings
+                    resource — SMTP & email above and the PAT lifetime field
+                    in Personal Access Tokens below are all part of the same
+                    underlying settings object/PUT, just split across
+                    separate cards now that they're grouped by what they
+                    actually govern rather than crammed into one "Advanced"
+                    accordion (style guide "after" diagram notes). */}
+                <button
+                  className="btn btn-primary"
+                  onClick={saveAdvanced}
+                  disabled={selfSignupConflict}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  {strings.orgAdmin.saveAdvanced}
+                </button>
+              </CollapsibleSection>
+            )}
+
+            {advanced && (
+              <CollapsibleSection sectionKey="orgAdmin.pats" title={strings.orgAdmin.pats}>
+                {/* PAT lifetime joins the existing PAT list per the style
+                    guide's regrouping notes, rather than staying under the
+                    old "Advanced" catch-all. Still saved via the shared
+                    Security-card button above, since it's one field on the
+                    same OrgAdvancedSettings object. */}
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.orgAdmin.patMaxLifetime}
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={3650}
+                    style={{ maxWidth: 160 }}
+                    value={patMaxLifetimeDays}
+                    onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
+                  />
+                  <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                    Saved with the Security settings above.
+                  </span>
+                </label>
+
+                {orgPats.length === 0 ? (
+                  <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{strings.orgAdmin.patUser}</th>
+                        <th>{strings.orgAdmin.patName}</th>
+                        <th>{strings.orgAdmin.patExpires}</th>
+                        <th>{strings.orgAdmin.patLastUsed}</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orgPats.map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            {p.user_display_name} <span className="text-muted">({p.user_email})</span>
+                          </td>
+                          <td>
+                            {p.name}
+                            {p.other_org_count > 0 && (
+                              <div className="text-muted">{strings.orgAdmin.patOtherOrgs(p.other_org_count, orgLabelPlural)}</div>
+                            )}
+                          </td>
+                          <td>{new Date(p.expires_at).toLocaleDateString()}</td>
+                          <td>{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never}</td>
+                          <td>
+                            <div className="row">
+                              {p.other_org_count > 0 && (
+                                <button className="btn" onClick={() => descopeOrgPat(p.id)}>
+                                  {strings.orgAdmin.patDescope}
+                                </button>
+                              )}
+                              <button
+                                className="btn btn-danger"
+                                onClick={() => {
+                                  if (window.confirm(strings.orgAdmin.patRevokeOneConfirm)) revokeOrgPat(p.id);
+                                }}
+                              >
+                                {strings.orgAdmin.patRevoke}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {orgPats.length > 0 && (
+                  <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
+                    {strings.orgAdmin.patRevokeAll(orgLabel)}
+                  </button>
+                )}
+                {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
+              </CollapsibleSection>
+            )}
+          </div>
+        )}
+      </ResourceMenu>
     </div>
   );
 }

@@ -519,6 +519,33 @@ textarea.input {
   background: var(--color-border);
 }
 
+/* In-page resource menu (ResourceMenu.tsx) — the enterprise-console shape
+   from the UX style guide's "Pattern: settings hierarchy", first used to
+   split Org Admin's 15-way flat accordion into 6 groups. Reuses
+   .nav-link/.nav-link.active for its items so the visual language matches
+   the app's own persistent nav rail exactly (style guide Principle 4: one
+   component per pattern), but unlike .nav-rail this sits in normal
+   document flow (not position: fixed) since it's scoped to one page's
+   content area, not the whole app shell.
+   Deliberately its own class rather than the shared .row utility (which
+   this otherwise resembles) — see ResourceMenu.tsx's own comment on its
+   root element for why reusing .row here broke a real Playwright locator. */
+.resource-menu {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 1.5rem;
+}
+
+.resource-menu-nav {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  width: 220px;
+  flex-shrink: 0;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -537,6 +564,14 @@ td {
    rail into its existing icon-only layout and stack the sidebar under the
    content, regardless of the user's manual expand/collapse preference. */
 @media (max-width: 860px) {
+  /* The rail is force-collapsed below this breakpoint (see the rules
+     below), so the manual expand/collapse toggle has nothing left to do —
+     leaving it visible reads as a broken button rather than an
+     unavailable one. Hide it rather than show a control that never
+     changes the layout. */
+  .nav-rail-toggle-row {
+    display: none;
+  }
   .nav-rail:not(.nav-rail-icons) {
     width: var(--nav-rail-width-collapsed);
   }
@@ -559,6 +594,12 @@ td {
   }
   .side-grid {
     grid-template-columns: 1fr;
+  }
+  .resource-menu {
+    flex-direction: column;
+  }
+  .resource-menu-nav {
+    width: 100%;
   }
 }
 
@@ -586,4 +627,64 @@ td {
     border-bottom: 1px solid var(--color-border);
     padding: 0.5rem 0;
   }
+}
+
+/* Toast (style guide "Pattern: confirmation, in two tiers — and feedback,
+   always" / Principle 7). Success reuses the same solid dark chip both
+   themes' text tokens already give good contrast on; error follows this
+   app's existing convention for danger (.btn-danger is an outline, never a
+   solid red fill) — the accent colour marks it, it doesn't flood it. */
+.toast-stack {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--color-text);
+  color: var(--color-bg);
+  padding: 0.6rem 0.7rem 0.6rem 0.9rem;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  font-size: 0.88rem;
+  max-width: 360px;
+  pointer-events: auto;
+}
+
+.toast-error {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-danger);
+  border-left: 4px solid var(--color-danger);
+}
+
+.toast-dismiss {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0.15rem;
+  display: flex;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
+}
+
+/* Popover (style guide "Pattern: create panels, popovers, and one door for
+   bulk" / Principle 3). Fixed width in Popover.tsx's own inline style is
+   the common case; this caps it on viewports narrower than that width so
+   it can't get pushed past the screen edge on a phone. */
+.popover-bubble {
+  max-width: calc(100vw - 1rem);
 }

@@ -33,7 +33,16 @@ export const PROJECT_NAMES = {
   beta2: "Beta-2 Customer Portal",
   gamma1: "Gamma-1 Lab Instrument Suite",
   gamma2: "Gamma-2 Data Pipeline",
+  /** Dedicated to the terminology-override spec (terminology-override.spec.ts)
+   * — see TERMINOLOGY_PROJECT_NAME/TERMINOLOGY_OVERRIDE in
+   * backend/scripts/seed_e2e_dataset.py. No other spec may depend on this
+   * project's terminology staying at, or moving away from, that override. */
+  delta1: "Delta-1 Terminology Demo",
 } as const;
+
+/** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the
+ * fixed override PROJECT_NAMES.delta1 is seeded with. */
+export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", changeRequest: "ECR" } as const;
 
 /** Logs in through the real UI form as the given persona. */
 export async function loginAs(page: Page, email: string, password: string = PASSWORD): Promise<void> {
@@ -62,6 +71,26 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
+ * Selects a group in `OrgAdminPage`'s resource menu (`ResourceMenu.tsx`,
+ * 2026-08 UX audit "Org Admin resource-menu restructure"). Each group is a
+ * real route segment under `/orgs/:orgId/admin/:group?`, not client-only
+ * state — the link's own `aria-current="page"` says whether it's already
+ * selected, so this is idempotent the same way `ensureExpanded` is:
+ * clicking an already-active group would be a harmless no-op navigation,
+ * but the guard keeps this a true no-op instead of an extra history entry.
+ * A section within the selected group is otherwise unreachable — unlike
+ * `CollapsibleSection`'s own per-user collapse preference, group selection
+ * isn't persisted, so this must run before every interaction with a
+ * section that isn't in Org Admin's default "Overview" group.
+ */
+export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
+  const link = page.getByRole("link", { name: groupLabel });
+  if ((await link.getAttribute("aria-current")) !== "page") {
+    await link.click();
+  }
+}
+
+/**
  * Opens a requirement's detail page by its stable `unique_code` (e.g.
  * "HW-FN-001") rather than its `name` — a requirement's name can be
  * changed by an approved change request (see
@@ -70,9 +99,28 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
  * specifically must not hard-code its original name. Matches either the
  * tile (`.card`) or list (`tr`) row layout, whichever RequirementsPage's
  * persisted per-user view-mode preference currently renders.
+ *
+ * Finds the code's own text node first, then walks up to its *nearest*
+ * `tr`/`.card` ancestor, rather than a flat `page.locator(".card, tr", {
+ * hasText: code })` — that shape has a real bug, not just a tile-view
+ * quirk: list view's whole `<table>` is itself wrapped in one outer
+ * `<div class="card">` (`RequirementsPage.tsx`'s `overflowX: "auto"`
+ * wrapper), which also "has text" matching any code found in any row and
+ * sits before every `<tr>` in document order — so `.first()` silently
+ * resolved to that outer wrapper, not the specific row, the moment a
+ * project had more than one requirement whose text happened to satisfy
+ * the match (invisible with few requirements, since the outer wrapper's
+ * lone matching link and the correct row's link were then the same
+ * element; a real strict-mode violation once a project accumulates
+ * enough requirements across a full suite run for the outer wrapper to
+ * contain more than one link).
  */
 export async function openRequirementByCode(page: Page, code: string): Promise<void> {
-  await page.locator(".card, tr", { hasText: code }).first().getByRole("link").click();
+  await page
+    .getByText(code, { exact: true })
+    .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
+    .getByRole("link")
+    .click();
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor

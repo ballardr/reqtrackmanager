@@ -47,6 +47,10 @@ jobs:
   frontend:
     name: Frontend lint, build & test
     runs-on: ubuntu-latest
+    # Normal runs finish in ~2 minutes; this is headroom, not an expected
+    # ceiling — see backend-and-e2e's timeout-minutes comment for why every
+    # job/step here now has one.
+    timeout-minutes: 15
     # checks: write is for the "Publish frontend test results" step below
     # (dorny/test-reporter creating a check run) — same reasoning as
     # backend-and-e2e's identical permission.
@@ -76,7 +80,28 @@ jobs:
       # test-storybook (vite.config.ts) runs every Storybook story as a real
       # Chromium test via Vitest's browser mode — needs its own Playwright
       # browser install, independent of tests/playwright's.
+      #
+      # Cached on the frontend/package-lock.json hash (which pins the
+      # `playwright` version) so a cache hit skips re-downloading the ~300MB
+      # Chromium binary on every run — `playwright install --with-deps` is
+      # idempotent and no-ops the download when it finds a matching browser
+      # already in this path, but still runs `apt-get install` for the OS
+      # deps either way, which is what the timeout below guards against.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      # 2026-08-19: this step hung 18+ minutes with zero output, stalled
+      # inside `apt-get update` fetching package indices from
+      # archive.ubuntu.com/security.ubuntu.com — a known flaky-mirror issue
+      # on GitHub-hosted Ubuntu runners, unrelated to this repo's code. There
+      # was no timeout anywhere in this workflow, so it sat until manually
+      # cancelled instead of failing fast. 5 minutes is generous headroom
+      # over the <1 minute this step normally takes.
       - name: Install Playwright browsers
+        timeout-minutes: 5
         run: npx playwright install --with-deps chromium
 
       # `timeout` + the JUnit check below work around a real @vitest/browser
@@ -176,6 +201,13 @@ jobs:
   backend-and-e2e:
     name: Backend tests, coverage & E2E
     runs-on: ubuntu-latest
+    # Normal runs finish in ~15-20 minutes (docker build + pytest + ruff x2
+    # + mcp-server tests + full Playwright suite). Without a ceiling here a
+    # stalled step (see the "Install Playwright browsers" step's comment for
+    # a real instance of this: an 18-minute apt-get mirror hang with no
+    # output) just sits until someone notices and cancels it manually,
+    # instead of failing the run automatically.
+    timeout-minutes: 45
     permissions:
       # checks: write is for the "Publish backend test results" step below
       # (dorny/test-reporter creating a check run). Badge publishing (which
@@ -344,8 +376,23 @@ jobs:
         working-directory: tests/container
         run: docker compose exec -T mcp-server python -m pytest -q
 
+      # Cached on tests/playwright/package-lock.json's hash (which pins
+      # @playwright/test) — same reasoning as the frontend job's identical
+      # step: skips re-downloading the Chromium binary on a cache hit, while
+      # `apt-get install` for OS deps still runs either way.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('tests/playwright/package-lock.json') }}
+
+      # See this same step's comment in the frontend job above: this is the
+      # step that hung 18+ minutes on 2026-08-19, stalled in `apt-get
+      # update` against a slow/unresponsive Ubuntu mirror. 5 minutes is
+      # generous headroom over what this normally takes.
       - name: Install Playwright browsers
         working-directory: tests/playwright
+        timeout-minutes: 5
         run: |
           npm ci
           npx playwright install --with-deps chromium
@@ -390,6 +437,9 @@ jobs:
     name: Publish coverage/test badges
     runs-on: ubuntu-latest
     needs: [frontend, backend-and-e2e]
+    # Normal runs finish in ~10 seconds; see backend-and-e2e's
+    # timeout-minutes comment for why every job here now has a ceiling.
+    timeout-minutes: 10
     # Feeds the four shields.io "endpoint" badges at the top of README.md
     # (backend/frontend × coverage %/pass-fail count). No external badge
     # service or extra secret: this job's own GITHUB_TOKEN pushes small JSON
@@ -532,6 +582,9 @@ jobs:
     name: Build, version, and push production container images
     runs-on: ubuntu-latest
     needs: [frontend, backend-and-e2e]
+    # Normal runs finish in ~2-3 minutes; see backend-and-e2e's
+    # timeout-minutes comment for why every job here now has a ceiling.
+    timeout-minutes: 20
     # Builds and tags on every run (proving all three production Dockerfiles
     # still build cleanly), but only pushes to ghcr.io when this isn't a
     # pull_request run — a same-repo PR's GITHUB_TOKEN could technically
@@ -565,6 +618,14 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v3
 
+      # Feeds both images' APP_VERSION/GIT_SHA/BUILD_DATE build args below —
+      # otherwise GitVersion's SemVer only ever lived in the image *tag*,
+      # with no way for a running instance to report its own build identity
+      # (GET /api/v1/system/version, the nav rail's version footer).
+      - name: Determine build date
+        id: builddate
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to ghcr.io
@@ -580,6 +641,10 @@ jobs:
         with:
           context: ./backend
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.date }}
           tags: |
             ghcr.io/${{ github.repository }}-backend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
@@ -590,6 +655,10 @@ jobs:
         with:
           context: ./frontend
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.date }}
           tags: |
             ghcr.io/${{ github.repository }}-frontend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}

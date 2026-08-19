@@ -42,7 +42,12 @@ export function FileAttachmentList({
             {f.filename}
           </a>
           {onRemove && !disabled && (
-            <button className="btn btn-danger" onClick={() => onRemove(f.id)}>
+            <button
+              className="btn btn-danger"
+              title={`Remove ${f.filename}`}
+              aria-label={`Remove ${f.filename}`}
+              onClick={() => onRemove(f.id)}
+            >
               <Trash2 size={14} />
             </button>
           )}

@@ -1,5 +1,21 @@
 FROM node:24-alpine AS build
 
+# Build identity, baked into the bundle at build time (Vite substitutes
+# `import.meta.env.VITE_*` when the build runs, unlike VITE_API_BASE_URL
+# below, which is loosely-coupled runtime config injected by
+# docker/env-config-entrypoint.sh at container *startup* instead — version
+# is a property of the image itself, not the deployment target, so it
+# belongs with the other build-time constants, not that runtime mechanism).
+# Supplied via --build-arg by the docker-build CI job (same GitVersion
+# SemVer/commit SHA used to tag this image); defaults keep a plain local
+# `docker build` working with placeholder values instead of failing.
+ARG APP_VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+ENV VITE_APP_VERSION=${APP_VERSION} \
+    VITE_GIT_SHA=${GIT_SHA} \
+    VITE_BUILD_DATE=${BUILD_DATE}
+
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install

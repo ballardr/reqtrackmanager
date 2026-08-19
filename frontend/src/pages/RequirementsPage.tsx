@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -16,19 +16,17 @@ import type {
   RequirementStatus,
 } from "../api/types";
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
-import { CsvImportWizard } from "../components/CsvImportWizard";
+import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { Popover } from "../components/Popover";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
-import { useTerm, useTermPlural } from "../context/TerminologyContext";
+import { useStrings } from "../context/TerminologyContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 const PAGE_SIZE = 30;
 
@@ -41,6 +39,7 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "c
  * incremental "load more" pagination (U-P-06) for large requirement sets.
  */
 export function RequirementsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -71,6 +70,9 @@ export function RequirementsPage() {
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addTriggerRef = useRef<HTMLButtonElement>(null);
+  const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newName, setNewName] = useState("");
   const [newReasoning, setNewReasoning] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -80,8 +82,6 @@ export function RequirementsPage() {
   const [newLevel, setNewLevel] = useState<RequirementLevel>("requirement");
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const requirementTerm = useTerm("requirement");
-  const requirementsTerm = useTermPlural("requirement");
   const [viewMode, setViewMode] = useViewMode("requirements");
   const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
   const [importing, setImporting] = useState(false);
@@ -273,13 +273,41 @@ export function RequirementsPage() {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{requirementsTerm}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
-          <Plus size={16} /> New {requirementTerm}
+        <h1 style={{ margin: 0 }}>{strings.requirements.title}</h1>
+        <button ref={addTriggerRef} className="btn btn-primary" onClick={() => setAddMenuOpen((v) => !v)}>
+          <Plus size={16} /> {strings.requirements.newRequirement}
         </button>
+        {addMenuOpen && (
+          <Popover anchorRef={addTriggerRef} title={strings.requirements.newRequirement} onClose={() => setAddMenuOpen(false)}>
+            <div className="stack" style={{ gap: "0.25rem", minWidth: 160 }}>
+              <button
+                className="btn"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => {
+                  setShowNewForm(true);
+                  setAddMenuOpen(false);
+                }}
+              >
+                {strings.requirements.addOne}
+              </button>
+              <button
+                className="btn"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => {
+                  csvWizardRef.current?.openFilePicker();
+                  setAddMenuOpen(false);
+                }}
+              >
+                {strings.requirements.importFromCsv}
+              </button>
+            </div>
+          </Popover>
+        )}
       </div>
 
       <CsvImportWizard
+        ref={csvWizardRef}
+        showImportTrigger={false}
         projectId={projectId ?? ""} projectName={project?.name ?? ""}
         components={components} categories={categories} stages={stages} customFields={customFieldDefs}
         importing={importing} onImport={importCsv}
@@ -481,7 +509,7 @@ export function RequirementsPage() {
           {!requirements && <Spinner />}
           {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
           {requirements && requirements.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {requirements.map((r) => (
                 <div key={r.id} className="card stack" style={{ gap: "0.5rem" }}>
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -606,9 +634,9 @@ export function RequirementsPage() {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Category">
+          <FilterField label={strings.requirements.category}>
             <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">All categories</option>
+              <option value="">{strings.requirements.allCategories}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

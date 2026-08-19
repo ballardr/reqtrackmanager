@@ -1,7 +1,5 @@
 import type { MergeConflict } from "../api/types";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 /**
  * Lets the caller resolve every project/report-template name collision an
@@ -22,6 +20,7 @@ export function ImportConflictPanel({
   resolutions: Record<string, string>;
   onResolutionChange: (id: string, value: string) => void;
 }) {
+  const strings = useStrings();
   const projectConflicts = conflicts.filter((c) => c.kind === "project");
   const templateConflicts = conflicts.filter((c) => c.kind === "report_template");
 

@@ -73,13 +73,16 @@ test("project admin invites a brand-new external user by email, and they can sig
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await page.getByRole("button", { name: "Project groups", exact: true }).click();
+  await page.getByRole("tab", { name: "Project groups", exact: true }).click();
 
   await test.step("invite the new email via the project group's user picker", async () => {
-    const picker = page.getByPlaceholder("Type a name or email to add…").first();
+    const picker = page.getByPlaceholder("Type a name to add, or an email to invite…").first();
     await picker.fill(inviteeEmail);
-    await expect(page.getByRole("button", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
-    await page.getByRole("button", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
+    // The dropdown follows the WAI-ARIA combobox/listbox pattern
+    // (`UserAutocomplete.tsx`) — each match, including the invite result,
+    // is `role="option"`, not `role="button"`.
+    await expect(page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
+    await page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
   });
 

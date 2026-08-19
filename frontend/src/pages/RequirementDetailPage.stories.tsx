@@ -14,6 +14,8 @@ import {
   buildUser,
   withAuth,
   withRouter,
+  withTerminology,
+  withToast,
 } from "../testing/storybook-helpers";
 import { RequirementDetailPage } from "./RequirementDetailPage";
 
@@ -71,6 +73,7 @@ const meta: Meta<typeof RequirementDetailPage> = {
       `/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}`,
       "/projects/:projectId/requirements/:requirementId"
     ),
+    withToast(),
   ],
 };
 export default meta;
@@ -117,6 +120,50 @@ export const ManagerCanArchiveAndComplete: Story = {
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Mark completed" })).toBeInTheDocument();
+  },
+};
+
+/** Archiving opens the shared `ConfirmDialog` (2026-08 UX audit fix — this
+ * used to fire with no confirmation at all, then just `window.confirm`),
+ * then shows a success toast (Principle 7) before navigating back to the
+ * list. */
+export const ArchivingConfirmsAndShowsToast: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "approved" });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}`)
+    );
+    await expect(within(document.body).getByText("Requirement archived")).toBeInTheDocument();
+  },
+};
+
+/** Cancelling the dialog leaves the requirement untouched — no delete
+ * call, no toast. */
+export const ArchivingCanBeCancelled: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "approved" });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.delete).not.toHaveBeenCalled();
   },
 };
 
@@ -254,6 +301,33 @@ export const CreateAndLinkAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
+  },
+};
+
+/**
+ * C-C-03: this page was one of the 2026-08 UX audit's explicitly named
+ * terminology leak sites — "Make change request", the archive confirm
+ * dialog, and every other `strings.requirements.*` string on the page used
+ * to hardcode the English noun regardless of the project's own Terminology
+ * settings, even though `strings.ts`'s `{requirement}`/`{changeRequest}`
+ * tokens already existed for the list page and nav. With the page now
+ * reading through `useStrings()` instead of a module-scope `t()`, an
+ * override actually reaches this page too.
+ */
+export const TerminologyOverrideAppliesThroughoutPage: Story = {
+  decorators: [withTerminology({ requirement: "Spec", change_request: "ECR" })],
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "approved" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    // The "Make a change request" link picks up the {changeRequest} token.
+    await expect(canvas.getByRole("link", { name: "Make ECR" })).toBeInTheDocument();
+
+    // The archive confirm dialog's title picks up the {requirement} token.
+    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Archive this Spec?" })).toBeInTheDocument();
   },
 };
 

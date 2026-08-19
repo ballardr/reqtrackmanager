@@ -3,17 +3,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
-import type { ProjectListItem } from "../api/types";
+import type { ProjectListItem, SystemVersion } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
-import { TerminologyProvider, useTermPlural } from "../context/TerminologyContext";
+import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
-import { t } from "../i18n/strings";
+import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
-
-const strings = t();
 
 /**
  * One nav-rail row. The tooltip only wraps the link while the rail is
@@ -75,19 +73,24 @@ export function Layout({ children }: { children: ReactNode }) {
 
 function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const strings = useStrings();
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
-  const requirementsTerm = useTermPlural("requirement");
-  const changeRequestsTerm = useTermPlural("change_request");
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
   const [hasFavourites, setHasFavourites] = useState(false);
+  const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
 
   const onFavouritableRoute = location.pathname === "/projects" || location.pathname === "/favourites";
+
+  useEffect(() => {
+    if (!user) return;
+    api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -153,7 +156,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           className={`nav-rail stack ${railCollapsed ? "nav-rail-icons" : ""}`}
           style={{ gap: "0.15rem" }}
         >
-          <div className="row" style={{ justifyContent: "flex-end" }}>
+          <div className="row nav-rail-toggle-row" style={{ justifyContent: "flex-end" }}>
             <Tooltip label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}>
               <button
                 className="btn"
@@ -166,10 +169,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
           </div>
           {projectId && (
             <>
-              <div className="nav-section-label">Project</div>
+              <div className="nav-section-label">{strings.nav.projectSectionLabel}</div>
               <NavRailLink to={`/projects/${projectId}`} exact label={strings.nav.overview} icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/requirements`} label={requirementsTerm} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/change-requests`} label={changeRequestsTerm} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railCollapsed} />
@@ -184,12 +187,39 @@ function LayoutShell({ children }: { children: ReactNode }) {
           )}
           <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railCollapsed} />
           <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railCollapsed} />
+          {/* The only path to org administration (U-P-02-adjacent IA gap
+              found in the 2026-08 UX audit): /orgs already auto-redirects
+              straight to a single org's admin page, or lists every org a
+              user belongs to otherwise — it just had no rail entry before
+              this, for anyone but a server admin drilling in through
+              /server/organisations. See docs/ux-style-guide.md, "Pattern:
+              wayfinding". */}
+          <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
           {user.is_server_admin && (
             <>
               <div className="nav-section-label">Administration</div>
               <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railCollapsed} />
             </>
+          )}
+          {/* Build identity — "a way to see the version and date of the
+              frontend and backend in the UI" (2026-08 UX audit follow-up).
+              Pinned to the bottom of the rail via `marginTop: auto` on the
+              flex-column `<nav>`; hidden in icon-only mode rather than
+              squeezed into it, same as every other rail label. The sha/date
+              detail lives in `title` (plain hover text, not the shared
+              `Tooltip`) since this is supplementary static text, not an
+              interactive control needing an accessible name. */}
+          {!railCollapsed && (
+            <div
+              className="text-muted"
+              style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
+            >
+              <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
+              <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
+                {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
+              </div>
+            </div>
           )}
         </nav>
       )}

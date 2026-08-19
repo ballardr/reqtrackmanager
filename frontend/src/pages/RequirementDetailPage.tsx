@@ -23,15 +23,15 @@ import type {
 import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
+import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
-import { t } from "../i18n/strings";
-
-const strings = t();
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -45,9 +45,11 @@ const strings = t();
  * metadata about the requirement rather than its own governed content.
  */
 export function RequirementDetailPage() {
+  const strings = useStrings();
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const myRoles = useMyProjectRoles(projectId);
   const canArchive = myRoles.includes("project_manager") || myRoles.includes("project_administrator");
   const canEdit = canArchive || myRoles.includes("stakeholder");
@@ -77,6 +79,7 @@ export function RequirementDetailPage() {
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
   const [links, setLinks] = useState<RequirementLink[]>([]);
@@ -276,8 +279,14 @@ export function RequirementDetailPage() {
   }
 
   async function archive() {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
-    navigate(`/projects/${projectId}/requirements`);
+    setArchiveDialogOpen(false);
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
+      showToast(strings.requirements.archived);
+      navigate(`/projects/${projectId}/requirements`);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function markCompleted() {
@@ -368,12 +377,22 @@ export function RequirementDetailPage() {
             </button>
           )}
           {canArchive && (
-            <button className="btn btn-danger" onClick={archive}>
+            <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
               {strings.requirements.archive}
             </button>
           )}
         </div>
       </div>
+
+      {archiveDialogOpen && (
+        <ConfirmDialog
+          title={strings.requirements.archiveTitle}
+          message={strings.requirements.archiveConfirm}
+          confirmLabel={strings.requirements.archive}
+          onConfirm={archive}
+          onCancel={() => setArchiveDialogOpen(false)}
+        />
+      )}
 
       <div className="side-grid">
       <div className="stack">
@@ -618,7 +637,12 @@ export function RequirementDetailPage() {
                   {link.other_requirement_unique_code} — {link.other_requirement_name}
                 </Link>
               </span>
-              <button className="btn btn-danger" title={strings.requirements.removeLink} onClick={() => removeLink(link.id)}>
+              <button
+                className="btn btn-danger"
+                title={strings.requirements.removeLink}
+                aria-label={strings.requirements.removeLink}
+                onClick={() => removeLink(link.id)}
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -666,7 +690,12 @@ export function RequirementDetailPage() {
               <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
               <span className="badge">{REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}</span>
             </span>
-            <button className="btn btn-danger" title={strings.requirements.unlinkAction} onClick={() => unlinkAction(a.id)}>
+            <button
+              className="btn btn-danger"
+              title={strings.requirements.unlinkAction}
+              aria-label={strings.requirements.unlinkAction}
+              onClick={() => unlinkAction(a.id)}
+            >
               <Trash2 size={14} />
             </button>
           </div>

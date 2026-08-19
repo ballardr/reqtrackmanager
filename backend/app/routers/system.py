@@ -15,13 +15,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.deps import get_current_user
 from app.models.enums import SignupMode
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.user import User
@@ -37,9 +38,31 @@ from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
 from app.services.rbac import get_user_org_group_ids, require_server_admin
+from app.version import APP_VERSION, BUILD_DATE, GIT_SHA
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 settings = get_settings()
+
+
+class VersionOut(BaseModel):
+    """The running backend's own build identity — see `app.version`."""
+
+    version: str
+    git_sha: str
+    build_date: str
+
+
+@router.get("/version", response_model=VersionOut)
+def get_version(current_user: User = Depends(get_current_user)) -> VersionOut:
+    """Returns the running backend's semantic version, commit SHA, and
+    build timestamp, for display alongside the frontend's own (bundled at
+    build time) build identity — a way to confirm what's actually deployed
+    without shell access. Any authenticated user may call this; it's build
+    metadata, not data within an organisation, so no `require_server_admin`
+    gate (same reasoning as `/health`, just requiring a session since this
+    lives under `/api/v1` rather than being a bare infra probe).
+    """
+    return VersionOut(version=APP_VERSION, git_sha=GIT_SHA, build_date=BUILD_DATE)
 
 
 class ServerAdminUpdate(BaseModel):
@@ -135,15 +158,27 @@ def set_server_admin(
 
 @router.get("/users", response_model=list[SystemUserOut])
 def list_system_users(
+    response: Response,
     no_org_membership: bool | None = None,
     stale_since_days: int | None = Query(None, ge=0),
     is_active: bool | None = None,
     has_2fa: bool | None = None,
     is_server_admin: bool | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
     """System-wide user directory for the server-admin access review (C-A-13).
+
+    `limit`/`offset` (U-P-06) are optional, same contract as
+    `list_requirements`: omitting both returns every matching user,
+    unchanged from before pagination existed. When `limit` is given, the
+    total match count (before slicing) is returned in the `X-Total-Count`
+    response header. Slicing happens immediately after the filtered query,
+    before the per-user organisation/group name lookups below, so a
+    deployment with thousands of users doesn't pay for resolving names on
+    rows outside the requested page.
 
     `no_org_membership` is the requirement's literal "orphaned account"
     clarification: an enabled user who belongs to no organisation and
@@ -176,6 +211,9 @@ def list_system_users(
         query = query.where((User.last_login_at.is_(None)) | (User.last_login_at < cutoff))
 
     users = db.scalars(query).all()
+    response.headers["X-Total-Count"] = str(len(users))
+    if limit is not None:
+        users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:

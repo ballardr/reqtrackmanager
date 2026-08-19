@@ -95,6 +95,15 @@ def calculate_total(items: list[Item]) -> Decimal:
 - These policies document existing gaps candidly (e.g. no CI gate, no account lockout, plaintext OIDC client secret) rather than hiding them — do not treat a documented gap as license to introduce further, unrelated ones. If new work closes one of these gaps, update the corresponding policy's "Known Gaps / Exceptions" section and the control matrix's Status column to reflect it.
 - This section does not change the authority of [docs/requirements.md](docs/requirements.md), which remains the product requirements source of truth; the SOC 2 policies govern *how* changes are made, not *what* the product does.
 
+## Frontend UX Style Guide Adherence
+
+- [docs/ux-style-guide.md](docs/ux-style-guide.md) is binding on new and reworked frontend UI in this repository, not just descriptive — it is the direct output of a full UX audit ([docs/ux-audit-2026-08.md](docs/ux-audit-2026-08.md)) and states the rules the existing UI itself is being brought into line with.
+- Before adding a new settings surface, create/edit flow, confirmation dialog, or destructive action in the frontend, consult the style guide's principles and patterns (settings hierarchy depth model, platform-default override visibility, create-as-a-layer, one-component-per-pattern, confirmation tiers, feedback-on-every-mutation, accessible control naming) and follow them rather than copying the nearest existing inconsistent example — "what did the last screen near this one do" is explicitly the failure mode the style guide exists to stop.
+- Where a shared component the style guide calls for (`Tabs`, `SidePanel`, `Popover`, a two-tier confirm, `Toast`) does not exist yet, check [docs/ux-audit-2026-08.md](docs/ux-audit-2026-08.md)'s roadmap table first — it may already be scoped or in progress. Building a fifth one-off version of a pattern the style guide names is the exact debt this document was written to stop accruing (see that audit's "the newest feature already reproduces the pattern" finding).
+- More generally, UI elements should use common/shared components, not per-page reimplementations — this applies even to element shapes the style guide hasn't explicitly named yet. Before building a new piece of frontend UI, check whether an equivalent already exists elsewhere in the codebase (another page's form field group, list/table shape, badge, toggle, etc.). If it does but isn't set up as a shared component yet, extract it into one *and update the existing call site(s) to use it too* — landing the new page on a shared component while leaving the original page on its own bespoke copy just adds a second inconsistent implementation instead of removing the first one, and is the same failure mode as skipping this check entirely.
+- If a change must deviate from the style guide for a specific reason, say so explicitly to the user rather than silently diverging, and consider whether the style guide itself needs updating.
+- This does not change the authority of [docs/requirements.md](docs/requirements.md); the style guide governs UI *pattern/structure* choices, not product scope.
+
 ## Documentation and Decision Governance
 
 - The requirements document at [docs/requirements.md](docs/requirements.md) is fully authoritative and must not be changed by the agent. All decisions should be made in compliance with the requirements laid out in this document.
@@ -130,6 +139,7 @@ When making significant changes, update the README to include:
 - Every new piece of frontend UI (component or page) must also have Storybook coverage set up as part of the same change — no new frontend development is considered done without accompanying Storybook stories, in addition to the Playwright e2e requirement above.
 - Every backend change must come with a test that verifies the behaviour matches the request and pins it against future deviation/regression.
 - `backend/scripts/seed_demo_data.py` (a small, realistic manual-demo dataset) and `backend/scripts/seed_e2e_dataset.py` (the fixed persona/org/project dataset the Playwright suite is written against) must be kept in sync with the current schema and feature set. Whenever a change adds/renames/removes a model field, table, enum value, or a whole feature area, check whether either script needs a corresponding update — new fields should be populated with a sensible demo value rather than left at a default that hides the feature, and a removed/renamed field or relationship must not be left referencing something that no longer exists. Treat a script that fails to run, or that no longer demonstrates a feature it used to, as a bug the same as a failing test.
+- Tests (Playwright specs and backend pytest alike) must not depend on state left behind by another test, or by an earlier run of themselves, having already run — each test must pass whether it runs alone, first, last, or repeated back-to-back against the same database, not only as part of one specific full-suite ordering starting from a freshly seeded database. A spec that deletes/renames a named seed fixture (e.g. an action type called "Review") and then asserts that exact seeded name exists on a later run is non-idempotent — prefer creating and cleaning up the spec's own dynamically-named fixtures over mutating shared named seed data, or otherwise make the spec tolerant of already-mutated state. If you find a non-idempotent test while working on anything in this repo, fix it so it can be run standalone or out of order, per the general fix-don't-defer rule above — do not just note it and move on.
 
 ## Frontend Dependency Changes
 
@@ -147,6 +157,12 @@ When making significant changes, update the README to include:
 - Do not default to `isolation: "worktree"` when spawning implementation agents in this repo. Edit the working tree directly.
 - Only use `isolation: "worktree"` when there's a concrete reason: multiple agents genuinely running in parallel over the same files, or the user explicitly wants an easy-rollback branch for a risky change.
 - Sequential background agents (one implementation pass after another, even across separate `Agent` calls) do not need isolation — nothing else is touching the repo concurrently, so a worktree adds `git merge`/`git worktree remove` bookkeeping and more complex resume prompts (exact worktree paths) for no benefit.
+
+## Git Commits
+
+- Never run `git commit` in this repo as the agent, even when a fix is small, already verified, or clearly needed to unblock CI/a PR. Staging and diffing (`git add` to inspect, `git diff`, `git status`) is fine; creating the commit itself is not.
+- Finish the work, verify it, and hand it back described and ready to commit — the user commits it themselves. If the work is urgent (e.g. a failing PR check), say so and let them decide the timing, rather than committing to save a round trip.
+- This applies regardless of how confident the fix is or how many times committing has been fine before in this session — each commit is the user's call, every time, not something a prior "yes" in the conversation extends to.
 
 ## graphify
 

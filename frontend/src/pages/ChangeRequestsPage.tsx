@@ -30,10 +30,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
-import { useTerm, useTermPlural } from "../context/TerminologyContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings, useTerm } from "../context/TerminologyContext";
 
 const PAGE_SIZE = 30;
 
@@ -78,6 +75,7 @@ const BLANK_PROPOSED: ProposedFields = {
  * form looks like a normal create form.
  */
 export function ChangeRequestsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
@@ -102,7 +100,6 @@ export function ChangeRequestsPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const changeRequestTerm = useTerm("change_request");
-  const changeRequestsTerm = useTermPlural("change_request");
   const [viewMode, setViewMode] = useViewMode("change-requests");
   const [statusFilter, setStatusFilter] = useState<ChangeRequestStatus | "">("");
   const [targetStageFilter, setTargetStageFilter] = useState("");
@@ -462,9 +459,9 @@ export function ChangeRequestsPage() {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{changeRequestsTerm}</h1>
+        <h1 style={{ margin: 0 }}>{strings.changeRequests.title}</h1>
         <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={16} /> New {changeRequestTerm}
+          <Plus size={16} /> {strings.changeRequests.newChangeRequest}
         </button>
       </div>
 
@@ -674,7 +671,7 @@ export function ChangeRequestsPage() {
             </div>
           )}
           {crs && crs.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {crs.map((cr) => (
                 <div key={cr.id} className="card stack" style={{ gap: "0.5rem" }}>
                   <Link to={`/projects/${projectId}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>

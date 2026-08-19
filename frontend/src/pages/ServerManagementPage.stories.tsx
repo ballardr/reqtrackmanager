@@ -28,9 +28,12 @@ const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organ
 
 function mockServerManagementApis(users: SystemUser[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/system/users")) return users;
     if (path.includes("/system/branding")) return SERVER_SETTINGS;
     if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+    throw new Error(`unmocked path: ${path}`);
+  });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    if (path.includes("/system/users")) return { items: users, total: users.length };
     throw new Error(`unmocked path: ${path}`);
   });
 }
@@ -95,11 +98,42 @@ export const AccessReviewGrantServerAdmin: Story = {
   },
 };
 
+/** U-P-06 / 2026-08 UX audit "Scale: two unbounded lists" — the deployment's
+ * cross-org user directory previously fetched every matching user with no
+ * `limit`/`offset` at all. Clicking "Load more" requests the next page at
+ * the correct offset and appends its rows below the first page's. */
+export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/system/branding")) return SERVER_SETTINGS;
+      if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      const offset = Number(new URL(path, "http://x").searchParams.get("offset"));
+      if (offset === 0) return { items: [systemUser({ user_id: "u1", email: "first@example.com" })], total: 2 };
+      return { items: [systemUser({ user_id: "u2", email: "second@example.com" })], total: 2 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("first@example.com")).toBeInTheDocument());
+    const loadMore = canvas.getByRole("button", { name: /Load more/ });
+    await expect(loadMore).toBeInTheDocument();
+
+    await userEvent.click(loadMore);
+    await waitFor(() => expect(canvas.getByText("second@example.com")).toBeInTheDocument());
+    // The first page's row is still there — appended, not replaced.
+    await expect(canvas.getByText("first@example.com")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
+  },
+};
+
 export const PlatformBrandingTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByText(/default accent colour, logo/)).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Save platform branding" })).toBeInTheDocument();
   },
@@ -112,7 +146,7 @@ export const PlatformBrandingSave: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save platform branding" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save platform branding" }));
     await waitFor(() => expect(canvas.getByText("Saved.")).toBeInTheDocument());
@@ -126,7 +160,7 @@ export const PlatformBrandingEmailFooter: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
     // "Company name" also wraps a trailing hint <span>, so its accessible
     // name is longer than "Company name" alone — match by prefix.
     await waitFor(() => expect(canvas.getByLabelText(/^Company name/)).toHaveValue("ReqTrackManager"));
@@ -151,7 +185,7 @@ export const PlatformBrandingOrgLabel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByLabelText(/^Organisation label \(singular\)/)).toHaveValue(""));
     await userEvent.type(canvas.getByLabelText(/^Organisation label \(singular\)/), "tenant");
     await userEvent.type(canvas.getByLabelText(/^Organisation label \(plural\)/), "Tenants");
@@ -169,7 +203,7 @@ export const SignupModeTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Public sign-up" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Public sign-up" }));
     await waitFor(() => expect(canvas.getByLabelText("Sign-up mode")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Sign-up mode"), "org_specified");
     await expect(canvas.getByText(/Organisations opt in/)).toBeInTheDocument();
@@ -180,7 +214,7 @@ export const TestEmailTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
     await waitFor(() => expect(canvas.getByText(/deployment's configured SMTP settings/)).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
   },
@@ -193,7 +227,7 @@ export const TestEmailSendSuccess: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
     await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/system/test-email", {}));
     await expect(canvas.getByText(/Test email sent/)).toBeInTheDocument();
@@ -207,7 +241,7 @@ export const TestEmailSendFailure: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
     await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
     await waitFor(() => expect(canvas.getByText(/connection refused/)).toBeInTheDocument());
   },

@@ -48,12 +48,18 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("add component and category", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Categories" }).click();
+    // Categories now lives inside the merged "Structure" tab (2026-08 UX
+    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
+    // stages" section that also has its own "Name"-placeholder "add stage"
+    // field — scope to "Components & categories" specifically rather than
+    // relying on page-wide Name/Prefix queries.
+    await page.getByRole("tab", { name: "Structure" }).click();
+    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     // Component/category tree (C-G-07): with no components yet, the only
-    // Name/Prefix inputs on the page are the "add component" form's own.
-    await page.getByPlaceholder("Name").fill("Software");
-    await page.getByPlaceholder("Prefix").fill("SW");
-    await page.getByRole("button", { name: "New component" }).click();
+    // Name/Prefix inputs in this section are the "add component" form's own.
+    await componentsSection.getByPlaceholder("Name").fill("Software");
+    await componentsSection.getByPlaceholder("Prefix").fill("SW");
+    await componentsSection.getByRole("button", { name: "New component" }).click();
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
     // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
     // concurrently, then two more awaited *sequentially* afterwards
@@ -76,7 +82,16 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // component's own container (input -> row -> row -> the component's
     // own stack div, three levels up) so this can't cross-hit a sibling
     // form.
-    const softwareRow = page.locator('input[value="Software"]').locator("xpath=../../..");
+    // `:not([placeholder])`: the "add component" row's own Name field
+    // shares this same value transiently (not yet cleared) right after
+    // creating "Software", which — since Structure now shares one tab
+    // panel with Stages (2026-08 UX audit roadmap: 8 tabs -> 5) — would
+    // otherwise let the xpath ancestor climb below escape all the way up
+    // to that shared panel and pick up Stages' own "Name" field too, a
+    // real (if narrow-window) strict-mode violation. Only a genuine
+    // rename input for an existing row is ever placeholder-less (matches
+    // project-admin-structural.spec.ts's own established convention).
+    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
     await softwareRow.getByPlaceholder("Name").fill("Performance");
     await softwareRow.getByPlaceholder("Prefix").fill("PERF");
     await softwareRow.getByRole("button", { name: "New category" }).click();
@@ -86,6 +101,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("add requirement", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("SW-PERF-001")).toBeVisible();
@@ -93,7 +109,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Project stages" }).click();
+    // Project stages now lives inside the merged "Structure" tab.
+    await page.getByRole("tab", { name: "Structure" }).click();
     // A stage must enter review before it can be approved (C-R-05's
     // review-deadline/response workflow lives in that state) — approving
     // straight from scoping is no longer a valid transition.

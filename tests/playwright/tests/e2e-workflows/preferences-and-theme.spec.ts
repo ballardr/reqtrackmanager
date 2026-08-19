@@ -121,7 +121,7 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       });
 
       await page.goto("/preferences");
-      await page.getByRole("button", { name: "Your access" }).click();
+      await page.getByRole("tab", { name: "Your access" }).click();
       await expect(page.getByText(childName)).toBeVisible();
       await expect(page.getByText(parentName)).toBeVisible();
       await expect(page.getByText("(via a nested group)")).toBeVisible();

@@ -42,12 +42,18 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
   });
 
-  await test.step("add a component and category via the Categories admin tab", async () => {
+  await test.step("add a component and category via the Structure admin tab", async () => {
     await page.getByText("Project Admin").click();
-    await page.getByRole("button", { name: "Categories" }).click();
-    await page.getByPlaceholder("Name").first().fill("Web");
-    await page.getByPlaceholder("Prefix").first().fill("WEB");
-    await page.getByRole("button", { name: "New component" }).click();
+    // Categories now lives inside the merged "Structure" tab (2026-08 UX
+    // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
+    // stages" section that also has its own "Name"-placeholder "add stage"
+    // field (which would otherwise be `.first()` and silently win) — scope
+    // to "Components & categories" specifically.
+    await page.getByRole("tab", { name: "Structure" }).click();
+    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
+    await componentsSection.getByPlaceholder("Name").first().fill("Web");
+    await componentsSection.getByPlaceholder("Prefix").first().fill("WEB");
+    await componentsSection.getByRole("button", { name: "New component" }).click();
     // Wait for "Web" (and its own, now-rendered nested "add category" form)
     // before filling it — otherwise the fill can race ahead of the reload
     // and land on the wrong (not-yet-replaced) form.
@@ -68,7 +74,12 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // standalone "add component" form exist — scope explicitly to "Web"'s
     // own container (input -> row -> row -> the component's own stack
     // div, three levels up) so this can't cross-hit the wrong form.
-    const webRow = page.locator('input[value="Web"]').locator("xpath=../../..");
+    // `:not([placeholder])`: the "add component" row's own Name field
+    // shares this same value transiently (not yet cleared) right after
+    // creating "Web" — see golden-path.spec.ts's identical guard for the
+    // full reasoning (Structure now shares one tab panel with Stages,
+    // 2026-08 UX audit roadmap: 8 tabs -> 5).
+    const webRow = page.locator('input[value="Web"]:not([placeholder])').locator("xpath=../../..");
     await webRow.getByPlaceholder("Name").fill("Functional");
     await webRow.getByPlaceholder("Prefix").fill("FN");
     await webRow.getByRole("button", { name: "New category" }).click();
@@ -78,6 +89,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("create a requirement and open its card from the card-based list", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Users can export their data");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("WEB-FN-001")).toBeVisible();

@@ -4,12 +4,12 @@ import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { Organization, OrgImportResult } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
+import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
-import { t } from "../i18n/strings";
-
-const strings = t();
+import { useStrings } from "../context/TerminologyContext";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -28,6 +28,7 @@ const strings = t();
 type StatusFilter = "active" | "disabled" | "all";
 
 export function ServerOrganisationsPage() {
+  const strings = useStrings();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
@@ -44,7 +45,6 @@ export function ServerOrganisationsPage() {
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   async function reload() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
@@ -101,21 +101,18 @@ export function ServerOrganisationsPage() {
 
   function startDelete(org: Organization) {
     setActionError(null);
-    setDeleteConfirmText("");
     setDeletingOrgId(org.id);
   }
 
   function cancelDelete() {
     setDeletingOrgId(null);
-    setDeleteConfirmText("");
   }
 
   async function confirmDelete(org: Organization) {
     await runAction(async () => {
-      await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: deleteConfirmText });
+      await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: org.name });
     });
     setDeletingOrgId(null);
-    setDeleteConfirmText("");
   }
 
   if (!orgs) return <Spinner />;
@@ -133,25 +130,6 @@ export function ServerOrganisationsPage() {
         <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
         <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
           <Plus size={16} /> New {orgLabel}
-        </button>
-      </div>
-
-      <div className="row">
-        <input
-          className="input"
-          style={{ maxWidth: 280 }}
-          placeholder={strings.serverOrgs.search(orgLabelPlural)}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className={`btn ${statusFilter === "active" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("active")}>
-          {strings.serverOrgs.active}
-        </button>
-        <button className={`btn ${statusFilter === "disabled" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("disabled")}>
-          {strings.serverOrgs.disabled}
-        </button>
-        <button className={`btn ${statusFilter === "all" ? "btn-primary" : ""}`} onClick={() => setStatusFilter("all")}>
-          {strings.serverOrgs.filterAll}
         </button>
       </div>
 
@@ -190,61 +168,84 @@ export function ServerOrganisationsPage() {
 
       {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
 
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {filteredOrgs.map((o) => (
-              <tr key={o.id}>
-                <td>{o.name}</td>
-                <td>
-                  {o.is_active ? (
-                    <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-                      {strings.serverOrgs.active}
-                    </FilterBadge>
-                  ) : (
-                    <FilterBadge
-                      active={statusFilter === "disabled"}
-                      onClick={() => setStatusFilter("disabled")}
-                      style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-                    >
-                      {strings.serverOrgs.disabled}
-                    </FilterBadge>
-                  )}
-                </td>
-                <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
-                <td>
-                  <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
-                    <Link to={`/orgs/${o.id}/admin`} className="btn">
-                      Edit
-                    </Link>
-                    {o.is_active ? (
-                      <button className="btn" onClick={() => disableOrg(o)}>
-                        {strings.serverOrgs.disable}
-                      </button>
-                    ) : (
-                      <button className="btn" onClick={() => enableOrg(o)}>
-                        {strings.serverOrgs.enable}
-                      </button>
-                    )}
-                    <button className="btn btn-danger" onClick={() => startDelete(o)}>
-                      {strings.serverOrgs.delete}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
-        {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
+      <div className="side-grid">
+        <div className="stack">
+          <input
+            className="input"
+            style={{ maxWidth: 280 }}
+            placeholder={strings.serverOrgs.search(orgLabelPlural)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrgs.map((o) => (
+                  <tr key={o.id}>
+                    <td>{o.name}</td>
+                    <td>
+                      {o.is_active ? (
+                        <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+                          {strings.serverOrgs.active}
+                        </FilterBadge>
+                      ) : (
+                        <FilterBadge
+                          active={statusFilter === "disabled"}
+                          onClick={() => setStatusFilter("disabled")}
+                          style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                        >
+                          {strings.serverOrgs.disabled}
+                        </FilterBadge>
+                      )}
+                    </td>
+                    <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
+                        <Link to={`/orgs/${o.id}/admin`} className="btn">
+                          Edit
+                        </Link>
+                        {o.is_active ? (
+                          <button className="btn" onClick={() => disableOrg(o)}>
+                            {strings.serverOrgs.disable}
+                          </button>
+                        ) : (
+                          <button className="btn" onClick={() => enableOrg(o)}>
+                            {strings.serverOrgs.enable}
+                          </button>
+                        )}
+                        <button className="btn btn-danger" onClick={() => startDelete(o)}>
+                          {strings.serverOrgs.delete}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
+            {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
+          </div>
+        </div>
+
+        <FilterPanel>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterField label="Status">
+            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+              <option value="active">{strings.serverOrgs.active}</option>
+              <option value="disabled">{strings.serverOrgs.disabled}</option>
+              <option value="all">{strings.serverOrgs.filterAll}</option>
+            </select>
+          </FilterField>
+        </FilterPanel>
       </div>
 
       {deletingOrgId &&
@@ -252,28 +253,14 @@ export function ServerOrganisationsPage() {
           const org = orgs.find((o) => o.id === deletingOrgId);
           if (!org) return null;
           return (
-            <div className="card stack" style={{ borderColor: "var(--color-danger)" }}>
-              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.deleteTitle(orgLabel)}</h2>
-              <p className="text-muted">{strings.serverOrgs.deleteHint(org.name, orgLabel)}</p>
-              <input
-                className="input"
-                placeholder={org.name}
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-              />
-              <div className="row">
-                <button
-                  className="btn btn-danger"
-                  onClick={() => confirmDelete(org)}
-                  disabled={deleteConfirmText !== org.name}
-                >
-                  {strings.serverOrgs.deleteConfirmButton}
-                </button>
-                <button className="btn" onClick={cancelDelete}>
-                  {strings.common.cancel}
-                </button>
-              </div>
-            </div>
+            <ConfirmDialog
+              title={strings.serverOrgs.deleteTitle(orgLabel)}
+              message={strings.serverOrgs.deleteHint(org.name, orgLabel)}
+              confirmLabel={strings.serverOrgs.deleteConfirmButton}
+              requireTypedText={org.name}
+              onConfirm={() => confirmDelete(org)}
+              onCancel={cancelDelete}
+            />
           );
         })()}
     </div>

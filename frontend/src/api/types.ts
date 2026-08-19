@@ -65,10 +65,6 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   project_creator: "Project creator",
   member: "Member",
 };
-export const CUSTOM_FIELD_ENTITY_KIND_LABEL: Record<CustomFieldEntityKind, string> = {
-  requirement: "Requirement",
-  change_request: "Change request",
-};
 export const CUSTOM_FIELD_TYPE_LABEL: Record<CustomFieldType, string> = {
   short_text: "Short text",
   long_text: "Long text",
@@ -540,6 +536,10 @@ export interface RequirementReview {
 export interface RequirementDueForReview {
   requirement_id: string;
   project_id: string;
+  // Only populated by the cross-project `/me/reviews/due` listing
+  // (`MyReviewsDuePage`) — its project-scoped sibling has the project in
+  // context already (it's in the URL) and never sets this.
+  project_name?: string | null;
   unique_code: string;
   name: string;
   review_date: string;
@@ -948,4 +948,11 @@ export interface OrgLoginInfo {
   login_background_file_id: string | null;
   sso_enabled: boolean;
   sso_only: boolean;
+}
+
+/** The running backend's own build identity — `GET /api/v1/system/version`. */
+export interface SystemVersion {
+  version: string;
+  git_sha: string;
+  build_date: string;
 }
