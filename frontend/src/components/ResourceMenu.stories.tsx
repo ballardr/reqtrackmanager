@@ -19,7 +19,7 @@ function Demo() {
   const { group } = useParams<{ group?: string }>();
   const active = GROUPS.find((g) => g.key === group)?.key ?? "overview";
   return (
-    <ResourceMenu ariaLabel="Demo sections" groups={GROUPS} active={active}>
+    <ResourceMenu title="Acme Corp" subtitle="Organisation admin" ariaLabel="Demo sections" groups={GROUPS} active={active}>
       {active === "overview" && <div className="card">Overview panel</div>}
       {active === "people" && <div className="card">People panel</div>}
       {active === "settings" && <div className="card">Settings panel</div>}
@@ -99,6 +99,24 @@ export const ArrowKeysNavigateAndActivate: Story = {
 
     await userEvent.keyboard("{Home}");
     await expect(overviewLink).toHaveFocus();
+  },
+};
+
+/** The `title`/`subtitle` (the entity actually being administered) render
+ * once, above the menu+content grid, and — unlike the per-group content
+ * panels — stay in the document across a group switch, since they're not
+ * part of any one group's own content. Regression coverage for the org/
+ * project admin pages having no visible indication of which org/project
+ * was being edited (2026-08 UX audit follow-up). */
+export const ShowsTitleAndSubtitle: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { level: 1, name: "Acme Corp" })).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation admin")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await expect(canvas.getByRole("heading", { level: 1, name: "Acme Corp" })).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation admin")).toBeInTheDocument();
   },
 };
 

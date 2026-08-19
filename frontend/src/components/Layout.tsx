@@ -3,12 +3,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
-import type { ProjectListItem } from "../api/types";
+import type { ProjectListItem, SystemVersion } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
+import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
 
@@ -79,11 +80,17 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
   const [hasFavourites, setHasFavourites] = useState(false);
+  const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
 
   const onFavouritableRoute = location.pathname === "/projects" || location.pathname === "/favourites";
+
+  useEffect(() => {
+    if (!user) return;
+    api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -194,6 +201,25 @@ function LayoutShell({ children }: { children: ReactNode }) {
               <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railCollapsed} />
             </>
+          )}
+          {/* Build identity — "a way to see the version and date of the
+              frontend and backend in the UI" (2026-08 UX audit follow-up).
+              Pinned to the bottom of the rail via `marginTop: auto` on the
+              flex-column `<nav>`; hidden in icon-only mode rather than
+              squeezed into it, same as every other rail label. The sha/date
+              detail lives in `title` (plain hover text, not the shared
+              `Tooltip`) since this is supplementary static text, not an
+              interactive control needing an accessible name. */}
+          {!railCollapsed && (
+            <div
+              className="text-muted"
+              style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
+            >
+              <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
+              <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
+                {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
+              </div>
+            </div>
           )}
         </nav>
       )}

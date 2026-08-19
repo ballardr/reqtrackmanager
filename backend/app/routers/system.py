@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.deps import get_current_user
 from app.models.enums import SignupMode
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.user import User
@@ -37,9 +38,31 @@ from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
 from app.services.rbac import get_user_org_group_ids, require_server_admin
+from app.version import APP_VERSION, BUILD_DATE, GIT_SHA
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 settings = get_settings()
+
+
+class VersionOut(BaseModel):
+    """The running backend's own build identity — see `app.version`."""
+
+    version: str
+    git_sha: str
+    build_date: str
+
+
+@router.get("/version", response_model=VersionOut)
+def get_version(current_user: User = Depends(get_current_user)) -> VersionOut:
+    """Returns the running backend's semantic version, commit SHA, and
+    build timestamp, for display alongside the frontend's own (bundled at
+    build time) build identity — a way to confirm what's actually deployed
+    without shell access. Any authenticated user may call this; it's build
+    metadata, not data within an organisation, so no `require_server_admin`
+    gate (same reasoning as `/health`, just requiring a session since this
+    lives under `/api/v1` rather than being a bare infra probe).
+    """
+    return VersionOut(version=APP_VERSION, git_sha=GIT_SHA, build_date=BUILD_DATE)
 
 
 class ServerAdminUpdate(BaseModel):

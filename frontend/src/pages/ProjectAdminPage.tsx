@@ -503,7 +503,10 @@ export function ProjectAdminPage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.nav.admin}</h1>
+      <div className="stack" style={{ gap: "0.15rem" }}>
+        <h1 style={{ margin: 0 }}>{project.name}</h1>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
+      </div>
 
       <Tabs idPrefix="project-admin-tabs" tabs={tabs} active={tab} onChange={setTab} />
 

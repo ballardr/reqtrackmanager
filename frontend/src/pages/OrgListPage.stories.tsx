@@ -25,10 +25,22 @@ export default meta;
 
 type Story = StoryObj<typeof OrgListPage>;
 
+// `mine=true` is asserted, not just supplied, in every story below (the
+// mock only returns data for that exact path): `OrgListPage` backs the nav
+// rail's "My organisations" link, a *personal* membership list, not the
+// server-admin platform-wide directory `GET /orgs` (no `mine`) returns —
+// a regression back to the bare path would leave these mocks unmatched and
+// the assertions below failing, rather than silently passing against the
+// wrong endpoint.
 export const MultipleOrganisations: Story = {
   decorators: [withRouter("/orgs")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })]);
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") {
+        return [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })];
+      }
+      throw new Error(`Unexpected api.get(${path})`);
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -52,7 +64,10 @@ const withOrgsAndAdminRoutes: Decorator = (Story) => (
 export const SingleOrganisationRedirects: Story = {
   decorators: [withOrgsAndAdminRoutes],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp" })]);
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [org({ id: "org-1", name: "Acme Corp" })];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -63,7 +78,10 @@ export const SingleOrganisationRedirects: Story = {
 export const NoOrganisations: Story = {
   decorators: [withRouter("/orgs")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([]);
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

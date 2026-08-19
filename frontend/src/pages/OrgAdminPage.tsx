@@ -1030,12 +1030,22 @@ export function OrgAdminPage() {
 
   return (
     <div className="stack">
-      <ResourceMenu ariaLabel={strings.orgAdmin.sectionsNav} groups={orgAdminGroups} active={activeGroup}>
+      <ResourceMenu
+        title={org.name}
+        subtitle={strings.orgAdmin.adminSubtitle(orgLabelCap)}
+        ariaLabel={strings.orgAdmin.sectionsNav}
+        groups={orgAdminGroups}
+        active={activeGroup}
+      >
         {activeGroup === "overview" && (
           <div className="stack">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="stack" style={{ gap: "0.35rem" }}>
-                <h1 style={{ margin: 0 }}>{org.name}</h1>
+                {/* Org name is now shown once, universally, as `ResourceMenu`'s
+                    own title above every group — repeating it here as a
+                    second <h1> (previously the only place it appeared at
+                    all — every other group had no page title whatsoever)
+                    would just duplicate that same text on this one group. */}
                 {advanced && (
                   <div className="row" style={{ gap: "0.4rem" }}>
                     <input

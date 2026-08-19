@@ -565,6 +565,14 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v3
 
+      # Feeds both images' APP_VERSION/GIT_SHA/BUILD_DATE build args below —
+      # otherwise GitVersion's SemVer only ever lived in the image *tag*,
+      # with no way for a running instance to report its own build identity
+      # (GET /api/v1/system/version, the nav rail's version footer).
+      - name: Determine build date
+        id: builddate
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to ghcr.io
@@ -580,6 +588,10 @@ jobs:
         with:
           context: ./backend
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.date }}
           tags: |
             ghcr.io/${{ github.repository }}-backend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
@@ -590,6 +602,10 @@ jobs:
         with:
           context: ./frontend
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.date }}
           tags: |
             ghcr.io/${{ github.repository }}-frontend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}

@@ -2,10 +2,12 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { Organization, Project, ProjectListItem, ServerSettings } from "../api/types";
+import type { Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
 import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
+
+const BACKEND_VERSION: SystemVersion = { version: "1.4.0", git_sha: "abc1234", build_date: "2026-08-15T09:00:00Z" };
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569",
@@ -41,6 +43,7 @@ function mockLayoutApis() {
     if (path === `/api/v1/orgs/${ORG.id}`) return ORG;
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
+    if (path === "/api/v1/system/version") return BACKEND_VERSION;
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
 }
@@ -106,6 +109,27 @@ export const ServerAdmin: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Administration")).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /Server management/ })).toBeInTheDocument();
+  },
+};
+
+/** The nav rail's build-identity footer (2026-08 UX audit follow-up: "a
+ * way to see the version and date of the frontend and backend in the
+ * UI") — the frontend's own build constants (unset in a Storybook build,
+ * so `version.ts`'s documented "dev"/"unknown" fallback applies) plus the
+ * backend's, fetched from `GET /api/v1/system/version` and rendered once
+ * it resolves. Hidden entirely when the rail is collapsed to icons-only,
+ * same as every other rail label — not asserted here since that's
+ * `useUiPreference`'s own default-false state, exercised by the collapse
+ * button elsewhere, not this story's concern. */
+export const ShowsVersionFooter: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("App vdev")).toBeInTheDocument();
+    await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
   },
 };
 

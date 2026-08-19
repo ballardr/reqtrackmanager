@@ -20,7 +20,11 @@ export function OrgListPage() {
   const orgLabelPlural = useOrgLabelPlural();
 
   useEffect(() => {
-    api.get<Organization[]>("/api/v1/orgs").then(setOrgs);
+    // `mine=true`: this is the personal "orgs I belong to" list (nav rail's
+    // "My organisations"), not the server-admin platform directory — a
+    // server admin with no real membership anywhere must see it empty like
+    // anyone else, per `orgs.py::list_organizations`'s doc comment.
+    api.get<Organization[]>("/api/v1/orgs?mine=true").then(setOrgs);
   }, []);
 
   if (!orgs) return <Spinner />;

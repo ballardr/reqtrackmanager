@@ -949,3 +949,10 @@ export interface OrgLoginInfo {
   sso_enabled: boolean;
   sso_only: boolean;
 }
+
+/** The running backend's own build identity — `GET /api/v1/system/version`. */
+export interface SystemVersion {
+  version: string;
+  git_sha: string;
+  build_date: string;
+}
