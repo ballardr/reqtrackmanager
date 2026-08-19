@@ -66,6 +66,9 @@ from app.schemas.org import (
     ReportTemplateOut,
     ScimTokenCreatedOut,
     ScimTokenStatusOut,
+    UserAccessGroupRef,
+    UserAccessOut,
+    UserAccessProject,
 )
 from app.schemas.pat import BulkRevokeResult, OrgPersonalAccessTokenOut
 from app.schemas.project import MoveDirection
@@ -92,6 +95,7 @@ from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
     can_manage_project_settings,
     get_effective_org_roles,
+    get_effective_project_roles,
     get_project_managers,
     require_org_admin_or_server_admin,
     require_org_role,
@@ -513,12 +517,16 @@ def create_org_user(
 @router.get("/{organization_id}/users", response_model=list[OrgUserOut])
 def list_org_users(
     organization_id: UUID,
+    response: Response,
     stale_since_days: int | None = Query(None, ge=0),
     never_logged_in: bool | None = None,
     has_2fa: bool | None = None,
     org_role: OrgRole | None = None,
     has_project_access: bool | None = None,
     is_active: bool | None = None,
+    search: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
@@ -535,6 +543,15 @@ def list_org_users(
     (existing behavior), but supplying any filter requires org-admin,
     scoped to *this* organisation via `organization_id` (not "an org admin
     somewhere else" — same pattern as every other org-scoped admin check).
+
+    `search` (name/email substring, case-insensitive) and `limit`/`offset`
+    (U-P-06, 2026-08 UX audit "Directories at scale") are open to any
+    caller who can already reach this endpoint at all — they narrow the
+    same directory a plain member can browse, not an access-review signal,
+    so they don't require org-admin the way the filters above do. As with
+    `list_requirements`, omitting `limit` returns every match unpaginated
+    (unchanged from before pagination existed); when given, the total
+    match count before slicing is returned via `X-Total-Count`.
     """
     filters_requested = any(
         v is not None for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active)
@@ -583,7 +600,68 @@ def list_org_users(
     if has_project_access is not None:
         access_ids = _org_users_with_project_access(db, organization_id)
         results = [r for r in results if (r.user_id in access_ids) == has_project_access]
+    if search:
+        needle = search.lower()
+        results = [r for r in results if needle in r.display_name.lower() or needle in r.email.lower()]
+    results.sort(key=lambda r: r.display_name.lower())
+
+    response.headers["X-Total-Count"] = str(len(results))
+    if limit is not None:
+        results = results[offset:offset + limit]
     return results
+
+
+@router.get("/{organization_id}/users/{user_id}/access", response_model=UserAccessOut)
+def get_user_access(
+    organization_id: UUID,
+    user_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """One user's access within this organisation (2026-08 UX audit, sixth
+    pass: "No way to view a user's access") — every project in the org
+    where the user holds at least one effective role, that role set, which
+    of the project's own groups they're a direct member of, and which org
+    groups they directly belong to.
+
+    Computed server-side via the existing `get_effective_project_roles`
+    (direct assignment, direct/nested project-group membership, or
+    org-wide project visibility — the same resolution every permission
+    check in the app already relies on) rather than re-derived per project
+    on the frontend, both for correctness (one algorithm, not two) and to
+    avoid an N-project fan-out of round trips from the client.
+    """
+    if db.get(User, user_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+
+    org_group_rows = db.execute(
+        select(OrgGroup.id, OrgGroup.name)
+        .join(OrgGroupMember, OrgGroupMember.org_group_id == OrgGroup.id)
+        .where(OrgGroup.organization_id == organization_id, OrgGroupMember.user_id == user_id)
+        .order_by(OrgGroup.name)
+    ).all()
+    org_groups = [UserAccessGroupRef(id=row.id, name=row.name) for row in org_group_rows]
+
+    projects: list[UserAccessProject] = []
+    for project in db.scalars(
+        select(Project).where(Project.organization_id == organization_id).order_by(Project.name)
+    ).all():
+        roles = get_effective_project_roles(db, user_id, project.id)
+        if not roles:
+            continue
+        project_group_rows = db.execute(
+            select(ProjectGroup.id, ProjectGroup.name)
+            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+            .where(ProjectGroup.project_id == project.id, ProjectGroupMember.user_id == user_id)
+            .order_by(ProjectGroup.name)
+        ).all()
+        projects.append(UserAccessProject(
+            project_id=project.id, project_name=project.name,
+            roles=sorted(roles, key=lambda r: r.value),
+            project_groups=[UserAccessGroupRef(id=row.id, name=row.name) for row in project_group_rows],
+        ))
+
+    return UserAccessOut(org_groups=org_groups, projects=projects)
 
 
 _EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -1078,10 +1156,33 @@ def list_org_projects(
 @router.get("/{organization_id}/groups", response_model=list[OrgGroupOut])
 def list_org_groups(
     organization_id: UUID,
+    response: Response,
+    search: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    groups = db.scalars(select(OrgGroup).where(OrgGroup.organization_id == organization_id)).all()
+    """Lists an organisation's groups, each with its resolved member/nested-
+    group id lists.
+
+    `search` (name substring, case-insensitive) and `limit`/`offset`
+    (U-P-06, 2026-08 UX audit "Directories at scale") are optional — same
+    contract as `list_org_users`/`list_requirements`: omitting `limit`
+    returns every group unpaginated (existing callers, e.g. Project Admin's
+    own org-group nesting picker, rely on exactly this to keep working
+    unchanged), and when given, the pre-slice total is returned via
+    `X-Total-Count`.
+    """
+    query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
+    if search:
+        query = query.where(OrgGroup.name.ilike(f"%{search}%"))
+    groups = db.scalars(query.order_by(OrgGroup.name)).all()
+
+    response.headers["X-Total-Count"] = str(len(groups))
+    if limit is not None:
+        groups = groups[offset:offset + limit]
+
     out = []
     for g in groups:
         member_ids = db.scalars(

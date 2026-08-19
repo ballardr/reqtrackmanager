@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openGroupCard, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: per-project custom fields of all four types (C-C-01,
@@ -86,9 +86,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("add and remove a project group member", async () => {
       await page.getByRole("tab", { name: "Project groups" }).click();
-      // Default project groups are created in a fixed order — Project
-      // Managers, Project Administrators, Stakeholders, Members — so the
-      // "Members" group's own add-member input is reliably the last one.
+      // Groups now render collapsed by default (2026-08 UX audit
+      // "Directories at scale") — expand "Members" specifically before its
+      // own add-member input is reachable at all.
+      await openGroupCard(page, "Members");
       await page.getByPlaceholder("Type a name to add, or an email to invite…").last().fill(PERSONAS.memberAlphaBeta.name);
       await page.getByText(PERSONAS.memberAlphaBeta.email).click();
       await expect(page.getByText(PERSONAS.memberAlphaBeta.name)).toBeVisible();
@@ -118,6 +119,11 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.reload();
 
       await page.getByRole("tab", { name: "Project groups" }).click();
+      // Groups render collapsed by default — "Members" was expanded in the
+      // step above, but that expand state is per-user/per-group and the
+      // page was just reloaded, so re-assert it idempotently rather than
+      // assume it survived (`openGroupCard` only clicks if collapsed).
+      await openGroupCard(page, "Members");
       // Default project groups are created in a fixed order — Project
       // Managers, Project Administrators, Stakeholders, Members — so the
       // "Members" group's own org-group picker is reliably the last one
