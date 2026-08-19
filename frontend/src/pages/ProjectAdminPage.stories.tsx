@@ -49,6 +49,13 @@ function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[];
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
+  // The Groups tab's own group list paginates/searches (2026-08 UX audit
+  // "Directories at scale") — org-group nesting still reads from the
+  // plain `api.get` mock above, unchanged.
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    if (path.includes("/groups")) return { items: groups, total: groups.length };
+    throw new Error(`unmocked getPage path: ${path}`);
+  });
 }
 
 const meta: Meta<typeof ProjectAdminPage> = {
@@ -309,8 +316,11 @@ export const GroupsTabAddMember: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
-    await expect(canvas.getByText("Stakeholder")).toBeInTheDocument();
+    // Group name/role/member-count are now one combined title on a
+    // `CollapsibleSection`, collapsed by default (2026-08 UX audit
+    // "Directories at scale") — the title text alone proves both are
+    // shown, no separate role-badge assertion or expansion needed here.
+    await waitFor(() => expect(canvas.getByText(/Stakeholders \(Stakeholder,/)).toBeInTheDocument());
   },
 };
 
@@ -322,7 +332,10 @@ export const GroupsTabAddOrgGroup: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByText("Stakeholders")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText(/Stakeholders/)).toBeInTheDocument());
+    // Groups render collapsed by default — expand Stakeholders' own
+    // section before its org-group nesting picker becomes visible.
+    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
     // `getAllByRole` + a tag filter: `UserAutocomplete`'s own text input in
     // the same tab is also `role="combobox"` (WAI-ARIA combobox pattern),
     // so a bare `getByRole("combobox")` is ambiguous here.

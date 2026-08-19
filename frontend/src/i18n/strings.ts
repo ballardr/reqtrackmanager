@@ -333,6 +333,7 @@ const en = {
     componentTreeHint: "{Categories} are nested under one {component} each. A {requirement}'s identifier combines its {component}'s and {category}'s prefixes, e.g. SW-PERF-014.",
     categories: "{Categories}",
     groups: "{Project} groups",
+    searchGroups: "Search by name",
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Reviewers",
     groupRole: "Role",
@@ -481,7 +482,9 @@ const en = {
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
     newUser: "New user",
+    searchUsers: "Search by name or email",
     groups: (orgCap: string) => `${orgCap} groups`,
+    searchGroups: "Search by name",
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
@@ -494,6 +497,13 @@ const en = {
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
     lockDisplayName: "Lock display name",
     unlockDisplayName: "Unlock display name",
+    viewAccess: (name: string) => `View ${name}'s access`,
+    userAccessTitle: (name: string) => `${name}'s access`,
+    userAccessOrgGroups: (orgCap: string) => `${orgCap} groups`,
+    userAccessNoOrgGroups: (org: string) => `Not a member of any ${org} group.`,
+    userAccessProjects: "Projects",
+    userAccessNoProjects: "No access to any project in this organisation.",
+    userAccessProjectGroups: "Via project group(s)",
     // The old "Advanced settings" catch-all doesn't survive the resource-
     // menu regrouping as one item — its settings domains split by what
     // they actually govern (style guide "Pattern: settings hierarchy"):

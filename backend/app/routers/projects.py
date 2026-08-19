@@ -1306,8 +1306,33 @@ def create_project_group(
 
 
 @router.get("/{project_id}/groups", response_model=list[ProjectGroupOut])
-def list_project_groups(project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db)):
-    groups = db.scalars(select(ProjectGroup).where(ProjectGroup.project_id == project_id)).all()
+def list_project_groups(
+    project_id: UUID,
+    response: Response,
+    search: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists a project's groups, each with its resolved member/nested-org-
+    group id lists.
+
+    `search` (name substring, case-insensitive) and `limit`/`offset`
+    (U-P-06, 2026-08 UX audit "Directories at scale") are optional, same
+    contract as `list_org_groups`: omitting `limit` returns every group
+    unpaginated, and the pre-slice total is returned via `X-Total-Count`
+    when given.
+    """
+    query = select(ProjectGroup).where(ProjectGroup.project_id == project_id)
+    if search:
+        query = query.where(ProjectGroup.name.ilike(f"%{search}%"))
+    groups = db.scalars(query.order_by(ProjectGroup.name)).all()
+
+    response.headers["X-Total-Count"] = str(len(groups))
+    if limit is not None:
+        groups = groups[offset:offset + limit]
+
     out = []
     for g in groups:
         members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == g.id)).all()

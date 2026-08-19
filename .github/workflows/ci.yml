@@ -47,6 +47,25 @@ jobs:
   frontend:
     name: Frontend lint, build & test
     runs-on: ubuntu-latest
+    # 2026-08-19: running this job inside Playwright's own image instead of
+    # bare `ubuntu-latest` + `playwright install --with-deps` (see the
+    # deleted "Install Playwright browsers" step this replaced, and its
+    # backend-and-e2e counterpart) — that install step ran `apt-get` on the
+    # runner for Chromium's OS deps, which stalled inside `apt-get update`
+    # against a flaky archive.ubuntu.com/security.ubuntu.com mirror twice in
+    # one day (PR #9, then this same job again on PR #10; see
+    # docs/decisions.md). This image ships Chromium and every OS dep
+    # preinstalled, so there's no `apt-get` in the job at all — the stall
+    # can't recur, not just fail faster.
+    #
+    # The tag's version MUST match frontend/package-lock.json's resolved
+    # `playwright` version exactly (Playwright requires the npm package and
+    # browser build to be the same release) — bump this tag in the same
+    # change as any `playwright` version bump, the same way Node's version is
+    # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
+    # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
     # Normal runs finish in ~2 minutes; this is headroom, not an expected
     # ceiling — see backend-and-e2e's timeout-minutes comment for why every
     # job/step here now has one.
@@ -78,32 +97,10 @@ jobs:
         run: npm run build
 
       # test-storybook (vite.config.ts) runs every Storybook story as a real
-      # Chromium test via Vitest's browser mode — needs its own Playwright
-      # browser install, independent of tests/playwright's.
+      # Chromium test via Vitest's browser mode. No separate browser-install
+      # step needed: the job container (see `container:` above) already has
+      # a matching Chromium build baked in.
       #
-      # Cached on the frontend/package-lock.json hash (which pins the
-      # `playwright` version) so a cache hit skips re-downloading the ~300MB
-      # Chromium binary on every run — `playwright install --with-deps` is
-      # idempotent and no-ops the download when it finds a matching browser
-      # already in this path, but still runs `apt-get install` for the OS
-      # deps either way, which is what the timeout below guards against.
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
-
-      # 2026-08-19: this step hung 18+ minutes with zero output, stalled
-      # inside `apt-get update` fetching package indices from
-      # archive.ubuntu.com/security.ubuntu.com — a known flaky-mirror issue
-      # on GitHub-hosted Ubuntu runners, unrelated to this repo's code. There
-      # was no timeout anywhere in this workflow, so it sat until manually
-      # cancelled instead of failing fast. 5 minutes is generous headroom
-      # over the <1 minute this step normally takes.
-      - name: Install Playwright browsers
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
-
       # `timeout` + the JUnit check below work around a real @vitest/browser
       # + Playwright-provider quirk (reproduced locally via `act`, not
       # specific to this container): the process can finish the actual run
@@ -203,10 +200,12 @@ jobs:
     runs-on: ubuntu-latest
     # Normal runs finish in ~15-20 minutes (docker build + pytest + ruff x2
     # + mcp-server tests + full Playwright suite). Without a ceiling here a
-    # stalled step (see the "Install Playwright browsers" step's comment for
-    # a real instance of this: an 18-minute apt-get mirror hang with no
-    # output) just sits until someone notices and cancels it manually,
-    # instead of failing the run automatically.
+    # stalled step (see docs/decisions.md for a real instance of this: an
+    # 18-minute apt-get mirror hang with no output, in what was then this
+    # job's "Install Playwright browsers" step before it moved into a Docker
+    # image — see "Run Playwright E2E suite" below) just sits until someone
+    # notices and cancels it manually, instead of failing the run
+    # automatically.
     timeout-minutes: 45
     permissions:
       # checks: write is for the "Publish backend test results" step below
@@ -376,32 +375,42 @@ jobs:
         working-directory: tests/container
         run: docker compose exec -T mcp-server python -m pytest -q
 
-      # Cached on tests/playwright/package-lock.json's hash (which pins
-      # @playwright/test) — same reasoning as the frontend job's identical
-      # step: skips re-downloading the Chromium binary on a cache hit, while
-      # `apt-get install` for OS deps still runs either way.
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('tests/playwright/package-lock.json') }}
-
-      # See this same step's comment in the frontend job above: this is the
-      # step that hung 18+ minutes on 2026-08-19, stalled in `apt-get
-      # update` against a slow/unresponsive Ubuntu mirror. 5 minutes is
-      # generous headroom over what this normally takes.
-      - name: Install Playwright browsers
+      - name: Install npm dependencies
         working-directory: tests/playwright
-        timeout-minutes: 5
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+        run: npm ci
 
+      # This job can't switch to running entirely inside Playwright's Docker
+      # image the way the frontend job now does (see that job's `container:`
+      # comment for the full reasoning) — it already spends most of its time
+      # driving `docker compose`/`docker compose exec` directly against the
+      # runner's own Docker daemon to run the dev/test stack above, and
+      # nesting that inside a job container would mean Docker-in-Docker, not
+      # a one-line change. Instead, only the test run itself moves into a
+      # throwaway container of that same image, via a plain `docker run`
+      # against the same host daemon the compose stack is already using.
+      # `--network host` lets it reach the stack's services on `localhost`
+      # exactly like the previous native `npx playwright test` did (see
+      # playwright.config.ts's baseURL and every service's host port mapping
+      # in tests/container/docker-compose.yml); mounting the working
+      # directory (already `npm ci`'d above — @playwright/test has no native
+      # deps, so a host-installed node_modules is safe to mount into another
+      # Linux/glibc container) means this runs the exact same test files and
+      # config as the native process did, just without an `apt-get`-based
+      # browser install in the path — which removes the flaky-mirror stall
+      # that hit this exact step (see docs/decisions.md and the frontend
+      # job's identical fix) instead of merely timing it out faster.
+      #
+      # The tag's version MUST match tests/playwright/package-lock.json's
+      # resolved `@playwright/test` version exactly — see the frontend job's
+      # `container:` comment for why, and bump both together.
       - name: Run Playwright E2E suite
         working-directory: tests/playwright
-        run: npx playwright test --reporter=list,junit
-        env:
-          PLAYWRIGHT_JUNIT_OUTPUT_NAME: playwright-report.xml
+        run: |
+          docker run --rm --network host \
+            -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=playwright-report.xml \
+            -v "$PWD":/work -w /work \
+            mcr.microsoft.com/playwright:v1.62.1-noble \
+            npx playwright test --reporter=list,junit
 
       # Same continue-on-error reasoning as the backend Publish/Upload steps
       # above: "Run Playwright E2E suite" (no if: always()) is the real

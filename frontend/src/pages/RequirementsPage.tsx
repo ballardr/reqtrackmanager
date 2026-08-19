@@ -22,6 +22,7 @@ import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
+import { SidePanel } from "../components/SidePanel";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -335,162 +336,160 @@ export function RequirementsPage() {
         </div>
       )}
 
-      {showNewForm && metaLoaded && (components.length === 0 || categories.length === 0) && (
-        <div className="card stack">
-          <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
-          {canManageProject ? (
-            <div className="stack">
-              {components.length === 0 && (
-                <div className="row">
-                  <input
-                    className="input"
-                    placeholder={strings.admin.name}
-                    value={newInlineComponentName}
-                    onChange={(e) => setNewInlineComponentName(e.target.value)}
-                  />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 100 }}
-                    placeholder={strings.admin.prefix}
-                    value={newInlineComponentPrefix}
-                    onChange={(e) => setNewInlineComponentPrefix(e.target.value.toUpperCase())}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    onClick={createInlineComponent}
-                    disabled={!newInlineComponentName || !newInlineComponentPrefix}
-                  >
-                    <Plus size={14} /> {strings.admin.newComponent}
-                  </button>
-                </div>
-              )}
-              {categories.length === 0 && components.length > 0 && (
-                <div className="row">
-                  {components.length > 1 && (
-                    <select className="input" style={{ maxWidth: 200 }} value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
-                      {components.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+      {showNewForm && metaLoaded && (
+        <SidePanel title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)}>
+          {components.length === 0 || categories.length === 0 ? (
+            <>
+              <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
+              {canManageProject ? (
+                <div className="stack">
+                  {components.length === 0 && (
+                    <div className="row">
+                      <input
+                        className="input"
+                        placeholder={strings.admin.name}
+                        value={newInlineComponentName}
+                        onChange={(e) => setNewInlineComponentName(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        style={{ maxWidth: 100 }}
+                        placeholder={strings.admin.prefix}
+                        value={newInlineComponentPrefix}
+                        onChange={(e) => setNewInlineComponentPrefix(e.target.value.toUpperCase())}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={createInlineComponent}
+                        disabled={!newInlineComponentName || !newInlineComponentPrefix}
+                      >
+                        <Plus size={14} /> {strings.admin.newComponent}
+                      </button>
+                    </div>
                   )}
-                  <input
-                    className="input"
-                    placeholder={strings.admin.name}
-                    value={newInlineCategoryName}
-                    onChange={(e) => setNewInlineCategoryName(e.target.value)}
-                  />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 100 }}
-                    placeholder={strings.admin.prefix}
-                    value={newInlineCategoryPrefix}
-                    onChange={(e) => setNewInlineCategoryPrefix(e.target.value.toUpperCase())}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    onClick={createInlineCategory}
-                    disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
-                  >
-                    <Plus size={14} /> {strings.admin.newCategory}
-                  </button>
+                  {categories.length === 0 && components.length > 0 && (
+                    <div className="row">
+                      {components.length > 1 && (
+                        <select className="input" style={{ maxWidth: 200 }} value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
+                          {components.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      <input
+                        className="input"
+                        placeholder={strings.admin.name}
+                        value={newInlineCategoryName}
+                        onChange={(e) => setNewInlineCategoryName(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        style={{ maxWidth: 100 }}
+                        placeholder={strings.admin.prefix}
+                        value={newInlineCategoryPrefix}
+                        onChange={(e) => setNewInlineCategoryPrefix(e.target.value.toUpperCase())}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={createInlineCategory}
+                        disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
+                      >
+                        <Plus size={14} /> {strings.admin.newCategory}
+                      </button>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
+                  {strings.requirements.configureComponentsFirst}
+                </Link>
               )}
-            </div>
+            </>
           ) : (
-            <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-              {strings.requirements.configureComponentsFirst}
-            </Link>
-          )}
-        </div>
-      )}
-
-      {showNewForm && metaLoaded && components.length > 0 && categories.length > 0 && (
-        <div className="card stack">
-          <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
-          <textarea
-            className="input"
-            placeholder={strings.requirements.reasoning}
-            value={newReasoning}
-            onChange={(e) => setNewReasoning(e.target.value)}
-            rows={2}
-          />
-          <textarea
-            className="input"
-            placeholder={strings.requirements.description}
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-            rows={2}
-          />
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.component}
-              <select
+            <>
+              <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <textarea
                 className="input"
-                value={newComponentId}
-                onChange={(e) => {
-                  const componentId = e.target.value;
-                  setNewComponentId(componentId);
-                  // Category is nested under one component (the tree) — a
-                  // category belonging to the previously-selected component
-                  // is never valid once the component changes.
-                  const firstOwnCategory = categories.find((c) => c.component_id === componentId);
-                  setNewCategoryId(firstOwnCategory?.id ?? "");
-                }}
+                placeholder={strings.requirements.reasoning}
+                value={newReasoning}
+                onChange={(e) => setNewReasoning(e.target.value)}
+                rows={2}
+              />
+              <textarea
+                className="input"
+                placeholder={strings.requirements.description}
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                rows={2}
+              />
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.component}
+                <select
+                  className="input"
+                  value={newComponentId}
+                  onChange={(e) => {
+                    const componentId = e.target.value;
+                    setNewComponentId(componentId);
+                    // Category is nested under one component (the tree) — a
+                    // category belonging to the previously-selected component
+                    // is never valid once the component changes.
+                    const firstOwnCategory = categories.find((c) => c.component_id === componentId);
+                    setNewCategoryId(firstOwnCategory?.id ?? "");
+                  }}
+                >
+                  {components.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.prefix})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.category}
+                <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
+                  {categories.filter((c) => c.component_id === newComponentId).length === 0 && (
+                    <option value="">{strings.requirements.noCategoriesForComponent}</option>
+                  )}
+                  {categories.filter((c) => c.component_id === newComponentId).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.prefix})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.targetVersion}
+                <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
+                  {stages.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.level}
+                <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
+                  <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
+                  <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
+                  <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
+                </select>
+              </label>
+              <CustomFieldsForm
+                definitions={customFieldDefs}
+                values={customFieldValues}
+                onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={createRequirement}
+                disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
               >
-                {components.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.prefix})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.category}
-              <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
-                {categories.filter((c) => c.component_id === newComponentId).length === 0 && (
-                  <option value="">{strings.requirements.noCategoriesForComponent}</option>
-                )}
-                {categories.filter((c) => c.component_id === newComponentId).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.prefix})
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.targetVersion}
-              <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.level}
-              <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
-                <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-              </select>
-            </label>
-          </div>
-          <CustomFieldsForm
-            definitions={customFieldDefs}
-            values={customFieldValues}
-            onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
-          />
-          <button
-            className="btn btn-primary"
-            onClick={createRequirement}
-            disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
-          >
-            {strings.common.create}
-          </button>
-        </div>
+                {strings.common.create}
+              </button>
+            </>
+          )}
+        </SidePanel>
       )}
 
       <div className="side-grid">

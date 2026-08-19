@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition } from "../api/types";
+import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -39,7 +39,7 @@ const groups: OrgGroup[] = [
 
 function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
-  projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[];
+  projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -57,8 +57,21 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
+    // Checked before the plain "/users" branch below — a user-access
+    // summary request also contains that substring.
+    if (path.includes("/access")) return overrides.userAccess ?? { org_groups: [], projects: [] };
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
+  });
+  // Users and Groups both paginate/search (2026-08 UX audit "Directories
+  // at scale") — `api.get` above still serves the *unpaginated* groups
+  // fetch (`allGroups`, used to resolve nested-group names regardless of
+  // the Groups section's own search/page state); this is the paginated
+  // view each section actually renders.
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    if (path.includes("/groups")) return { items: groups, total: groups.length };
+    if (path.includes("/users")) return { items: [orgUser], total: 1 };
+    throw new Error(`unmocked getPage path: ${path}`);
   });
 }
 
@@ -90,6 +103,40 @@ export const UsersSectionAndCreateUser: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "People" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("Org admin")).toBeInTheDocument();
+  },
+};
+
+/** "View access" (2026-08 UX audit, sixth pass: "No way to view a user's
+ * access") opens a read-only `SidePanel` summarising every project the
+ * user has a role on, their role(s) there, which project group granted
+ * it, and which org groups they directly belong to — assembled server-
+ * side (`GET /orgs/{id}/users/{id}/access`) rather than pieced together
+ * from the frontend. */
+export const ViewUserAccessPanel: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      userAccess: {
+        org_groups: [{ id: "grp1", name: "Engineering" }],
+        projects: [
+          {
+            project_id: "proj1", project_name: "Atlas Platform",
+            roles: ["project_manager", "member"],
+            project_groups: [{ id: "pg1", name: "Project Managers" }],
+          },
+        ],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "View Alex Morgan's access" }));
+    const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's access" });
+    await waitFor(() => expect(within(panel).getByText("Engineering")).toBeInTheDocument());
+    await expect(within(panel).getByText("Atlas Platform")).toBeInTheDocument();
+    await expect(within(panel).getByText("Project manager")).toBeInTheDocument();
+    await expect(within(panel).getByText(/Project Managers/)).toBeInTheDocument();
   },
 };
 
@@ -359,14 +406,18 @@ export const GroupsSectionShowsMembers: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "People" }));
-    await waitFor(() => expect(canvas.getByText("Engineering", { selector: "span" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
+    // Groups render collapsed by default (2026-08 UX audit "Directories
+    // at scale") — expand Engineering's own section before its member
+    // list is visible at all.
+    await userEvent.click(canvas.getByRole("button", { name: /Engineering/ }));
     // Users and Groups are both open by default under the "People" group
     // now (no more per-section accordion click to focus on just one), so
     // "Alex Morgan" appears twice on screen — once in the Users table, once
     // in Engineering's member list. Scope to the Engineering group's own
-    // row rather than the whole canvas.
-    const engineeringRow = canvas.getByText("Engineering", { selector: "span" }).closest<HTMLElement>(".stack")!;
-    await expect(within(engineeringRow).getByText(/Alex Morgan/)).toBeInTheDocument();
+    // container rather than the whole canvas.
+    const engineeringGroup = canvas.getByText(/Engineering/, { selector: "strong" }).closest<HTMLElement>(".stack")!;
+    await expect(within(engineeringGroup).getByText(/Alex Morgan/)).toBeInTheDocument();
   },
 };
 
@@ -378,7 +429,10 @@ export const GroupsSectionNestGroup: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "People" }));
-    await waitFor(() => expect(canvas.getByText("Engineering", { selector: "span" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
+    // Groups render collapsed by default — expand Engineering's own
+    // section before its nest-a-group picker becomes visible.
+    await userEvent.click(canvas.getByRole("button", { name: /Engineering/ }));
 
     // Exactly one <option>Platform</option> exists (Engineering's own
     // nest-picker) — Platform's own row excludes itself, so its picker

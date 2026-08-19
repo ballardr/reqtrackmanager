@@ -340,6 +340,26 @@ export interface OrgGroup {
   idp_synced_group_name: string | null;
 }
 
+/** A read-only "what does this user have access to" summary (2026-08 UX
+ * audit, sixth pass: "No way to view a user's access") — see
+ * `GET /orgs/{orgId}/users/{userId}/access`. */
+export interface UserAccessGroupRef {
+  id: string;
+  name: string;
+}
+
+export interface UserAccessProject {
+  project_id: string;
+  project_name: string;
+  roles: ProjectRole[];
+  project_groups: UserAccessGroupRef[];
+}
+
+export interface UserAccess {
+  org_groups: UserAccessGroupRef[];
+  projects: UserAccessProject[];
+}
+
 export interface Project {
   id: string;
   organization_id: string;

@@ -26,6 +26,7 @@ import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from 
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
+import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
@@ -59,6 +60,8 @@ export function ProjectAdminPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
+  const [groupsTotal, setGroupsTotal] = useState(0);
+  const [groupSearch, setGroupSearch] = useState("");
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [orgGroupSelections, setOrgGroupSelections] = useState<Record<string, string>>({});
@@ -129,14 +132,24 @@ export function ProjectAdminPage() {
   const [newFieldRequired, setNewFieldRequired] = useState(false);
   const [deletingFieldId, setDeletingFieldId] = useState<string | null>(null);
 
+  const GROUPS_PAGE_SIZE = 20;
+
+  async function loadGroups(search: string, offset: number, append: boolean) {
+    if (!projectId) return;
+    const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
+    if (search) params.set("search", search);
+    const page = await api.getPage<ProjectGroup>(`/api/v1/projects/${projectId}/groups?${params.toString()}`);
+    setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
+    setGroupsTotal(page.total);
+  }
+
   async function reload() {
     if (!projectId) return;
-    const [p, s, c, cat, g, cf, rc, at] = await Promise.all([
+    const [p, s, c, cat, cf, rc, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
-      api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
       api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
@@ -152,7 +165,7 @@ export function ProjectAdminPage() {
     setStages(s);
     setComponents(c);
     setCategories(cat);
-    setGroups(g);
+    await loadGroups(groupSearch, 0, false);
     setCustomFields(cf);
     setActionTypes(at);
     // Group membership (below) only stores user ids — resolving those to
@@ -413,6 +426,11 @@ export function ProjectAdminPage() {
    * frontend gap the 2026-08 UX audit flagged (Groups tab could manage
    * membership but had no create form at all). `POST
    * /projects/{id}/groups` already existed and required no backend change. */
+  function handleGroupSearchChange(value: string) {
+    setGroupSearch(value);
+    loadGroups(value, 0, false);
+  }
+
   async function createProjectGroup() {
     try {
       await api.post(`/api/v1/projects/${projectId}/groups`, { name: newGroupName, role: newGroupRole });
@@ -1050,6 +1068,13 @@ export function ProjectAdminPage() {
             </div>
           </Popover>
         )}
+        <input
+          className="input"
+          style={{ maxWidth: 320 }}
+          placeholder={strings.admin.searchGroups}
+          value={groupSearch}
+          onChange={(e) => handleGroupSearchChange(e.target.value)}
+        />
         {externalAddResult && (
           <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
             {externalAddResult.message}
@@ -1060,13 +1085,13 @@ export function ProjectAdminPage() {
           const nestedOrgGroups = orgGroups.filter((og) => g.member_org_group_ids.includes(og.id));
           const nestableOrgGroups = orgGroups.filter((og) => !g.member_org_group_ids.includes(og.id));
           return (
-            <div key={g.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <span>
-                  {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
-                </span>
-                <span className="text-muted">{strings.admin.memberCount(g.member_user_ids.length)}</span>
-              </div>
+            <CollapsibleSection
+              key={g.id}
+              sectionKey={`projectAdmin.group.${g.id}`}
+              variant="plain"
+              defaultCollapsed
+              title={`${g.name} (${PROJECT_ROLE_LABEL[g.role]}, ${strings.admin.memberCount(g.member_user_ids.length)})`}
+            >
               {g.member_user_ids.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                   {g.member_user_ids.map((userId) => {
@@ -1137,9 +1162,10 @@ export function ProjectAdminPage() {
                   </button>
                 </div>
               )}
-            </div>
+            </CollapsibleSection>
           );
         })}
+        <LoadMoreButton loaded={groups.length} total={groupsTotal} onClick={() => loadGroups(groupSearch, groups.length, true)} />
       </div>
       )}
 

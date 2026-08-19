@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openGroupCard } from "./helpers";
+
 /**
  * End-to-end proof of the "add a project user by email" flow
  * (`Organization.external_user_policy`, `services/invites.py`): a project
@@ -74,6 +76,10 @@ test("project admin invites a brand-new external user by email, and they can sig
 
   await page.goto(`/projects/${project.id}/admin`);
   await page.getByRole("tab", { name: "Project groups", exact: true }).click();
+  // Groups now render collapsed by default (2026-08 UX audit "Directories
+  // at scale") — expand "Project Managers" (the first default group)
+  // before its own add-member input is reachable at all.
+  await openGroupCard(page, "Project Managers");
 
   await test.step("invite the new email via the project group's user picker", async () => {
     const picker = page.getByPlaceholder("Type a name to add, or an email to invite…").first();

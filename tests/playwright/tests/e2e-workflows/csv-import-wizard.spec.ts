@@ -105,7 +105,8 @@ test.describe("CSV import wizard", () => {
 
     await page.reload();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export CSV" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Export CSV" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/-requirements-export\.csv$/);
     const exportedPath = await download.path();

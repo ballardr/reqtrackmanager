@@ -54,6 +54,23 @@ export const ListWithFilters: Story = {
   },
 };
 
+/** The outcome badge in the results table doubles as a filter shortcut —
+ * `FilterBadge`, the same component `RequirementsPage`'s status badge uses
+ * (style guide "Every badge that names a filterable value is a `FilterBadge`,
+ * not a plain `.badge`"). Clicking it sets the Outcome filter in the side
+ * panel to match. */
+export const FilterByOutcomeBadge: Story = {
+  beforeEach: () => mockProjectActionsApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
+    const table = within(canvas.getByRole("table"));
+    await userEvent.click(table.getByText("Pending"));
+    const outcomeSelect = canvas.getByLabelText("Outcome");
+    await expect(outcomeSelect).toHaveValue("pending");
+  },
+};
+
 export const CreateNewAction: Story = {
   beforeEach: () => {
     mockProjectActionsApis();

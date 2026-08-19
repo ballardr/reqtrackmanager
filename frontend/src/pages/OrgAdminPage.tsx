@@ -1,4 +1,4 @@
-import { Download, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Eye, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -31,17 +31,20 @@ import type {
   ReportTemplate,
   ScimTokenCreated,
   ScimTokenStatus,
+  UserAccess,
 } from "../api/types";
-import { ORG_ROLE_LABEL } from "../api/types";
+import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { DefinitionList } from "../components/DefinitionList";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { LoadMoreButton } from "../components/LoadMoreButton";
 import { OverridePill } from "../components/OverridePill";
 import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { SidePanel } from "../components/SidePanel";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -116,7 +119,22 @@ export function OrgAdminPage() {
   const [bootstrapCreated, setBootstrapCreated] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [users, setUsers] = useState<OrgUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [userSearch, setUserSearch] = useState("");
+  const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
+  const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
+  const [userAccessError, setUserAccessError] = useState<string | null>(null);
   const [groups, setGroups] = useState<OrgGroup[]>([]);
+  const [groupsTotal, setGroupsTotal] = useState(0);
+  const [groupSearch, setGroupSearch] = useState("");
+  // Every org group by id/name, unpaginated and unfiltered by
+  // `groupSearch` — the paginated/searched `groups` above drives which
+  // groups render as full cards (2026-08 UX audit "Directories at
+  // scale"), but nesting a group into another needs to pick from *every*
+  // group in the org regardless of what's currently searched/paged, so
+  // the nested-group name resolution and the "add nested group" dropdown
+  // both read from this instead.
+  const [allGroups, setAllGroups] = useState<OrgGroup[]>([]);
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
 
@@ -203,22 +221,45 @@ export function OrgAdminPage() {
   const resourceInputRef = useRef<HTMLInputElement>(null);
   const loginBackgroundInputRef = useRef<HTMLInputElement>(null);
 
-  async function loadUsers(filter: typeof userFilter) {
+  const USERS_PAGE_SIZE = 30;
+  const GROUPS_PAGE_SIZE = 20;
+
+  async function loadUsers(filter: typeof userFilter, search: string, offset: number, append: boolean) {
     if (!orgId) return;
-    const query =
-      filter === "stale" ? "?stale_since_days=180" :
-      filter === "no2fa" ? "?has_2fa=false" :
-      filter === "noaccess" ? "?has_project_access=false" : "";
+    function query(includeFilter: boolean) {
+      const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE), offset: String(offset) });
+      if (includeFilter) {
+        if (filter === "stale") params.set("stale_since_days", "180");
+        if (filter === "no2fa") params.set("has_2fa", "false");
+        if (filter === "noaccess") params.set("has_project_access", "false");
+      }
+      if (search) params.set("search", search);
+      return params.toString();
+    }
     try {
-      setUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${orgId}/users${query}`));
+      const page = await api.getPage<OrgUser>(`/api/v1/orgs/${orgId}/users?${query(true)}`);
+      setUsers((prev) => (append ? [...prev, ...page.items] : page.items));
+      setUsersTotal(page.total);
     } catch (err) {
-      // Non-admins get 403 on filtered queries; fall back to the plain list.
+      // Non-admins get 403 on filtered queries; fall back to the plain
+      // list (search/pagination alone stay available to them either way).
       if (err instanceof ApiError && err.status === 403) {
-        setUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${orgId}/users`));
+        const page = await api.getPage<OrgUser>(`/api/v1/orgs/${orgId}/users?${query(false)}`);
+        setUsers((prev) => (append ? [...prev, ...page.items] : page.items));
+        setUsersTotal(page.total);
       } else {
         throw err;
       }
     }
+  }
+
+  async function loadGroups(search: string, offset: number, append: boolean) {
+    if (!orgId) return;
+    const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
+    if (search) params.set("search", search);
+    const page = await api.getPage<OrgGroup>(`/api/v1/orgs/${orgId}/groups?${params.toString()}`);
+    setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
+    setGroupsTotal(page.total);
   }
 
   async function reload() {
@@ -232,11 +273,14 @@ export function OrgAdminPage() {
     // a whole for exactly that case — caught here so it surfaces as a
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
-    let o: Organization, g: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
+    let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
     let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
     try {
-      [o, g, r, projects, templates, statuses, linkTypeList] = await Promise.all([
+      [o, allG, r, projects, templates, statuses, linkTypeList] = await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
+        // Unpaginated — nested-group name resolution and the "add nested
+        // group" dropdown both need every group in the org regardless of
+        // the Groups section's own search/page state (see `allGroups`).
         api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
         api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
         api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
@@ -267,13 +311,13 @@ export function OrgAdminPage() {
     setEmailFooterCompanyNameInput(o.email_footer_company_name ?? "");
     setEmailFooterWebsiteInput(o.email_footer_website ?? "");
     setEmailFooterAddressInput(o.email_footer_address ?? "");
-    setGroups(g);
+    setAllGroups(allG);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
     setReportTemplates(templates);
     setProjectStatuses(statuses);
     setLinkTypes(linkTypeList);
-    await loadUsers(userFilter);
+    await Promise.all([loadUsers(userFilter, userSearch, 0, false), loadGroups(groupSearch, 0, false)]);
 
     try {
       const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
@@ -339,7 +383,29 @@ export function OrgAdminPage() {
   function applyUserFilter(filter: typeof userFilter) {
     const next = userFilter === filter ? "" : filter;
     setUserFilter(next);
-    loadUsers(next);
+    loadUsers(next, userSearch, 0, false);
+  }
+
+  function handleUserSearchChange(value: string) {
+    setUserSearch(value);
+    loadUsers(userFilter, value, 0, false);
+  }
+
+  function handleGroupSearchChange(value: string) {
+    setGroupSearch(value);
+    loadGroups(value, 0, false);
+  }
+
+  async function openUserAccess(user: OrgUser) {
+    if (!orgId) return;
+    setViewingUser(user);
+    setUserAccess(null);
+    setUserAccessError(null);
+    try {
+      setUserAccess(await api.get<UserAccess>(`/api/v1/orgs/${orgId}/users/${user.user_id}/access`));
+    } catch (err) {
+      setUserAccessError(err instanceof ApiError ? err.message : strings.common.error);
+    }
   }
 
   async function toggleOutsideDomainUsers() {
@@ -1177,6 +1243,13 @@ export function OrgAdminPage() {
         {activeGroup === "people" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
+              <input
+                className="input"
+                style={{ maxWidth: 320 }}
+                placeholder={strings.orgAdmin.searchUsers}
+                value={userSearch}
+                onChange={(e) => handleUserSearchChange(e.target.value)}
+              />
               <div className="row">
                 <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
                   {strings.orgAdmin.filterStale}
@@ -1256,19 +1329,30 @@ export function OrgAdminPage() {
                       <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
                       <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
                       <td>
-                        <button
-                          className="btn"
-                          onClick={() => toggleDisplayNameLock(u)}
-                          title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                          aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                        >
-                          {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
-                        </button>
+                        <div className="row" style={{ gap: "0.25rem" }}>
+                          <button
+                            className="btn"
+                            onClick={() => openUserAccess(u)}
+                            title={strings.orgAdmin.viewAccess(u.display_name)}
+                            aria-label={strings.orgAdmin.viewAccess(u.display_name)}
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            className="btn"
+                            onClick={() => toggleDisplayNameLock(u)}
+                            title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                            aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
+                          >
+                            {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <LoadMoreButton loaded={users.length} total={usersTotal} onClick={() => loadUsers(userFilter, userSearch, users.length, true)} />
               <div className="row">
                 <input className="input" placeholder={strings.orgAdmin.email} value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
                 <input className="input" placeholder={strings.orgAdmin.name} value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
@@ -1279,7 +1363,59 @@ export function OrgAdminPage() {
               </div>
             </CollapsibleSection>
 
+            {viewingUser && (
+              <SidePanel title={strings.orgAdmin.userAccessTitle(viewingUser.display_name)} onClose={() => setViewingUser(null)}>
+                {userAccessError && <div style={{ color: "var(--color-danger)" }}>{userAccessError}</div>}
+                {!userAccess && !userAccessError && <Spinner />}
+                {userAccess && (
+                  <div className="stack">
+                    <div className="stack" style={{ gap: "0.25rem" }}>
+                      <strong>{strings.orgAdmin.userAccessOrgGroups(orgLabelCap)}</strong>
+                      {userAccess.org_groups.length === 0 ? (
+                        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoOrgGroups(orgLabel)}</p>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                          {userAccess.org_groups.map((g) => (
+                            <li key={g.id}>{g.name}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="stack" style={{ gap: "0.25rem" }}>
+                      <strong>{strings.orgAdmin.userAccessProjects}</strong>
+                      {userAccess.projects.length === 0 ? (
+                        <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoProjects}</p>
+                      ) : (
+                        userAccess.projects.map((p) => (
+                          <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
+                            <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
+                            <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap" }}>
+                              {p.roles.map((r) => (
+                                <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
+                              ))}
+                            </div>
+                            {p.project_groups.length > 0 && (
+                              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                                {strings.orgAdmin.userAccessProjectGroups}: {p.project_groups.map((g) => g.name).join(", ")}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </SidePanel>
+            )}
+
             <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)}>
+              <input
+                className="input"
+                style={{ maxWidth: 320 }}
+                placeholder={strings.orgAdmin.searchGroups}
+                value={groupSearch}
+                onChange={(e) => handleGroupSearchChange(e.target.value)}
+              />
               <button
                 ref={newGroupTriggerRef}
                 className="btn btn-primary"
@@ -1321,11 +1457,22 @@ export function OrgAdminPage() {
                 const members = users.filter((u) => memberIds.has(u.user_id));
                 const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
                 const nestedGroupIds = new Set(g.member_org_group_ids);
-                const nestedGroups = groups.filter((og) => nestedGroupIds.has(og.id));
-                const nestableGroups = groups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
+                // Resolved against `allGroups` (every group in the org,
+                // unpaginated), not the paginated/searched `groups` above —
+                // a nested group's name, or a candidate to nest, can easily
+                // fall outside whatever page/search the Groups list itself
+                // is currently showing (2026-08 UX audit "Directories at
+                // scale").
+                const nestedGroups = allGroups.filter((og) => nestedGroupIds.has(og.id));
+                const nestableGroups = allGroups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
                 return (
-                  <div key={g.id} className="stack">
-                    <span>{g.name}</span>
+                  <CollapsibleSection
+                    key={g.id}
+                    sectionKey={`orgAdmin.group.${g.id}`}
+                    variant="plain"
+                    defaultCollapsed
+                    title={`${g.name} (${strings.admin.memberCount(g.member_user_ids.length)})`}
+                  >
                     {members.length > 0 && (
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                         {members.map((u) => (
@@ -1410,9 +1557,10 @@ export function OrgAdminPage() {
                       </button>
                     </label>
                     {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
-                  </div>
+                  </CollapsibleSection>
                 );
               })}
+              <LoadMoreButton loaded={groups.length} total={groupsTotal} onClick={() => loadGroups(groupSearch, groups.length, true)} />
             </CollapsibleSection>
           </div>
         )}

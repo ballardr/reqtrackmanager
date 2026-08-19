@@ -71,6 +71,26 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
+ * Same idea as `ensureExpanded`, for one org/project group's own card in
+ * Org Admin's Groups section or Project Admin's Groups tab (2026-08 UX
+ * audit "Directories at scale") — each group now renders collapsed by
+ * default behind its own `CollapsibleSection`, so its member list,
+ * "add member" input, and nesting picker are all unreachable until
+ * expanded. Unlike `ensureExpanded`'s exact `"<title> section"` match,
+ * each group's title combines its name with a dynamic member count (and,
+ * for project groups, its role), so this matches by the group's name as a
+ * substring instead. Also persists server-side per user across
+ * runs/specs sharing a persona, same caveat as `ensureExpanded` — hence
+ * the same idempotent "only click if collapsed" guard.
+ */
+export async function openGroupCard(page: Page, groupName: string): Promise<void> {
+  const toggle = page.getByRole("button", { name: new RegExp(`^${groupName}`) });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+}
+
+/**
  * Selects a group in `OrgAdminPage`'s resource menu (`ResourceMenu.tsx`,
  * 2026-08 UX audit "Org Admin resource-menu restructure"). Each group is a
  * real route segment under `/orgs/:orgId/admin/:group?`, not client-only

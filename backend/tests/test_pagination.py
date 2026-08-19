@@ -172,3 +172,85 @@ def test_system_users_paginates_and_reports_total(client, admin_token, org_id):
     page = client.get("/api/v1/system/users?limit=2&offset=0", headers=auth_headers(admin_token))
     assert len(page.json()) == 2
     assert int(page.headers["x-total-count"]) == total
+
+
+def test_org_users_search_and_paginate(client, admin_token, org_id):
+    """Org Admin's Users directory (2026-08 UX audit, sixth pass:
+    "Directories at scale") — a plain member/project-creator can call this
+    unfiltered (existing behaviour), and `search`/`limit`/`offset` stay
+    available to them too, unlike the access-review filters."""
+    create_org_user(client, admin_token, org_id, "priya.patel@example.com")
+    create_org_user(client, admin_token, org_id, "quinn.oshea@example.com")
+    for i in range(3):
+        create_org_user(client, admin_token, org_id, f"paged_orguser_{i}@example.com")
+
+    unpaginated = client.get(f"/api/v1/orgs/{org_id}/users", headers=auth_headers(admin_token))
+    total = len(unpaginated.json())
+    assert total >= 5
+    assert int(unpaginated.headers["x-total-count"]) == total
+
+    page1 = client.get(f"/api/v1/orgs/{org_id}/users?limit=2&offset=0", headers=auth_headers(admin_token))
+    assert len(page1.json()) == 2
+    assert int(page1.headers["x-total-count"]) == total
+    page2 = client.get(f"/api/v1/orgs/{org_id}/users?limit=2&offset=2", headers=auth_headers(admin_token))
+    assert {u["user_id"] for u in page1.json()} & {u["user_id"] for u in page2.json()} == set()
+
+    by_name = client.get(f"/api/v1/orgs/{org_id}/users?search=priya", headers=auth_headers(admin_token))
+    assert [u["email"] for u in by_name.json()] == ["priya.patel@example.com"]
+    by_email_fragment = client.get(f"/api/v1/orgs/{org_id}/users?search=oshea", headers=auth_headers(admin_token))
+    assert [u["email"] for u in by_email_fragment.json()] == ["quinn.oshea@example.com"]
+
+
+def test_org_groups_search_and_paginate(client, admin_token, org_id):
+    """Org Admin's Groups section — same finding, one section down. Also
+    checks that a caller who omits `limit` (e.g. Project Admin's own
+    org-group nesting picker) still gets every group unpaginated, so
+    adding pagination here can't silently break that existing caller."""
+    client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": "Finance Reviewers"}, headers=auth_headers(admin_token))
+    client.post(f"/api/v1/orgs/{org_id}/groups", json={"name": "Field Engineers"}, headers=auth_headers(admin_token))
+    for i in range(3):
+        client.post(
+            f"/api/v1/orgs/{org_id}/groups", json={"name": f"Paged Group {i}"}, headers=auth_headers(admin_token)
+        )
+
+    unpaginated = client.get(f"/api/v1/orgs/{org_id}/groups", headers=auth_headers(admin_token))
+    total = len(unpaginated.json())
+    assert total >= 5
+    assert "x-total-count" not in unpaginated.headers or int(unpaginated.headers["x-total-count"]) == total
+
+    page = client.get(f"/api/v1/orgs/{org_id}/groups?limit=2&offset=0", headers=auth_headers(admin_token))
+    assert len(page.json()) == 2
+    assert int(page.headers["x-total-count"]) == total
+
+    by_search = client.get(f"/api/v1/orgs/{org_id}/groups?search=finance", headers=auth_headers(admin_token))
+    assert [g["name"] for g in by_search.json()] == ["Finance Reviewers"]
+
+
+def test_project_groups_search_and_paginate(client, admin_token, org_id):
+    """Project Admin's Groups tab — the same finding, one level further
+    down (a project's own groups rather than an org's)."""
+    project = create_project(client, admin_token, org_id)
+    client.post(
+        f"/api/v1/projects/{project['id']}/groups",
+        json={"name": "Safety Reviewers", "role": "stakeholder"}, headers=auth_headers(admin_token),
+    )
+    for i in range(4):
+        client.post(
+            f"/api/v1/projects/{project['id']}/groups",
+            json={"name": f"Paged Project Group {i}", "role": "member"}, headers=auth_headers(admin_token),
+        )
+
+    unpaginated = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token))
+    total = len(unpaginated.json())
+    # Every project seeds 4 default groups (Managers/Administrators/Stakeholders/Members) on creation.
+    assert total >= 5
+    assert int(unpaginated.headers["x-total-count"]) == total
+
+    page = client.get(f"/api/v1/projects/{project['id']}/groups?limit=2&offset=0", headers=auth_headers(admin_token))
+    assert len(page.json()) == 2
+    assert int(page.headers["x-total-count"]) == total
+
+    by_search = client.get(
+        f"/api/v1/projects/{project['id']}/groups?search=safety", headers=auth_headers(admin_token)
+    )
+    assert [g["name"] for g in by_search.json()] == ["Safety Reviewers"]

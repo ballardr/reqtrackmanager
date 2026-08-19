@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openGroupCard, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can nest one organisation group inside
@@ -45,26 +45,32 @@ test.describe("org group nesting", () => {
         await dialog.getByPlaceholder("e.g. Engineering").fill(name);
         await dialog.getByRole("button", { name: "Create" }).click();
         await expect(dialog).not.toBeVisible();
-        // Scoped to the group-name <span> specifically — once both groups
-        // exist, each also appears as an <option> in the other's nesting
-        // picker, so a plain text match becomes ambiguous.
-        await expect(page.locator("span", { hasText: name })).toBeVisible();
+        // Each group now renders collapsed behind its own
+        // `CollapsibleSection` (2026-08 UX audit "Directories at scale") —
+        // its title (which includes the group's name) is still visible
+        // either way, so this proves the group was actually created
+        // without needing to expand it yet. Scoped to the title <strong>
+        // specifically — once both groups exist, each also appears as an
+        // <option> in the other's nesting picker, so a plain text match
+        // becomes ambiguous.
+        await expect(page.locator("strong", { hasText: name })).toBeVisible();
       }
     });
 
-    // Each group renders as its own <div className="stack"><span>{name}</span>...
-    // — the span's immediate parent is that specific group's own row, more
-    // precise than a class-based ancestor lookup (which would also match
-    // outer wrapping .stack containers higher up the page). Scoped to
-    // <span> specifically since each group name also appears as an
-    // <option> in the *other* group's nesting picker once both exist.
-    const parentRow = page.locator("span", { hasText: parentName }).locator("xpath=..");
-    const childRow = page.locator("span", { hasText: childName }).locator("xpath=..");
+    // Each group's title <strong> sits inside its own row div, inside its
+    // own outer card div (`CollapsibleSection`, `variant="plain"`) — two
+    // levels up from the title reaches that specific group's whole card,
+    // more precise than a class-based ancestor lookup (which would also
+    // match outer wrapping .stack containers higher up the page).
+    const parentRow = page.locator("strong", { hasText: parentName }).locator("xpath=../..");
+    const childRow = page.locator("strong", { hasText: childName }).locator("xpath=../..");
 
     // Each row also has its own "add member" `UserAutocomplete`, whose text
     // input is `role="combobox"` too (WAI-ARIA combobox pattern) — `select`
-    // here specifically means the nesting picker's `<select>`.
+    // here specifically means the nesting picker's `<select>`. Both are
+    // unreachable until the group's own card is expanded.
     await test.step("nest the child group inside the parent", async () => {
+      await openGroupCard(page, parentName);
       const select = parentRow.locator("select");
       await select.selectOption({ label: childName });
       await select.locator("xpath=../button").click();
@@ -72,6 +78,7 @@ test.describe("org group nesting", () => {
     });
 
     await test.step("attempting the reverse nesting (would create a cycle) shows an error", async () => {
+      await openGroupCard(page, childName);
       const select = childRow.locator("select");
       await select.selectOption({ label: parentName });
       await select.locator("xpath=../button").click();

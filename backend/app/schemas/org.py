@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.models.enums import ExternalUserPolicy, OrgRole
+from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
 from app.schemas.report import ReportChapter
 
 
@@ -370,3 +370,37 @@ class OrgGroupOut(BaseModel):
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID] = []
     idp_synced_group_name: str | None = None
+
+
+class UserAccessGroupRef(BaseModel):
+    """A group name/id pair, used by `UserAccessOut` for both org groups
+    and (nested inside each project entry) project groups — deliberately
+    minimal, since this is a read-only summary, not the full `OrgGroupOut`/
+    `ProjectGroupOut` shape a management screen needs."""
+
+    id: UUID
+    name: str
+
+
+class UserAccessProject(BaseModel):
+    project_id: UUID
+    project_name: str
+    roles: list[ProjectRole]
+    project_groups: list[UserAccessGroupRef]
+
+
+class UserAccessOut(BaseModel):
+    """One user's access within a single organisation (2026-08 UX audit,
+    sixth pass: "No way to view a user's access") — every project in the
+    org where the user holds at least one effective role (direct
+    assignment, direct/nested project-group membership, or org-wide
+    project visibility — see `rbac.get_effective_project_roles`), each
+    with that role set and which of the project's own groups the user is a
+    *direct* member of, plus the org groups the user directly belongs to.
+
+    Deliberately omits projects where the user has no access at all
+    (rather than listing every org project with an empty role set) — this
+    is "what can they reach," not a roster of every project that exists."""
+
+    org_groups: list[UserAccessGroupRef]
+    projects: list[UserAccessProject]
