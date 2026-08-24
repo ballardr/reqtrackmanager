@@ -35,6 +35,7 @@ import type {
 } from "../api/types";
 import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -45,6 +46,7 @@ import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -165,6 +167,12 @@ export function OrgAdminPage() {
   const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
+  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // `order`, same reasoning as the Requirements/Change Requests lists:
+  // this table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`
+  // below), so sorting has to be honoured server-side.
+  type OrgUserSortKey = "display_name" | "email" | "last_login_at";
+  const [userSort, setUserSort] = useState<SortState<OrgUserSortKey> | null>(null);
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
   const [require2fa, setRequire2fa] = useState(false);
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
@@ -174,6 +182,12 @@ export function OrgAdminPage() {
   const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
   const [patBulkResult, setPatBulkResult] = useState<string | null>(null);
+  // ConfirmDialog (Tier 1) state for the three PAT actions below — converted
+  // from `window.confirm` per the sixth-pass audit's "Confirmation and
+  // feedback rollout, precisely" list.
+  const [patToDescope, setPatToDescope] = useState<string | null>(null);
+  const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
+  const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [expandedProjectGroups, setExpandedProjectGroups] = useState<ProjectGroup[]>([]);
@@ -224,7 +238,9 @@ export function OrgAdminPage() {
   const USERS_PAGE_SIZE = 30;
   const GROUPS_PAGE_SIZE = 20;
 
-  async function loadUsers(filter: typeof userFilter, search: string, offset: number, append: boolean) {
+  async function loadUsers(
+    filter: typeof userFilter, search: string, offset: number, append: boolean, sort: typeof userSort = userSort
+  ) {
     if (!orgId) return;
     function query(includeFilter: boolean) {
       const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE), offset: String(offset) });
@@ -234,6 +250,10 @@ export function OrgAdminPage() {
         if (filter === "noaccess") params.set("has_project_access", "false");
       }
       if (search) params.set("search", search);
+      if (sort) {
+        params.set("sort", sort.key);
+        params.set("order", sort.direction);
+      }
       return params.toString();
     }
     try {
@@ -391,6 +411,12 @@ export function OrgAdminPage() {
     loadUsers(userFilter, value, 0, false);
   }
 
+  function applyUserSort(key: OrgUserSortKey) {
+    const next = cycleSort(userSort, key);
+    setUserSort(next);
+    loadUsers(userFilter, userSearch, 0, false, next);
+  }
+
   function handleGroupSearchChange(value: string) {
     setGroupSearch(value);
     loadGroups(value, 0, false);
@@ -475,18 +501,21 @@ export function OrgAdminPage() {
 
   async function revokeOrgPat(patId: string) {
     if (!orgId) return;
+    setPatToRevoke(null);
     await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`);
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function descopeOrgPat(patId: string) {
-    if (!orgId || !window.confirm(strings.orgAdmin.patDescopeConfirm(orgLabel, orgLabelPlural))) return;
+    if (!orgId) return;
+    setPatToDescope(null);
     await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function revokeAllOrgPats() {
-    if (!orgId || !window.confirm(strings.orgAdmin.patRevokeAllConfirm(orgLabel, orgLabelPlural))) return;
+    if (!orgId) return;
+    setRevokeAllPatsOpen(false);
     const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
     setOrgPats([]);
     setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
@@ -1304,11 +1333,11 @@ export function OrgAdminPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>{strings.orgAdmin.email}</th>
-                    <th>{strings.orgAdmin.name}</th>
+                    <SortableHeader label={strings.orgAdmin.email} sortKey="email" sort={userSort} onSort={applyUserSort} />
+                    <SortableHeader label={strings.orgAdmin.name} sortKey="display_name" sort={userSort} onSort={applyUserSort} />
                     <th>{strings.orgAdmin.roles}</th>
                     <th>{strings.orgAdmin.status}</th>
-                    <th>{strings.orgAdmin.lastLogin}</th>
+                    <SortableHeader label={strings.orgAdmin.lastLogin} sortKey="last_login_at" sort={userSort} onSort={applyUserSort} />
                     <th>{strings.orgAdmin.twoFactor}</th>
                     <th></th>
                   </tr>
@@ -2218,15 +2247,13 @@ export function OrgAdminPage() {
                           <td>
                             <div className="row">
                               {p.other_org_count > 0 && (
-                                <button className="btn" onClick={() => descopeOrgPat(p.id)}>
+                                <button className="btn" onClick={() => setPatToDescope(p.id)}>
                                   {strings.orgAdmin.patDescope}
                                 </button>
                               )}
                               <button
                                 className="btn btn-danger"
-                                onClick={() => {
-                                  if (window.confirm(strings.orgAdmin.patRevokeOneConfirm)) revokeOrgPat(p.id);
-                                }}
+                                onClick={() => setPatToRevoke(p.id)}
                               >
                                 {strings.orgAdmin.patRevoke}
                               </button>
@@ -2239,7 +2266,7 @@ export function OrgAdminPage() {
                 )}
 
                 {orgPats.length > 0 && (
-                  <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
+                  <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
                     {strings.orgAdmin.patRevokeAll(orgLabel)}
                   </button>
                 )}
@@ -2249,6 +2276,34 @@ export function OrgAdminPage() {
           </div>
         )}
       </ResourceMenu>
+
+      {patToDescope && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patDescopeTitle(orgLabel)}
+          message={strings.orgAdmin.patDescopeConfirm(orgLabelPlural)}
+          confirmLabel={strings.orgAdmin.patDescope}
+          onConfirm={() => descopeOrgPat(patToDescope)}
+          onCancel={() => setPatToDescope(null)}
+        />
+      )}
+      {patToRevoke && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patRevokeOneTitle}
+          message={strings.orgAdmin.patRevokeOneConfirm}
+          confirmLabel={strings.orgAdmin.patRevoke}
+          onConfirm={() => revokeOrgPat(patToRevoke)}
+          onCancel={() => setPatToRevoke(null)}
+        />
+      )}
+      {revokeAllPatsOpen && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patRevokeAllTitle(orgLabel)}
+          message={strings.orgAdmin.patRevokeAllConfirm(orgLabelPlural)}
+          confirmLabel={strings.orgAdmin.patRevokeAll(orgLabel)}
+          onConfirm={revokeAllOrgPats}
+          onCancel={() => setRevokeAllPatsOpen(false)}
+        />
+      )}
     </div>
   );
 }

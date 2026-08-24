@@ -558,6 +558,32 @@ td {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* Sortable column headers (`SortableHeader`, 2026-08 UX audit roadmap
+   "Column-header sorting on data tables") — the button fills the `<th>`'s
+   own padding rather than adding its own, so a sortable header lines up
+   exactly with a plain-text one next to it. */
+th:has(> .th-sort) {
+  padding: 0;
+}
+.th-sort {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.th-sort:hover,
+.th-sort:focus-visible {
+  color: var(--color-primary);
+}
+
 /* Below 860px there isn't room for a full-width nav rail, a content
    column, and a 240px filter/activity sidebar side by side (confirmed:
    the page overflows past the viewport at 600px without this) — force the

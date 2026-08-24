@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { MyMemberships, NotificationPreference, Organization, OrgUser, PersonalAccessToken, PersonalAccessTokenCreateResult } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
-import { buildProjectListItem, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { PreferencesPage } from "./PreferencesPage";
 
 const org: Organization = {
@@ -54,7 +54,7 @@ const withThemeProvider: Decorator = (Story) => <ThemeProvider>{Story()}</ThemeP
 const meta: Meta<typeof PreferencesPage> = {
   title: "Pages/PreferencesPage",
   component: PreferencesPage,
-  decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })), withThemeProvider, withRouter("/preferences")],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })), withThemeProvider, withRouter("/preferences"), withToast()],
 };
 export default meta;
 
@@ -165,6 +165,53 @@ export const PatsTabCreateToken: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Create token" }));
     await waitFor(() => expect(canvas.getByText("Token created")).toBeInTheDocument());
     await expect(canvas.getByText("rtm_pat_abc123")).toBeInTheDocument();
+  },
+};
+
+const onePat: PersonalAccessToken = {
+  id: "pat-1", name: "MCP server", token_prefix: "rtm_pat_abcd",
+  allowed_organizations: [{ id: "org-1", name: "Acme Corp" }], allowed_projects: [],
+  expires_at: "2027-01-01T00:00:00Z", revoked_at: null, last_used_at: null, created_at: "2026-01-01T00:00:00Z",
+};
+
+/** Revoking a token opens the shared `ConfirmDialog` (sixth-pass audit —
+ * this used to fire via `window.confirm`), then shows a success toast. */
+export const PatsTabRevokeConfirms: Story = {
+  beforeEach: () => {
+    mockPreferencesApis("user-1", { pats: [onePat] });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/v1/me/pats/pat-1"));
+    await expect(within(document.body).getByText("Token revoked")).toBeInTheDocument();
+  },
+};
+
+/** Cancelling the revoke confirmation leaves the token untouched. */
+export const PatsTabRevokeCancelled: Story = {
+  beforeEach: () => {
+    mockPreferencesApis("user-1", { pats: [onePat] });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.delete).not.toHaveBeenCalled();
   },
 };
 

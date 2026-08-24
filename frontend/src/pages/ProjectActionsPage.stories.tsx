@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ActionTypeDefinition, OrgUser, RequirementAction } from "../api/types";
-import { buildActionType, buildRequirementAction, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildActionType, buildRequirementAction, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectActionsPage } from "./ProjectActionsPage";
 
 const PROJECT_ID = "project-1";
@@ -34,7 +34,7 @@ function mockProjectActionsApis() {
 const meta: Meta<typeof ProjectActionsPage> = {
   title: "Pages/ProjectActionsPage",
   component: ProjectActionsPage,
-  decorators: [withStatefulAuth(buildUser()), withRouter(`/projects/${PROJECT_ID}/actions`, "/projects/:projectId/actions")],
+  decorators: [withStatefulAuth(buildUser()), withRouter(`/projects/${PROJECT_ID}/actions`, "/projects/:projectId/actions"), withToast()],
 };
 export default meta;
 
@@ -88,6 +88,28 @@ export const CreateNewAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
+    // Principle 7 — every mutation ends with feedback. The 2026-08 UX audit
+    // named this page specifically: it got real interaction-model work
+    // without picking up Toast, so create still just silently re-rendered.
+    await expect(within(document.body).getByText("Action created")).toBeInTheDocument();
+  },
+};
+
+/** Column-header sorting (2026-08 UX audit roadmap) — this list has no
+ * backend pagination, so sorting is a client-side `useMemo` over the
+ * already-loaded rows. Clicking "Title" once sorts ascending. */
+export const SortedByTitleAscending: Story = {
+  beforeEach: () => mockProjectActionsApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Title" }));
+    const rows = within(canvas.getByRole("table")).getAllByRole("row").slice(1);
+    // "Review password reset flow" < "Test 2FA enrolment" alphabetically.
+    await expect(within(rows[0]).getByText("Review password reset flow")).toBeInTheDocument();
+    await expect(within(rows[1]).getByText("Test 2FA enrolment")).toBeInTheDocument();
+    const th = canvas.getByRole("button", { name: "Title" }).closest("th");
+    await expect(th).toHaveAttribute("aria-sort", "ascending");
   },
 };
 

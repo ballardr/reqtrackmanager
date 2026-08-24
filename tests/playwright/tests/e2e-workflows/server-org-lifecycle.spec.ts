@@ -34,8 +34,10 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     const row = page.getByRole("row", { name: new RegExp(orgName) });
 
     await test.step("disable it", async () => {
-      page.once("dialog", (dialog) => dialog.accept());
+      // Disable now confirms via the shared `ConfirmDialog` (sixth-pass
+      // audit) rather than `window.confirm`.
       await row.getByRole("button", { name: "Disable" }).click();
+      await page.getByRole("dialog", { name: `Disable "${orgName}"?` }).getByRole("button", { name: "Disable" }).click();
       await expect(row).toContainText("Disabled");
     });
 

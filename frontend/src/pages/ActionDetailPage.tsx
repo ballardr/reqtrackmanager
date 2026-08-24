@@ -1,4 +1,4 @@
-import { Archive } from "lucide-react";
+import { Archive, ArchiveRestore } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -141,6 +141,21 @@ export function ActionDetailPage() {
     }
   }
 
+  // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
+  // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
+  // immediately, since restoring is reversible again (archive it right
+  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
+  // unarchive endpoint + Restore button).
+  async function restore() {
+    try {
+      await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/unarchive`);
+      showToast(strings.actions.restoredToast);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   async function uploadFile(file: File) {
     await api.postFile(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file);
     reload();
@@ -192,6 +207,11 @@ export function ActionDetailPage() {
         {!action.is_archived && (
           <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
             <Archive size={14} /> {strings.actions.archiveAction}
+          </button>
+        )}
+        {action.is_archived && (
+          <button className="btn" onClick={restore}>
+            <ArchiveRestore size={14} /> {strings.actions.restoreAction}
           </button>
         )}
       </div>

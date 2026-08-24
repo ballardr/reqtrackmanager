@@ -9,6 +9,7 @@ import {
   buildUser,
   withAuth,
   withRouter,
+  withToast,
 } from "../testing/storybook-helpers";
 import { ChangeRequestDetailPage } from "./ChangeRequestDetailPage";
 
@@ -47,6 +48,7 @@ const meta: Meta<typeof ChangeRequestDetailPage> = {
   decorators: [
     withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     withRouter(`/projects/${PROJECT_ID}/change-requests/${CR_ID}`, "/projects/:projectId/change-requests/:crId"),
+    withToast(),
   ],
 };
 export default meta;
@@ -65,6 +67,36 @@ export const DraftShowsSubmitAndWithdraw: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Add password reset flow" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+  },
+};
+
+/** Submitting shows a success toast (Principle 7, sixth-pass audit —
+ * `act()` previously reloaded silently with no feedback at all). */
+export const SubmitShowsToast: Story = {
+  beforeEach: () => {
+    mockChangeRequestDetailApis(["member"], { status: "draft", proposed_name: "Add password reset flow" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/submit")));
+    await expect(within(document.body).getByText("Change request submitted")).toBeInTheDocument();
+  },
+};
+
+/** Rejecting shows a success toast too — the audit specifically flagged
+ * rejection as having *no* feedback of any kind before this pass. */
+export const RejectShowsToast: Story = {
+  beforeEach: () => {
+    mockChangeRequestDetailApis(["project_manager"], { status: "submitted", proposed_name: "Add password reset flow" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringContaining("/decide"), { approve: false, note: "" }));
+    await expect(within(document.body).getByText("Change request rejected")).toBeInTheDocument();
   },
 };
 

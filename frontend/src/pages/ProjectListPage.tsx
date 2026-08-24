@@ -13,6 +13,7 @@ import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 30;
 
@@ -30,6 +31,7 @@ export function ProjectListPage() {
   const strings = useStrings();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
@@ -106,12 +108,16 @@ export function ProjectListPage() {
   }, [newOrgId]);
 
   async function toggleFavorite(project: ProjectListItem) {
-    if (project.is_favorite) {
-      await api.delete(`/api/v1/projects/${project.id}/favorite`);
-    } else {
-      await api.put(`/api/v1/projects/${project.id}/favorite`);
+    try {
+      if (project.is_favorite) {
+        await api.delete(`/api/v1/projects/${project.id}/favorite`);
+      } else {
+        await api.put(`/api/v1/projects/${project.id}/favorite`);
+      }
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
-    reload();
   }
 
   const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
@@ -135,6 +141,7 @@ export function ProjectListPage() {
           organization_id: newOrgId, name: newName, summary: newSummary,
         });
         if (result.warnings.length > 0) setImportWarnings(result.warnings);
+        showToast(strings.projects.created);
         navigate(`/projects/${result.project.id}`);
         return;
       }
@@ -145,6 +152,7 @@ export function ProjectListPage() {
         template_project_id: templateProjectId || null,
         visibility: newVisibility,
       });
+      showToast(strings.projects.created);
       navigate(`/projects/${project.id}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : strings.common.error);

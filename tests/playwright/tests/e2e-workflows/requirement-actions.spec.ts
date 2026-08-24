@@ -21,9 +21,28 @@ import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpe
  * once unlinked) — every presence/absence check below is scoped to the
  * `link` role (its actual rendered `<a>`) rather than a bare `getByText`,
  * so it can never resolve to a dropdown option instead.
+ *
+ * 2026-08 UX audit, sixth pass: "Link existing action" now opens a
+ * `Popover` and "Create and link a new action" now opens a `SidePanel`
+ * (previously a permanently-visible inline select+button row and an
+ * inline-reveal block, respectively), and unlinking now goes through a
+ * `ConfirmDialog` (Tier 1) instead of firing immediately.
+ *
+ * The action title is timestamped (`E2E Action Flow Test <ts>`), not a
+ * fixed string — this spec creates one via `createAndLinkAction` and
+ * asserts on it by name throughout, so a fixed title would collect
+ * duplicate actions across repeated runs against the same database and
+ * break the strict-mode-unique locators below (found exactly this way:
+ * two stale same-titled actions from earlier runs made
+ * `getByRole("link", { name: /E2E Action Flow Test/ })` resolve to two
+ * elements). Per this repo's own test-independence rule, a spec must pass
+ * standalone or repeated back-to-back against the same database, not just
+ * once against a freshly seeded one.
  */
 test.describe("requirement actions", () => {
   test("create-and-link, transition outcome, comment/attach, link to a second requirement, unlink from one only", async ({ page }) => {
+    const actionTitle = `E2E Action Flow Test ${Date.now()}`;
+
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.alpha1).click();
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
@@ -31,16 +50,18 @@ test.describe("requirement actions", () => {
     await test.step("create and link a new action from HW-FN-005's Actions card", async () => {
       await openRequirementByCode(page, "HW-FN-005");
       await page.getByRole("button", { name: "Create and link a new action" }).click();
-      await page.getByPlaceholder("Title").fill("E2E Action Flow Test");
-      await page.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
-      await page.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toBeVisible();
+      const panel = page.getByRole("dialog", { name: "Create and link a new action" });
+      await panel.getByPlaceholder("Title").fill(actionTitle);
+      await panel.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
+      await panel.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(panel).not.toBeVisible();
+      await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
       await expect(page.getByText("Pending", { exact: true })).toBeVisible();
     });
 
     await test.step("open the action detail page and transition its outcome to Failed", async () => {
-      await page.getByRole("link", { name: /E2E Action Flow Test/ }).click();
-      await expect(page.getByRole("heading", { name: /E2E Action Flow Test/ })).toBeVisible();
+      await page.getByRole("link", { name: actionTitle }).click();
+      await expect(page.getByRole("heading", { name: new RegExp(actionTitle) })).toBeVisible();
       await expect(page.getByLabel("Outcome", { exact: true })).toHaveValue("pending");
       await page.getByLabel("Outcome", { exact: true }).selectOption("failed");
       await expect(page.getByLabel("Outcome", { exact: true })).toHaveValue("failed");
@@ -66,43 +87,52 @@ test.describe("requirement actions", () => {
     await test.step("HW-FN-005 shows the action with its Failed outcome", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-005");
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
       await expect(page.getByText("Failed", { exact: true })).toBeVisible();
     });
 
     await test.step("link the same action to SW-PERF-006 via 'link existing action'", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "SW-PERF-006");
-      // The select and the confirm button both carry the same accessible
-      // text ("Link existing action") — `combobox` role picks the <select>
-      // unambiguously, leaving `button` role for the confirm click below.
-      const existingSelect = page.getByRole("combobox", { name: "Link existing action" });
-      const actionValue = await existingSelect.locator("option", { hasText: "E2E Action Flow Test" }).last().getAttribute("value");
+      // The trigger button, the popover's own dialog aria-label, its
+      // `<select>`, and its confirm button all carry the same accessible
+      // text ("Link existing action") — the trigger click is unambiguous
+      // since the popover doesn't exist yet, and every lookup after that
+      // is scoped to the opened `dialog` so it can't match the trigger.
+      await page.getByRole("button", { name: "Link existing action", exact: true }).click();
+      const popover = page.getByRole("dialog", { name: "Link existing action" });
+      const existingSelect = popover.getByRole("combobox", { name: "Link existing action" });
+      const actionValue = await existingSelect.locator("option", { hasText: actionTitle }).last().getAttribute("value");
       await existingSelect.selectOption(actionValue!);
-      await page.getByRole("button", { name: "Link existing action" }).click();
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toBeVisible();
+      await popover.getByRole("button", { name: "Link existing action" }).click();
+      await expect(popover).not.toBeVisible();
+      await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
 
-    await test.step("unlinking from HW-FN-005 does not remove it from SW-PERF-006", async () => {
+    await test.step("unlinking from HW-FN-005 (confirming the ConfirmDialog) does not remove it from SW-PERF-006", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-005");
-      const actionRow = page.locator(".row", { hasText: "E2E Action Flow Test" }).last();
+      const actionRow = page.locator(".row", { hasText: actionTitle }).last();
       await actionRow.getByTitle("Unlink").click();
+      const dialog = page.getByRole("dialog", { name: "Unlink this action?" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Unlink" }).click();
+      await expect(dialog).not.toBeVisible();
       // Not `getByText`: the now-unlinked (but still existing) action
       // reappears as an `<option>` in this same card's "link existing
       // action" picker, which also contains this substring — the `link`
       // role only matches its actual rendered `<a>`.
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: actionTitle })).toHaveCount(0);
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "SW-PERF-006");
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
     });
 
     await test.step("the action is still reachable and intact from the project's Actions list", async () => {
       await page.getByRole("link", { name: "Actions", exact: true }).click();
-      await expect(page.getByRole("link", { name: /E2E Action Flow Test/ })).toBeVisible();
-      await expect(page.locator("tr", { hasText: "E2E Action Flow Test" }).getByText("Failed")).toBeVisible();
+      await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
+      await expect(page.locator("tr", { hasText: actionTitle }).getByText("Failed")).toBeVisible();
     });
   });
 });

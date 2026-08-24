@@ -167,6 +167,31 @@ export const ArchivingCanBeCancelled: Story = {
   },
 };
 
+/** An archived requirement shows a "Restore" button instead of "Archive",
+ * plus an "Archived" badge — clicking Restore calls the new `/unarchive`
+ * endpoint directly with no `ConfirmDialog` (unlike Archive above — mirrors
+ * `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
+ * immediately) and shows a success toast (2026-08 UX audit roadmap:
+ * unarchive endpoint + Restore button — archive used to be one-way for
+ * requirements, unlike projects). */
+export const ArchivedRequirementShowsRestoreButton: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { is_archived: true });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(canvas.getByText("Archived", { selector: "div.badge" })).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Restore" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/unarchive`)
+    );
+    await expect(within(document.body).getByText("Requirement restored")).toBeInTheDocument();
+  },
+};
+
 /** Once completed, a manager sees "Revert completion" instead of "Mark
  * completed" — mirrors the lifecycle diagram in
  * help/02-requirement-lifecycle.md. */
@@ -246,6 +271,10 @@ export const LinksCardPopulated: Story = {
   },
 };
 
+/** "Add link" now opens a `Popover` (2026-08 UX audit, sixth pass: create
+ * flows are a layer, not a permanently-visible inline row — style guide
+ * Principle 3) anchored to the trigger button, rather than rendering the
+ * target/type selects inline below the list at all times. */
 export const AddLink: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
@@ -255,15 +284,48 @@ export const AddLink: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByLabelText("Target requirement")).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByLabelText("Target requirement"), "requirement-2");
-    await userEvent.selectOptions(canvas.getByLabelText("Link type"), "lt1");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add link" })).toBeInTheDocument());
+    // Selects aren't in the document until the popover trigger opens it.
+    await expect(canvas.queryByLabelText("Target requirement")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+
+    const popover = within(document.body).getByRole("dialog", { name: "Add link" });
+    await userEvent.selectOptions(within(popover).getByLabelText("Target requirement"), "requirement-2");
+    await userEvent.selectOptions(within(popover).getByLabelText("Link type"), "lt1");
+    await userEvent.click(within(popover).getByRole("button", { name: "Add link" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`,
         { target_requirement_id: "requirement-2", link_type_id: "lt1" }
       )
+    );
+    // A successful add closes the popover.
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Add link" })).not.toBeInTheDocument());
+  },
+};
+
+/** Removing a link now opens the shared `ConfirmDialog` (Tier 1) instead of
+ * firing `DELETE` immediately — the other half of the sixth-pass audit
+ * finding, alongside `AddLink` above. */
+export const RemoveLinkConfirms: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      links: [buildRequirementLink({ id: "link1", display_name: "Depends on", other_requirement_unique_code: "AUTH-LOG-002", other_requirement_name: "Users can enable two-factor authentication" })],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/AUTH-LOG-002/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Remove link" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove this link?" });
+    await expect(dialog).toBeVisible();
+    await expect(api.delete).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove link" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links/link1`)
     );
   },
 };
@@ -283,6 +345,37 @@ export const ActionsCardPopulated: Story = {
   },
 };
 
+/** "Link existing action" now opens a `Popover` (one field — fits the
+ * style guide's Popover, not `SidePanel`, side of the decision tree)
+ * instead of a permanently-visible inline select+button row. */
+export const LinkExistingAction: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      projectActions: [buildRequirementAction({ id: "action-9", unique_code: "ACT-009", title: "Existing action to attach" })],
+    });
+    spyOn(api, "post").mockResolvedValue(buildComment());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Link existing action" })).toBeInTheDocument());
+    await expect(canvas.queryByLabelText("Link existing action")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Link existing action" }));
+
+    const popover = within(document.body).getByRole("dialog", { name: "Link existing action" });
+    await userEvent.selectOptions(within(popover).getByLabelText("Link existing action"), "action-9");
+    await userEvent.click(within(popover).getByRole("button", { name: "Link existing action" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions`,
+        { action_id: "action-9" }
+      )
+    );
+  },
+};
+
+/** "Create and link a new action" now opens a `SidePanel` (multi-field —
+ * the other side of the decision tree) instead of a permanently-visible
+ * inline block toggled open below the list. */
 export const CreateAndLinkAction: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"]);
@@ -291,15 +384,45 @@ export const CreateAndLinkAction: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No actions linked yet.")).toBeInTheDocument());
+    await expect(canvas.queryByPlaceholderText("Title")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
-    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
-    await userEvent.selectOptions(canvas.getByLabelText("Type"), "at1");
-    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+
+    const panel = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
+    await userEvent.type(within(panel).getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.selectOptions(within(panel).getByLabelText("Type"), "at1");
+    await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions/create-and-link`,
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
+    );
+    // A successful create closes the panel.
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Create and link a new action" })).not.toBeInTheDocument());
+  },
+};
+
+/** Unlinking an action now opens the shared `ConfirmDialog` (Tier 1)
+ * instead of firing `DELETE` immediately. */
+export const UnlinkActionConfirms: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      linkedActions: [buildRequirementAction({ id: "action-1", unique_code: "ACT-001", title: "Review password reset flow", outcome_status: "completed" })],
+    });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/ACT-001/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Unlink" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Unlink this action?" });
+    await expect(dialog).toBeVisible();
+    await expect(api.delete).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Unlink" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions/action-1`)
     );
   },
 };

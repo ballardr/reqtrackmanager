@@ -195,6 +195,18 @@ def archive_requirement(db: Session, requirement: Requirement, actor: User) -> N
     requirement.archived_by = actor.id
 
 
+def unarchive_requirement(db: Session, requirement: Requirement, actor: User) -> None:
+    """Restores an archived requirement to the active list, undoing
+    `archive_requirement`. Mirrors `routers.projects::unarchive_project`'s
+    shape: unconditional (no already-active guard), so calling this on a
+    requirement that isn't archived is a harmless no-op rather than an
+    error — same idempotency contract the project endpoint already has.
+    """
+    requirement.is_archived = False
+    requirement.archived_at = None
+    requirement.archived_by = None
+
+
 def set_keywords(db: Session, requirement: Requirement, keywords: list[str]) -> None:
     """Replaces a requirement's keyword set (C-M-01)."""
     db.execute(RequirementKeyword.__table__.delete().where(RequirementKeyword.requirement_id == requirement.id))

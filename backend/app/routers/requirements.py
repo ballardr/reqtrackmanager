@@ -85,6 +85,7 @@ from app.services.requirements import (
     get_keywords,
     is_locked,
     set_keywords,
+    unarchive_requirement,
 )
 from app.services.reviews import get_due_reviews_for_project
 
@@ -215,6 +216,8 @@ def list_requirements(
     has_comments: bool | None = None,
     only_watched: bool | None = None,
     include_archived: bool = False,
+    sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
@@ -228,6 +231,14 @@ def list_requirements(
     When `limit` is given, the total match count (before slicing) is
     returned in the `X-Total-Count` response header so a client can tell
     whether more pages remain.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally overrides the default component/category/manual-
+    order sort below with a single-column sort by `unique_code`, `name`,
+    `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
+    Omitting `sort` leaves the existing default ordering completely
+    unchanged, so this is additive, not a breaking change to callers that
+    don't ask for it.
     """
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not include_archived:
@@ -259,11 +270,17 @@ def list_requirements(
             continue
         out.append(item)
 
-    comp_order = {c.id: c.sort_order for c in db.scalars(
-        select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-    cat_order = {c.id: c.sort_order for c in db.scalars(
-        select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-    out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
+    if sort:
+        def _sort_value(item: RequirementOut):
+            value = getattr(item, sort)
+            return value.lower() if isinstance(value, str) else value
+        out.sort(key=_sort_value, reverse=(order == "desc"))
+    else:
+        comp_order = {c.id: c.sort_order for c in db.scalars(
+            select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
+        cat_order = {c.id: c.sort_order for c in db.scalars(
+            select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
+        out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
@@ -640,6 +657,36 @@ def delete_requirement(
     requirements_archived_total.inc()
     db.commit()
     pubsub.notify(project_id, {"type": "requirement", "action": "archived", "id": str(requirement.id)})
+
+
+@router.post("/{requirement_id}/unarchive", response_model=RequirementOut)
+def restore_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Restores an archived requirement to the active list, undoing
+    `delete_requirement` — same permission gate (managers/administrators),
+    same audit-log shape, mirroring `routers.projects::unarchive_project`
+    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
+    roadmap item on one-way archive). Unlike `delete_requirement`, calling
+    this on a requirement that isn't archived is a harmless no-op rather
+    than an error, matching `unarchive_project`'s own idempotent shape.
+    """
+    if not get_effective_project_roles(db, current_user.id, project_id) & {
+        ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR,
+    }:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators or managers may restore requirements.")
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    unarchive_requirement(db, requirement, current_user)
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="unarchived",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(requirement)
+    version = get_current_version(db, requirement.id)
+    pubsub.notify(project_id, {"type": "requirement", "action": "unarchived", "id": str(requirement.id)})
+    return _to_out(db, requirement, version, current_user.id)
 
 
 @router.post("/{requirement_id}/reviews", response_model=RequirementReviewOut, status_code=status.HTTP_201_CREATED)

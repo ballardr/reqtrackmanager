@@ -206,6 +206,16 @@ def complete_requirement(headers: dict, project_id: str, requirement_id: str) ->
     r.raise_for_status()
 
 
+def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
+    """Archives a requirement (soft-delete, C-A-06). Left archived rather
+    than restored in the demo dataset so a reviewer has a concrete example
+    to click "Restore" on — see `POST .../unarchive`, added per the 2026-08
+    UX audit roadmap ("archive was one-way for requirements, unlike
+    projects")."""
+    r = httpx.delete(f"{BASE}/projects/{project_id}/requirements/{requirement_id}", headers=headers, timeout=30)
+    r.raise_for_status()
+
+
 def add_requirement_comment(headers: dict, project_id: str, requirement_id: str, body: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments", json={"body": body}, headers=headers, timeout=30)
     r.raise_for_status()
@@ -353,6 +363,15 @@ def add_action_comment(headers: dict, project_id: str, action_id: str, body: str
     r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/comments", json={"body": body}, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
+
+
+def archive_action(headers: dict, project_id: str, action_id: str) -> None:
+    """Archives a requirement action. Left archived rather than restored in
+    the demo dataset so a reviewer has a concrete example to click
+    "Restore" on — see `POST .../unarchive`, added per the 2026-08 UX audit
+    roadmap ("archive was one-way for actions, unlike projects")."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/archive", headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 def create_report_template(headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str) -> dict:
@@ -567,6 +586,9 @@ def main() -> None:
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])
 
+    print("Archiving a descoped Falcon-3 requirement (demonstrates the 'Include archived' filter and Restore button)...")
+    archive_requirement(h_pm, drone["id"], drone_reqs["Support geofencing with a configurable no-fly boundary"]["id"])
+
     print("Linking related Falcon-3 requirements (C-G-09)...")
     gps_req = drone_reqs["Acquire GPS position lock within 5 seconds of power-on in open-sky conditions"]
     return_to_home_req = drone_reqs["Autonomously return to launch point when battery charge falls below 15%"]
@@ -592,6 +614,9 @@ def main() -> None:
         "Reviewed against the current rule text — one broadcast field was using the wrong units, fixed in "
         "firmware rev 2.3.1. No other gaps found.",
     )
+    # Completed and signed off — archived to demonstrate the 'Include
+    # archived' filter and Restore button on ActionDetailPage.
+    archive_action(h_pm, drone["id"], firmware_review["id"])
     wind_test = create_and_link_action(
         h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],
         title="Wind tunnel stability test at 45 km/h sustained gust",

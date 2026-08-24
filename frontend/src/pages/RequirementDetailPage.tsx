@@ -1,5 +1,5 @@
-import { GitPullRequest, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArchiveRestore, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -26,6 +26,8 @@ import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FileAttachmentList } from "../components/FileAttachmentList";
+import { Popover } from "../components/Popover";
+import { SidePanel } from "../components/SidePanel";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
@@ -82,18 +84,31 @@ export function RequirementDetailPage() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
+  // Create (`Popover`, one door per style guide Principle 3) and remove
+  // (`ConfirmDialog`, Tier 1) both converted from permanently-visible
+  // inline/immediate interactions in the 2026-08 UX audit's sixth pass —
+  // see docs/ux-audit-2026-08.md "Links and linked actions."
   const [links, setLinks] = useState<RequirementLink[]>([]);
   const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
   const [projectRequirements, setProjectRequirements] = useState<Requirement[]>([]);
   const [newLinkTargetId, setNewLinkTargetId] = useState("");
   const [newLinkTypeId, setNewLinkTypeId] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
+  const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
+  const [linkToRemove, setLinkToRemove] = useState<RequirementLink | null>(null);
 
   // --- Linked requirement actions --------------------------------------
+  // Same conversion as the links above: "link existing" is a one-field
+  // `Popover`, "create and link" is a multi-field `SidePanel` (per the
+  // style guide's Popover-vs-SidePanel decision tree), and unlinking goes
+  // through `ConfirmDialog` instead of firing immediately.
   const [linkedActions, setLinkedActions] = useState<RequirementAction[]>([]);
   const [projectActionTypes, setProjectActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [projectActions, setProjectActions] = useState<RequirementAction[]>([]);
   const [existingActionToLink, setExistingActionToLink] = useState("");
+  const [linkExistingActionPopoverOpen, setLinkExistingActionPopoverOpen] = useState(false);
+  const linkExistingActionTriggerRef = useRef<HTMLButtonElement>(null);
   const [showCreateAction, setShowCreateAction] = useState(false);
   const [newActionTitle, setNewActionTitle] = useState("");
   const [newActionDescription, setNewActionDescription] = useState("");
@@ -101,6 +116,7 @@ export function RequirementDetailPage() {
   const [newActionAssigneeId, setNewActionAssigneeId] = useState("");
   const [newActionDueDate, setNewActionDueDate] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionToUnlink, setActionToUnlink] = useState<RequirementAction | null>(null);
 
   function userDisplayName(userId: string | null): string {
     if (!userId) return strings.reviews.unassigned;
@@ -174,6 +190,7 @@ export function RequirementDetailPage() {
       });
       setNewLinkTargetId("");
       setNewLinkTypeId("");
+      setAddLinkPopoverOpen(false);
       reload();
     } catch (err) {
       setLinkError(err instanceof Error ? err.message : strings.common.error);
@@ -193,6 +210,7 @@ export function RequirementDetailPage() {
         action_id: existingActionToLink,
       });
       setExistingActionToLink("");
+      setLinkExistingActionPopoverOpen(false);
       reload();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : strings.common.error);
@@ -289,6 +307,21 @@ export function RequirementDetailPage() {
     }
   }
 
+  // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
+  // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
+  // immediately, since restoring is reversible again (archive it right
+  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
+  // unarchive endpoint + Restore button).
+  async function restore() {
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/unarchive`);
+      showToast(strings.requirements.restored);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   async function markCompleted() {
     await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/complete`);
     reload();
@@ -376,13 +409,24 @@ export function RequirementDetailPage() {
               {strings.requirements.unmarkCompleted}
             </button>
           )}
-          {canArchive && (
+          {canArchive && !requirement.is_archived && (
             <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
               {strings.requirements.archive}
             </button>
           )}
+          {canArchive && requirement.is_archived && (
+            <button className="btn" onClick={restore}>
+              <ArchiveRestore size={14} /> {strings.requirements.restore}
+            </button>
+          )}
         </div>
       </div>
+
+      {requirement.is_archived && (
+        <div className="badge" style={{ alignSelf: "flex-start" }}>
+          {strings.requirements.archivedBadge}
+        </div>
+      )}
 
       {archiveDialogOpen && (
         <ConfirmDialog
@@ -624,8 +668,62 @@ export function RequirementDetailPage() {
       </div>
 
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.links}</h2>
-        {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.links}</h2>
+          <button
+            ref={addLinkTriggerRef}
+            className="btn btn-primary"
+            onClick={() => {
+              setLinkError(null);
+              setAddLinkPopoverOpen((o) => !o);
+            }}
+          >
+            <Plus size={14} /> {strings.requirements.addLink}
+          </button>
+          {addLinkPopoverOpen && (
+            <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.targetRequirement}
+                <select
+                  className="input" aria-label={strings.requirements.targetRequirement}
+                  value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
+                >
+                  <option value="">{strings.requirements.selectARequirementToLink}</option>
+                  {projectRequirements
+                    .filter((r) => r.id !== requirementId)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.unique_code} — {r.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.linkType}
+                <select
+                  className="input" aria-label={strings.requirements.linkType}
+                  value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
+                >
+                  <option value="">{strings.requirements.linkType}</option>
+                  {linkTypes.map((lt) => (
+                    <option key={lt.id} value={lt.id}>
+                      {lt.forward_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button className="btn" onClick={() => setAddLinkPopoverOpen(false)}>
+                  {strings.common.cancel}
+                </button>
+                <button className="btn btn-primary" onClick={addLink} disabled={!newLinkTargetId || !newLinkTypeId}>
+                  {strings.requirements.addLink}
+                </button>
+              </div>
+            </Popover>
+          )}
+        </div>
         {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
         {[...links]
           .sort((a, b) => a.display_name.localeCompare(b.display_name) || a.other_requirement_unique_code.localeCompare(b.other_requirement_unique_code))
@@ -641,46 +739,85 @@ export function RequirementDetailPage() {
                 className="btn btn-danger"
                 title={strings.requirements.removeLink}
                 aria-label={strings.requirements.removeLink}
-                onClick={() => removeLink(link.id)}
+                onClick={() => setLinkToRemove(link)}
               >
                 <Trash2 size={14} />
               </button>
             </div>
           ))}
-        <div className="row">
-          <select
-            className="input" aria-label={strings.requirements.targetRequirement}
-            value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
-          >
-            <option value="">{strings.requirements.selectARequirementToLink}</option>
-            {projectRequirements
-              .filter((r) => r.id !== requirementId)
-              .map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.unique_code} — {r.name}
-                </option>
-              ))}
-          </select>
-          <select
-            className="input" aria-label={strings.requirements.linkType}
-            value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
-          >
-            <option value="">{strings.requirements.linkType}</option>
-            {linkTypes.map((lt) => (
-              <option key={lt.id} value={lt.id}>
-                {lt.forward_name}
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-primary" onClick={addLink} disabled={!newLinkTargetId || !newLinkTypeId}>
-            <Plus size={14} /> {strings.requirements.addLink}
-          </button>
-        </div>
+        {linkToRemove && (
+          <ConfirmDialog
+            title={strings.requirements.removeLinkTitle}
+            message={strings.requirements.removeLinkConfirm}
+            confirmLabel={strings.requirements.removeLink}
+            onConfirm={async () => {
+              const id = linkToRemove.id;
+              setLinkToRemove(null);
+              await removeLink(id);
+            }}
+            onCancel={() => setLinkToRemove(null)}
+          />
+        )}
       </div>
 
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
-        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
+          <div className="row">
+            <button
+              ref={linkExistingActionTriggerRef}
+              className="btn"
+              onClick={() => {
+                setActionError(null);
+                setLinkExistingActionPopoverOpen((o) => !o);
+              }}
+            >
+              <Plus size={14} /> {strings.requirements.linkExistingAction}
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setActionError(null);
+                setShowCreateAction(true);
+              }}
+            >
+              <Plus size={14} /> {strings.requirements.createAndLinkAction}
+            </button>
+          </div>
+          {linkExistingActionPopoverOpen && (
+            <Popover
+              anchorRef={linkExistingActionTriggerRef}
+              title={strings.requirements.linkExistingAction}
+              onClose={() => setLinkExistingActionPopoverOpen(false)}
+            >
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.linkExistingAction}
+                <select
+                  className="input" aria-label={strings.requirements.linkExistingAction}
+                  value={existingActionToLink} onChange={(e) => setExistingActionToLink(e.target.value)}
+                >
+                  <option value="">{strings.requirements.selectAnActionToLink}</option>
+                  {projectActions
+                    .filter((a) => !linkedActions.some((la) => la.id === a.id))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.unique_code} — {a.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button className="btn" onClick={() => setLinkExistingActionPopoverOpen(false)}>
+                  {strings.common.cancel}
+                </button>
+                <button className="btn btn-primary" onClick={linkExistingAction} disabled={!existingActionToLink}>
+                  {strings.requirements.linkExistingAction}
+                </button>
+              </div>
+            </Popover>
+          )}
+        </div>
         {linkedActions.length === 0 && (
           <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinkedActions}</p>
         )}
@@ -694,35 +831,27 @@ export function RequirementDetailPage() {
               className="btn btn-danger"
               title={strings.requirements.unlinkAction}
               aria-label={strings.requirements.unlinkAction}
-              onClick={() => unlinkAction(a.id)}
+              onClick={() => setActionToUnlink(a)}
             >
               <Trash2 size={14} />
             </button>
           </div>
         ))}
-        <div className="row">
-          <select
-            className="input" aria-label={strings.requirements.linkExistingAction}
-            value={existingActionToLink} onChange={(e) => setExistingActionToLink(e.target.value)}
-          >
-            <option value="">{strings.requirements.selectAnActionToLink}</option>
-            {projectActions
-              .filter((a) => !linkedActions.some((la) => la.id === a.id))
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.unique_code} — {a.title}
-                </option>
-              ))}
-          </select>
-          <button className="btn" onClick={linkExistingAction} disabled={!existingActionToLink}>
-            <Plus size={14} /> {strings.requirements.linkExistingAction}
-          </button>
-          <button className="btn" onClick={() => setShowCreateAction((v) => !v)}>
-            <Plus size={14} /> {strings.requirements.createAndLinkAction}
-          </button>
-        </div>
+        {actionToUnlink && (
+          <ConfirmDialog
+            title={strings.requirements.unlinkActionTitle}
+            message={strings.requirements.unlinkActionConfirm}
+            confirmLabel={strings.requirements.unlinkAction}
+            onConfirm={async () => {
+              const id = actionToUnlink.id;
+              setActionToUnlink(null);
+              await unlinkAction(id);
+            }}
+            onCancel={() => setActionToUnlink(null)}
+          />
+        )}
         {showCreateAction && (
-          <div className="stack" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
+          <SidePanel title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)}>
             <input
               className="input" placeholder={strings.actions.name} value={newActionTitle}
               onChange={(e) => setNewActionTitle(e.target.value)}
@@ -731,59 +860,58 @@ export function RequirementDetailPage() {
               className="input" rows={2} placeholder={strings.actions.description} value={newActionDescription}
               onChange={(e) => setNewActionDescription(e.target.value)}
             />
-            <div className="row">
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.actionType}
-                {/* An explicit `aria-label` (matching the visible label
-                    text) is required here, not just the wrapping <label>:
-                    a native <select>'s ARIA accessible-name computation
-                    when label-wrapped folds in every descendant <option>'s
-                    text too, not just the selected one, which would
-                    otherwise make this resolve to something like
-                    "TypeTypeReviewTest" instead of "Type" for automated
-                    (Playwright) lookups — an aria-label always wins over
-                    that content-based computation. */}
-                <select
-                  className="input" aria-label={strings.actions.actionType}
-                  value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
-                >
-                  <option value="">{strings.actions.actionType}</option>
-                  {projectActionTypes.map((at) => (
-                    <option key={at.id} value={at.id}>
-                      {at.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.assignee}
-                <select
-                  className="input" aria-label={strings.actions.assignee}
-                  value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)}
-                >
-                  <option value="">{strings.reviews.unassigned}</option>
-                  {orgUsers.map((u) => (
-                    <option key={u.user_id} value={u.user_id}>
-                      {u.display_name} ({u.email})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-                {strings.actions.dueDate}
-                <input
-                  className="input" type="date" value={newActionDueDate}
-                  onChange={(e) => setNewActionDueDate(e.target.value)}
-                />
-              </label>
-            </div>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.actions.actionType}
+              {/* An explicit `aria-label` (matching the visible label
+                  text) is required here, not just the wrapping <label>:
+                  a native <select>'s ARIA accessible-name computation
+                  when label-wrapped folds in every descendant <option>'s
+                  text too, not just the selected one, which would
+                  otherwise make this resolve to something like
+                  "TypeTypeReviewTest" instead of "Type" for automated
+                  (Playwright) lookups — an aria-label always wins over
+                  that content-based computation. */}
+              <select
+                className="input" aria-label={strings.actions.actionType}
+                value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
+              >
+                <option value="">{strings.actions.actionType}</option>
+                {projectActionTypes.map((at) => (
+                  <option key={at.id} value={at.id}>
+                    {at.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.actions.assignee}
+              <select
+                className="input" aria-label={strings.actions.assignee}
+                value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)}
+              >
+                <option value="">{strings.reviews.unassigned}</option>
+                {orgUsers.map((u) => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.display_name} ({u.email})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.actions.dueDate}
+              <input
+                className="input" type="date" value={newActionDueDate}
+                onChange={(e) => setNewActionDueDate(e.target.value)}
+              />
+            </label>
+            {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               onClick={createAndLinkAction} disabled={!newActionTitle.trim() || !newActionTypeId}
             >
               {strings.common.create}
             </button>
-          </div>
+          </SidePanel>
         )}
       </div>
 

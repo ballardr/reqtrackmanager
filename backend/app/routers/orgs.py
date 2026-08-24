@@ -525,6 +525,8 @@ def list_org_users(
     has_project_access: bool | None = None,
     is_active: bool | None = None,
     search: str | None = None,
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
@@ -552,6 +554,14 @@ def list_org_users(
     `list_requirements`, omitting `limit` returns every match unpaginated
     (unchanged from before pagination existed); when given, the total
     match count before slicing is returned via `X-Total-Count`.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally overrides the default `display_name` sort with
+    `email` or `last_login_at`; `order` picks `asc` (default) or `desc`.
+    `last_login_at` is nullable (a user who's never logged in) — those
+    rows sort last regardless of `order`, so "sort by last login,
+    descending" surfaces the most-recently-active users first without
+    "never logged in" accounts jumping to the top.
     """
     filters_requested = any(
         v is not None for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active)
@@ -603,7 +613,18 @@ def list_org_users(
     if search:
         needle = search.lower()
         results = [r for r in results if needle in r.display_name.lower() or needle in r.email.lower()]
-    results.sort(key=lambda r: r.display_name.lower())
+
+    if sort and sort != "display_name":
+        def _sort_value(item: OrgUserOut):
+            value = getattr(item, sort)
+            if sort == "last_login_at":
+                # Nulls (never logged in) always sort last, in either
+                # direction — see docstring.
+                return (value is None, value)
+            return value.lower()
+        results.sort(key=_sort_value, reverse=(order == "desc"))
+    else:
+        results.sort(key=lambda r: r.display_name.lower(), reverse=(sort == "display_name" and order == "desc"))
 
     response.headers["X-Total-Count"] = str(len(results))
     if limit is not None:

@@ -3,12 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useUiPreference } from "../hooks/useUiPreference";
 import type {
   DigestMode,
@@ -44,6 +46,13 @@ export function PreferencesPage() {
   const { theme, setTheme } = useTheme();
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
+  const { showToast } = useToast();
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  // ConfirmDialog (Tier 1) state for the two PAT actions below — converted
+  // from `window.confirm` per the sixth-pass audit's "Confirmation and
+  // feedback rollout, precisely" list.
+  const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
+  const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
@@ -202,14 +211,25 @@ export function PreferencesPage() {
   }
 
   async function revokePat(id: string) {
-    await api.delete(`/api/v1/me/pats/${id}`);
-    setPats((current) => current.map((p) => (p.id === id ? { ...p, revoked_at: new Date().toISOString() } : p)));
+    setPatToRevoke(null);
+    try {
+      await api.delete(`/api/v1/me/pats/${id}`);
+      setPats((current) => current.map((p) => (p.id === id ? { ...p, revoked_at: new Date().toISOString() } : p)));
+      showToast(strings.preferences.patRevokedToast);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function revokeAllPats() {
-    if (!window.confirm(strings.preferences.patRevokeAllConfirm)) return;
-    await api.post("/api/v1/me/pats/revoke-all");
-    api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+    setRevokeAllPatsOpen(false);
+    try {
+      await api.post("/api/v1/me/pats/revoke-all");
+      api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+      showToast(strings.preferences.patRevokedAllToast);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   // Edits are staged locally and only sent on `saveNotificationPrefs` — this
@@ -231,15 +251,19 @@ export function PreferencesPage() {
   }
 
   async function saveNotificationPrefs() {
-    await Promise.all(
-      notificationPrefs.map((p) =>
-        api.put(`/api/v1/notifications/preferences/${p.type}`, {
-          ui_enabled: p.ui_enabled, email_enabled: p.email_enabled,
-        })
-      )
-    );
-    setNotificationPrefsDirty(false);
-    setNotificationPrefsSaved(true);
+    try {
+      await Promise.all(
+        notificationPrefs.map((p) =>
+          api.put(`/api/v1/notifications/preferences/${p.type}`, {
+            ui_enabled: p.ui_enabled, email_enabled: p.email_enabled,
+          })
+        )
+      );
+      setNotificationPrefsDirty(false);
+      setNotificationPrefsSaved(true);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function save() {
@@ -343,12 +367,18 @@ export function PreferencesPage() {
               accept="image/*"
               onChange={async (e) => {
                 if (e.target.files?.[0]) {
-                  await api.postFile("/api/v1/auth/me/avatar", e.target.files[0]);
-                  await refreshUser();
+                  setAvatarError(null);
+                  try {
+                    await api.postFile("/api/v1/auth/me/avatar", e.target.files[0]);
+                    await refreshUser();
+                  } catch (err) {
+                    setAvatarError(err instanceof ApiError ? err.message : strings.common.error);
+                  }
                 }
               }}
             />
           </div>
+          {avatarError && <div style={{ color: "var(--color-danger)" }}>{avatarError}</div>}
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.displayName}
@@ -596,9 +626,7 @@ export function PreferencesPage() {
                     <td>
                       <button
                         className="btn btn-danger"
-                        onClick={() => {
-                          if (window.confirm(strings.preferences.patRevokeConfirm)) revokePat(p.id);
-                        }}
+                        onClick={() => setPatToRevoke(p.id)}
                       >
                         {strings.preferences.patRevoke}
                       </button>
@@ -609,7 +637,7 @@ export function PreferencesPage() {
           </table>
         )}
         {pats.filter((p) => !p.revoked_at).length > 0 && (
-          <button className="btn btn-danger" onClick={revokeAllPats} style={{ alignSelf: "flex-start" }}>
+          <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.patRevokeAll}
           </button>
         )}
@@ -761,6 +789,25 @@ export function PreferencesPage() {
         </button>
         {notificationPrefsSaved && <div style={{ color: "var(--color-accent)" }}>{strings.preferences.saved}</div>}
       </div>
+      )}
+
+      {patToRevoke && (
+        <ConfirmDialog
+          title={strings.preferences.patRevokeTitle}
+          message={strings.preferences.patRevokeConfirm}
+          confirmLabel={strings.preferences.patRevoke}
+          onConfirm={() => revokePat(patToRevoke)}
+          onCancel={() => setPatToRevoke(null)}
+        />
+      )}
+      {revokeAllPatsOpen && (
+        <ConfirmDialog
+          title={strings.preferences.patRevokeAllTitle}
+          message={strings.preferences.patRevokeAllConfirm}
+          confirmLabel={strings.preferences.patRevokeAll}
+          onConfirm={revokeAllPats}
+          onCancel={() => setRevokeAllPatsOpen(false)}
+        />
       )}
     </div>
   );

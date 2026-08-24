@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgPersonalAccessToken, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -40,6 +40,7 @@ const groups: OrgGroup[] = [
 function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
+  pats?: OrgPersonalAccessToken[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -53,7 +54,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/report-templates")) return [];
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return overrides.advanced ?? advanced;
-    if (path.includes("/pats")) return [];
+    if (path.includes("/pats")) return overrides.pats ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -103,6 +104,34 @@ export const UsersSectionAndCreateUser: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "People" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("Org admin")).toBeInTheDocument();
+  },
+};
+
+/** Column-header sorting (2026-08 UX audit roadmap) — the Users table is
+ * backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`), so a header click
+ * refetches with `sort`/`order` query params rather than reordering just
+ * the loaded page. */
+export const UsersSectionSortByEmail: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=email&order=asc"))
+    );
+    const th = canvas.getByRole("button", { name: "Email" }).closest("th");
+    await expect(th).toHaveAttribute("aria-sort", "ascending");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=email&order=desc"))
+    );
   },
 };
 
@@ -488,6 +517,54 @@ export const PatsSectionNoneReachOrg: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
     await waitFor(() => expect(canvas.getByText("No tokens currently reach this organisation.")).toBeInTheDocument());
+  },
+};
+
+const onePat: OrgPersonalAccessToken = {
+  id: "pat-1", user_id: "user-1", user_email: "alex@example.com", user_display_name: "Alex Morgan",
+  name: "MCP server", token_prefix: "rtm_pat_abcd", expires_at: "2027-01-01T00:00:00Z",
+  other_org_count: 0, last_used_at: null, created_at: "2026-01-01T00:00:00Z",
+};
+
+/** Revoking a single org-scoped PAT opens the shared `ConfirmDialog`
+ * (sixth-pass audit — this used to fire via `window.confirm`), then shows
+ * a success toast once revoked. */
+export const PatsSectionRevokeOneConfirms: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ pats: [onePat] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token outright?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/pats/pat-1/revoke`));
+  },
+};
+
+/** Cancelling the revoke confirmation leaves the token untouched. */
+export const PatsSectionRevokeOneCancelled: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ pats: [onePat] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token outright?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
+    await expect(canvas.getByText("MCP server")).toBeInTheDocument();
   },
 };
 

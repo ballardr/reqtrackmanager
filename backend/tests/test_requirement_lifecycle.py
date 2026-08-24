@@ -4,7 +4,7 @@ Tests for the requirement lifecycle: creation, unique ID generation
 edit lock (C-G-12), and version history (C-A-02, C-A-09).
 """
 
-from tests.conftest import auth_headers, create_component_and_category, create_project
+from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
 
 def test_requirement_id_uses_component_and_category_prefix(client, admin_token, org_id):
@@ -164,6 +164,64 @@ def test_archiving_preserves_history(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/history", headers=auth_headers(admin_token)
     ).json()
     assert len(history) == 1
+
+
+def test_unarchive_requirement_restores_it_and_is_idempotent(client, admin_token, org_id):
+    """Pins the `/unarchive` counterpart to `test_archiving_preserves_history`
+    above (2026-08 UX audit roadmap: archive was previously one-way for
+    requirements, unlike projects). Also covers the idempotency contract:
+    unlike `archive_action`'s 409-on-already-archived, calling unarchive on
+    an already-active requirement is a no-op, matching
+    `unarchive_project`'s own shape."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    client.delete(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    )
+    listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert requirement["id"] not in [r["id"] for r in listed]
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_archived"] is False
+
+    listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert requirement["id"] in [r["id"] for r in listed]
+
+    # Idempotent: unarchiving an already-active requirement doesn't error.
+    again = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(admin_token),
+    )
+    assert again.status_code == 200
+    assert again.json()["is_archived"] is False
+
+
+def test_unarchive_requirement_requires_manager_or_admin_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    client.delete(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    )
+
+    user_id = create_org_user(client, admin_token, org_id, "stakeholder_unarchive@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    stakeholder_token = login(client, "stakeholder_unarchive@example.com", "Password123!")
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(stakeholder_token),
+    )
+    assert resp.status_code == 403
 
 
 def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, admin_token, org_id):

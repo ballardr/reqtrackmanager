@@ -22,6 +22,11 @@ import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpe
  * assertion below is scoped to the actual rendered link row (its badge, or
  * the real `<a>` it renders as) rather than a bare `getByText`, to stay
  * unambiguous against those selects.
+ *
+ * 2026-08 UX audit, sixth pass: "Add link" now opens a `Popover` instead of
+ * rendering the target/type selects as a permanently-visible inline row,
+ * and removing a link now goes through a `ConfirmDialog` (Tier 1) instead
+ * of firing immediately — both asserted below alongside the underlying job.
  */
 function linkBadge(page: import("@playwright/test").Page, text: string) {
   return page.locator("span.badge", { hasText: text });
@@ -46,14 +51,17 @@ test.describe("requirement traceability links", () => {
       await expect(page.getByRole("link", { name: /SW-PERF-002/ })).toBeVisible();
     });
 
-    await test.step("add a new 'Depends on' link between two other requirements", async () => {
+    await test.step("add a new 'Depends on' link between two other requirements via the 'Add link' popover", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-005");
-      const targetSelect = page.getByLabel("Target requirement");
+      await page.getByRole("button", { name: "Add link" }).click();
+      const popover = page.getByRole("dialog", { name: "Add link" });
+      const targetSelect = popover.getByLabel("Target requirement");
       const targetValue = await targetSelect.locator("option", { hasText: "SW-PERF-006" }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
-      await page.getByLabel("Link type").selectOption({ label: "Depends on" });
-      await page.getByRole("button", { name: "Add link" }).click();
+      await popover.getByLabel("Link type").selectOption({ label: "Depends on" });
+      await popover.getByRole("button", { name: "Add link" }).click();
+      await expect(popover).not.toBeVisible();
       await expect(linkBadge(page, "Depends on")).toBeVisible();
       await expect(page.getByRole("link", { name: /SW-PERF-006/ })).toBeVisible();
     });
@@ -65,9 +73,13 @@ test.describe("requirement traceability links", () => {
       await expect(page.getByRole("link", { name: /HW-FN-005/ })).toBeVisible();
     });
 
-    await test.step("remove the link from the target requirement's own page; it disappears from both ends", async () => {
+    await test.step("remove the link from the target requirement's own page (confirming the ConfirmDialog); it disappears from both ends", async () => {
       const linkRow = page.locator(".row", { hasText: "Is a dependency of" });
       await linkRow.getByRole("button").click();
+      const dialog = page.getByRole("dialog", { name: "Remove this link?" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Remove link" }).click();
+      await expect(dialog).not.toBeVisible();
       await expect(linkBadge(page, "Is a dependency of")).toHaveCount(0);
 
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

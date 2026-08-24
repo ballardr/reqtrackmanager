@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
-import { buildProjectListItem, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectListPage } from "./ProjectListPage";
 
 function org(overrides: Partial<Organization>): Organization {
@@ -33,7 +33,7 @@ function mockProjectListApis(opts: { orgs: Organization[]; projects: ReturnType<
 const meta: Meta<typeof ProjectListPage> = {
   title: "Pages/ProjectListPage",
   component: ProjectListPage,
-  decorators: [withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/projects")],
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/projects"), withToast()],
 };
 export default meta;
 
@@ -93,6 +93,25 @@ export const CreateProjectFormOpens: Story = {
     await expect(createButton).toBeDisabled();
     await userEvent.type(canvas.getByPlaceholderText("Name"), "New Project");
     await expect(createButton).toBeEnabled();
+  },
+};
+
+/** Creating shows a success toast in addition to navigating to the new
+ * project (Principle 7, sixth-pass audit) — the toast is mounted at the
+ * app root, so it persists across the navigation the create triggers. */
+export const CreateProjectShowsToast: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    await userEvent.type(canvas.getByPlaceholderText("Name"), "New Project");
+    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ name: "New Project" })));
+    await expect(within(document.body).getByText("Project created")).toBeInTheDocument();
   },
 };
 

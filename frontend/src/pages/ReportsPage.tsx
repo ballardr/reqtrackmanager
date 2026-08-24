@@ -18,6 +18,7 @@ import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
 
 /** Same joining `services/reports.py::_chapters_markdown` does server-side
@@ -44,6 +45,7 @@ function chaptersToMarkdown(chapters: ReportChapter[]): string {
 export function ReportsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
+  const { showToast } = useToast();
   const [includeArchived, setIncludeArchived] = useState(false);
   const [generating, setGenerating] = useState<"pdf" | "csv" | null>(null);
 
@@ -140,6 +142,8 @@ export function ReportsPage() {
       });
       const projectName = project?.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     } finally {
       setGenerating(null);
     }

@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
-import { withRouter } from "../testing/storybook-helpers";
+import { withRouter, withToast } from "../testing/storybook-helpers";
 import { ServerOrganisationsPage } from "./ServerOrganisationsPage";
 
 function org(overrides: Partial<Organization>): Organization {
@@ -19,7 +19,7 @@ function org(overrides: Partial<Organization>): Organization {
 const meta: Meta<typeof ServerOrganisationsPage> = {
   title: "Pages/ServerOrganisationsPage",
   component: ServerOrganisationsPage,
-  decorators: [withRouter("/server/organisations")],
+  decorators: [withRouter("/server/organisations"), withToast()],
 };
 export default meta;
 
@@ -66,21 +66,47 @@ export const CreateOrganisation: Story = {
     await userEvent.type(canvas.getByPlaceholderText("Organisation name"), "New Co");
     await userEvent.click(canvas.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs", { name: "New Co" }));
+    await expect(within(document.body).getByText("Organisation created")).toBeInTheDocument();
   },
 };
 
-/** Disable requires confirming via `window.confirm` — mocked to accept, so
- * the action proceeds through to the API call. */
+/** Disable opens the shared `ConfirmDialog` (2026-08 UX audit, sixth pass —
+ * this used to fire via `window.confirm`), then shows a success toast
+ * (Principle 7) once the action completes. */
 export const DisableOrganisation: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
     spyOn(api, "post").mockResolvedValue(undefined);
-    spyOn(window, "confirm").mockReturnValue(true);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Disable" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: 'Disable "Acme Corp"?' });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
+
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs/org-1/disable"));
+    await expect(within(document.body).getByText("Organisation disabled")).toBeInTheDocument();
+  },
+};
+
+/** Cancelling the disable confirmation leaves the organisation untouched —
+ * the pilot pattern's paired cancel story (`RequirementDetailPage`'s
+ * `ArchivingConfirmsAndShowsToast`/cancel pair) applied here. */
+export const DisableOrganisationCancelled: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Disable" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: 'Disable "Acme Corp"?' });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
   },
 };
 

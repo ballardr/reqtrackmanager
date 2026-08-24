@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ServerSettings, SignupConfig, SystemUser } from "../api/types";
-import { withRouter } from "../testing/storybook-helpers";
+import { withRouter, withToast } from "../testing/storybook-helpers";
 import { ServerManagementPage } from "./ServerManagementPage";
 
 function systemUser(overrides: Partial<SystemUser>): SystemUser {
@@ -41,7 +41,7 @@ function mockServerManagementApis(users: SystemUser[]) {
 const meta: Meta<typeof ServerManagementPage> = {
   title: "Pages/ServerManagementPage",
   component: ServerManagementPage,
-  decorators: [withRouter("/server/management")],
+  decorators: [withRouter("/server/management"), withToast()],
 };
 export default meta;
 
@@ -84,17 +84,44 @@ export const AccessReviewBannedAndAdminBadges: Story = {
   },
 };
 
+/** Granting server admin opens the shared `ConfirmDialog` (sixth-pass audit
+ * — this used to fire via `window.confirm`), then shows a success toast
+ * once the role change completes. */
 export const AccessReviewGrantServerAdmin: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);
-    spyOn(window, "confirm").mockReturnValue(true);
     spyOn(api, "put").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Grant server admin" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Grant server admin to this user?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Grant server admin" }));
+
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/users/u1/server-admin", { is_server_admin: true }));
+    await expect(within(document.body).getByText("Server admin granted")).toBeInTheDocument();
+  },
+};
+
+/** Deactivating an account also confirms via `ConfirmDialog`; cancelling
+ * leaves the account untouched (the pilot pattern's paired cancel story). */
+export const AccessReviewDeactivateCancelled: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Deactivate" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Deactivate this account?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
   },
 };
 

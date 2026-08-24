@@ -39,9 +39,10 @@ test("a Personal Access Token created via Preferences authenticates a real API c
   expect(me.email).toBe(PERSONAS.orgAdminAlphaBeta.email);
 
   // Revoking it through the UI kills that same credential for real, not
-  // just in the UI's own displayed state.
-  page.once("dialog", (dialog) => dialog.accept());
+  // just in the UI's own displayed state. Revoke now confirms via the
+  // shared `ConfirmDialog` (sixth-pass audit) rather than `window.confirm`.
   await page.getByRole("button", { name: "Revoke", exact: true }).first().click();
+  await page.getByRole("dialog", { name: "Revoke this token?" }).getByRole("button", { name: "Revoke" }).click();
   await expect(page.getByText("Playwright E2E token")).not.toBeVisible({ timeout: 10000 });
 
   const afterRevoke = await page.request.get(`${apiBaseUrl}/api/v1/auth/me`, {

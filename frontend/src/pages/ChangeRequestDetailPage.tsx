@@ -24,6 +24,7 @@ import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
@@ -38,6 +39,7 @@ export function ChangeRequestDetailPage() {
   const strings = useStrings();
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const myRoles = useMyProjectRoles(projectId);
   const canDecide = myRoles.includes("project_manager");
   const canManageTasks = canDecide || myRoles.includes("project_administrator");
@@ -158,11 +160,12 @@ export function ChangeRequestDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, crId]);
 
-  async function act(action: () => Promise<unknown>) {
+  async function act(action: () => Promise<unknown>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : strings.common.error);
     }
@@ -267,7 +270,12 @@ export function ChangeRequestDetailPage() {
           {cr.status === "draft" && (
             <button
               className="btn btn-primary"
-              onClick={() => act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`))}
+              onClick={() =>
+                act(
+                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`),
+                  strings.changeRequests.submittedToast
+                )
+              }
             >
               {strings.changeRequests.submit}
             </button>
@@ -275,7 +283,12 @@ export function ChangeRequestDetailPage() {
           {(cr.status === "draft" || cr.status === "submitted") && (
             <button
               className="btn"
-              onClick={() => act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`))}
+              onClick={() =>
+                act(
+                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`),
+                  strings.changeRequests.withdrawnToast
+                )
+              }
             >
               {strings.changeRequests.withdraw}
             </button>
@@ -292,11 +305,13 @@ export function ChangeRequestDetailPage() {
               <button
                 className="btn btn-primary"
                 onClick={() =>
-                  act(() =>
-                    api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                      approve: true,
-                      note: decisionNote,
-                    })
+                  act(
+                    () =>
+                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                        approve: true,
+                        note: decisionNote,
+                      }),
+                    strings.changeRequests.approvedToast
                   )
                 }
               >
@@ -305,11 +320,13 @@ export function ChangeRequestDetailPage() {
               <button
                 className="btn btn-danger"
                 onClick={() =>
-                  act(() =>
-                    api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                      approve: false,
-                      note: decisionNote,
-                    })
+                  act(
+                    () =>
+                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                        approve: false,
+                        note: decisionNote,
+                      }),
+                    strings.changeRequests.rejectedToast
                   )
                 }
               >

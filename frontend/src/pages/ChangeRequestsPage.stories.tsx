@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
-import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology } from "../testing/storybook-helpers";
+import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ChangeRequestsPage } from "./ChangeRequestsPage";
 
 const PROJECT_ID = "project-1";
@@ -46,6 +46,7 @@ const meta: Meta<typeof ChangeRequestsPage> = {
     withStatefulAuth(buildUser({ id: "user-1" })),
     withTerminology(),
     withRouter(`/projects/${PROJECT_ID}/change-requests`, "/projects/:projectId/change-requests"),
+    withToast(),
   ],
 };
 export default meta;
@@ -122,6 +123,30 @@ export const NewRequirementKindShowsPlainCreateForm: Story = {
   },
 };
 
+/** Column-header sorting (2026-08 UX audit roadmap) — this list is backend-
+ * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click has to refetch
+ * with `sort`/`order` query params rather than reordering just the loaded
+ * page. Switch to list view first — sorting only applies there. */
+export const SortByCreatedRefetchesWithSortParams: Story = {
+  beforeEach: () => mockChangeRequestsListApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Created" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created_at&order=asc"))
+    );
+    const th = canvas.getByRole("button", { name: "Created" }).closest("th");
+    await expect(th).toHaveAttribute("aria-sort", "ascending");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Created" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=created_at&order=desc"))
+    );
+  },
+};
+
 export const SubmitCreatesChangeRequest: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();
@@ -140,6 +165,9 @@ export const SubmitCreatesChangeRequest: Story = {
         expect.objectContaining({ kind: "modify_requirement", changed_fields: ["reasoning"] })
       )
     );
+    // Principle 7 — every mutation ends with feedback (sixth-pass audit:
+    // this page previously just silently re-rendered the list).
+    await expect(within(document.body).getByText("Change request created")).toBeInTheDocument();
   },
 };
 

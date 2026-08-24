@@ -27,10 +27,12 @@ import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings, useTerm } from "../context/TerminologyContext";
+import { useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 30;
 
@@ -77,6 +79,7 @@ const BLANK_PROPOSED: ProposedFields = {
 export function ChangeRequestsPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -104,11 +107,21 @@ export function ChangeRequestsPage() {
   const [statusFilter, setStatusFilter] = useState<ChangeRequestStatus | "">("");
   const [targetStageFilter, setTargetStageFilter] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // `order` param, same reasoning as `RequirementsPage.tsx`: this list is
+  // already backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a
+  // client-side sort would only reorder the currently-loaded page.
+  type ChangeRequestSortKey = "proposed_name" | "status" | "created_at";
+  const [sort, setSort] = useState<SortState<ChangeRequestSortKey> | null>(null);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
+    if (sort) {
+      params.set("sort", sort.key);
+      params.set("order", sort.direction);
+    }
     return params;
   }
 
@@ -171,7 +184,7 @@ export function ChangeRequestsPage() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, statusFilter, targetStageFilter]);
+  }, [projectId, statusFilter, targetStageFilter, sort]);
 
   // Deep-linked from a requirement's "Make change request" button
   // (?requirement=<id>) — pre-selects that requirement for a
@@ -288,6 +301,7 @@ export function ChangeRequestsPage() {
       }
       resetForm();
       reload();
+      showToast(strings.changeRequests.created);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
@@ -643,11 +657,20 @@ export function ChangeRequestsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>{strings.changeRequests.status}</th>
+                    <SortableHeader
+                      label="Name" sortKey="proposed_name" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
+                    <SortableHeader
+                      label={strings.changeRequests.status} sortKey="status" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                     <th>Target</th>
                     <th>Level</th>
-                    <th>Created</th>
+                    <SortableHeader
+                      label="Created" sortKey="created_at" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                   </tr>
                 </thead>
                 <tbody>

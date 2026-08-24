@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -13,6 +15,8 @@ const strings = t();
 const PAGE_SIZE = 30;
 
 type ReviewView = "orphaned" | "server_admins" | "all";
+
+type AccessReviewConfirmKind = "deactivate" | "ban" | "grantServerAdmin" | "revokeServerAdmin";
 
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
@@ -23,6 +27,12 @@ function AccessReviewTab() {
   const [patResult, setPatResult] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
+  const { showToast } = useToast();
+  // ConfirmDialog (Tier 1) state for the account/access actions below —
+  // converted from `window.confirm` per the sixth-pass audit's
+  // "Confirmation and feedback rollout, precisely" list.
+  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
+  const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -48,49 +58,91 @@ function AccessReviewTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, includeDeactivated]);
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       await reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
     }
   }
 
   function deactivate(userId: string) {
-    if (!window.confirm(strings.system.deactivateConfirm)) return;
-    runAction(() => api.post(`/api/v1/system/users/${userId}/deactivate`));
+    setConfirmAction({ kind: "deactivate", userId });
   }
 
   function reactivate(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/reactivate`));
+    runAction(() => api.post(`/api/v1/system/users/${userId}/reactivate`), strings.system.reactivatedToast);
   }
 
   function ban(userId: string) {
-    if (!window.confirm(strings.system.banConfirm(orgLabel))) return;
-    runAction(() => api.post(`/api/v1/system/users/${userId}/ban`));
+    setConfirmAction({ kind: "ban", userId });
   }
 
   function unban(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/unban`));
+    runAction(() => api.post(`/api/v1/system/users/${userId}/unban`), strings.system.unbannedToast);
   }
 
   function grantServerAdmin(userId: string) {
-    if (!window.confirm(strings.system.grantServerAdminConfirm(orgLabelPlural))) return;
-    runAction(() => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: true }));
+    setConfirmAction({ kind: "grantServerAdmin", userId });
   }
 
   function revokeServerAdmin(userId: string) {
-    if (!window.confirm(strings.system.revokeServerAdminConfirm)) return;
-    runAction(() => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: false }));
+    setConfirmAction({ kind: "revokeServerAdmin", userId });
+  }
+
+  function confirmPendingAction() {
+    if (!confirmAction) return;
+    const { kind, userId } = confirmAction;
+    setConfirmAction(null);
+    switch (kind) {
+      case "deactivate":
+        runAction(() => api.post(`/api/v1/system/users/${userId}/deactivate`), strings.system.deactivatedToast);
+        break;
+      case "ban":
+        runAction(() => api.post(`/api/v1/system/users/${userId}/ban`), strings.system.bannedToast);
+        break;
+      case "grantServerAdmin":
+        runAction(
+          () => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: true }),
+          strings.system.grantedServerAdminToast
+        );
+        break;
+      case "revokeServerAdmin":
+        runAction(
+          () => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: false }),
+          strings.system.revokedServerAdminToast
+        );
+        break;
+    }
   }
 
   async function revokeAllPatsPlatformWide() {
-    if (!window.confirm(strings.system.patRevokeAllConfirm)) return;
-    const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
-    setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    setRevokeAllPatsOpen(false);
+    try {
+      const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
+      setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
+
+  const confirmActionCopy: Record<AccessReviewConfirmKind, { title: string; message: string; confirmLabel: string }> = {
+    deactivate: { title: strings.system.deactivateTitle, message: strings.system.deactivateConfirm, confirmLabel: strings.system.deactivate },
+    ban: { title: strings.system.banTitle, message: strings.system.banConfirm(orgLabel), confirmLabel: strings.system.ban },
+    grantServerAdmin: {
+      title: strings.system.grantServerAdminTitle,
+      message: strings.system.grantServerAdminConfirm(orgLabelPlural),
+      confirmLabel: strings.system.grantServerAdmin,
+    },
+    revokeServerAdmin: {
+      title: strings.system.revokeServerAdminTitle,
+      message: strings.system.revokeServerAdminConfirm,
+      confirmLabel: strings.system.revokeServerAdmin,
+    },
+  };
 
   return (
     <div className="stack">
@@ -198,11 +250,30 @@ function AccessReviewTab() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.patRevokeAll}</h2>
         <p className="text-muted">{strings.system.patRevokeAllHint(orgLabelPlural)}</p>
-        <button className="btn btn-danger" onClick={revokeAllPatsPlatformWide} style={{ alignSelf: "flex-start" }}>
+        <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
           {strings.system.patRevokeAll}
         </button>
         {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
       </div>
+
+      {confirmAction && (
+        <ConfirmDialog
+          title={confirmActionCopy[confirmAction.kind].title}
+          message={confirmActionCopy[confirmAction.kind].message}
+          confirmLabel={confirmActionCopy[confirmAction.kind].confirmLabel}
+          onConfirm={confirmPendingAction}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+      {revokeAllPatsOpen && (
+        <ConfirmDialog
+          title={strings.system.patRevokeAllTitle}
+          message={strings.system.patRevokeAllConfirm}
+          confirmLabel={strings.system.patRevokeAll}
+          onConfirm={revokeAllPatsPlatformWide}
+          onCancel={() => setRevokeAllPatsOpen(false)}
+        />
+      )}
     </div>
   );
 }

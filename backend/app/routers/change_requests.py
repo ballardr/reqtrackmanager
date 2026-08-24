@@ -278,13 +278,26 @@ def list_change_requests(
     response: Response,
     cr_status: ChangeRequestStatus | None = None,
     target_stage_id: UUID | None = None,
+    sort: str | None = Query(None, pattern="^(proposed_name|status|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists change requests, with optional status/target-version filters.
     `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
-    for the same pattern."""
+    for the same pattern.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally sorts by `proposed_name`, `status`, or
+    `created_at`, `order` picks `asc` (default) or `desc`. Omitting `sort`
+    keeps the existing default (creation/query) order unchanged. Rows with
+    no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
+    touch the name — the list view falls back to the requirement's own
+    name for display, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as
+    if empty, since sorting by the raw column can't resolve that per-row
+    fallback without an extra join.
+    """
     query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
     if cr_status:
         query = query.where(ChangeRequest.status == cr_status)
@@ -295,6 +308,15 @@ def list_change_requests(
         if target_stage_id and version.proposed_target_stage_id != target_stage_id:
             continue
         out.append(_to_out(db, cr, version, current_user.id))
+
+    if sort:
+        def _sort_value(item: ChangeRequestOut):
+            value = getattr(item, sort)
+            if isinstance(value, str):
+                value = value.lower()
+            return value or ""
+        out.sort(key=_sort_value, reverse=(order == "desc"))
+
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
         out = out[offset:offset + limit]

@@ -8,6 +8,7 @@ import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 30;
 
@@ -23,6 +24,7 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
  * endpoint) rather than fetching and filtering every project client-side. */
 export function FavouritesPage() {
   const strings = useStrings();
+  const { showToast } = useToast();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -48,8 +50,12 @@ export function FavouritesPage() {
   }, [search]);
 
   async function unfavorite(project: ProjectListItem) {
-    await api.delete(`/api/v1/projects/${project.id}/favorite`);
-    load(0, false);
+    try {
+      await api.delete(`/api/v1/projects/${project.id}/favorite`);
+      load(0, false);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   return (

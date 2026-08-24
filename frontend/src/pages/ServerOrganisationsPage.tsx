@@ -10,6 +10,7 @@ import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useToast } from "../context/ToastContext";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -45,6 +46,11 @@ export function ServerOrganisationsPage() {
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
+  // ConfirmDialog (Tier 1) state for disable — converted from
+  // `window.confirm` per the sixth-pass audit's "Confirmation and feedback
+  // rollout, precisely" list. Delete already uses ConfirmDialog (Tier 2).
+  const [disablingOrgId, setDisablingOrgId] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   async function reload() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
@@ -69,34 +75,41 @@ export function ServerOrganisationsPage() {
         setImportFile(null);
         setShowNewForm(false);
         reload();
+        showToast(strings.serverOrgs.createdToast(orgLabelCap));
         return;
       }
       await api.post("/api/v1/orgs", { name: newName });
       setNewName("");
       setShowNewForm(false);
       reload();
+      showToast(strings.serverOrgs.createdToast(orgLabelCap));
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Something went wrong.");
     }
   }
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       await reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
     }
   }
 
   function disableOrg(org: Organization) {
-    if (!window.confirm(strings.serverOrgs.disableConfirm.replace("{name}", org.name))) return;
-    runAction(() => api.post(`/api/v1/orgs/${org.id}/disable`));
+    setDisablingOrgId(org.id);
+  }
+
+  function confirmDisable(org: Organization) {
+    setDisablingOrgId(null);
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/disable`), strings.serverOrgs.disabledToast(orgLabelCap));
   }
 
   function enableOrg(org: Organization) {
-    runAction(() => api.post(`/api/v1/orgs/${org.id}/enable`));
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/enable`), strings.serverOrgs.enabledToast(orgLabelCap));
   }
 
   function startDelete(org: Organization) {
@@ -111,7 +124,7 @@ export function ServerOrganisationsPage() {
   async function confirmDelete(org: Organization) {
     await runAction(async () => {
       await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: org.name });
-    });
+    }, strings.serverOrgs.deletedToast(orgLabelCap));
     setDeletingOrgId(null);
   }
 
@@ -260,6 +273,21 @@ export function ServerOrganisationsPage() {
               requireTypedText={org.name}
               onConfirm={() => confirmDelete(org)}
               onCancel={cancelDelete}
+            />
+          );
+        })()}
+
+      {disablingOrgId &&
+        (() => {
+          const org = orgs.find((o) => o.id === disablingOrgId);
+          if (!org) return null;
+          return (
+            <ConfirmDialog
+              title={strings.serverOrgs.disableTitle.replace("{name}", org.name)}
+              message={strings.serverOrgs.disableConfirm}
+              confirmLabel={strings.serverOrgs.disable}
+              onConfirm={() => confirmDisable(org)}
+              onCancel={() => setDisablingOrgId(null)}
             />
           );
         })()}

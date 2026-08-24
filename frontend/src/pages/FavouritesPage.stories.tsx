@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { api } from "../api/client";
-import { buildProjectListItem, withRouter } from "../testing/storybook-helpers";
+import { ApiError, api } from "../api/client";
+import { buildProjectListItem, withRouter, withToast } from "../testing/storybook-helpers";
 import { FavouritesPage } from "./FavouritesPage";
 
 const meta: Meta<typeof FavouritesPage> = {
   title: "Pages/FavouritesPage",
   component: FavouritesPage,
-  decorators: [withRouter("/favourites")],
+  decorators: [withRouter("/favourites"), withToast()],
 };
 export default meta;
 
@@ -45,6 +45,28 @@ export const Unfavorite: Story = {
     await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Remove from favourites" }));
     await expect(api.delete).toHaveBeenCalledWith("/api/v1/projects/p1/favorite");
+  },
+};
+
+/** A failed unfavorite call now surfaces an error toast (sixth-pass audit —
+ * this used to be an unhandled rejection with no feedback at all, since the
+ * card disappearing from the grid is the only success signal and isn't
+ * available to fall back on when the request itself fails). */
+export const UnfavoriteErrorShowsToast: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
+      total: 1,
+    });
+    spyOn(api, "delete").mockRejectedValue(new ApiError(500, "Something went wrong."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Remove from favourites" }));
+    await waitFor(() => expect(within(document.body).getByText("Something went wrong.")).toBeInTheDocument());
+    // The card is still there — the mutation genuinely failed.
+    await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
   },
 };
 

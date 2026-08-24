@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -7,7 +7,9 @@ import type { ActionTypeDefinition, OrgUser, Project, RequirementAction, Require
 import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -25,12 +27,20 @@ const OUTCOME_OPTIONS: RequirementActionOutcome[] = ["pending", "completed", "fa
  */
 export function ProjectActionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const { showToast } = useToast();
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [outcomeFilter, setOutcomeFilter] = useState<RequirementActionOutcome | "">("");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  // Column-header sorting (2026-08 UX audit roadmap) — this list has no
+  // backend pagination at all (`routers/actions.py::list_actions` always
+  // returns every match), so sorting the already-loaded array client-side
+  // is safe: unlike `RequirementsPage`/`ChangeRequestsPage`, there's no
+  // partially-loaded page to misrepresent by sorting only what's visible.
+  type ActionSortKey = "unique_code" | "title" | "outcome_status" | "due_date";
+  const [sort, setSort] = useState<SortState<ActionSortKey> | null>(null);
 
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -84,20 +94,45 @@ export function ProjectActionsPage() {
 
   async function createAction() {
     if (!newTitle.trim() || !newActionTypeId) return;
-    await api.post(`/api/v1/projects/${projectId}/actions`, {
-      title: newTitle,
-      description: newDescription,
-      action_type_id: newActionTypeId,
-      assignee_id: newAssigneeId || null,
-      due_date: newDueDate || null,
-    });
-    setNewTitle("");
-    setNewDescription("");
-    setNewAssigneeId("");
-    setNewDueDate("");
-    setShowNewForm(false);
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/actions`, {
+        title: newTitle,
+        description: newDescription,
+        action_type_id: newActionTypeId,
+        assignee_id: newAssigneeId || null,
+        due_date: newDueDate || null,
+      });
+      setNewTitle("");
+      setNewDescription("");
+      setNewAssigneeId("");
+      setNewDueDate("");
+      setShowNewForm(false);
+      reload();
+      showToast(strings.actions.created);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
+
+  function compareActions(a: RequirementAction, b: RequirementAction, key: ActionSortKey): number {
+    if (key === "due_date") {
+      // Nulls (no due date set) always sort last, in either direction.
+      if (a.due_date === b.due_date) return 0;
+      if (a.due_date === null) return 1;
+      if (b.due_date === null) return -1;
+      return a.due_date < b.due_date ? -1 : 1;
+    }
+    const av = a[key].toLowerCase();
+    const bv = b[key].toLowerCase();
+    return av < bv ? -1 : av > bv ? 1 : 0;
+  }
+
+  const sortedActions = useMemo(() => {
+    if (!actions || !sort) return actions;
+    const sorted = [...actions].sort((a, b) => compareActions(a, b, sort.key));
+    return sort.direction === "desc" ? sorted.reverse() : sorted;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actions, sort]);
 
   function actionTypeName(id: string) {
     return actionTypes.find((t2) => t2.id === id)?.name ?? "—";
@@ -178,16 +213,28 @@ export function ProjectActionsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>{strings.actions.uniqueCode}</th>
-                    <th>{strings.actions.name}</th>
+                    <SortableHeader
+                      label={strings.actions.uniqueCode} sortKey="unique_code" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
+                    <SortableHeader
+                      label={strings.actions.name} sortKey="title" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                     <th>{strings.actions.actionType}</th>
-                    <th>{strings.actions.outcome}</th>
+                    <SortableHeader
+                      label={strings.actions.outcome} sortKey="outcome_status" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                     <th>{strings.actions.assignee}</th>
-                    <th>{strings.actions.dueDate}</th>
+                    <SortableHeader
+                      label={strings.actions.dueDate} sortKey="due_date" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {actions.map((a) => (
+                  {(sortedActions ?? actions).map((a) => (
                     <tr key={a.id}>
                       <td className="text-muted">{a.unique_code}</td>
                       <td>

@@ -1,4 +1,4 @@
-import { Heart, Paperclip, Pencil, X } from "lucide-react";
+import { Heart, Paperclip, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
@@ -113,7 +113,7 @@ export function CommentThread({
                           aria-label={strings.requirements.removeAttachment}
                           onClick={() => onRemoveAttachment && onRemoveAttachment(c.id, a.id)}
                         >
-                          <X size={12} />
+                          <Trash2 size={12} />
                         </button>
                       </span>
                     ))}
@@ -131,7 +131,7 @@ export function CommentThread({
                           aria-label={strings.requirements.removeAttachment}
                           onClick={() => setEditPendingFiles((files) => files.filter((_, i) => i !== idx))}
                         >
-                          <X size={12} />
+                          <Trash2 size={12} />
                         </button>
                       </span>
                     ))}
@@ -237,7 +237,7 @@ export function CommentThread({
                   aria-label={strings.requirements.removeAttachment}
                   onClick={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))}
                 >
-                  <X size={12} />
+                  <Trash2 size={12} />
                 </button>
               </span>
             ))}
