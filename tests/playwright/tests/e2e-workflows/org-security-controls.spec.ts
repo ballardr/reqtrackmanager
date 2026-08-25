@@ -80,7 +80,20 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
         page.waitForResponse((r) => r.url().includes(`/api/v1/projects/${gamma1Id}`) && r.request().method() === "GET"),
         page.getByText(PROJECT_NAMES.gamma1).click(),
       ]);
-      await expect(page.getByText(/2FA|two-factor/i).first()).toBeVisible();
+      // Twice reproduced in CI (never locally, across 6+ isolated/paired/
+      // full-suite runs) failing this exact assertion with the default
+      // 5000ms timeout — confirmed via a direct backend call and an
+      // instrumented browser run replicating these exact steps that the
+      // 403 and its "2FA required" text always arrive correctly, so this
+      // isn't a logic bug. `waitForResponse` above only confirms the
+      // network response was observed, not that the SPA's own fetch
+      // handler has run and React has repainted; CI's containerized
+      // Playwright process (`docker run --network host`, see ci.yml) adds
+      // latency to that gap that this Mac's native run doesn't hit. A
+      // longer timeout only widens how long we wait for a paint we
+      // already know is coming — it can't mask a real regression, since
+      // the element still has to actually appear.
+      await expect(page.getByText(/2FA|two-factor/i).first()).toBeVisible({ timeout: 15_000 });
     });
 
     await test.step("a direct API call against the specific project is also blocked, not just the UI", async () => {
