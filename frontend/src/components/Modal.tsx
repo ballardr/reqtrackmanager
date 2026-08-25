@@ -7,6 +7,17 @@ import { useDialogA11y } from "./dialogA11y";
 
 const strings = t();
 
+/** `size="md"` (the default, 560px) is the original fixed width, sized for
+ * this component's first use — a small read-only vote-comment viewer.
+ * `size="lg"` (900px) is the style guide's "known implementation
+ * dependency" resolution for `Pattern: modal dialog for entity
+ * create/rename` — a genuinely busy multi-field form (the CSV import
+ * wizard's column-mapping table, a future New Project/New Organisation
+ * form) needs more horizontal room than a two-sentence viewer does. Both
+ * still cap `maxHeight` at 80vh and scroll internally, and both still fit
+ * within the same centred-overlay chrome — only the width changes. */
+const MODAL_MAX_WIDTH_PX: Record<"md" | "lg", number> = { md: 560, lg: 900 };
+
 /**
  * A simple centred dialog overlay, rendered through a portal into
  * `document.body` so it's never clipped by a scrollable ancestor (same
@@ -28,10 +39,15 @@ export function Modal({
   title,
   onClose,
   children,
+  size = "md",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** See `MODAL_MAX_WIDTH_PX` above — "md" (default) for a small form or
+   * viewer, "lg" for a busy multi-field form (e.g. `CsvImportWizard`'s
+   * column-mapping step). */
+  size?: "md" | "lg";
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, onClose);
@@ -59,7 +75,7 @@ export function Modal({
         aria-label={title}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 560, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+        style={{ maxWidth: MODAL_MAX_WIDTH_PX[size], width: "100%", maxHeight: "80vh", overflowY: "auto" }}
       >
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>

@@ -68,7 +68,6 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     await test.step("a new custom field shows up on the requirement create form", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
-      await page.getByRole("button", { name: "Add one" }).click();
       await expect(page.getByText(verificationMethodField)).toBeVisible();
       await expect(page.getByText(priorityField)).toBeVisible();
       await page.keyboard.press("Escape").catch(() => {});
@@ -82,6 +81,16 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await row.getByRole("button").click();
       await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
       await expect(page.getByText(safetyCriticalField)).toHaveCount(0);
+
+      // `priorityField` is `required: true` on a shared, persistent project
+      // (Beta-2) — left behind, it blocks every *other* spec's requirement
+      // creation on this project (UI or API) that doesn't happen to supply
+      // a value for it. Delete it too so this spec's own required-field
+      // exercise doesn't leak into unrelated specs sharing Beta-2.
+      const priorityRow = page.locator(".row", { hasText: priorityField });
+      await priorityRow.getByRole("button").click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByText(priorityField)).toHaveCount(0);
     });
 
     await test.step("add and remove a project group member", async () => {

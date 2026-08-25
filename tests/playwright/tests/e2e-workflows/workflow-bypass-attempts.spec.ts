@@ -27,7 +27,6 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
-      await page.getByRole("button", { name: "Add one" }).click();
       const createPanel = page.getByRole("dialog", { name: "New Requirement" });
       await expect(createPanel.getByRole("combobox").first()).toContainText("Hardware");
       await page.getByPlaceholder("Name", { exact: true }).fill(targetReqName);
@@ -116,8 +115,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await expect(page.getByText(targetReqName, { exact: true })).toHaveCount(0);
 
       await page.getByRole("button", { name: "New Requirement" }).click();
-      await page.getByRole("button", { name: "Add one" }).click();
-      // The create form is a `SidePanel` portalled to the end of
+      // The create form is a `Modal` portalled to the end of
       // `document.body` — scope to it rather than an unscoped
       // `getByRole("combobox").first()`, which would otherwise resolve to
       // the filter sidebar's own Status select (it precedes the panel in

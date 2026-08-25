@@ -25,15 +25,18 @@ test.describe("SCIM provisioning token", () => {
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
-    // SCIM moved into the "Integrations & security" resource-menu group
-    // (2026-08 UX audit's Org Admin restructure) — a real navigation, so
-    // it must be selected before the section is reachable at all.
+    // SCIM lives in the "OAuth/SSO" top-level resource-menu group (2026-08
+    // UX audit's Org Admin restructure, later split further from a
+    // combined "Integrations & security" group — SCIM groups with SSO/OIDC
+    // as the two identity-provisioning integrations, see docs/decisions.md)
+    // — a real navigation, so it must be selected before the section is
+    // reachable at all.
     //
     // CollapsibleSection's expand/collapse choice persists server-side per
     // user across specs sharing a persona — an unconditional click can
     // toggle an already-expanded section shut on a re-run (see
     // ensureExpanded's own docstring in helpers.ts).
-    await selectOrgAdminGroup(page, "Integrations & security");
+    await selectOrgAdminGroup(page, "OAuth/SSO");
     await ensureExpanded(page, "SCIM provisioning");
     await expect(page.getByText("Not enabled.")).toBeVisible();
 

@@ -66,15 +66,16 @@ export const TilesView: Story = {
   },
 };
 
-/** Style guide "Pattern: create panels, popovers, and one door for bulk":
- * "New requirement" opens a popover offering "Add one" (which itself opens
- * the create form as a `SidePanel` layer, not an inline block that reflows
- * the list underneath) and "Import from CSV" (the wizard's own file picker,
- * triggered externally — see CsvImportWizard.stories.tsx's
- * HiddenImportTriggerOpensViaRef for that half), instead of the inline
- * form and the CSV wizard's own "Import CSV" button competing as two
- * separate, permanently-visible blocks above the list. */
-export const NewRequirementMenuOffersOneOrBulk: Story = {
+/** Style guide "Pattern: split-button trigger" (roadmap item 505) — a
+ * plain click on "New requirement" performs the common-case action
+ * ("Add one") directly, opening the create form as a `Modal` layer
+ * (not an inline block that reflows the list underneath) with no menu
+ * stop first. This replaces the previous `Popover`-based two-option menu,
+ * which made *every* click — including the common case — open a menu
+ * first; see `SplitButtonTrigger.stories.tsx` for the chevron/alternatives
+ * half of this component's own behaviour, covered there rather than
+ * duplicated per call site. */
+export const NewRequirementSplitButtonOpensCreateFormDirectly: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -87,18 +88,31 @@ export const NewRequirementMenuOffersOneOrBulk: Story = {
     await expect(canvas.queryByText("Import CSV")).not.toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
-    const menu = within(document.body).getByRole("dialog", { name: "New requirement" });
-    await expect(within(menu).getByRole("button", { name: "Add one" })).toBeInTheDocument();
-    await expect(within(menu).getByRole("button", { name: "Import from CSV" })).toBeInTheDocument();
-
-    await userEvent.click(within(menu).getByRole("button", { name: "Add one" }));
-    await expect(within(document.body).queryByRole("dialog", { name: "New requirement" })).toBeInTheDocument();
-    // The create form is a `SidePanel` — a layer portalled to
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    // The create form is a `Modal` — a layer portalled to
     // `document.body`, not an inline block inside `canvasElement` — so the
     // list underneath stays untouched (Principle 3) and the field lives
-    // outside `canvas`.
+    // outside `canvas`. No menu ever opened for this click.
+    await expect(within(document.body).getByRole("dialog", { name: "New requirement" })).toBeInTheDocument();
     await expect(within(document.body).getByPlaceholderText("Name")).toBeInTheDocument();
+  },
+};
+
+/** The chevron beside "New requirement" reveals "Import from CSV" — the
+ * one alternative to the split button's default action, opening the CSV
+ * wizard's own file picker (see `CsvImportWizard.stories.tsx`'s
+ * `HiddenImportTriggerOpensViaRef` for what that picker does once opened). */
+export const NewRequirementChevronRevealsImportFromCsv: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    const menu = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await expect(within(menu).getByRole("button", { name: "Import from CSV" })).toBeInTheDocument();
+    // Revealing the menu doesn't itself open the create form.
+    await expect(within(document.body).queryByPlaceholderText("Name")).not.toBeInTheDocument();
   },
 };
 
@@ -161,6 +175,21 @@ export const FilterByStatusBadge: Story = {
   },
 };
 
+/** Filter select options render the existing `REQUIREMENT_STATUS_LABEL` map
+ * (2026-08 UX audit roadmap, "Fix raw-enum filter/table text"), not the raw
+ * backend enum string — "In review", not "in_review". */
+export const StatusFilterOptionsUseLabelMap: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const statusSelect = canvas.getByLabelText("Status") as HTMLSelectElement;
+    const optionLabels = Array.from(statusSelect.options).map((o) => o.textContent);
+    await expect(optionLabels).toContain("Reviewed");
+    await expect(optionLabels).not.toContain("reviewed");
+  },
+};
+
 /** The "Include archived" filter checkbox (2026-08 UX audit roadmap:
  * unarchive endpoint + Restore button) is what makes an archived
  * requirement reachable at all — the default list excludes them entirely,
@@ -209,7 +238,7 @@ export const EmptyState: Story = {
 };
 
 /** No components/categories yet: a manager sees a quick-create form for
- * them inside the same `SidePanel` layer the "New requirement" form itself
+ * them inside the same `Modal` layer the "New requirement" form itself
  * uses — not an inline block on the page. */
 export const NoComponentsManagerCanCreateInline: Story = {
   beforeEach: () => {
@@ -218,8 +247,7 @@ export const NoComponentsManagerCanCreateInline: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByText("This project has no components or categories yet.")).toBeInTheDocument());
     await expect(within(panel).getByPlaceholderText("Prefix")).toBeInTheDocument();
@@ -234,8 +262,7 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByRole("link", { name: "Add one in Project Admin before creating requirements." })).toBeInTheDocument());
     await expect(within(panel).queryByPlaceholderText("Prefix")).not.toBeInTheDocument();
@@ -249,8 +276,7 @@ export const CreateFormCascadesCategoryOnComponentChange: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
     const componentSelect = within(panel).getByLabelText("Component");
@@ -263,7 +289,7 @@ export const CreateFormCascadesCategoryOnComponentChange: Story = {
 
 /** Creating shows a success toast (Principle 7, sixth-pass audit — the
  * audit named this page specifically: it got real interaction-model work
- * this pass, `SidePanel`/`FilterBadge`, without picking up Toast, so a
+ * this pass, `Modal`/`FilterBadge`, without picking up Toast, so a
  * create still just silently re-rendered the list). */
 export const CreateRequirementShowsToast: Story = {
   beforeEach: () => {
@@ -272,8 +298,7 @@ export const CreateRequirementShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /New/ }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Add one" }));
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
     await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
@@ -285,6 +310,48 @@ export const CreateRequirementShowsToast: Story = {
       )
     );
     await expect(within(document.body).getByText("Requirement created")).toBeInTheDocument();
+  },
+};
+
+/** Style guide Principle 13 (roadmap item 524) — Name/Reasoning/Description
+ * used to be the only fields on this form relying on placeholder text
+ * alone, unlike every field below them (Component/Category/Target
+ * version/Level), which already had a real `<label>`. All seven now do. */
+export const CreateFormFieldsAllHaveVisibleLabels: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(within(document.body).getByRole("dialog", { name: "New requirement" }));
+    await waitFor(() => expect(panel.getByPlaceholderText("Name")).toBeInTheDocument());
+    await expect(panel.getByLabelText("Name")).toBeInTheDocument();
+    await expect(panel.getByLabelText("Reasoning")).toBeInTheDocument();
+    await expect(panel.getByLabelText("Description")).toBeInTheDocument();
+    // Unchanged from before this fix — asserted here too so a regression
+    // in one direction (removing a label these fields never had) doesn't
+    // read as a pass just because the three new ones above did.
+    await expect(panel.getByLabelText("Component")).toBeInTheDocument();
+    await expect(panel.getByLabelText("Category")).toBeInTheDocument();
+    await expect(panel.getByLabelText("Target version")).toBeInTheDocument();
+    await expect(panel.getByLabelText("Level")).toBeInTheDocument();
+  },
+};
+
+/** Roadmap item 525 — Reasoning/Description are `AutoGrowTextarea` now, not
+ * a fixed `rows={2}` `<textarea>`: typing content past two lines grows the
+ * field's own height to show it, rather than scrolling inside a two-line
+ * box (see `AutoGrowTextarea.stories.tsx` for the height-cap behaviour
+ * itself, covered there rather than re-proven per call site). */
+export const ReasoningFieldGrowsWithContent: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(within(document.body).getByRole("dialog", { name: "New requirement" }));
+    const reasoning = (await panel.findByPlaceholderText("Reasoning")) as HTMLTextAreaElement;
+    const initialHeight = reasoning.clientHeight;
+    await userEvent.type(reasoning, "Line one{enter}Line two{enter}Line three{enter}Line four");
+    await expect(reasoning.clientHeight).toBeGreaterThan(initialHeight);
   },
 };
 

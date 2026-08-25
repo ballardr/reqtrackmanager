@@ -7,6 +7,7 @@ import type { Organization, OrgImportResult } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -141,34 +142,44 @@ export function ServerOrganisationsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+        <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
           <Plus size={16} /> New {orgLabel}
         </button>
       </div>
 
+      {/* Style guide "Pattern: modal dialog for entity create/rename" —
+          a brand-new entity opens in a Modal, not a permanently-visible
+          inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <div className="card stack">
-          <input
-            className="input"
-            placeholder={importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            Or import from an exported {orgLabel} bundle (.zip)
-            <input
-              className="input" type="file" accept=".zip,application/zip"
-              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-          <button
-            className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}
-            style={{ alignSelf: "flex-start" }}
-          >
-            Create
-          </button>
-        </div>
+        <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)}>
+          <div className="stack">
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
+              <input
+                className="input"
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              Or import from an exported {orgLabel} bundle (.zip)
+              <input
+                className="input" type="file" accept=".zip,application/zip"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setShowNewForm(false)}>
+                {strings.common.cancel}
+              </button>
+              <button className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}>
+                {strings.common.create}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {importWarnings && importWarnings.length > 0 && (
         <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>

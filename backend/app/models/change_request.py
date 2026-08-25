@@ -90,6 +90,16 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             Always additive: approval creates new `RequirementFile` links
             for these, never removes existing attachments. Meaningful only
             when `"attachments"` is in `changed_fields`.
+        proposed_action_link_id / proposed_action_title / proposed_action_
+            description / proposed_action_type_id / proposed_action_
+            assignee_id / proposed_action_due_date: ADD_ACTION-only
+            (2026-08 UX audit roadmap item 514). Either
+            `proposed_action_link_id` (link an existing `RequirementAction`
+            to the target requirement) or `proposed_action_title` +
+            `proposed_action_type_id` (create a new one and link it) is
+            set, mutually exclusive — see
+            `routers/change_requests.py::create_change_request`'s
+            validation.
     """
 
     __tablename__ = "change_request_versions"
@@ -132,6 +142,24 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     proposed_attachment_file_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # ADD_ACTION-only (item 514): either `proposed_action_link_id` (link an
+    # existing `RequirementAction`) or `proposed_action_title` +
+    # `proposed_action_type_id` (create a new one) is set, never both — see
+    # `routers.change_requests.create_change_request`'s validation. Mirrors
+    # the requirement detail page's own "Link existing action"/"Create and
+    # link a new action" split rather than inventing a third shape.
+    proposed_action_link_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_actions.id", ondelete="SET NULL"), nullable=True
+    )
+    proposed_action_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    proposed_action_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_action_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("action_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    proposed_action_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, default=list)
     reason: Mapped[str] = mapped_column(Text)
     # Values for this project's custom change-request attribute definitions

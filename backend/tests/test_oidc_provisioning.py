@@ -135,10 +135,14 @@ def test_find_or_provision_user_does_not_link_to_existing_account_via_unverified
 
 
 def test_sync_org_roles_from_claims_grants_mapped_role():
+    from app.models.organization import OrgGroup
+
     db = SessionLocal()
     try:
-        org = Organization(name="OIDC Role Sync Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        org = Organization(name="OIDC Role Sync Org")
         db.add(org)
+        db.flush()
+        db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
             db, {"sub": "role-sync-subject", "email": "rolesync@example.com", "email_verified": True}, issuer=ISSUER_A,
@@ -159,10 +163,14 @@ def test_sync_org_roles_from_claims_grants_mapped_role():
 
 
 def test_sync_org_roles_grants_nothing_when_no_group_matches():
+    from app.models.organization import OrgGroup
+
     db = SessionLocal()
     try:
-        org = Organization(name="OIDC No Match Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        org = Organization(name="OIDC No Match Org")
         db.add(org)
+        db.flush()
+        db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
             db, {"sub": "no-match-subject", "email": "nomatch@example.com", "email_verified": True}, issuer=ISSUER_A,
@@ -189,12 +197,14 @@ def test_sync_org_roles_revokes_role_once_matching_group_claim_disappears():
     asserted that group."""
     from sqlalchemy import select
 
-    from app.models.organization import UserOrgRole
+    from app.models.organization import OrgGroup, UserOrgRole
 
     db = SessionLocal()
     try:
-        org = Organization(name="OIDC Sync Down Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        org = Organization(name="OIDC Sync Down Org")
         db.add(org)
+        db.flush()
+        db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
             db, {"sub": "sync-down-subject", "email": "syncdown@example.com", "email_verified": True}, issuer=ISSUER_A,
@@ -226,17 +236,19 @@ def test_sync_org_roles_never_touches_a_role_outside_the_mapping_vocabulary():
     vocabulary covers."""
     from sqlalchemy import select
 
-    from app.models.organization import UserOrgRole
+    from app.models.organization import OrgGroup, UserOrgRole
 
     db = SessionLocal()
     try:
-        org = Organization(name="OIDC Manual Role Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        org = Organization(name="OIDC Manual Role Org")
         db.add(org)
+        db.flush()
+        db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
             db, {"sub": "manual-role-subject", "email": "manualrole@example.com", "email_verified": True}, issuer=ISSUER_A,
         )
-        # Manually granted, outside any sso_group_mappings entry.
+        # Manually granted, outside any role-granting group.
         db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=OrgRole.PROJECT_CREATOR))
         db.commit()
 
@@ -260,12 +272,14 @@ def test_sync_org_roles_leaves_existing_roles_alone_when_idp_asserts_no_groups_c
     cause a mass revocation of every SSO-managed role at this org."""
     from sqlalchemy import select
 
-    from app.models.organization import UserOrgRole
+    from app.models.organization import OrgGroup, UserOrgRole
 
     db = SessionLocal()
     try:
-        org = Organization(name="OIDC No Claim Org", sso_group_mappings=[{"sso_group": "admins", "org_role": "org_admin"}])
+        org = Organization(name="OIDC No Claim Org")
         db.add(org)
+        db.flush()
+        db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
             db, {"sub": "no-claim-subject", "email": "noclaim@example.com", "email_verified": True}, issuer=ISSUER_A,

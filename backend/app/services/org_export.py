@@ -185,7 +185,11 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
                 .where(OrgGroupMember.org_group_id == g.id)
             ).scalars()
         )
-        org_groups_json.append({"name": g.name, "member_emails": members, "nested_group_names": nested_group_names})
+        org_groups_json.append({
+            "name": g.name, "member_emails": members, "nested_group_names": nested_group_names,
+            "idp_synced_group_name": g.idp_synced_group_name,
+            "granted_org_role": g.granted_org_role.value if g.granted_org_role else None,
+        })
 
     logo_asset = db.get(FileAsset, org.logo_file_id) if org.logo_file_id else None
     if logo_asset:
@@ -199,7 +203,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "require_2fa": org.require_2fa, "allow_self_signup": org.allow_self_signup,
         "auto_accept_email_domain": org.auto_accept_email_domain, "external_user_policy": org.external_user_policy.value,
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
-        "smtp_use_tls": org.smtp_use_tls, "sso_group_mappings": org.sso_group_mappings,
+        "smtp_use_tls": org.smtp_use_tls,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
@@ -381,18 +385,42 @@ def _import_org_groups(
     already rejects cycles at write time) is skipped with a warning, the
     same as a banned member above."""
     existing_by_name: dict[str, OrgGroup] = {}
+    existing_idp_synced_names: set[str] = set()
     if merge_by_name:
-        existing_by_name = {
-            g.name.strip().lower(): g for g in db.scalars(select(OrgGroup).where(OrgGroup.organization_id == org.id))
-        }
+        existing_groups = db.scalars(select(OrgGroup).where(OrgGroup.organization_id == org.id)).all()
+        existing_by_name = {g.name.strip().lower(): g for g in existing_groups}
+        existing_idp_synced_names = {g.idp_synced_group_name for g in existing_groups if g.idp_synced_group_name}
     groups_by_bundle_name: dict[str, OrgGroup] = {}
     for g in data.get("org_groups", []):
         group = existing_by_name.get(g["name"].strip().lower()) if merge_by_name else None
         existing_member_ids: set[UUID] = set()
         if group is None:
-            group = OrgGroup(organization_id=org.id, name=g["name"])
+            # `idp_synced_group_name` is unique per org (partial index) —
+            # on a merge into an existing org, a bundle group claiming a
+            # name another group there already owns is skipped with a
+            # warning (same pattern this function already uses for a
+            # banned member or a cycle-forming nested edge) rather than
+            # letting the INSERT below fail on the constraint. On a
+            # fresh-org import (`merge_by_name=False`) this can never
+            # conflict, since the target org has no groups yet.
+            idp_synced_group_name = g.get("idp_synced_group_name")
+            if idp_synced_group_name and idp_synced_group_name in existing_idp_synced_names:
+                warnings.add(
+                    f"Group '{g['name']}' was imported without its IdP-sync target — "
+                    f"'{idp_synced_group_name}' is already used by another group in this organisation."
+                )
+                idp_synced_group_name = None
+            granted_org_role = g.get("granted_org_role")
+            group = OrgGroup(
+                organization_id=org.id, name=g["name"], idp_synced_group_name=idp_synced_group_name,
+                # Meaningless (and, on merge, unenforced) without a synced
+                # name — dropped alongside it rather than left dangling.
+                granted_org_role=OrgRole(granted_org_role) if granted_org_role and idp_synced_group_name else None,
+            )
             db.add(group)
             db.flush()
+            if idp_synced_group_name:
+                existing_idp_synced_names.add(idp_synced_group_name)
         elif merge_by_name:
             existing_member_ids = set(
                 db.scalars(
@@ -539,7 +567,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         auto_accept_email_domain=data.get("auto_accept_email_domain"),
         external_user_policy=data.get("external_user_policy", "disabled"),
         smtp_host=data.get("smtp_host"), smtp_port=data.get("smtp_port"), smtp_username=data.get("smtp_username"),
-        smtp_use_tls=data.get("smtp_use_tls", True), sso_group_mappings=data.get("sso_group_mappings") or [],
+        smtp_use_tls=data.get("smtp_use_tls", True),
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),

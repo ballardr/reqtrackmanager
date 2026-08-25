@@ -17,13 +17,15 @@ import type {
 } from "../api/types";
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
-import { SidePanel } from "../components/SidePanel";
+import { Modal } from "../components/Modal";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -89,8 +91,6 @@ export function RequirementsPage() {
   type RequirementSortKey = "unique_code" | "name" | "status";
   const [sort, setSort] = useState<SortState<RequirementSortKey> | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const addTriggerRef = useRef<HTMLButtonElement>(null);
   const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newName, setNewName] = useState("");
   const [newReasoning, setNewReasoning] = useState("");
@@ -431,35 +431,16 @@ export function RequirementsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.requirements.title}</h1>
-        <button ref={addTriggerRef} className="btn btn-primary" onClick={() => setAddMenuOpen((v) => !v)}>
-          <Plus size={16} /> {strings.requirements.newRequirement}
-        </button>
-        {addMenuOpen && (
-          <Popover anchorRef={addTriggerRef} title={strings.requirements.newRequirement} onClose={() => setAddMenuOpen(false)}>
-            <div className="stack" style={{ gap: "0.25rem", minWidth: 160 }}>
-              <button
-                className="btn"
-                style={{ justifyContent: "flex-start" }}
-                onClick={() => {
-                  setShowNewForm(true);
-                  setAddMenuOpen(false);
-                }}
-              >
-                {strings.requirements.addOne}
-              </button>
-              <button
-                className="btn"
-                style={{ justifyContent: "flex-start" }}
-                onClick={() => {
-                  csvWizardRef.current?.openFilePicker();
-                  setAddMenuOpen(false);
-                }}
-              >
-                {strings.requirements.importFromCsv}
-              </button>
-            </div>
-          </Popover>
-        )}
+        <SplitButtonTrigger
+          icon={<Plus size={16} />}
+          label={strings.requirements.newRequirement}
+          onDefaultAction={() => setShowNewForm(true)}
+          menuTitle={strings.requirements.newRequirement}
+          moreOptionsLabel={strings.common.moreOptions}
+          alternatives={[
+            { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
+          ]}
+        />
       </div>
 
       <CsvImportWizard
@@ -493,7 +474,10 @@ export function RequirementsPage() {
       )}
 
       {showNewForm && metaLoaded && (
-        <SidePanel title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)}>
+        // Style guide "Pattern: modal dialog for entity create/rename" —
+        // a brand-new entity opens in a Modal, not a layer that still
+        // occupies the side panel's "detail about the current view" slot.
+        <Modal title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)} size="lg">
           {components.length === 0 || categories.length === 0 ? (
             <>
               <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
@@ -563,21 +547,34 @@ export function RequirementsPage() {
             </>
           ) : (
             <>
-              <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
-              <textarea
-                className="input"
-                placeholder={strings.requirements.reasoning}
-                value={newReasoning}
-                onChange={(e) => setNewReasoning(e.target.value)}
-                rows={2}
-              />
-              <textarea
-                className="input"
-                placeholder={strings.requirements.description}
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                rows={2}
-              />
+              {/* Style guide Principle 13 ("every form field gets a visible
+                  label, not just placeholder text") — these three were
+                  previously the only fields on this form relying on
+                  placeholder text alone, which disappears the moment the
+                  field has real content. Reasoning/Description also swap
+                  their fixed `rows={2}` textareas for `AutoGrowTextarea`
+                  (roadmap item 525) so a longer answer grows to show itself
+                  instead of scrolling inside a two-line box. */}
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.name}
+                <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.reasoning}
+                <AutoGrowTextarea
+                  placeholder={strings.requirements.reasoning}
+                  value={newReasoning}
+                  onChange={setNewReasoning}
+                />
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.description}
+                <AutoGrowTextarea
+                  placeholder={strings.requirements.description}
+                  value={newDescription}
+                  onChange={setNewDescription}
+                />
+              </label>
               <label className="stack" style={{ gap: "0.25rem" }}>
                 {strings.requirements.component}
                 <select
@@ -645,7 +642,7 @@ export function RequirementsPage() {
               </button>
             </>
           )}
-        </SidePanel>
+        </Modal>
       )}
 
       <div className="side-grid">
@@ -890,7 +887,7 @@ export function RequirementsPage() {
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {REQUIREMENT_STATUS_LABEL[s]}
                 </option>
               ))}
             </select>

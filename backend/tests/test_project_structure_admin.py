@@ -150,6 +150,13 @@ def test_delete_stage_reassigns_all_requirement_versions_and_cr_proposals(client
         headers=auth_headers(admin_token),
     )
     assert update.status_code == 200, update.text
+    # A modify change request can only target an already-locked requirement
+    # (2026-08 UX audit roadmap, "No requirement approval action; change
+    # requests can target draft requirements") — approve it directly first.
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",

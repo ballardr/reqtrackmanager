@@ -2,13 +2,15 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import { buildProjectListItem, withRouter, withToast } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { FavouritesPage } from "./FavouritesPage";
 
 const meta: Meta<typeof FavouritesPage> = {
   title: "Pages/FavouritesPage",
   component: FavouritesPage,
-  decorators: [withRouter("/favourites"), withToast()],
+  // `withStatefulAuth`: `ViewToggle`'s `useViewMode` reads/writes the view
+  // mode through `useUiPreference`, which needs a real `useAuth()` user.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/favourites"), withToast()],
 };
 export default meta;
 
@@ -107,6 +109,25 @@ export const Empty: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("No projects to show.")).toBeInTheDocument();
+  },
+};
+
+/** `Pattern: view toggle` (2026-08 UX audit roadmap row 513) — `FavouritesPage`
+ * wired onto the same `useViewMode`/`ViewToggle` `ProjectListPage.tsx`/
+ * `RequirementsPage.tsx` already use, replacing its previous fixed
+ * CSS-grid-only layout. */
+export const ListView: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
+      total: 1,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
   },
 };
 

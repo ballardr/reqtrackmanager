@@ -123,8 +123,15 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       await page.goto("/preferences");
       await page.getByRole("tab", { name: "Your access" }).click();
       await expect(page.getByText(childName)).toBeVisible();
-      await expect(page.getByText(parentName)).toBeVisible();
-      await expect(page.getByText("(via a nested group)")).toBeVisible();
+      // Scoped to this run's own uniquely-suffixed parent group row, not a
+      // bare page-wide match on "(via a nested group)" — this persona
+      // (shared with other specs in the suite) accumulates one such nested
+      // membership per repeated run of this same test against the same
+      // database, which would otherwise make a page-wide text match
+      // ambiguous rather than reflecting a real bug.
+      const parentRow = page.locator("li", { hasText: parentName });
+      await expect(parentRow).toBeVisible();
+      await expect(parentRow.getByText("(via a nested group)")).toBeVisible();
     });
   });
 });

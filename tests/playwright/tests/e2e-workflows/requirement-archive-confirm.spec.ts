@@ -22,7 +22,6 @@ test.describe("requirement archive: confirmation dialog", () => {
 
     const name = `E2E Archive Confirm ${Date.now()}`;
     await page.getByRole("button", { name: "New requirement" }).click();
-    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill(name);
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.getByText(name).click();

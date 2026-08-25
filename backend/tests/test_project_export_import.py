@@ -61,6 +61,15 @@ def _build_rich_project(client, admin_token, org_id):
         json={"name": "For CR modification", "component_id": component_id, "category_id": category_id},
         headers=auth_headers(admin_token),
     ).json()
+    # A modify change request can only target an already-locked requirement
+    # (2026-08 UX audit roadmap, "No requirement approval action; change
+    # requests can target draft requirements") — approve it directly first,
+    # ahead of the whole-project stage approval further down (which would
+    # lock it too, but only after this change request needs to exist).
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{second_req['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
 
     cr_resp = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -163,7 +172,7 @@ def test_import_reconstructs_structure_and_full_history_in_the_same_org(client, 
     history = client.get(
         f"/api/v1/projects/{new_project['id']}/requirements/{renamed_req['id']}/history", headers=auth_headers(admin_token)
     ).json()
-    assert len(history) == 2  # initial creation + the CR-driven version
+    assert len(history) == 3  # initial creation + the direct approve + the CR-driven version
 
     change_requests = client.get(f"/api/v1/projects/{new_project['id']}/change-requests", headers=auth_headers(admin_token)).json()
     assert len(change_requests) == 1

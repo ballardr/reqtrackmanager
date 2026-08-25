@@ -27,6 +27,7 @@ import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { Modal } from "../components/Modal";
 import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -39,6 +40,20 @@ const PAGE_SIZE = 30;
 const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
   "draft", "submitted", "in_review", "approved", "rejected", "withdrawn",
 ];
+
+// Tri-state status filter (2026-08 UX audit roadmap, "Default Change
+// Requests to an active-only status filter") — a change request list is
+// usually consulted for what still needs a decision, not a permanent
+// archive of every decision ever made, so the default view narrows to the
+// three non-terminal statuses (draft/submitted/in_review, matching the
+// backend's own `active_only` filter in
+// `backend/app/routers/change_requests.py::list_change_requests`).
+// "active" (default) sends `active_only=true` and no `cr_status`; "" ("All
+// statuses") sends neither param; a specific `ChangeRequestStatus` sends
+// `cr_status` as before. A sentinel string distinct from both "" and any
+// real status value is needed so the three states are distinguishable in
+// the `<select>` and in `listParams()` below.
+type CrStatusFilterValue = ChangeRequestStatus | "" | "active";
 
 interface ProposedFields {
   name: string;
@@ -104,7 +119,7 @@ export function ChangeRequestsPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const changeRequestTerm = useTerm("change_request");
   const [viewMode, setViewMode] = useViewMode("change-requests");
-  const [statusFilter, setStatusFilter] = useState<ChangeRequestStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<CrStatusFilterValue>("active");
   const [targetStageFilter, setTargetStageFilter] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
@@ -116,7 +131,8 @@ export function ChangeRequestsPage() {
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
-    if (statusFilter) params.set("cr_status", statusFilter);
+    if (statusFilter === "active") params.set("active_only", "true");
+    else if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
     if (sort) {
       params.set("sort", sort.key);
@@ -160,8 +176,13 @@ export function ChangeRequestsPage() {
     // Skip defaulting to the first requirement when a specific one was
     // requested via the "Make change request" deep link (?requirement=) —
     // uses the value captured above, not a fresh read, for the reason
-    // explained there.
-    if (!requirementId && !deepLinkRequirementId && reqs[0]) setRequirementId(reqs[0].id);
+    // explained there. Defaults to the first *locked* one — the backend now
+    // rejects a modify-CR against a still-draft/reviewed requirement (2026-08
+    // UX audit roadmap, "No requirement approval action; change requests can
+    // target draft requirements"), so defaulting to an unlocked one would
+    // just fail on submit.
+    const firstLockedRequirement = reqs.find((r) => r.is_locked);
+    if (!requirementId && !deepLinkRequirementId && firstLockedRequirement) setRequirementId(firstLockedRequirement.id);
     const selectedComponentId = componentId || comps[0]?.id || "";
     if (!componentId && comps[0]) setComponentId(comps[0].id);
     if (!categoryId) {
@@ -204,6 +225,11 @@ export function ChangeRequestsPage() {
   }, [searchParams]);
 
   const selectedRequirement = requirements.find((r) => r.id === requirementId) ?? null;
+  // A modify-CR can only target an already-locked (approved/completed)
+  // requirement (2026-08 UX audit roadmap, same reasoning as the default-
+  // selection comment above) — offering an unlocked one in this dropdown
+  // would just produce a 400 on submit.
+  const lockableRequirements = requirements.filter((r) => r.is_locked);
 
   // Re-prime the proposed-value form from the newly-selected requirement's
   // current version whenever the selection changes, so a toggled field is
@@ -474,13 +500,16 @@ export function ChangeRequestsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.changeRequests.title}</h1>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
           <Plus size={16} /> {strings.changeRequests.newChangeRequest}
         </button>
       </div>
 
       {showForm && (
-        <div className="card stack">
+        // Style guide "Pattern: modal dialog for entity create/rename" —
+        // a brand-new entity opens in a Modal, not a permanently-visible
+        // inline block that reflows the list underneath it.
+        <Modal title={strings.changeRequests.newChangeRequest} onClose={() => setShowForm(false)} size="lg">
           <div className="row">
             <label>
               <input
@@ -501,13 +530,18 @@ export function ChangeRequestsPage() {
               <label className="stack" style={{ gap: "0.25rem" }}>
                 {strings.changeRequests.selectARequirement}
                 <select className="input" value={requirementId} onChange={(e) => setRequirementId(e.target.value)}>
-                  {requirements.map((r) => (
+                  {lockableRequirements.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.unique_code} — {r.name}
                     </option>
                   ))}
                 </select>
               </label>
+              {lockableRequirements.length === 0 && (
+                <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                  {strings.changeRequests.noLockableRequirements}
+                </p>
+              )}
               <div className="stack">
                 <strong>{strings.changeRequests.fieldsToChange}</strong>
                 <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
@@ -641,7 +675,7 @@ export function ChangeRequestsPage() {
               </span>
             )}
           </div>
-        </div>
+        </Modal>
       )}
 
       <div className="side-grid">
@@ -727,11 +761,12 @@ export function ChangeRequestsPage() {
         <FilterPanel>
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
           <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ChangeRequestStatus | "")}>
+            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CrStatusFilterValue)}>
+              <option value="active">Active</option>
               <option value="">All statuses</option>
               {CR_STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {CHANGE_REQUEST_STATUS_LABEL[s]}
                 </option>
               ))}
             </select>

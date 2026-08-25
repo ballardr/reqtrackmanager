@@ -2,10 +2,12 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ChangeRequestVoteTally, ProjectRole } from "../api/types";
+import type { ChangeRequestVoteTally, ProjectRole, RequirementAction } from "../api/types";
 import {
+  buildActionType,
   buildChangeRequest,
   buildProjectListItem,
+  buildRequirementAction,
   buildUser,
   withAuth,
   withRouter,
@@ -23,8 +25,12 @@ const emptyTally: ChangeRequestVoteTally = { votes: [], approve_count: 0, reject
  * hierarchy in JS for UI convenience only (see docs/decisions.md); these
  * stories catch drift between the two rather than re-implementing the
  * check itself. */
-function mockChangeRequestDetailApis(myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {}) {
+function mockChangeRequestDetailApis(
+  myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {},
+  extra: { linkedActionPreview?: RequirementAction } = {}
+) {
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
+  const actionTypes = [buildActionType({ id: "at1", name: "Review" })];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles })];
     if (path.endsWith(`/change-requests/${CR_ID}`)) return cr;
@@ -34,6 +40,8 @@ function mockChangeRequestDetailApis(myRoles: ProjectRole[], crOverrides: Parame
     if (path.endsWith("/tasks")) return [];
     if (path.endsWith("/votes")) return emptyTally;
     if (path.endsWith(`/requirements/${cr.requirement_id}`)) return null;
+    if (path.endsWith("/action-types")) return actionTypes;
+    if (extra.linkedActionPreview && path.endsWith(`/actions/${extra.linkedActionPreview.id}`)) return extra.linkedActionPreview;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
@@ -67,6 +75,46 @@ export const DraftShowsSubmitAndWithdraw: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Add password reset flow" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+  },
+};
+
+/** ADD_ACTION change requests (item 514) show the proposed action's own
+ * content instead of the modify/new-requirement field diff, and hide the
+ * Target/Level badges (neither is meaningful for adding an action). */
+export const AddActionShowsProposedActionContent: Story = {
+  beforeEach: () => {
+    mockChangeRequestDetailApis(["member"], {
+      kind: "add_action", status: "submitted",
+      proposed_action_title: "Verify audit log retention", proposed_action_description: "Full sweep, not a spot check.",
+      proposed_action_type_id: "at1", reason: "found a gap during final review",
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Proposed action")).toBeInTheDocument());
+    await expect(canvas.getByText("Verify audit log retention")).toBeInTheDocument();
+    await expect(canvas.getByText("Full sweep, not a spot check.")).toBeInTheDocument();
+    await expect(canvas.getByText("Review")).toBeInTheDocument();
+    await expect(canvas.queryByText(/^Target:/)).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/^Level:/)).not.toBeInTheDocument();
+  },
+};
+
+/** The link-existing-action half of ADD_ACTION shows which action is being
+ * linked, resolved from `GET .../actions/{id}` rather than a bare id. */
+export const AddActionShowsLinkedActionPreview: Story = {
+  beforeEach: () => {
+    const action = buildRequirementAction({ id: "action-9", unique_code: "ACT-009", title: "Existing security review" });
+    mockChangeRequestDetailApis(
+      ["member"],
+      { kind: "add_action", status: "submitted", proposed_action_link_id: "action-9", reason: "this review already covers it" },
+      { linkedActionPreview: action }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Linking existing action")).toBeInTheDocument());
+    await expect(canvas.getByText("ACT-009 — Existing security review")).toBeInTheDocument();
   },
 };
 

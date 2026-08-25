@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { Upload } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
@@ -290,7 +292,6 @@ function PlatformBrandingTab() {
   const [emailFooterAddress, setEmailFooterAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
     const s = await api.get<ServerSettings>("/api/v1/system/branding");
@@ -371,16 +372,12 @@ function PlatformBrandingTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.logo}
-        <input
-          ref={logoInputRef}
-          type="file"
-          accept="image/*"
-          disabled={logoUploading}
-          onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-        />
-      </label>
+      <div className="stack" style={{ gap: "0.25rem" }}>
+        <label htmlFor="platform-logo-input">{strings.serverSettings.logo}</label>
+        <FileUploadTrigger id="platform-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
+          <Upload size={14} /> {strings.common.chooseFile}
+        </FileUploadTrigger>
+      </div>
       {logoUploading && <Spinner />}
       {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
       {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
@@ -418,15 +415,17 @@ function PlatformBrandingTab() {
           style={{ width: 60, height: 36, padding: 2 }}
         />
       </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.loginBackground}
-        <input
-          type="file"
+      <div className="stack" style={{ gap: "0.25rem" }}>
+        <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
+        <FileUploadTrigger
+          id="platform-login-background-input"
           accept="image/*"
           disabled={loginBackgroundUploading}
-          onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
-        />
-      </label>
+          onSelect={uploadLoginBackground}
+        >
+          <Upload size={14} /> {strings.common.chooseFile}
+        </FileUploadTrigger>
+      </div>
       {loginBackgroundUploading && <Spinner />}
       {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
       {loginBackgroundUploaded && (

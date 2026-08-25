@@ -14,11 +14,17 @@ export default meta;
 
 type Story = StoryObj<typeof ProjectHistoryPage>;
 
+/** Converted onto the shared `ActivityPanel` component (2026-08 UX audit
+ * roadmap row 515), replacing this page's previous hand-rolled list
+ * markup — each row now also carries a link to the item it's about
+ * (`getLink`/`activityEntryLink`), which the old markup already had but
+ * this asserts explicitly now that it's `ActivityPanel`'s own `getLink`
+ * prop rendering it, not page-local JSX. */
 export const ChangeHistory: Story = {
   beforeEach: () => {
     spyOn(api, "getPage").mockResolvedValue({
       items: [
-        buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" }),
+        buildChangeEntry({ entity_id: "requirement-1", action: "updated", actor_display_name: "Alex Morgan" }),
         buildChangeEntry({
           entity_type: "change_request",
           entity_id: "cr-1",
@@ -33,6 +39,16 @@ export const ChangeHistory: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Alex Morgan updated")).toBeInTheDocument();
     await expect(canvas.getByText("Jamie Lee approved")).toBeInTheDocument();
+    // Falls back to the entity id as the link label since no `detail` was
+    // provided (see `activityEntryLink` in api/types.ts).
+    await expect(canvas.getByRole("link", { name: "requirement-1" })).toHaveAttribute(
+      "href",
+      "/projects/project-1/requirements/requirement-1"
+    );
+    await expect(canvas.getByRole("link", { name: "cr-1" })).toHaveAttribute(
+      "href",
+      "/projects/project-1/change-requests/cr-1"
+    );
   },
 };
 

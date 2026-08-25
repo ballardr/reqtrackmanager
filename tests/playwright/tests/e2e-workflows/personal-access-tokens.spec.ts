@@ -21,6 +21,9 @@ test("a Personal Access Token created via Preferences authenticates a real API c
 
   await page.goto("/preferences");
   await page.getByRole("tab", { name: "Personal Access Tokens", exact: true }).click();
+  // The create form opens in a `Modal` (2026-08 UX audit roadmap item
+  // 526), not a permanently-visible nested accordion.
+  await page.getByRole("button", { name: "New personal access token" }).click();
   await page.getByPlaceholder('e.g. "MCP server"').fill("Playwright E2E token");
   await page.getByRole("checkbox", { name: /Organisations this token can access/ }).first().click();
   await page.getByRole("button", { name: "Create token" }).click();

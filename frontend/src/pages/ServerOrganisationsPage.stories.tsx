@@ -55,6 +55,9 @@ export const ShowAllIncludesDisabled: Story = {
   },
 };
 
+/** Style guide "Pattern: modal dialog for entity create/rename" — "New
+ * organisation" opens a `Modal` instead of a permanently-visible inline
+ * block that reflows the list underneath it. */
 export const CreateOrganisation: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockResolvedValue([org({})]);
@@ -62,11 +65,34 @@ export const CreateOrganisation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
     await userEvent.click(canvas.getByRole("button", { name: /New organisation/ }));
-    await userEvent.type(canvas.getByPlaceholderText("Organisation name"), "New Co");
-    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+    const dialog = body.getByRole("dialog", { name: "New organisation" });
+    await userEvent.type(within(dialog).getByLabelText("Organisation name"), "New Co");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs", { name: "New Co" }));
-    await expect(within(document.body).getByText("Organisation created")).toBeInTheDocument();
+    await expect(body.getByText("Organisation created")).toBeInTheDocument();
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Cancelling the modal creates nothing and leaves the list untouched. */
+export const CreateOrganisationModalCancel: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue([org({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New organisation/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New organisation" });
+    await userEvent.type(within(dialog).getByLabelText("Organisation name"), "Discarded Co");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
   },
 };
 

@@ -25,6 +25,29 @@ test.describe("requirements list filters and view-mode persistence", () => {
     await page.getByText(PROJECT_NAMES.alpha1).click();
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
+    // A throwaway requirement, guaranteed to start (and stay) `draft`,
+    // rather than the seeded "Must expose a health-check endpoint" this
+    // step originally used for the "not approved" side of the status
+    // filter check: `workflow-bypass-attempts.spec.ts` approves Alpha-1's
+    // whole "Scoping" stage baseline as part of its own scenario, an
+    // irreversible action that locks *every* requirement already in that
+    // stage at the time — including this one, even though it isn't
+    // touched by name. Once that spec has run once against a given
+    // database, the seeded requirement stays `approved` for good and this
+    // assertion would start failing for real, not just in a freshly
+    // reseeded run. A requirement created fresh by this test starts
+    // `draft` regardless of the stage's own already-applied baseline (a
+    // stage approval locks requirements that existed at that moment, not
+    // a standing rule for ones created afterward), so it's immune to this
+    // either way. Per this repo's own test-independence rule, a spec must
+    // pass whether it runs before or after `workflow-bypass-attempts.spec.ts`.
+    const draftReqName = `E2E Filter Draft Target ${Date.now()}`;
+    await page.getByRole("button", { name: "New Requirement" }).click();
+    const createPanel = page.getByRole("dialog", { name: "New Requirement" });
+    await createPanel.getByPlaceholder("Name", { exact: true }).fill(draftReqName);
+    await createPanel.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(createPanel).not.toBeVisible();
+
     async function settled() {
       await expect(page.getByText("HW-FN-001")).toBeVisible();
       await expect(page.getByRole("link", { name: "Must expose a health-check endpoint", exact: true })).toBeVisible();
@@ -55,7 +78,7 @@ test.describe("requirements list filters and view-mode persistence", () => {
     await test.step("status filter narrows the list", async () => {
       await page.getByLabel("Status").selectOption("approved");
       await expect(page.getByText("HW-FN-001")).toBeVisible();
-      await expect(page.getByText("Must expose a health-check endpoint")).toHaveCount(0);
+      await expect(page.getByText(draftReqName)).toHaveCount(0);
       await page.getByLabel("Status").selectOption("");
       await settled();
     });
@@ -227,5 +250,51 @@ test.describe("change requests list sorting", () => {
     expect(descResponse.ok()).toBe(true);
     await expect(nameHeaderCell).toHaveAttribute("aria-sort", "descending");
     await assertOrder(secondName, firstName);
+  });
+});
+
+/**
+ * Default active-only status filter (2026-08 UX audit roadmap, "Default
+ * Change Requests to an active-only status filter") — a change request list
+ * is usually consulted for what still needs a decision, not a permanent
+ * archive of every decision ever made, so the page now loads with "Active"
+ * selected (sending `active_only=true`) rather than every status. Creates
+ * its own dynamically-named fixture and withdraws it (a terminal status)
+ * rather than relying on/mutating any shared seed data, per this repo's
+ * idempotent-test convention.
+ */
+test.describe("change requests default to an active-only status filter", () => {
+  test("withdrawn CR is hidden by default and reappears under All statuses", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await page.getByRole("link", { name: "Change requests", exact: true }).click();
+
+    const name = `Active Filter Test CR ${Date.now()}`;
+    await page.getByRole("button", { name: /New/ }).click();
+    await page.getByRole("radio", { name: "New requirement" }).click();
+    await page.getByPlaceholder("Proposed name").fill(name);
+    await page.getByPlaceholder("Reason for change").fill("Active-only filter test fixture.");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    const crLink = page.getByRole("link", { name, exact: true });
+    await expect(crLink).toBeVisible();
+
+    // Withdraw it (creator-only action) to reach a terminal, non-active
+    // status without needing project-manager decide permission.
+    await crLink.click();
+    await page.getByRole("button", { name: "Withdraw" }).click();
+    await expect(page.getByText("Withdrawn", { exact: true })).toBeVisible();
+
+    // Back on the list: default view ("Active") hides it.
+    await page.getByRole("link", { name: "Change requests", exact: true }).click();
+    await expect(page.getByLabel("Status")).toHaveValue("active");
+    await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+
+    // Widening to "All statuses" reveals it again.
+    await page.getByLabel("Status").selectOption("");
+    await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+
+    // Narrowing to the specific "Withdrawn" status also finds it.
+    await page.getByLabel("Status").selectOption("withdrawn");
+    await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   });
 });

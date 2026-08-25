@@ -154,6 +154,17 @@ export function buildCategory(overrides: Partial<Category> = {}): Category {
 }
 
 export function buildRequirement(overrides: Partial<Requirement> = {}): Requirement {
+  // `is_locked`/`requires_approval` derive from `status` by the same rule
+  // the backend uses (`LOCKED_STATUSES`/`REQUIRES_APPROVAL_STATUSES`,
+  // backend/app/services/requirements.py:25,
+  // backend/app/routers/requirements.py:107) so a story only needs to set
+  // `status` and gets a consistent, real derived state — rather than every
+  // "approved"/"completed" story call site having to separately remember to
+  // also pass `is_locked: true` (2026-08 UX audit roadmap, "No requirement
+  // approval action" — added when the Approve button/"Make change request"
+  // gating started actually reading these two fields). An explicit override
+  // for either still wins, via the trailing `...overrides` spread.
+  const status = overrides.status ?? "draft";
   return {
     id: nextId("requirement"),
     project_id: "project-1",
@@ -162,7 +173,7 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     reasoning: "Locked-out users need a self-service recovery path.",
     clarification: "",
     description: "A user who has forgotten their password can request a reset link by email.",
-    status: "draft",
+    status,
     owner_id: "user-1",
     component_id: "component-1",
     category_id: "category-1",
@@ -171,7 +182,7 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     sort_order: 0,
     creator_id: "user-1",
     is_archived: false,
-    is_locked: false,
+    is_locked: status === "approved" || status === "completed",
     keywords: [],
     custom_fields: {},
     created_at: "2026-01-10T09:00:00Z",
@@ -179,7 +190,7 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     is_subscribed: false,
     comment_count: 0,
     has_open_change_request: false,
-    requires_approval: false,
+    requires_approval: status === "draft" || status === "reviewed",
     review_date: null,
     review_lead_days: null,
     reviewer_id: null,
@@ -246,6 +257,12 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     proposed_reviewer_id: null,
     changed_fields: [],
     proposed_attachment_file_ids: [],
+    proposed_action_link_id: null,
+    proposed_action_title: null,
+    proposed_action_description: null,
+    proposed_action_type_id: null,
+    proposed_action_assignee_id: null,
+    proposed_action_due_date: null,
     ...overrides,
   };
 }

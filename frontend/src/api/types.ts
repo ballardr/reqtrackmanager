@@ -32,7 +32,7 @@ export const REQUIREMENT_LEVEL_LABEL: Record<RequirementLevel, string> = {
   recommended: "Recommended",
   optional: "Optional",
 };
-export type ChangeRequestKind = "new_requirement" | "modify_requirement";
+export type ChangeRequestKind = "new_requirement" | "modify_requirement" | "add_action";
 export type ChangeRequestStatus = "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn";
 export const CHANGE_REQUEST_STATUS_LABEL: Record<ChangeRequestStatus, string> = {
   draft: "Draft",
@@ -65,6 +65,29 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   project_creator: "Project creator",
   member: "Member",
 };
+
+/**
+ * Collapses a user's held `ProjectRole` set down to the precedence style
+ * guide "Pattern: role display — effective highest role only" defines, for
+ * compact summary contexts (a list row, a header badge) — see
+ * docs/ux-style-guide.md and docs/ux-audit-2026-08.md's "Project role
+ * display" finding. `project_manager` is the sole top tier: if held, it
+ * alone is shown. Otherwise `project_administrator` and `stakeholder` are a
+ * shared, mutually-equal second tier — both are shown if both are held,
+ * since they aren't ordered relative to each other. Otherwise `member` is
+ * the floor. Deliberately NOT applied to `OrgRole` — that's a different,
+ * unordered three-value enum with no defined precedence in the style
+ * guide's pattern, unlike `ProjectRole`'s real four-tier structure — and
+ * NOT applied to any access-audit view (e.g. Org Admin's "View access"
+ * panel), which exists specifically to show the full, uncollapsed set.
+ */
+export function collapseProjectRoles(roles: ProjectRole[]): ProjectRole[] {
+  if (roles.includes("project_manager")) return ["project_manager"];
+  const tierTwo = roles.filter((r) => r === "project_administrator" || r === "stakeholder");
+  if (tierTwo.length > 0) return tierTwo;
+  if (roles.includes("member")) return ["member"];
+  return [];
+}
 export const CUSTOM_FIELD_TYPE_LABEL: Record<CustomFieldType, string> = {
   short_text: "Short text",
   long_text: "Long text",
@@ -338,6 +361,10 @@ export interface OrgGroup {
   member_user_ids: string[];
   member_org_group_ids: string[];
   idp_synced_group_name: string | null;
+  /** Only meaningful alongside `idp_synced_group_name` — a user whose IdP
+   * groups/roles claim matches it is granted this `OrgRole` at SSO login
+   * (2026-08 UX audit roadmap item 522). */
+  granted_org_role: OrgRole | null;
 }
 
 /** A read-only "what does this user have access to" summary (2026-08 UX
@@ -711,6 +738,16 @@ export interface ChangeRequest {
    * propose every field. See `CHANGEABLE_REQUIREMENT_FIELDS` above. */
   changed_fields: ChangeableRequirementField[];
   proposed_attachment_file_ids: string[];
+  /** ADD_ACTION-only (2026-08 UX audit roadmap item 514) — either
+   * `proposed_action_link_id` (link an existing action) or
+   * `proposed_action_title` + `proposed_action_type_id` (create a new
+   * one) is set, mutually exclusive. */
+  proposed_action_link_id: string | null;
+  proposed_action_title: string | null;
+  proposed_action_description: string | null;
+  proposed_action_type_id: string | null;
+  proposed_action_assignee_id: string | null;
+  proposed_action_due_date: string | null;
 }
 
 export interface ChangeRequestTask {
@@ -834,19 +871,17 @@ export interface OrgReportDefaults {
   appendices: ReportChapter[];
 }
 
-export interface SsoGroupMapping {
-  sso_group: string;
-  org_role: OrgRole;
-}
-
 export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
 
+/** SSO group→role mapping used to live here (`sso_group_mappings`) — it's
+ * now a per-`OrgGroup` property (`OrgGroup.granted_org_role`, alongside
+ * `idp_synced_group_name`) instead of a disconnected flat list — 2026-08
+ * UX audit roadmap item 522. */
 export interface OrgAdvancedSettings {
   smtp_host: string | null;
   smtp_port: number | null;
   smtp_username: string | null;
   smtp_use_tls: boolean;
-  sso_group_mappings: SsoGroupMapping[];
   pat_max_lifetime_days: number | null;
   require_2fa: boolean;
   allow_self_signup: boolean;

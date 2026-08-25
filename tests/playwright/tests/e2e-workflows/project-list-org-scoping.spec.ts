@@ -60,14 +60,17 @@ test.describe("project list organisation scoping for a server admin", () => {
     await expect(orgFilter).toBeVisible();
     await expect(orgFilter.locator("option")).toHaveText(["All organisations", orgAName, orgBName]);
 
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for
+    // entity create/rename") — scoped to it rather than a bare ".card".
     await page.getByRole("button", { name: "New project" }).click();
-    const newProjectPanel = page.locator(".card", { has: page.getByPlaceholder("Name", { exact: true }) });
-    const orgPicker = newProjectPanel.locator("select").first();
+    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
+    const orgPicker = newProjectDialog.locator("select").first();
     await expect(orgPicker.locator("option")).toHaveText([orgAName, orgBName]);
 
     // Drop to a single org. Hard-deletes org B rather than self-service
-    // leaving it (`DELETE /orgs/{id}/membership`, mirroring OrgAdminPage's
-    // "Leave organisation" action): this server admin self-elevated as
+    // leaving it (`DELETE /orgs/{id}/membership`, mirroring Preferences'
+    // own "Leave organisation" action, under its "Your access" tab):
+    // this server admin self-elevated as
     // org B's *only* admin above, so leaving would hit the "can't strip an
     // org's last admin" guard (409) — deletion is server-admin-only and
     // doesn't require ongoing membership, and these orgs are disposable
@@ -80,14 +83,14 @@ test.describe("project list organisation scoping for a server admin", () => {
     await page.reload();
     await expect(page.locator("select:has(option:text-is('All organisations'))")).toHaveCount(0);
     await page.getByRole("button", { name: "New project" }).click();
-    const soloPanel = page.locator(".card", { has: page.getByPlaceholder("Name", { exact: true }) });
+    const soloDialog = page.getByRole("dialog", { name: "New project" });
     // No org select now (org A has no projects yet either, so the template
     // picker is also absent) — org A is the only valid choice, applied
     // implicitly rather than asked for. The Visibility select is a real,
     // always-meaningful choice independent of org count, so it's the one
     // select still expected here.
-    await expect(soloPanel.locator("select")).toHaveCount(1);
-    await expect(soloPanel.getByLabel("Visibility")).toBeVisible();
+    await expect(soloDialog.locator("select")).toHaveCount(1);
+    await expect(soloDialog.getByLabel("Visibility")).toBeVisible();
 
     // Delete org A too, restoring the shared persona to its documented
     // zero-org baseline for any other spec that runs after this one.

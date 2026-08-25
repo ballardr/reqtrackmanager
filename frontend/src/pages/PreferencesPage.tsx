@@ -1,9 +1,12 @@
+import { Plus, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { FileUploadTrigger } from "../components/FileUploadTrigger";
+import { Modal } from "../components/Modal";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
@@ -24,7 +27,7 @@ import type {
   PersonalAccessTokenCreateResult,
   ProjectListItem,
 } from "../api/types";
-import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -81,6 +84,10 @@ export function PreferencesPage() {
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
   const [myOrgRoles, setMyOrgRoles] = useState<Record<string, OrgRole[]>>({});
   const [myGroupsByOrg, setMyGroupsByOrg] = useState<Record<string, MyOrgGroup[]>>({});
+  // "Leave organisation" (2026-08 UX audit roadmap item 520, moved here
+  // from Org Admin) — Tier 1 `ConfirmDialog`, keyed on the whole
+  // `Organization` rather than just its id so the dialog can name it.
+  const [orgToLeave, setOrgToLeave] = useState<Organization | null>(null);
   const [pats, setPats] = useState<PersonalAccessToken[]>([]);
   const [newPatName, setNewPatName] = useState("");
   const [newPatOrgIds, setNewPatOrgIds] = useState<Set<string>>(new Set());
@@ -90,46 +97,73 @@ export function PreferencesPage() {
   const [maxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
   const [patError, setPatError] = useState<string | null>(null);
   const [createdPat, setCreatedPat] = useState<PersonalAccessTokenCreateResult | null>(null);
+  // The "New personal access token" form creates a brand-new entity, not
+  // contextual detail about anything already on screen — per the revised
+  // Principle 3 it opens in a `Modal`, not the permanently-visible nested
+  // accordion it used to be (2026-08 UX audit roadmap item 526).
+  const [patFormOpen, setPatFormOpen] = useState(false);
 
-  useEffect(() => {
-    api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
+  /**
+   * Loads (or reloads) everything the "Your access" tab shows: this user's
+   * own project list, their org memberships/roles, and their org groups.
+   * Extracted from the mount effect below so `leaveOrg` can call it again
+   * after a successful leave — the left org (and any project that was only
+   * reachable through it) has to disappear from all three, not just
+   * `myOrgs` itself.
+   */
+  async function loadMyAccess() {
     api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
-    api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
     api.get<MyMemberships>("/api/v1/auth/me/memberships").then((memberships) => {
       setMyGroupsByOrg(
         Object.fromEntries(memberships.organizations.map((m) => [m.organization_id, m.groups]))
       );
     });
-    api.get<Organization[]>("/api/v1/orgs").then(async (orgs) => {
-      // `GET /orgs` returns every org on the deployment for a server admin
-      // (I-M-05's platform-wide console view), not just orgs they're
-      // actually a member of — right for the server-management pages that
-      // originally called it, wrong here: this is a *personal* picker
-      // ("which of MY orgs can this PAT reach"), so it's narrowed to
-      // genuine memberships below. The org member directory (any org
-      // role, including plain "member", can call this unfiltered per
-      // `routers/orgs.py::list_org_users`) doubles as the membership test —
-      // a 403 means "server admin can see this org platform-wide but
-      // isn't actually in it," filtered out rather than left as an
-      // unhandled rejection that used to abort the whole batch.
-      const entries = await Promise.all(
-        orgs.map(async (org) => {
-          try {
-            const orgUsers = await api.get<OrgUser[]>(`/api/v1/orgs/${org.id}/users`);
-            const self = orgUsers.find((u) => u.user_id === user?.id);
-            return self ? ([org, self.roles] as const) : null;
-          } catch (err) {
-            if (err instanceof ApiError && err.status === 403) return null;
-            throw err;
-          }
-        })
-      );
-      const memberships = entries.filter((e): e is readonly [Organization, OrgRole[]] => e !== null);
-      setMyOrgs(memberships.map(([org]) => org));
-      setMyOrgRoles(Object.fromEntries(memberships.map(([org, roles]) => [org.id, roles])));
-    });
+    const orgs = await api.get<Organization[]>("/api/v1/orgs");
+    // `GET /orgs` returns every org on the deployment for a server admin
+    // (I-M-05's platform-wide console view), not just orgs they're
+    // actually a member of — right for the server-management pages that
+    // originally called it, wrong here: this is a *personal* picker
+    // ("which of MY orgs can this PAT reach"), so it's narrowed to
+    // genuine memberships below. The org member directory (any org
+    // role, including plain "member", can call this unfiltered per
+    // `routers/orgs.py::list_org_users`) doubles as the membership test —
+    // a 403 means "server admin can see this org platform-wide but
+    // isn't actually in it," filtered out rather than left as an
+    // unhandled rejection that used to abort the whole batch.
+    const entries = await Promise.all(
+      orgs.map(async (org) => {
+        try {
+          const orgUsers = await api.get<OrgUser[]>(`/api/v1/orgs/${org.id}/users`);
+          const self = orgUsers.find((u) => u.user_id === user?.id);
+          return self ? ([org, self.roles] as const) : null;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 403) return null;
+          throw err;
+        }
+      })
+    );
+    const memberships = entries.filter((e): e is readonly [Organization, OrgRole[]] => e !== null);
+    setMyOrgs(memberships.map(([org]) => org));
+    setMyOrgRoles(Object.fromEntries(memberships.map(([org, roles]) => [org.id, roles])));
+  }
+
+  useEffect(() => {
+    api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
+    api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
+    loadMyAccess();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function leaveOrg(orgId: string) {
+    setOrgToLeave(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/membership`);
+      showToast(strings.preferences.leftOrgToast(orgLabel));
+      await loadMyAccess();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
 
   function toggleNewPatOrg(orgId: string) {
     setNewPatOrgIds((current) => {
@@ -185,6 +219,25 @@ export function PreferencesPage() {
 
   const expiryTooLong = !!(maxExpiresAt && newPatExpiry && new Date(newPatExpiry) > new Date(maxExpiresAt));
 
+  function resetPatForm() {
+    setNewPatName("");
+    setNewPatOrgIds(new Set());
+    setNewPatProjectIds(new Set());
+    setNewPatExpiry("");
+    setExpiryAutoFilled(true);
+    setPatError(null);
+  }
+
+  function openPatForm() {
+    resetPatForm();
+    setPatFormOpen(true);
+  }
+
+  function closePatForm() {
+    resetPatForm();
+    setPatFormOpen(false);
+  }
+
   async function createPat() {
     setPatError(null);
     if (newPatOrgIds.size === 0) {
@@ -199,11 +252,7 @@ export function PreferencesPage() {
         requested_expires_at: newPatExpiry ? new Date(newPatExpiry).toISOString() : undefined,
       });
       setCreatedPat(created);
-      setNewPatName("");
-      setNewPatOrgIds(new Set());
-      setNewPatProjectIds(new Set());
-      setNewPatExpiry("");
-      setExpiryAutoFilled(true);
+      closePatForm();
       api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
     } catch (err) {
       setPatError(err instanceof ApiError ? err.message : strings.common.error);
@@ -352,8 +401,8 @@ export function PreferencesPage() {
       {tab === "profile" && (
       <div {...tabPanelProps("preferences-tabs", "profile")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.profile}</h2>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.avatar}
+        <div className="stack" style={{ gap: "0.25rem" }}>
+          <span>{strings.preferences.avatar}</span>
           <div className="row">
             {user?.avatar_file_id && (
               <img
@@ -362,24 +411,23 @@ export function PreferencesPage() {
                 style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }}
               />
             )}
-            <input
-              type="file"
+            <FileUploadTrigger
               accept="image/*"
-              onChange={async (e) => {
-                if (e.target.files?.[0]) {
-                  setAvatarError(null);
-                  try {
-                    await api.postFile("/api/v1/auth/me/avatar", e.target.files[0]);
-                    await refreshUser();
-                  } catch (err) {
-                    setAvatarError(err instanceof ApiError ? err.message : strings.common.error);
-                  }
+              onSelect={async (file) => {
+                setAvatarError(null);
+                try {
+                  await api.postFile("/api/v1/auth/me/avatar", file);
+                  await refreshUser();
+                } catch (err) {
+                  setAvatarError(err instanceof ApiError ? err.message : strings.common.error);
                 }
               }}
-            />
+            >
+              <Upload size={14} /> {strings.common.chooseFile}
+            </FileUploadTrigger>
           </div>
           {avatarError && <div style={{ color: "var(--color-danger)" }}>{avatarError}</div>}
-        </label>
+        </div>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.preferences.displayName}
           <input
@@ -559,9 +607,27 @@ export function PreferencesPage() {
                     <span key={r} className="badge">{ORG_ROLE_LABEL[r]}</span>
                   ))}
                 </span>
-                {roles.includes("org_admin") && (
-                  <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
-                )}
+                <div className="row" style={{ gap: "0.4rem" }}>
+                  {roles.includes("org_admin") && (
+                    <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
+                  )}
+                  {/* Moved here from Org Admin (2026-08 UX audit roadmap
+                      item 520) — leaving is about this user's own
+                      membership, not an org-level setting, so it lives
+                      alongside the rest of "your access" rather than Org
+                      Admin's danger-zone-adjacent controls. Previously
+                      fired with no confirmation at all; now Tier 1
+                      `ConfirmDialog` + `Toast`, matching every other
+                      ordinary/reversible mutation in the app. */}
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => setOrgToLeave(org)}
+                    title={strings.preferences.leaveOrgTooltip(org.name)}
+                    aria-label={strings.preferences.leaveOrgAriaLabel(org.name)}
+                  >
+                    {strings.preferences.leaveOrg}
+                  </button>
+                </div>
               </div>
               {orgProjects.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
@@ -569,7 +635,7 @@ export function PreferencesPage() {
                     <li key={p.id} style={{ listStyle: "disc" }}>
                       <Link to={`/projects/${p.id}`}>{p.name}</Link>{" "}
                       <span className="text-muted">
-                        ({p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"})
+                        ({collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"})
                       </span>
                     </li>
                   ))}
@@ -596,8 +662,15 @@ export function PreferencesPage() {
 
       {tab === "pats" && (
       <div {...tabPanelProps("preferences-tabs", "pats")} className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
-        <p className="text-muted">{strings.preferences.patsHint(orgLabel)}</p>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div className="stack" style={{ gap: "0.25rem" }}>
+            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
+            <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.patsHint(orgLabel)}</p>
+          </div>
+          <button className="btn btn-primary" onClick={openPatForm}>
+            <Plus size={14} /> {strings.preferences.patNew}
+          </button>
+        </div>
 
         {pats.filter((p) => !p.revoked_at).length === 0 ? (
           <p className="text-muted">{strings.preferences.patNone}</p>
@@ -642,77 +715,84 @@ export function PreferencesPage() {
           </button>
         )}
 
-        <CollapsibleSection sectionKey="preferences.pats.create" variant="plain" title={strings.common.create}>
-          <input
-            className="input"
-            placeholder={strings.preferences.patNamePlaceholder}
-            value={newPatName}
-            onChange={(e) => setNewPatName(e.target.value)}
-          />
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.preferences.patOrgs(orgLabelPlural)}
-            <div className="stack" style={{ gap: "0.25rem" }}>
-              {myOrgs.map((org) => (
-                <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={newPatOrgIds.has(org.id)}
-                    onChange={() => toggleNewPatOrg(org.id)}
-                  />
-                  {org.name}
-                </label>
-              ))}
-            </div>
-          </label>
-          {newPatOrgIds.size > 0 && (
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.preferences.patProjects}
-              {(() => {
-                const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
-                return scopedProjects.length === 0 ? (
-                  <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
-                ) : (
-                  <div className="stack" style={{ gap: "0.25rem" }}>
-                    {scopedProjects.map((project) => (
-                      <label key={project.id} className="row" style={{ gap: "0.5rem" }}>
-                        <input
-                          type="checkbox"
-                          checked={newPatProjectIds.has(project.id)}
-                          onChange={() => toggleNewPatProject(project.id)}
-                        />
-                        {project.name}
-                      </label>
-                    ))}
-                  </div>
-                );
-              })()}
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
-            </label>
-          )}
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.preferences.patExpiry}
+        {patFormOpen && (
+          <Modal title={strings.preferences.patNew} onClose={closePatForm}>
             <input
               className="input"
-              type="date"
-              value={newPatExpiry}
-              onChange={(e) => {
-                setExpiryAutoFilled(false);
-                setNewPatExpiry(e.target.value);
-              }}
+              placeholder={strings.preferences.patNamePlaceholder}
+              value={newPatName}
+              onChange={(e) => setNewPatName(e.target.value)}
             />
-            {expiryTooLong && maxExpiresAt && (
-              <span style={{ color: "var(--color-danger)", fontSize: "0.8rem" }}>
-                {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
-                  "{date}", new Date(maxExpiresAt).toLocaleDateString()
-                )}
-              </span>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.preferences.patOrgs(orgLabelPlural)}
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                {myOrgs.map((org) => (
+                  <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={newPatOrgIds.has(org.id)}
+                      onChange={() => toggleNewPatOrg(org.id)}
+                    />
+                    {org.name}
+                  </label>
+                ))}
+              </div>
+            </label>
+            {newPatOrgIds.size > 0 && (
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.preferences.patProjects}
+                {(() => {
+                  const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
+                  return scopedProjects.length === 0 ? (
+                    <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
+                  ) : (
+                    <div className="stack" style={{ gap: "0.25rem" }}>
+                      {scopedProjects.map((project) => (
+                        <label key={project.id} className="row" style={{ gap: "0.5rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={newPatProjectIds.has(project.id)}
+                            onChange={() => toggleNewPatProject(project.id)}
+                          />
+                          {project.name}
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
+              </label>
             )}
-          </label>
-          {patError && <div style={{ color: "var(--color-danger)" }}>{patError}</div>}
-          <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
-            {strings.preferences.patCreate}
-          </button>
-        </CollapsibleSection>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.preferences.patExpiry}
+              <input
+                className="input"
+                type="date"
+                value={newPatExpiry}
+                onChange={(e) => {
+                  setExpiryAutoFilled(false);
+                  setNewPatExpiry(e.target.value);
+                }}
+              />
+              {expiryTooLong && maxExpiresAt && (
+                <span style={{ color: "var(--color-danger)", fontSize: "0.8rem" }}>
+                  {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
+                    "{date}", new Date(maxExpiresAt).toLocaleDateString()
+                  )}
+                </span>
+              )}
+            </label>
+            {patError && <div style={{ color: "var(--color-danger)" }}>{patError}</div>}
+            <div className="row">
+              <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
+                {strings.preferences.patCreate}
+              </button>
+              <button className="btn" onClick={closePatForm} style={{ alignSelf: "flex-start" }}>
+                {strings.common.cancel}
+              </button>
+            </div>
+          </Modal>
+        )}
 
         {createdPat && (
           <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: 6, padding: "0.75rem" }}>
@@ -791,6 +871,15 @@ export function PreferencesPage() {
       </div>
       )}
 
+      {orgToLeave && (
+        <ConfirmDialog
+          title={strings.preferences.leaveOrgTitle(orgToLeave.name)}
+          message={strings.preferences.leaveOrgConfirm(orgLabel)}
+          confirmLabel={strings.preferences.leaveOrg}
+          onConfirm={() => leaveOrg(orgToLeave.id)}
+          onCancel={() => setOrgToLeave(null)}
+        />
+      )}
       {patToRevoke && (
         <ConfirmDialog
           title={strings.preferences.patRevokeTitle}

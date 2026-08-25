@@ -84,10 +84,16 @@ class RequirementStatus(str, enum.Enum):
 
 
 class ChangeRequestKind(str, enum.Enum):
-    """Whether a change request proposes a new requirement or a modification."""
+    """What a change request proposes: a new requirement, a modification to
+    an existing one, or (2026-08 UX audit roadmap item 514) adding an
+    action to a requirement once it's locked — mirrors the same
+    change-request-only-once-locked rule `MODIFY_REQUIREMENT` already
+    enforces (`services.requirements.LOCKED_STATUSES`), extended to actions
+    rather than inventing a separate mechanism."""
 
     NEW_REQUIREMENT = "new_requirement"
     MODIFY_REQUIREMENT = "modify_requirement"
+    ADD_ACTION = "add_action"
 
 
 class ChangeRequestStatus(str, enum.Enum):

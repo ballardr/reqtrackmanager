@@ -112,6 +112,7 @@ const en = {
     empty: "No {projects} to show.",
     favorite: "Favourite",
     unfavorite: "Remove from favourites",
+    favouritesOnly: "Favourites only",
     allRoles: "All roles",
     stageStatusLabel: "{Stage} status",
     allStages: "All {stage} statuses",
@@ -121,6 +122,10 @@ const en = {
     importFromBundle: "Or import from an exported {project} bundle (.zip)",
     importWarnings: "Imported with warnings",
     created: "{Project} created",
+    // Small usability fix noted in the 2026-08 UX audit's "How things get
+    // created" section: picking an import file used to silently hide the
+    // template picker with no explanation — this note replaces it instead.
+    importIgnoresTemplate: "A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.",
   },
   overview: {
     title: "{Project} overview",
@@ -138,7 +143,6 @@ const en = {
   requirements: {
     title: "{Requirements}",
     newRequirement: "New {requirement}",
-    addOne: "Add one",
     importFromCsv: "Import from CSV",
     search: "Search by name or ID",
     name: "Name",
@@ -168,8 +172,17 @@ const en = {
     restored: "{Requirement} restored",
     save: "Save",
     changeNote: "Reason for change",
-    history: "Change log",
     when: "When",
+    // The History/Activity cards merged into one, with a view toggle
+    // (2026-08 UX audit roadmap item 516) — "Version history" is
+    // specifically this {requirement}'s own approved version/status
+    // transitions (the `RequirementVersion` ledger); "Activity" is the
+    // broader audit-log feed covering everything that happened to it,
+    // version changes included, so the two labels need to read as
+    // genuinely distinct rather than synonyms. Card heading and the
+    // toggle's two button labels all share these two strings.
+    versionHistory: "Version history",
+    activity: "Activity",
     discussion: "Discussion",
     addComment: "Add comment",
     links: "Traceability links",
@@ -200,8 +213,12 @@ const en = {
     cancelEdit: "Cancel",
     attachFile: "Attach a file",
     removeAttachment: "Remove attachment",
+    approve: "Approve",
+    approved: "{Requirement} approved",
     markCompleted: "Mark completed",
     unmarkCompleted: "Revert completion",
+    completed: "{Requirement} marked completed",
+    completionReverted: "Completion reverted",
     reviewSection: "Review scheduling",
     reviewDate: "Review date",
     reviewLeadDays: "Reminder lead time (days)",
@@ -260,6 +277,9 @@ const en = {
     newChangeRequest: "New {changeRequest}",
     kindNew: "New {requirement}",
     kindModify: "Modify {requirement}",
+    kindAddAction: "Add action",
+    proposedAddAction: "Proposed action",
+    proposedLinkAction: "Linking existing action",
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
@@ -287,6 +307,11 @@ const en = {
     fieldsToChange: "Fields to change",
     fieldsToChangeHint: "Select which fields this {changeRequest} proposes to change — values are pre-filled from the {requirement}'s current content. Unselected fields are left untouched when approved.",
     selectARequirement: "Select a {requirement}",
+    // A modify {changeRequest} can only target an already-approved
+    // {requirement} (2026-08 UX audit roadmap, "No requirement approval
+    // action; change requests can target draft requirements") — a
+    // still-draft/reviewed one is edited directly instead.
+    noLockableRequirements: "No {requirements} are approved yet — approve one first, or edit a draft {requirement} directly.",
     selectAtLeastOneField: "Select at least one field to change.",
     attachments: "Attachments",
     selectAttachment: (org: string) => `Select from ${org} resources`,
@@ -483,17 +508,35 @@ const en = {
     // settings hierarchy") — Org Admin's 15 flat accordions regrouped into
     // 6 route-addressable groups. Static text, not org-dependent, matching
     // the style guide's own "after" diagram exactly.
+    //
+    // "People" was later split into its own two top-level groups, "Users"
+    // and "Groups" (style guide "Pattern: settings hierarchy" addendum,
+    // 2026-08-24 — a flat regroup, no new navigation capability) — new
+    // strings rather than reusing `groupPeople` for one of the two.
     groupOverview: "Overview",
-    groupPeople: "People",
+    groupUsers: "Users",
+    groupGroups: "Groups",
     groupProjectsWorkflow: "Projects & workflow",
     groupBrandingDefaults: "Branding & defaults",
     groupTemplatesReports: "Templates & reports",
-    groupIntegrationsSecurity: "Integrations & security",
+    // "Integrations & security" was later split into its own three
+    // top-level groups — SSO/OIDC + SCIM (both identity-provisioning
+    // integrations) grouped as "OAuth/SSO", SMTP as its own "Email", and
+    // 2FA/self-signup/external-user-policy/PATs as "Security" — a flat
+    // regroup per the style guide's settings-hierarchy addendum, same
+    // reasoning as the earlier Users/Groups split above.
+    groupOauthSso: "OAuth/SSO",
+    groupEmail: "Email",
+    groupSecurity: "Security",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
     rename: "Rename",
     renameHint: (org: string) => `The new name is used everywhere this ${org} is displayed, including its own delete-confirmation prompt.`,
+    renamed: "Renamed",
+    // Style guide "Pattern: action menu" — the kebab trigger combining
+    // Rename and Export on the Overview group.
+    orgActions: (orgCap: string) => `${orgCap} actions`,
     backToOrganizations: (orgPlural: string) => `Back to ${orgPlural.toLowerCase()}`,
     notAMemberTitle: (org: string) => `You're not a member of this ${org}`,
     notAMemberHint: "As a server admin you can still set it up: become its admin yourself, or create an admin user for someone else to log in as.",
@@ -527,6 +570,7 @@ const en = {
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
     newUser: "New user",
+    userCreated: "User created",
     searchUsers: "Search by name or email",
     groups: (orgCap: string) => `${orgCap} groups`,
     searchGroups: "Search by name",
@@ -537,7 +581,15 @@ const en = {
     nestedGroupLabel: (name: string) => `${name} (nested group)`,
     idpSyncedGroupName: "IdP-synced group name",
     idpSyncedGroupNamePlaceholder: "e.g. eng-team",
-    saveIdpSync: "Save sync name",
+    // Role-granting (2026-08 UX audit roadmap item 522) is surfaced right
+    // next to the sync name and saved together via one button — replaces
+    // the old, disconnected "SSO group mappings" list this org's Advanced/
+    // OAuth-SSO settings used to carry (`ssoMappings` etc., retired).
+    grantedOrgRole: "Grants role on sync",
+    grantedOrgRoleNone: "No role granted",
+    grantedOrgRoleHint: "A user whose IdP group claim matches the sync name above is granted this role — requires a sync name to also be set.",
+    ssoNotConfiguredHint: (org: string) => `Set up SSO/OIDC for this ${org} first to grant a role here.`,
+    saveIdpSync: "Save sync settings",
     resources: "Shared resources",
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
     lockDisplayName: "Lock display name",
@@ -568,11 +620,19 @@ const en = {
     testEmailNoSmtp: "Set an SMTP host above first.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
-    ssoMappings: "SSO group mappings",
-    ssoGroup: "SSO group",
     orgRole: (orgCap: string) => `${orgCap} role`,
-    addMapping: "Add mapping",
-    saveAdvanced: "Save advanced settings",
+    // SSO group→role mapping moved from here (a flat, disconnected list)
+    // onto the group being synced into instead (2026-08 UX audit roadmap
+    // item 522) — see `grantedOrgRole` etc. above, managed from Groups.
+    ssoMappingsMovedHint: "Granting a role via an SSO group claim is now set on the group itself — see the Groups section.",
+    // `saveAdvanced` submits the whole `OrgAdvancedSettings` object — one
+    // shared PUT behind three separate resource-menu groups now (2026-08
+    // UX audit roadmap item 523: OAuth/SSO, Email, Security), each with
+    // its own button calling it. Labelled per the group it's actually on,
+    // not the retired "Advanced" concept the object's own backend name
+    // still carries.
+    saveAdvanced: "Save security settings",
+    saveEmailSettings: "Save email settings",
     accessReview: "Access review",
     filterStale: "Stale (180+ days)",
     filterNo2fa: "No 2FA",
@@ -653,7 +713,6 @@ const en = {
     deleteLinkType: "Delete this link type",
     deleteReportTemplate: (name: string) => `Delete ${name}`,
     deleteResource: (name: string) => `Delete ${name}`,
-    removeSsoMapping: (group: string) => `Remove mapping for ${group}`,
   },
   importMerge: {
     action: (org: string) => `Import into this ${org}`,
@@ -793,6 +852,20 @@ const en = {
     myGroups: "Groups",
     inheritedGroup: "via a nested group",
     manageOrganisation: (org: string) => `Manage ${org}`,
+    // "Leave organisation" moved here from Org Admin (2026-08 UX audit
+    // roadmap item 520) — it's about the current user's own membership,
+    // not an org-level setting, so it belongs alongside the rest of "your
+    // access" rather than Org Admin's danger-zone-adjacent controls.
+    leaveOrg: "Leave",
+    // Short, per-row accessible name (distinguishes each org's "Leave"
+    // button from every other row's) — the longer explanation is the
+    // hover `title` only, not repeated into the accessible name.
+    leaveOrgAriaLabel: (orgName: string) => `Leave ${orgName}`,
+    leaveOrgTooltip: (orgName: string) => `Remove your own membership in ${orgName}`,
+    leaveOrgTitle: (orgName: string) => `Leave ${orgName}?`,
+    leaveOrgConfirm: (org: string) =>
+      `You'll lose access to every {project} in this ${org} unless an admin adds you back — this can be undone by re-inviting you.`,
+    leftOrgToast: (orgCap: string) => `Left ${orgCap.toLowerCase()}`,
     changePassword: "Change password",
     currentPassword: "Current password",
     newPassword: "New password",
@@ -817,6 +890,7 @@ const en = {
     patExpiry: "Expiry",
     patExpiryTooLong: (orgPlural: string) =>
       `Can't be extended past {date} — the longest lifetime the selected ${orgPlural.toLowerCase()}' policies currently allow.`,
+    patNew: "New personal access token",
     patCreate: "Create token",
     patCreatedTitle: "Token created",
     patCreatedHint: "Copy this token now — it won't be shown again.",
@@ -863,6 +937,17 @@ const en = {
     completedAt: "Completed",
     created: "Action created",
   },
+  // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
+  // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a
+  // shared file from a source (today just org shared resources) and
+  // attaching it to whatever opened the dialog.
+  resourcePicker: {
+    orgResourcesSource: (orgLabelCap: string) => `${orgLabelCap} shared resources`,
+    noFiles: "No files available in this source.",
+    attachSelected: (n: number) => (n === 0 ? "Attach selected" : `Attach ${n} selected`),
+    linkFromSharedResources: "Link from shared resources",
+    attachedToast: (n: number) => (n === 1 ? "1 file linked" : `${n} files linked`),
+  },
   common: {
     loading: "Loading…",
     error: "Something went wrong.",
@@ -881,7 +966,13 @@ const en = {
     platformDefault: "Platform default",
     customValue: "Custom",
     resetToPlatformDefault: "Reset to platform default",
+    chooseFile: "Choose file",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
+    // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:
+    // split-button trigger") — generic across every call site, not
+    // per-instance, since the chevron's own job ("reveal the alternatives")
+    // doesn't change with what those alternatives are.
+    moreOptions: "More options",
   },
 };
 

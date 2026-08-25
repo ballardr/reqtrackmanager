@@ -31,7 +31,6 @@ test.describe("requirement and action restore", () => {
 
     await test.step("create a throwaway requirement", async () => {
       await page.getByRole("button", { name: "New requirement" }).click();
-      await page.getByRole("button", { name: "Add one" }).click();
       await page.getByPlaceholder("Name", { exact: true }).fill(name);
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText(name)).toBeVisible();

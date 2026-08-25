@@ -132,6 +132,52 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   },
 };
 
+/** "Leave organisation" (2026-08 UX audit roadmap item 520) moved here
+ * from Org Admin — it's about this user's own membership, not an org-level
+ * setting. Previously fired with zero confirmation; now Tier 1
+ * `ConfirmDialog` + `Toast`, matching every other ordinary/reversible
+ * mutation in the app. */
+export const AccessTabLeaveOrganisationConfirms: Story = {
+  beforeEach: () => {
+    mockPreferencesApis("user-1");
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
+    await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Leave Acme Corp" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Leave Acme Corp?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Leave" }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/v1/orgs/org-1/membership"));
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Left organisation")).toBeInTheDocument();
+  },
+};
+
+/** Cancelling the confirm dialog leaves membership untouched. */
+export const AccessTabLeaveOrganisationCancel: Story = {
+  beforeEach: () => {
+    mockPreferencesApis("user-1");
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
+    await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Leave Acme Corp" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Leave Acme Corp?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.delete).not.toHaveBeenCalled();
+    await expect(canvas.getByText("Acme Corp")).toBeInTheDocument();
+  },
+};
+
 export const PatsTabNoneYet: Story = {
   beforeEach: () => mockPreferencesApis("user-1", { pats: [] }),
   play: async ({ canvasElement }) => {
@@ -153,16 +199,21 @@ export const PatsTabCreateToken: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
-    // "Create" is a `variant="plain"` CollapsibleSection with no
-    // `defaultCollapsed`, so it's already expanded — no click needed.
-    await waitFor(() => expect(canvas.getByPlaceholderText('e.g. "MCP server"')).toBeInTheDocument());
-    await userEvent.type(canvas.getByPlaceholderText('e.g. "MCP server"'), "MCP server");
+    // The create form opens in a `Modal` (2026-08 UX audit roadmap item
+    // 526 — a brand-new PAT has no "what came before it" to be contextual
+    // detail about, per the revised Principle 3), portalled to
+    // `document.body` rather than nested inside the tab panel.
+    await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
+    await waitFor(() => expect(within(dialog).getByPlaceholderText('e.g. "MCP server"')).toBeInTheDocument());
+    await userEvent.type(within(dialog).getByPlaceholderText('e.g. "MCP server"'), "MCP server");
     // The org checklist populates asynchronously (each org's own
-    // membership-confirming fetch), independent of the section already
+    // membership-confirming fetch), independent of the dialog already
     // being visible.
-    await waitFor(() => expect(canvas.getByLabelText("Acme Corp")).toBeInTheDocument(), { timeout: 3000 });
-    await userEvent.click(canvas.getByLabelText("Acme Corp"));
-    await userEvent.click(canvas.getByRole("button", { name: "Create token" }));
+    await waitFor(() => expect(within(dialog).getByLabelText("Acme Corp")).toBeInTheDocument(), { timeout: 3000 });
+    await userEvent.click(within(dialog).getByLabelText("Acme Corp"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create token" }));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(canvas.getByText("Token created")).toBeInTheDocument());
     await expect(canvas.getByText("rtm_pat_abc123")).toBeInTheDocument();
   },
@@ -220,9 +271,30 @@ export const PatsTabCreateRequiresOrg: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Create token" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Create token" }));
-    await waitFor(() => expect(canvas.getByText("Select at least one organisation.")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create token" })).toBeInTheDocument());
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create token" }));
+    await waitFor(() => expect(within(dialog).getByText("Select at least one organisation.")).toBeInTheDocument());
+  },
+};
+
+/** Cancelling the "New personal access token" modal creates nothing. */
+export const PatsTabCreateModalCancel: Story = {
+  beforeEach: () => {
+    mockPreferencesApis("user-1", { pats: [] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
+    await userEvent.type(within(dialog).getByPlaceholderText('e.g. "MCP server"'), "Discarded token");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
   },
 };
 

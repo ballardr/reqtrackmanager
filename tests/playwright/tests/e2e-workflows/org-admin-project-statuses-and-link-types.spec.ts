@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an organisation's project statuses and requirement link
@@ -15,11 +15,25 @@ import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup }
  * code path is already exercised end-to-end above (statuses) and unit-
  * tested directly against link types in OrgAdminPage.stories.tsx.
  *
- * Uses the "E2E Beta Software" organisation (via Preferences > Your access
- * > Manage organisation), not Alpha, since Alpha carries the fixed custom
- * link type/requirement link `seed_e2e_dataset.py` seeds specifically for
- * requirement-links.spec.ts — this spec must not disturb those.
+ * Uses a brand-new, disposable organisation + two throwaway projects
+ * created via the API, not the shared "E2E Beta Software" org this spec
+ * previously ran against. Found and fixed along the way (not part of the
+ * 2026-08 UX audit roadmap batch that prompted a look at this file, but a
+ * genuine bug per this project's own "fix, don't defer" rule): the
+ * previous version deleted 3 of Beta org's 4 seeded default statuses down
+ * to a single renamed one, permanently — `seed_e2e_dataset.py` only seeds
+ * once ("already seeded, exiting" on a re-run), so this spec could only
+ * ever pass the *first* time it ran against a given database, not
+ * standalone-repeated or after an earlier full-suite run had already done
+ * it once. A dedicated org (which gets the same `DEFAULT_PROJECT_STATUSES`
+ * — Proposed/Active/Abandoned/Completed — automatically on creation, same
+ * as every org) plus dedicated projects (which default to the org's
+ * lowest-sort-order status, i.e. "Proposed", same as Beta-1/Beta-2 did)
+ * reproduces the exact same scenario while never touching shared fixture
+ * data, so the spec is now idempotent standalone or repeated.
  */
+
+const apiBaseUrl = "http://localhost:8000";
 
 /** Status/link-type names render as editable `<input>` value attributes
  * (the rename form), not plain text nodes — matches
@@ -34,18 +48,59 @@ function inputWithValue(page: Page, value: string) {
 
 test.describe("org admin: project statuses and link types", () => {
   test("statuses: reassign-on-delete, plain delete, last-remaining-blocked; link types: add/rename/delete", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    const suffix = Date.now();
+    const orgName = `E2E Statuses Org ${suffix}`;
+    const adminEmail = `e2e-statuses-admin-${suffix}@example.com`;
 
-    await test.step("navigate to Beta's org admin page via Preferences > Your access", async () => {
-      await page.goto("/preferences");
-      await page.getByRole("tab", { name: "Your access" }).click();
-      const betaRow = page.locator(".stack", { hasText: "E2E Beta Software" }).last();
-      await betaRow.getByRole("link", { name: "Manage organisation" }).click();
-      await expect(page.getByRole("heading", { name: "E2E Beta Software" })).toBeVisible();
+    const adminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: "admin@example.com", password: "ChangeMe123!" },
+    });
+    const serverAdminToken = (await adminLoginResp.json()).access_token;
+    const authHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+
+    const org = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: authHeaders, data: { name: orgName } })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+      headers: authHeaders,
+      data: { email: adminEmail, display_name: "E2E Statuses Admin", password: PASSWORD, role: "org_admin" },
     });
 
-    await test.step("Project statuses: the 4 seeded defaults are present", async () => {
-      // Project statuses and Link types both moved into the "Projects &
+    const ownerToken = (
+      await (
+        await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, { data: { email: adminEmail, password: PASSWORD } })
+      ).json()
+    ).access_token;
+    const ownerHeaders = { Authorization: `Bearer ${ownerToken}` };
+
+    // Two throwaway projects — both default to the org's lowest-sort-order
+    // status (`get_default_project_status_id`), i.e. "Proposed", the same
+    // way Beta-1/Beta-2 did in the version of this spec that relied on
+    // shared fixture data.
+    const project1Name = `E2E Status Project A ${suffix}`;
+    const project2Name = `E2E Status Project B ${suffix}`;
+    const project1 = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
+        headers: ownerHeaders, data: { organization_id: org.id, name: project1Name, summary: "E2E seed project." },
+      })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
+      headers: ownerHeaders, data: { organization_id: org.id, name: project2Name, summary: "E2E seed project." },
+    });
+
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(adminEmail);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+
+    await test.step("navigate to the org's admin page", async () => {
+      await page.goto(`/orgs/${org.id}/admin`);
+      await expect(page.getByRole("heading", { name: orgName })).toBeVisible();
+    });
+
+    await test.step("Project statuses: the 4 default statuses are present", async () => {
+      // Project statuses and Link types both live in the "Projects &
       // workflow" resource-menu group (2026-08 UX audit's Org Admin
       // restructure) — selecting the group is a real navigation, not a
       // client-side toggle, and must happen before either section is
@@ -57,7 +112,7 @@ test.describe("org admin: project statuses and link types", () => {
       }
     });
 
-    await test.step("rename Active, then delete Proposed (in use by Beta-1/Beta-2) with reassignment to it", async () => {
+    await test.step("rename Active, then delete Proposed (in use by both throwaway projects) with reassignment to it", async () => {
       // Not chained off `activeInput`: once filled, its own selector
       // (matched by the *old* value) no longer resolves to anything — only
       // one row is ever "dirty" at a time, so the plain, page-wide Rename
@@ -75,18 +130,14 @@ test.describe("org admin: project statuses and link types", () => {
       await expect(inputWithValue(page, "Proposed")).toHaveCount(0);
     });
 
-    await test.step("Beta-1's own settings tab now shows the reassigned status", async () => {
-      await page.goto("/projects");
-      await page.getByText(PROJECT_NAMES.beta1).click();
+    await test.step("the first project's own settings tab now shows the reassigned status", async () => {
+      await page.goto(`/projects/${project1.id}`);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await expect(page.getByLabel("Status").locator("option:checked")).toHaveText("Active (E2E)");
     });
 
     await test.step("an unused status (Abandoned) deletes immediately, with no reassignment prompt", async () => {
-      await page.goto("/preferences");
-      await page.getByRole("tab", { name: "Your access" }).click();
-      const betaRow = page.locator(".stack", { hasText: "E2E Beta Software" }).last();
-      await betaRow.getByRole("link", { name: "Manage organisation" }).click();
+      await page.goto(`/orgs/${org.id}/admin`);
       await selectOrgAdminGroup(page, "Projects & workflow");
       await ensureExpanded(page, "Project statuses");
 

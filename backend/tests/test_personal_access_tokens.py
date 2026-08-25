@@ -198,7 +198,7 @@ def test_expiry_defaults_and_org_caps(client, admin_token, org_id):
     # Org sets a tighter cap.
     resp = client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_use_tls": True, "sso_group_mappings": [], "pat_max_lifetime_days": 10},
+        json={"smtp_use_tls": True, "pat_max_lifetime_days": 10},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
@@ -212,7 +212,7 @@ def test_expiry_defaults_and_org_caps(client, admin_token, org_id):
     _add_role(client, org_b_admin_token, org_b["id"], admin_user_id, role="org_admin")
     client.put(
         f"/api/v1/orgs/{org_b['id']}/advanced-settings",
-        json={"smtp_use_tls": True, "sso_group_mappings": [], "pat_max_lifetime_days": 3},
+        json={"smtp_use_tls": True, "pat_max_lifetime_days": 3},
         headers=auth_headers(admin_token),
     )
     pat_multi = _create_pat(client, admin_token, [org_id, org_b["id"]])
@@ -223,7 +223,7 @@ def test_expiry_defaults_and_org_caps(client, admin_token, org_id):
 def test_requested_expiry_beyond_cap_is_clamped_not_rejected(client, admin_token, org_id):
     client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_use_tls": True, "sso_group_mappings": [], "pat_max_lifetime_days": 10},
+        json={"smtp_use_tls": True, "pat_max_lifetime_days": 10},
         headers=auth_headers(admin_token),
     )
     requested = datetime.now(UTC) + timedelta(days=365)
@@ -243,7 +243,7 @@ def test_expired_pat_is_rejected(client, admin_token, org_id):
 def test_lowering_org_cap_retroactively_expires_a_pat(client, admin_token, org_id):
     client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_use_tls": True, "sso_group_mappings": [], "pat_max_lifetime_days": 100},
+        json={"smtp_use_tls": True, "pat_max_lifetime_days": 100},
         headers=auth_headers(admin_token),
     )
     old_pat = _create_pat(client, admin_token, [org_id])  # expires_at_ceiling ~= now + 100 days
@@ -254,7 +254,7 @@ def test_lowering_org_cap_retroactively_expires_a_pat(client, admin_token, org_i
     # changes, but the dynamically recomputed effective expiry does.
     client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_use_tls": True, "sso_group_mappings": [], "pat_max_lifetime_days": 5},
+        json={"smtp_use_tls": True, "pat_max_lifetime_days": 5},
         headers=auth_headers(admin_token),
     )
     resp = client.get(f"/api/v1/orgs/{org_id}/advanced-settings", headers=auth_headers(old_pat["token"]))

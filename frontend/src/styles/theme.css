@@ -146,6 +146,28 @@ textarea {
   cursor: not-allowed;
 }
 
+/* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
+   adjacent `.btn`s read as one joined control — the primary action on the
+   left, a narrow chevron affordance revealing alternatives on the right,
+   sharing one border instead of each getting its own rounded corners on
+   every side. */
+.split-button {
+  display: inline-flex;
+}
+
+.split-button > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-button > .btn:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 /* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
    surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
    need their own rule here because their base styles pull --color-surface/

@@ -53,14 +53,18 @@ test("SSO login: real Keycloak authorization-code flow provisions the user and s
     });
     expect(ssoResp.ok()).toBe(true);
 
-    // Group -> org role mapping (services/oidc_provisioning.py): Keycloak's
+    // Group -> org role mapping (services/oidc_provisioning.py) is now a
+    // property of the org group being synced into (2026-08 UX audit
+    // roadmap item 522), not a flat `sso_group_mappings` list: Keycloak's
     // "reqtrack-org-admins" group (sso-admin@example.com's membership, per
-    // realm-export.json) maps to this app's org_admin role.
-    const advResp = await page.request.put(`${apiBaseUrl}/api/v1/orgs/${orgId}/advanced-settings`, {
+    // realm-export.json) maps to this app's org_admin role via a new
+    // `OrgGroup` with both `idp_synced_group_name` and `granted_org_role`
+    // set.
+    const groupResp = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups`, {
       headers: authHeaders,
-      data: { sso_group_mappings: [{ sso_group: "reqtrack-org-admins", org_role: "org_admin" }] },
+      data: { name: "reqtrack-org-admins", idp_synced_group_name: "reqtrack-org-admins", granted_org_role: "org_admin" },
     });
-    expect(advResp.ok()).toBe(true);
+    expect(groupResp.ok()).toBe(true);
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.waitForURL(/\/login$/);

@@ -25,9 +25,13 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     await page.getByLabel("Status").selectOption("all");
 
     await test.step("create the organisation", async () => {
+      // "New organisation" opens a Modal (style guide "Pattern: modal
+      // dialog for entity create/rename") — scoped to it rather than the
+      // whole page.
       await page.getByRole("button", { name: "New organisation" }).click();
-      await page.getByPlaceholder("Organisation name").fill(orgName);
-      await page.getByRole("button", { name: "Create", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New organisation" });
+      await dialog.getByLabel("Organisation name").fill(orgName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("row", { name: new RegExp(orgName) })).toContainText("Active");
     });
 

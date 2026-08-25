@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
@@ -27,7 +27,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import { LoadMoreButton } from "../components/LoadMoreButton";
-import { Popover } from "../components/Popover";
+import { Modal } from "../components/Modal";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Spinner } from "../components/Spinner";
@@ -65,17 +65,16 @@ export function ProjectAdminPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [orgGroupSelections, setOrgGroupSelections] = useState<Record<string, string>>({});
-  // "New group" create popover (style guide "Pattern: create panels,
-  // popovers, and one door for bulk" — mirrors OrgAdminPage's own "New
-  // group" popover, just pointed at the project-scoped endpoint). Unlike
-  // the org-scoped equivalent, `ProjectGroupCreate` also requires a role
-  // up front (a project group's role can't be changed after creation —
-  // there's no update endpoint for it), so this popover has a role select
-  // the org-scoped one doesn't need.
-  const [newGroupPopoverOpen, setNewGroupPopoverOpen] = useState(false);
+  // "New group" create Modal (style guide "Pattern: modal dialog for
+  // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
+  // just pointed at the project-scoped endpoint). Unlike the org-scoped
+  // equivalent, `ProjectGroupCreate` also requires a role up front (a
+  // project group's role can't be changed after creation — there's no
+  // update endpoint for it), so this modal has a role select the
+  // org-scoped one doesn't need.
+  const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupRole, setNewGroupRole] = useState<ProjectRole>("member");
-  const newGroupTriggerRef = useRef<HTMLButtonElement>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
@@ -436,7 +435,7 @@ export function ProjectAdminPage() {
       await api.post(`/api/v1/projects/${projectId}/groups`, { name: newGroupName, role: newGroupRole });
       setNewGroupName("");
       setNewGroupRole("member");
-      setNewGroupPopoverOpen(false);
+      setNewGroupModalOpen(false);
       showToast(strings.admin.groupCreated);
       reload();
     } catch (err) {
@@ -1024,23 +1023,24 @@ export function ProjectAdminPage() {
       <div {...tabPanelProps("project-admin-tabs", "groups")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
         <button
-          ref={newGroupTriggerRef}
           className="btn btn-primary"
           style={{ alignSelf: "flex-start" }}
-          onClick={() => setNewGroupPopoverOpen((o) => !o)}
+          onClick={() => setNewGroupModalOpen(true)}
         >
           <Plus size={14} /> {strings.admin.newGroup}
         </button>
-        {newGroupPopoverOpen && (
-          <Popover
-            anchorRef={newGroupTriggerRef}
-            title={strings.admin.newGroup}
-            onClose={() => setNewGroupPopoverOpen(false)}
-          >
+        {newGroupModalOpen && (
+          // Style guide "Pattern: modal dialog for entity create/rename" —
+          // a brand-new entity (a group) opens in a Modal, not a Popover —
+          // the Popover-vs-Modal decision tree reserves Popover for a
+          // one/two-field quick action on something that already exists,
+          // not creating a new entity.
+          <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.admin.name}
               <input
                 className="input"
+                autoFocus
                 placeholder={strings.admin.groupNamePlaceholder}
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
@@ -1059,14 +1059,14 @@ export function ProjectAdminPage() {
               </select>
             </label>
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setNewGroupPopoverOpen(false)}>
+              <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
                 {strings.common.cancel}
               </button>
               <button className="btn btn-primary" onClick={createProjectGroup} disabled={!newGroupName}>
                 {strings.common.create}
               </button>
             </div>
-          </Popover>
+          </Modal>
         )}
         <input
           className="input"

@@ -19,15 +19,14 @@ test.describe("org group nesting", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    // Groups moved into the "People" resource-menu group (2026-08 UX audit's
-    // Org Admin restructure) — a real navigation, so it must be selected
-    // before the section is reachable at all.
-    await selectOrgAdminGroup(page, "People");
+    // Groups is its own top-level resource-menu group (2026-08 UX audit's
+    // Org Admin restructure; split out of the combined "People" group in a
+    // later pass) — a real navigation, so it must be selected before the
+    // section is reachable at all.
+    await selectOrgAdminGroup(page, "Groups");
     await ensureExpanded(page, "Organisation groups");
-    // Scoped to this section specifically — its "Name" placeholder isn't
-    // page-unique (the "Organisation users" section's create-user form has
-    // one too), and that section's own expand state can persist from other
-    // specs sharing this persona within the same run.
+    // Scoped to this section specifically — its own expand state can
+    // persist from other specs sharing this persona within the same run.
     const groupsSection = page.getByRole("button", { name: "Organisation groups section" }).locator("xpath=..");
 
     const suffix = Date.now();
@@ -36,10 +35,10 @@ test.describe("org group nesting", () => {
 
     await test.step("create two groups", async () => {
       for (const name of [parentName, childName]) {
-        // "New group" opens a popover (style guide "Pattern: create panels,
-        // popovers, and one door for bulk") rather than exposing an
-        // always-visible inline form — the popover itself is portalled to
-        // <body>, so it's located from `page`, not scoped to groupsSection.
+        // "New group" opens a Modal (style guide "Pattern: modal dialog for
+        // entity create/rename") rather than exposing an always-visible
+        // inline form — the dialog itself is portalled to <body>, so it's
+        // located from `page`, not scoped to groupsSection.
         await groupsSection.getByRole("button", { name: "New group" }).click();
         const dialog = page.getByRole("dialog", { name: "New group" });
         await dialog.getByPlaceholder("e.g. Engineering").fill(name);

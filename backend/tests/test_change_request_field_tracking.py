@@ -54,6 +54,20 @@ def _create_requirement(client, admin_token, project_id, component_id, category_
     return resp.json()
 
 
+def _approve_requirement(client, admin_token, project_id, requirement_id):
+    """Locks a requirement directly (not via a stage baseline) so a
+    modify-requirement change request can legally target it (2026-08 UX
+    audit roadmap, "No requirement approval action; change requests can
+    target draft requirements" — `create_change_request` now rejects a
+    MODIFY_REQUIREMENT change request against a still-draft/reviewed
+    requirement)."""
+    resp = client.post(
+        f"/api/v1/projects/{project_id}/requirements/{requirement_id}/approve", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
 def _approve_current_stage(client, admin_token, project_id):
     stages = client.get(f"/api/v1/projects/{project_id}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
@@ -124,6 +138,7 @@ def test_modify_change_request_rejects_empty_or_unknown_changed_fields(client, a
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
 
     resp = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -147,6 +162,7 @@ def test_modify_change_request_requires_a_value_for_fields_that_cant_be_null(cli
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
 
     resp = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -169,7 +185,7 @@ def test_modify_change_request_can_clear_reviewer_via_changed_fields_alone(clien
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
-    # Set a reviewer directly first.
+    # Set a reviewer directly first, before the requirement gets locked below.
     admin_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
     client.put(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
@@ -179,6 +195,7 @@ def test_modify_change_request_can_clear_reviewer_via_changed_fields_alone(clien
         },
         headers=auth_headers(admin_token),
     )
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -213,6 +230,7 @@ def test_approval_only_applies_fields_listed_in_changed_fields(client, admin_tok
         client, admin_token, project["id"], component_id, category_id,
         name="Original name", description="Original description", level="requirement",
     )
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -307,6 +325,7 @@ def test_change_request_rejects_a_proposed_attachment_from_another_org(client, a
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
 
     other_org, other_admin_token = create_org_admin_in(client, admin_token, "Foreign Attachment Org")
     foreign_resource = client.post(
@@ -380,6 +399,7 @@ def test_comment_attachment_on_a_change_request_and_cross_project_isolation(clie
     project_b = create_project(client, admin_token, org_id, "Project B")
     comp_a, cat_a = create_component_and_category(client, admin_token, project_a["id"])
     requirement = _create_requirement(client, admin_token, project_a["id"], comp_a, cat_a)
+    _approve_requirement(client, admin_token, project_a["id"], requirement["id"])
 
     cr = client.post(
         f"/api/v1/projects/{project_a['id']}/change-requests",
@@ -455,6 +475,7 @@ def test_non_author_cannot_edit_a_change_request_comment(client, admin_token, or
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    _approve_requirement(client, admin_token, project["id"], requirement["id"])
     stakeholder_token = _make_project_member(
         client, admin_token, org_id, project["id"], "stakeholder_edit_cr@example.com", "stakeholder"
     )

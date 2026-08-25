@@ -1,9 +1,12 @@
-import { Bold, Heading1, Heading2, Heading3, Image as ImageIcon, Italic, Link as LinkIcon, List } from "lucide-react";
+import {
+  Bold, Heading1, Heading2, Heading3, Image as ImageIcon, Italic, Link as LinkIcon, List, Upload,
+} from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { api } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdown";
+import { FileUploadTrigger } from "./FileUploadTrigger";
 import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
 
@@ -284,15 +287,12 @@ export function RichTextEditor({
               ))}
             </div>
           )}
-          <label className="stack" style={{ gap: "0.25rem" }}>
+          <div className="stack" style={{ gap: "0.25rem" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Or upload a new image</span>
-            <input
-              type="file"
-              accept="image/*"
-              disabled={uploadingImage}
-              onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])}
-            />
-          </label>
+            <FileUploadTrigger accept="image/*" disabled={uploadingImage} onSelect={uploadImage}>
+              <Upload size={14} /> Choose file
+            </FileUploadTrigger>
+          </div>
         </div>
       )}
       {linkModalOpen && (

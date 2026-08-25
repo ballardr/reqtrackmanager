@@ -22,12 +22,18 @@ test("change request submitter cannot approve their own request; the project man
     await page.getByText(PROJECT_NAMES.alpha1).click();
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByRole("button", { name: "New change request" }).click();
+    // The create form is a `Modal` portalled to the end of `document.body`
+    // — scope to it rather than an unscoped `getByRole("combobox").first()`,
+    // which would otherwise resolve to the filter sidebar's own Status
+    // select (it precedes the dialog in DOM order once the form is a
+    // portal instead of an inline block).
+    const dialog = page.getByRole("dialog", { name: "New change request" });
     // "Modify requirement" is the default radio and the requirement select
     // defaults to the first requirement in the project (the seed script
     // guarantees that's the locked one, HW-FN-001) once the async project
     // data finishes loading — wait for that before filling the rest, or a
     // fast click can submit with an empty requirement_id.
-    await expect(page.getByRole("combobox").first()).toContainText("HW-FN-001");
+    await expect(dialog.getByRole("combobox").first()).toContainText("HW-FN-001");
     // Modify-requirement CRs are field-toggle driven: a field's proposed
     // value is only editable (and only becomes part of `changed_fields`)
     // once its "Fields to change" checkbox is ticked. Each checkbox and its

@@ -1,4 +1,4 @@
-import { ArchiveRestore, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { Activity as ActivityIcon, ArchiveRestore, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -26,14 +26,17 @@ import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FileAttachmentList } from "../components/FileAttachmentList";
+import { Modal } from "../components/Modal";
 import { Popover } from "../components/Popover";
-import { SidePanel } from "../components/SidePanel";
+import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
+import { useUiPreference } from "../hooks/useUiPreference";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -42,9 +45,15 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
  * traceability links to other requirements (C-G-09 — server-resolved
  * direction/display name, so this page never has to guess which of a link
  * type's forward/reverse names applies), and an Actions card for
- * requirement actions (review/test/etc.) linked via `RequirementActionLink`
- * — neither of these is gated by `is_locked`, since links and actions are
- * metadata about the requirement rather than its own governed content.
+ * requirement actions (review/test/etc.) linked via `RequirementActionLink`.
+ * Links aren't gated by `is_locked` — they're metadata about the
+ * requirement, not its own governed content. Actions *are* now gated
+ * (2026-08 UX audit roadmap item 514, a deliberate reversal of this page's
+ * own former "actions are metadata too" stance): once locked, adding or
+ * linking one requires an `ADD_ACTION` change request instead of the
+ * direct endpoint, the same change-request-only-once-locked rule the
+ * requirement's own fields already follow (`services.requirements.
+ * LOCKED_STATUSES`) — see `docs/decisions.md` for the reasoning.
  */
 export function RequirementDetailPage() {
   const strings = useStrings();
@@ -53,7 +62,14 @@ export function RequirementDetailPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const myRoles = useMyProjectRoles(projectId);
+  const orgLabelCap = useOrgLabelCapitalized();
   const canArchive = myRoles.includes("project_manager") || myRoles.includes("project_administrator");
+  // Narrower than canArchive: C-U-03's clarification calls out requirement
+  // approval as a Project Manager privilege specifically, not shared with
+  // Administrator — the same split `decide_change_request` and
+  // `update_requirement`'s own status=approved branch already enforce
+  // server-side (2026-08 UX audit roadmap, "No requirement approval action").
+  const canApprove = myRoles.includes("project_manager");
   const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
@@ -76,12 +92,27 @@ export function RequirementDetailPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [activity, setActivity] = useState<ChangeEntry[]>([]);
+  // History/Activity merged into one card with a view toggle (2026-08 UX
+  // audit roadmap item 516) — server-synced per-user via `useUiPreference`,
+  // the same mechanism `useViewMode` (tile/list) already uses, so the
+  // user's last-selected view becomes their remembered default. Defaults to
+  // "activity" (the broader feed) rather than "versions", since Activity
+  // was the one of the two previously visible in the persistent sidebar
+  // regardless of scroll position — a judgment call, see docs/decisions.md.
+  const [historyViewRaw, setHistoryView] = useUiPreference<string>("requirement_detail_history_view", "activity");
+  const historyView: "versions" | "activity" = historyViewRaw === "versions" ? "versions" : "activity";
   const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [reviewerPickerUnavailable, setReviewerPickerUnavailable] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  // Organisation id, needed to browse that org's shared resources (style
+  // guide "Pattern: resource picker dialog") — set as soon as the project
+  // itself resolves, independent of whether the org-member-only calls
+  // right after it (org users, link types) succeed for this user.
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [showResourcePicker, setShowResourcePicker] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
   // Create (`Popover`, one door per style guide Principle 3) and remove
@@ -100,9 +131,12 @@ export function RequirementDetailPage() {
 
   // --- Linked requirement actions --------------------------------------
   // Same conversion as the links above: "link existing" is a one-field
-  // `Popover`, "create and link" is a multi-field `SidePanel` (per the
-  // style guide's Popover-vs-SidePanel decision tree), and unlinking goes
-  // through `ConfirmDialog` instead of firing immediately.
+  // `Popover` (a quick decision about an existing entity, not a create
+  // flow), "create and link" opens a brand-new `Action` in a `Modal` (per
+  // the revised Principle 3 — a new entity has no "what came before it" in
+  // the app's reading order, so it doesn't belong in `SidePanel`'s
+  // contextual-detail slot), and unlinking goes through `ConfirmDialog`
+  // instead of firing immediately.
   const [linkedActions, setLinkedActions] = useState<RequirementAction[]>([]);
   const [projectActionTypes, setProjectActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [projectActions, setProjectActions] = useState<RequirementAction[]>([]);
@@ -115,6 +149,10 @@ export function RequirementDetailPage() {
   const [newActionTypeId, setNewActionTypeId] = useState("");
   const [newActionAssigneeId, setNewActionAssigneeId] = useState("");
   const [newActionDueDate, setNewActionDueDate] = useState("");
+  // Once locked, both flows above route through an ADD_ACTION change
+  // request instead of the direct endpoint (item 514) — same "reason for
+  // change" field every other change request requires.
+  const [addActionReason, setAddActionReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionToUnlink, setActionToUnlink] = useState<RequirementAction | null>(null);
 
@@ -180,6 +218,19 @@ export function RequirementDetailPage() {
     reload();
   }
 
+  /** Links one or more already-uploaded organisation shared resources onto
+   * this requirement, via the `POST .../files/link` endpoint (previously
+   * unused from the frontend — see docs/ux-audit-2026-08.md "Shared org
+   * resources have almost no way to consume them"). One request per file
+   * id, sequentially — the endpoint itself only accepts one id at a time. */
+  async function linkOrgResources(fileIds: string[]) {
+    for (const fileId of fileIds) {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/link`, { file_id: fileId });
+    }
+    await reload();
+    showToast(strings.resourcePicker.attachedToast(fileIds.length));
+  }
+
   async function addLink() {
     if (!newLinkTargetId || !newLinkTypeId) return;
     setLinkError(null);
@@ -206,10 +257,21 @@ export function RequirementDetailPage() {
     if (!existingActionToLink) return;
     setActionError(null);
     try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`, {
-        action_id: existingActionToLink,
-      });
+      if (requirement?.is_locked) {
+        if (!addActionReason.trim()) return;
+        await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+          kind: "add_action", requirement_id: requirementId,
+          proposed_action_link_id: existingActionToLink, reason: addActionReason,
+        });
+        showToast(strings.changeRequests.created);
+      } else {
+        await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`, {
+          action_id: existingActionToLink,
+        });
+        showToast(strings.requirements.linkExistingAction);
+      }
       setExistingActionToLink("");
+      setAddActionReason("");
       setLinkExistingActionPopoverOpen(false);
       reload();
     } catch (err) {
@@ -221,18 +283,30 @@ export function RequirementDetailPage() {
     if (!newActionTitle.trim() || !newActionTypeId) return;
     setActionError(null);
     try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/create-and-link`, {
-        title: newActionTitle,
-        description: newActionDescription,
-        action_type_id: newActionTypeId,
-        assignee_id: newActionAssigneeId || null,
-        due_date: newActionDueDate || null,
-      });
+      if (requirement?.is_locked) {
+        if (!addActionReason.trim()) return;
+        await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+          kind: "add_action", requirement_id: requirementId,
+          proposed_action_title: newActionTitle, proposed_action_description: newActionDescription,
+          proposed_action_type_id: newActionTypeId, proposed_action_assignee_id: newActionAssigneeId || null,
+          proposed_action_due_date: newActionDueDate || null, reason: addActionReason,
+        });
+        showToast(strings.changeRequests.created);
+      } else {
+        await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/create-and-link`, {
+          title: newActionTitle,
+          description: newActionDescription,
+          action_type_id: newActionTypeId,
+          assignee_id: newActionAssigneeId || null,
+          due_date: newActionDueDate || null,
+        });
+      }
       setNewActionTitle("");
       setNewActionDescription("");
       setNewActionTypeId("");
       setNewActionAssigneeId("");
       setNewActionDueDate("");
+      setAddActionReason("");
       setShowCreateAction(false);
       reload();
     } catch (err) {
@@ -255,6 +329,7 @@ export function RequirementDetailPage() {
     (async () => {
       try {
         const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
+        setOrganizationId(project.organization_id);
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
         setOrgUsers(users);
         setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`));
@@ -322,14 +397,34 @@ export function RequirementDetailPage() {
     }
   }
 
+  async function approveRequirement() {
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/approve`);
+      showToast(strings.requirements.approved);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   async function markCompleted() {
-    await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/complete`);
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/complete`);
+      showToast(strings.requirements.completed);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function unmarkCompleted() {
-    await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/uncomplete`);
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/uncomplete`);
+      showToast(strings.requirements.completionReverted);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function submitReview() {
@@ -396,9 +491,21 @@ export function RequirementDetailPage() {
         </h1>
         <div className="row">
           <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
-          <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
-            <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
-          </Link>
+          {canApprove && requirement.requires_approval && (
+            <button className="btn btn-primary" onClick={approveRequirement}>
+              <CheckCircle size={14} /> {strings.requirements.approve}
+            </button>
+          )}
+          {/* Only offered once the {requirement} is actually locked — a
+              change request against a still-draft/reviewed one is rejected
+              server-side (2026-08 UX audit roadmap, "No requirement approval
+              action; change requests can target draft requirements"); an
+              unlocked {requirement} is edited directly instead. */}
+          {requirement.is_locked && (
+            <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
+              <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
+            </Link>
+          )}
           {canArchive && requirement.status === "approved" && (
             <button className="btn" onClick={markCompleted}>
               {strings.requirements.markCompleted}
@@ -438,7 +545,11 @@ export function RequirementDetailPage() {
         />
       )}
 
-      <div className="side-grid">
+      {/* Was a two-column `.side-grid` (main content + a narrow persistent
+          Activity sidebar) before the History/Activity merge above folded
+          the sidebar's only content into the main column's card — a single
+          `.stack` is the right shell now that there's nothing left for a
+          second column to hold. */}
       <div className="stack">
       {requirement.is_locked || !canEdit ? (
         <div className="card stack">
@@ -630,34 +741,81 @@ export function RequirementDetailPage() {
         </div>
       )}
 
+      {/* History and Activity merged into one card with a view toggle
+          (2026-08 UX audit roadmap item 516) — "Version history" is
+          specifically this requirement's own approved version/status
+          transitions (the RequirementVersion ledger); "Activity" is the
+          broader audit-log feed covering everything that happened to it,
+          including but not limited to those same version changes. Both
+          renderings are kept, not one dropped in favour of the other — see
+          docs/ux-style-guide.md's "Pattern: view toggle" for the shape this
+          follows (a `useUiPreference`-backed toggle, same mechanism as
+          tile/list view elsewhere), and docs/decisions.md for why this
+          isn't literally the shared `ViewToggle` component (different
+          icon/label pair, not tile-vs-list). */}
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.history}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{strings.requirements.status}</th>
-              <th>{strings.requirements.changeNote}</th>
-              <th>{strings.requirements.changedBy}</th>
-              <th>{strings.requirements.when}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((h) => (
-              <tr key={h.version_number}>
-                <td>{h.version_number}</td>
-                <td>{h.status}</td>
-                <td>{h.change_note}</td>
-                <td>{userDisplayName(h.created_by)}</td>
-                <td>{new Date(h.created_at).toLocaleString()}</td>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
+            {historyView === "versions" ? strings.requirements.versionHistory : strings.requirements.activity}
+          </h2>
+          <div className="row" style={{ gap: "0.25rem" }}>
+            <button
+              className={`btn ${historyView === "versions" ? "btn-primary" : ""}`}
+              onClick={() => setHistoryView("versions")}
+              title={strings.requirements.versionHistory}
+              aria-label={strings.requirements.versionHistory}
+              aria-pressed={historyView === "versions"}
+            >
+              <TableIcon size={16} />
+            </button>
+            <button
+              className={`btn ${historyView === "activity" ? "btn-primary" : ""}`}
+              onClick={() => setHistoryView("activity")}
+              title={strings.requirements.activity}
+              aria-label={strings.requirements.activity}
+              aria-pressed={historyView === "activity"}
+            >
+              <ActivityIcon size={16} />
+            </button>
+          </div>
+        </div>
+        {historyView === "versions" ? (
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{strings.requirements.status}</th>
+                <th>{strings.requirements.changeNote}</th>
+                <th>{strings.requirements.changedBy}</th>
+                <th>{strings.requirements.when}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={h.version_number}>
+                  <td>{h.version_number}</td>
+                  <td>{REQUIREMENT_STATUS_LABEL[h.status]}</td>
+                  <td>{h.change_note}</td>
+                  <td>{userDisplayName(h.created_by)}</td>
+                  <td>{new Date(h.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <ActivityPanel entries={activity} bare />
+        )}
       </div>
 
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
+          {!requirement.is_locked && organizationId && (
+            <button className="btn" onClick={() => setShowResourcePicker(true)}>
+              <FolderOpen size={14} /> {strings.resourcePicker.linkFromSharedResources}
+            </button>
+          )}
+        </div>
         <FileAttachmentList
           files={files}
           onUpload={uploadFile}
@@ -666,6 +824,20 @@ export function RequirementDetailPage() {
           emptyHint={strings.requirements.attachmentsLockedNotice}
         />
       </div>
+      {showResourcePicker && organizationId && (
+        <ResourcePickerModal
+          title={strings.resourcePicker.linkFromSharedResources}
+          sources={[
+            {
+              id: "org-resources",
+              label: strings.resourcePicker.orgResourcesSource(orgLabelCap),
+              loadFiles: () => api.get<FileAsset[]>(`/api/v1/orgs/${organizationId}/resources`),
+            },
+          ]}
+          onClose={() => setShowResourcePicker(false)}
+          onAttach={linkOrgResources}
+        />
+      )}
 
       <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between" }}>
@@ -806,12 +978,24 @@ export function RequirementDetailPage() {
                     ))}
                 </select>
               </label>
+              {requirement.is_locked && (
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.changeRequests.reason}
+                  <textarea
+                    className="input" rows={2} aria-label={strings.changeRequests.reason}
+                    value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
+                  />
+                </label>
+              )}
               {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button className="btn" onClick={() => setLinkExistingActionPopoverOpen(false)}>
                   {strings.common.cancel}
                 </button>
-                <button className="btn btn-primary" onClick={linkExistingAction} disabled={!existingActionToLink}>
+                <button
+                  className="btn btn-primary" onClick={linkExistingAction}
+                  disabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
+                >
                   {strings.requirements.linkExistingAction}
                 </button>
               </div>
@@ -851,7 +1035,7 @@ export function RequirementDetailPage() {
           />
         )}
         {showCreateAction && (
-          <SidePanel title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)}>
+          <Modal title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)}>
             <input
               className="input" placeholder={strings.actions.name} value={newActionTitle}
               onChange={(e) => setNewActionTitle(e.target.value)}
@@ -904,14 +1088,24 @@ export function RequirementDetailPage() {
                 onChange={(e) => setNewActionDueDate(e.target.value)}
               />
             </label>
+            {requirement.is_locked && (
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.changeRequests.reason}
+                <textarea
+                  className="input" rows={2} aria-label={strings.changeRequests.reason}
+                  value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
+                />
+              </label>
+            )}
             {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
-              onClick={createAndLinkAction} disabled={!newActionTitle.trim() || !newActionTypeId}
+              onClick={createAndLinkAction}
+              disabled={!newActionTitle.trim() || !newActionTypeId || (requirement.is_locked && !addActionReason.trim())}
             >
               {strings.common.create}
             </button>
-          </SidePanel>
+          </Modal>
         )}
       </div>
 
@@ -927,9 +1121,6 @@ export function RequirementDetailPage() {
           currentUserId={user?.id}
         />
       </div>
-      </div>
-
-      <ActivityPanel entries={activity} />
       </div>
     </div>
   );

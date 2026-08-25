@@ -13,7 +13,7 @@ from tests.conftest import auth_headers, create_org_admin_in, create_project
 def _set_require_2fa(client, token, org_id, value: bool):
     resp = client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"sso_group_mappings": [], "require_2fa": value},
+        json={"require_2fa": value},
         headers=auth_headers(token),
     )
     assert resp.status_code == 200, resp.text

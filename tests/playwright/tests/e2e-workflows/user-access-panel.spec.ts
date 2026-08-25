@@ -21,7 +21,7 @@ test.describe("view a user's access", () => {
     await page.goto("/orgs");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    await selectOrgAdminGroup(page, "People");
+    await selectOrgAdminGroup(page, "Users");
     await ensureExpanded(page, "Organisation users");
 
     const row = page.locator("tr", { hasText: PERSONAS.orgAdminAlphaBeta.email });
@@ -43,7 +43,7 @@ test.describe("view a user's access", () => {
  * on data tables") — the Users table is backend-paginated (search + `limit`/
  * `offset` shipped in an earlier roadmap pass), so a header click has to
  * refetch with `sort`/`order` query params rather than reordering just the
- * loaded page. Same "People" section this file already reaches for the
+ * loaded page. Same "Users" section this file already reaches for the
  * access-panel test above, so it lives alongside it rather than in a new
  * file.
  */
@@ -53,7 +53,7 @@ test.describe("org admin users table sorting", () => {
     await page.goto("/orgs");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    await selectOrgAdminGroup(page, "People");
+    await selectOrgAdminGroup(page, "Users");
     await ensureExpanded(page, "Organisation users");
     await expect(page.getByText(PERSONAS.orgAdminAlphaBeta.email)).toBeVisible();
 

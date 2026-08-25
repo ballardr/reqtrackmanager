@@ -24,8 +24,7 @@ test.describe("requirement review scheduling", () => {
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
-      await page.getByRole("button", { name: "Add one" }).click();
-      // The create form is a `SidePanel` portalled to the end of
+      // The create form is a `Modal` portalled to the end of
       // `document.body` — scope to it rather than an unscoped
       // `getByRole("combobox").first()`, which would otherwise resolve to
       // the filter sidebar's own Status select (it precedes the panel in

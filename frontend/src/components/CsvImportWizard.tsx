@@ -4,8 +4,11 @@ import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "reac
 
 import { api } from "../api/client";
 import type { Category, Component, CustomFieldDefinition, ProjectStage } from "../api/types";
+import { REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { useTerm } from "../context/TerminologyContext";
 import { downloadBlob } from "../utils/download";
+import { FileUploadTrigger } from "./FileUploadTrigger";
+import { Modal } from "./Modal";
 import { Popover } from "./Popover";
 
 type CanonicalField =
@@ -16,6 +19,32 @@ type CanonicalField =
 type FieldDef = { key: CanonicalField; label: string; required: boolean; hint: string };
 
 const CUSTOM_FIELD_COLUMN_PREFIX = "cf_";
+
+/**
+ * Fields that can be set to one fixed value applied to every imported row,
+ * instead of always being mapped from a CSV column (roadmap item 507 — see
+ * docs/ux-audit-2026-08.md "CSV bulk import: no per-field fixed values").
+ * Deliberately narrow, matching the audit's own reasoning: component/
+ * category/level/target_version are the fields a batch is genuinely likely
+ * to share one value across every row (e.g. "this whole CSV is one
+ * component, one target version"); name/reasoning/clarification/
+ * description are inherently per-row and don't get this toggle — offering
+ * it there would just be a confusing way to set the same name/description
+ * on every imported requirement. Defaults to column-mapped for every field
+ * (today's only behaviour) so existing CSVs/workflows are unaffected.
+ *
+ * This is a purely client-side concept: the backend import endpoint
+ * (`POST .../requirements/import`, `routers/requirements.py`) has no
+ * notion of "mapping" at all — it only ever receives a plain canonical CSV
+ * (see `confirmImport` below) where every field already has its final
+ * per-row value. A fixed value is applied here, before upload, by writing
+ * the same value into that field's column for every generated row — the
+ * exact same code path a column-mapped field already uses, just with a
+ * constant instead of `row[sourceColumn]`. No backend/schema change is
+ * needed or was made for this feature; see docs/decisions.md for the
+ * verification that confirmed this rather than assuming it.
+ */
+const FIXED_VALUE_FIELDS = new Set<CanonicalField>(["component_prefix", "category_prefix", "level", "target_version"]);
 
 /**
  * Canonical field order shared by the mapping UI, the CSV preview, and
@@ -124,6 +153,16 @@ export interface CsvImportWizardHandle {
  * builds a canonically-headed CSV client-side and sends that instead of the
  * user's original file. Export downloads the server-generated file as-is
  * (it's already canonically headed and directly re-importable).
+ *
+ * Once a file is picked, the column-mapping/preview step (everything past
+ * the trigger row) opens in a `Modal` (`size="lg"`, roadmap item 506) —
+ * previously an always-inline `<div className="card stack">` block. This
+ * is a container move only; the mapping/preview logic and both backend
+ * endpoints are otherwise unchanged. `component_prefix`/`category_prefix`/
+ * `level`/`target_version` additionally support a per-field "same value for
+ * every row" toggle (roadmap item 507, `FIXED_VALUE_FIELDS` above) —
+ * `name`/`reasoning`/`clarification`/`description` stay column-only, since
+ * a batch import is never uniform on those.
  */
 export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   projectId: string;
@@ -150,6 +189,12 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   const [headers, setHeaders] = useState<string[] | null>(null);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  // "Same value for every row" toggle state, keyed by `CanonicalField` —
+  // only ever set for keys in `FIXED_VALUE_FIELDS`, see that constant's own
+  // doc comment above. `fixedMode[key]` true means `fixedValues[key]`
+  // (not `mapping[key]`) is this field's source of truth for every row.
+  const [fixedMode, setFixedMode] = useState<Partial<Record<CanonicalField, boolean>>>({});
+  const [fixedValues, setFixedValues] = useState<Partial<Record<CanonicalField, string>>>({});
   const [exporting, setExporting] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
@@ -181,14 +226,29 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
     setHeaders(null);
     setRows([]);
     setMapping({});
+    setFixedMode({});
+    setFixedValues({});
+  }
+
+  /** The value every row should get for `key`, per the field's own toggle
+   * state — a fixed constant if `fixedMode[key]` is set, otherwise the
+   * mapped source column's cell for that row (unchanged from before this
+   * feature). Shared by `confirmImport` (building the real upload) and the
+   * preview table below, so the two can never show a different resolution
+   * of the same toggle state. */
+  function resolveFieldValue(key: string, row: Record<string, string>): string {
+    if (FIXED_VALUE_FIELDS.has(key as CanonicalField) && fixedMode[key as CanonicalField]) {
+      return fixedValues[key as CanonicalField] ?? "";
+    }
+    const sourceColumn = mapping[key];
+    return sourceColumn ? row[sourceColumn] ?? "" : "";
   }
 
   async function confirmImport() {
     const remapped = rows.map((row) => {
       const out: Record<string, string> = {};
       for (const key of mappableKeys) {
-        const sourceColumn = mapping[key];
-        out[key] = sourceColumn ? row[sourceColumn] ?? "" : "";
+        out[key] = resolveFieldValue(key, row);
       }
       return out;
     });
@@ -209,30 +269,95 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
     }
   }
 
-  const missingRequired = FIELDS.filter((f) => f.required && !mapping[f.key]);
-
-  const fileInput = (
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept=".csv,text/csv"
-      style={{ display: "none" }}
-      disabled={importing}
-      onChange={(e) => e.target.files?.[0] && pickFile(e.target.files[0])}
-    />
+  // A required field is satisfied either by a column mapping or, if its
+  // "same value for every row" toggle is on, by a non-empty fixed value —
+  // level/target_version are never required, so only component/category
+  // ever reach the fixed-value branch here.
+  const missingRequired = FIELDS.filter((f) =>
+    f.required && (FIXED_VALUE_FIELDS.has(f.key) && fixedMode[f.key] ? !fixedValues[f.key] : !mapping[f.key])
   );
+
+  /** The fixed-value replacement for a `FIXED_VALUE_FIELDS` column-mapping
+   * `<select>`, once that field's toggle is on. Deliberately a `<select>`
+   * sourced from the project's real components/categories/stages (not a
+   * free-text input) for component/category/target_version — the same
+   * values a mapped column would eventually need to match exactly on the
+   * backend, so picking from a list can't produce an unknown-prefix/
+   * unknown-stage row error the way a typo in free text could. `level`
+   * already needs a `<select>` (it's an enum) — rendered through
+   * `REQUIREMENT_LEVEL_LABEL` per style guide Principle 12, matching the
+   * per-row create form's own level select on `RequirementsPage.tsx`. */
+  function renderFixedValueInput(field: FieldDef) {
+    const value = fixedValues[field.key] ?? "";
+    const setValue = (v: string) => setFixedValues((prev) => ({ ...prev, [field.key]: v }));
+
+    if (field.key === "level") {
+      return (
+        <select
+          className="input" aria-label={`Fixed ${field.label.toLowerCase()}`}
+          value={value || "requirement"} onChange={(e) => setValue(e.target.value)}
+        >
+          <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
+          <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
+          <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
+        </select>
+      );
+    }
+    if (field.key === "target_version") {
+      return (
+        <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
+          <option value="">— Project's default stage —</option>
+          {stages.map((s) => (
+            <option key={s.id} value={s.name}>{s.name}</option>
+          ))}
+        </select>
+      );
+    }
+    if (field.key === "component_prefix") {
+      return (
+        <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
+          <option value="">— Choose —</option>
+          {components.map((c) => (
+            <option key={c.id} value={c.prefix}>{c.name} ({c.prefix})</option>
+          ))}
+        </select>
+      );
+    }
+    // category_prefix: filtered to the fixed component's own categories
+    // once a component is also fixed (a category belongs to exactly one
+    // component under the tree, C-C-XX) — otherwise every category is
+    // offered, with its own component name prefixed so same-named
+    // categories under different components stay distinguishable.
+    const fixedComponentPrefix = fixedMode.component_prefix ? fixedValues.component_prefix : undefined;
+    const fixedComponent = fixedComponentPrefix ? components.find((c) => c.prefix === fixedComponentPrefix) : undefined;
+    const categoryOptions = fixedComponent ? categories.filter((c) => c.component_id === fixedComponent.id) : categories;
+    return (
+      <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
+        <option value="">— Choose —</option>
+        {categoryOptions.map((c) => {
+          const owner = components.find((comp) => comp.id === c.component_id);
+          return (
+            <option key={c.id} value={c.prefix}>
+              {fixedComponent ? "" : owner ? `${owner.name} / ` : ""}{c.name} ({c.prefix})
+            </option>
+          );
+        })}
+      </select>
+    );
+  }
 
   return (
     <div className="stack" style={{ gap: "0.5rem" }}>
       <div className="row">
-        {showImportTrigger ? (
-          <label className="btn" style={{ cursor: importing ? "wait" : "pointer" }}>
-            <Upload size={16} /> {importing ? "Importing…" : "Import CSV"}
-            {fileInput}
-          </label>
-        ) : (
-          fileInput
-        )}
+        <FileUploadTrigger
+          ref={fileInputRef}
+          accept=".csv,text/csv"
+          disabled={importing}
+          showTrigger={showImportTrigger}
+          onSelect={pickFile}
+        >
+          <Upload size={16} /> {importing ? "Importing…" : "Import CSV"}
+        </FileUploadTrigger>
         <button
           ref={exportTriggerRef}
           type="button" className="btn"
@@ -270,10 +395,11 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
       </div>
 
       {headers && (
-        <div className="card stack">
-          <strong>Map your CSV columns</strong>
+        <Modal title="Map your CSV columns" onClose={cancel} size="lg">
+          <div className="stack">
           <p className="text-muted" style={{ margin: 0 }}>
-            Match each field below to a column in your file. Required fields must be mapped before importing.
+            Match each field below to a column in your file, or set one fixed value for every row. Required fields
+            must be set before importing.
           </p>
           <table>
             <thead>
@@ -284,27 +410,54 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
               </tr>
             </thead>
             <tbody>
-              {FIELDS.map((field) => (
-                <tr key={field.key}>
-                  <td>
-                    {field.label}
-                    {field.required && <span style={{ color: "var(--color-danger)" }}> *</span>}
-                  </td>
-                  <td>
-                    <select
-                      className="input"
-                      value={mapping[field.key] ?? ""}
-                      onChange={(e) => setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    >
-                      <option value="">— Not mapped —</option>
-                      {headers.map((h) => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="text-muted">{field.hint}</td>
-                </tr>
-              ))}
+              {FIELDS.map((field) => {
+                const canFixValue = FIXED_VALUE_FIELDS.has(field.key);
+                return (
+                  <tr key={field.key}>
+                    <td>
+                      {field.label}
+                      {field.required && <span style={{ color: "var(--color-danger)" }}> *</span>}
+                    </td>
+                    <td>
+                      {canFixValue && (
+                        <label className="row" style={{ gap: "0.35rem", alignItems: "center", marginBottom: "0.25rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={fixedMode[field.key] ?? false}
+                            // Every field with this toggle shares the same
+                            // visible text ("Same value for every row"), so
+                            // an explicit per-field `aria-label` (which wins
+                            // over the wrapping <label>'s own text for
+                            // accessible-name computation) keeps the four
+                            // checkboxes distinguishable to a screen reader
+                            // and to `getByLabelText` in tests, rather than
+                            // four controls sharing one ambiguous name.
+                            aria-label={`Use the same ${field.label.toLowerCase()} for every row`}
+                            onChange={(e) => setFixedMode((prev) => ({ ...prev, [field.key]: e.target.checked }))}
+                          />
+                          <span className="text-muted">Same value for every row</span>
+                        </label>
+                      )}
+                      {canFixValue && fixedMode[field.key] ? (
+                        renderFixedValueInput(field)
+                      ) : (
+                        <select
+                          className="input"
+                          aria-label={`Map ${field.label}`}
+                          value={mapping[field.key] ?? ""}
+                          onChange={(e) => setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                        >
+                          <option value="">— Not mapped —</option>
+                          {headers.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="text-muted">{field.hint}</td>
+                  </tr>
+                );
+              })}
               {customFields.map((definition) => {
                 const key = customFieldColumnKey(definition);
                 return (
@@ -313,6 +466,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                     <td>
                       <select
                         className="input"
+                        aria-label={`Map ${definition.name}`}
                         value={mapping[key] ?? ""}
                         onChange={(e) => setMapping((prev) => ({ ...prev, [key]: e.target.value }))}
                       >
@@ -343,7 +497,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                     {rows.slice(0, PREVIEW_ROWS).map((row, i) => (
                       <tr key={i}>
                         {FIELDS.map((f) => (
-                          <td key={f.key}>{mapping[f.key] ? row[mapping[f.key]] ?? "" : ""}</td>
+                          <td key={f.key}>{resolveFieldValue(f.key, row)}</td>
                         ))}
                       </tr>
                     ))}
@@ -355,7 +509,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
 
           {missingRequired.length > 0 && (
             <p style={{ color: "var(--color-danger)", margin: 0 }}>
-              Map {missingRequired.map((f) => f.label).join(", ")} before importing.
+              {missingRequired.map((f) => f.label).join(", ")} still need a column or fixed value before importing.
             </p>
           )}
 
@@ -368,7 +522,8 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
             </button>
             <button className="btn" onClick={cancel} disabled={importing}>Cancel</button>
           </div>
-        </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

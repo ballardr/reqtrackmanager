@@ -25,13 +25,14 @@ test.describe("admin of a separate, non-overlapping org", () => {
     });
 
     await test.step("create a new project in Gamma (single-org account, no org picker shown)", async () => {
+      // "New project" opens a Modal (style guide "Pattern: modal dialog for
+      // entity create/rename") — scoped to it rather than the whole page.
       await page.getByRole("button", { name: "New project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
       // A single-org account gets no org picker in the new-project form
-      // itself (ProjectListPage only renders one when orgs.length > 1) —
-      // the two comboboxes still on the page are the unrelated role/stage
-      // filters, always present regardless of org count.
-      await page.getByPlaceholder("Name").fill(newGammaProject);
-      await page.getByRole("button", { name: "Create", exact: true }).click();
+      // itself (ProjectListPage only renders one when orgs.length > 1).
+      await dialog.getByLabel("Name", { exact: true }).fill(newGammaProject);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: newGammaProject })).toBeVisible();
     });
 

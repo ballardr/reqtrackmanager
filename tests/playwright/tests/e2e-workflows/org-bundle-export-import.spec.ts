@@ -66,8 +66,11 @@ test.describe("organisation bundle export/import", () => {
     await test.step("export the organisation bundle from its admin page", async () => {
       await page.goto("/orgs");
       await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
+      // Style guide "Pattern: action menu" — rename + export now live
+      // behind the Overview group's kebab trigger, not a standalone button.
+      await page.getByRole("button", { name: "Organisation actions" }).click();
       const downloadPromise = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Export organisation bundle" }).click();
+      await page.getByRole("menuitem", { name: "Export organisation bundle" }).click();
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toMatch(/-export\.zip$/);
       exportedPath = (await download.path())!;
@@ -80,11 +83,15 @@ test.describe("organisation bundle export/import", () => {
       const newOrgName = `E2E Imported Org (${suffix})`;
       await page.getByRole("link", { name: "Organisations", exact: true }).click();
       await expect(page).toHaveURL(/\/server\/organisations$/);
+      // "New organisation" opens a Modal (style guide "Pattern: modal
+      // dialog for entity create/rename") — scoped to it rather than the
+      // whole page.
       await page.getByRole("button", { name: "New organisation" }).click();
-      await page.getByPlaceholder(/Organisation name/).fill(newOrgName);
-      const fileInput = page.locator('input[type="file"][accept*="zip"]');
+      const dialog = page.getByRole("dialog", { name: "New organisation" });
+      await dialog.getByLabel(/Organisation name/).fill(newOrgName);
+      const fileInput = dialog.locator('input[type="file"][accept*="zip"]');
       await fileInput.setInputFiles(exportedPath);
-      await page.getByRole("button", { name: "Create" }).click();
+      await dialog.getByRole("button", { name: "Create" }).click();
 
       await expect(page.getByText(newOrgName)).toBeVisible({ timeout: 15000 });
       await page.getByText(newOrgName).locator("..").getByRole("link", { name: "Edit" }).click();

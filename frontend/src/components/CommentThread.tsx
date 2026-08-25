@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { fileUrl } from "../api/client";
 import type { Comment } from "../api/types";
+import { FileUploadTrigger } from "./FileUploadTrigger";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -139,18 +140,13 @@ export function CommentThread({
                 )}
                 <div className="row">
                   {onUploadAttachment && (
-                    <label className="btn" style={{ cursor: "pointer" }} title={strings.requirements.attachFile}>
+                    <FileUploadTrigger
+                      title={strings.requirements.attachFile}
+                      aria-label={strings.requirements.attachFile}
+                      onSelect={(file) => setEditPendingFiles((files) => [...files, file])}
+                    >
                       <Paperclip size={14} />
-                      <input
-                        type="file"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) setEditPendingFiles((files) => [...files, file]);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
+                    </FileUploadTrigger>
                   )}
                   <button className="btn btn-primary" disabled={savingEdit || !editBody.trim()} onClick={() => saveEdit(c.id)}>
                     {strings.requirements.saveComment}
@@ -208,18 +204,13 @@ export function CommentThread({
             onChange={(e) => setNewComment(e.target.value)}
           />
           {onUploadAttachment && (
-            <label className="btn" style={{ cursor: "pointer" }} title={strings.requirements.attachFile}>
+            <FileUploadTrigger
+              title={strings.requirements.attachFile}
+              aria-label={strings.requirements.attachFile}
+              onSelect={(file) => setPendingFiles((files) => [...files, file])}
+            >
               <Paperclip size={14} />
-              <input
-                type="file"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) setPendingFiles((files) => [...files, file]);
-                  e.target.value = "";
-                }}
-              />
-            </label>
+            </FileUploadTrigger>
           )}
           <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>
             {strings.requirements.addComment}

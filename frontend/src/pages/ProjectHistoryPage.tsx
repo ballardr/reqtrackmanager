@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import { activityEntityLabel, activityEntryLink, describeActivityEntry, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
+import { activityEntityLabel, activityEntryLink, ENTITY_TYPE_LABEL, type ChangeEntry } from "../api/types";
+import { ActivityPanel } from "../components/ActivityPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -41,14 +42,28 @@ export function ProjectHistoryPage() {
     return params;
   }
 
+  // No request-cancellation guard on this fetch used to mean an older
+  // response could resolve after a newer one and silently overwrite it —
+  // e.g. the date-range filter's own effect can fire more than once in
+  // quick succession as a `datetime-local` input's value settles, and
+  // whichever request happens to resolve last wins regardless of which
+  // filter it was actually for. `requestGeneration` is bumped by every
+  // `reload()` (a real filter/project change, not a `LoadMoreButton`
+  // append); a response is only applied if it's still answering the
+  // latest one by the time it resolves.
+  const requestGeneration = useRef(0);
+
   async function loadChanges(offset: number, append: boolean) {
     if (!projectId) return;
+    const generation = requestGeneration.current;
     const page = await api.getPage<ChangeEntry>(`/api/v1/projects/${projectId}/changes?${listParams(offset).toString()}`);
+    if (generation !== requestGeneration.current) return;
     setChanges((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
   }
 
   async function reload() {
+    requestGeneration.current += 1;
     setChanges(null);
     await loadChanges(0, false);
   }
@@ -90,25 +105,11 @@ export function ProjectHistoryPage() {
       {!changes && <Spinner />}
       {changes && changes.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
       {changes && changes.length > 0 && (
-        <div className="card stack">
-          {changes.map((c, idx) => {
-            const link = projectId ? activityEntryLink(c, projectId) : null;
-            return (
-              <div key={idx} className="row" style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
-                <span>
-                  <span className="badge">{activityEntityLabel(c.entity_type, orgLabelCap)}</span> {describeActivityEntry(c)}
-                  {link && (
-                    <>
-                      {" "}
-                      <Link to={link.to}>{link.label}</Link>
-                    </>
-                  )}
-                </span>
-                <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-              </div>
-            );
-          })}
-        </div>
+        <ActivityPanel
+          entries={changes}
+          getLink={(c) => (projectId ? activityEntryLink(c, projectId) : null)}
+          fullWidth
+        />
       )}
       {changes && <LoadMoreButton loaded={changes.length} total={total} onClick={() => loadChanges(changes.length, true)} />}
     </div>

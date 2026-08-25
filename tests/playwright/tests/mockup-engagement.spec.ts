@@ -25,20 +25,25 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await page.waitForURL(/\/projects(\/|$)/);
     await page.goto("/projects");
 
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for
+    // entity create/rename") — scoped to it rather than a bare ".card", and
+    // its Name/Summary fields are real <label>s now, not placeholder-only
+    // (2026-08 UX audit roadmap item 521).
     await page.getByRole("button", { name: "New project" }).click();
+    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     // The org picker only renders at all when the caller belongs to more
     // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
     // used here belongs to exactly one ("Default Organization"), so it's
     // implicit rather than offered as a choice. Select explicitly only if
     // a picker is actually present, so this still works if the admin ever
     // gains a second org membership in some other stack/seed configuration.
-    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
-    await page.getByPlaceholder("Name").fill(projectName);
-    await page.getByPlaceholder("Summary").fill("Created by Playwright (mockup engagement spec)");
-    await page.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByLabel("Name", { exact: true }).fill(projectName);
+    await newProjectDialog.getByLabel("Summary").fill("Created by Playwright (mockup engagement spec)");
+    await newProjectDialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
   });
 
@@ -89,13 +94,21 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("create a requirement and open its card from the card-based list", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
-    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Users can export their data");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("WEB-FN-001")).toBeVisible();
 
     await page.getByText("Users can export their data").click();
     await expect(page.getByRole("heading", { name: /WEB-FN-001/ })).toBeVisible();
+  });
+
+  await test.step("approve the requirement so a change request can target it later", async () => {
+    // A modify change request can only target an already-locked requirement
+    // (2026-08 UX audit roadmap, "No requirement approval action; change
+    // requests can target draft requirements") — this spec never baselines
+    // a stage (unlike golden-path.spec.ts), so approve it directly instead.
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(page.getByText("Locked (approved)")).toBeVisible();
   });
 
   await test.step("subscribe to the requirement", async () => {
@@ -128,9 +141,15 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("raise a change request, subscribe, and comment on it", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
+    // The create form is a `Modal` portalled to the end of `document.body`
+    // — scope to it rather than an unscoped `getByRole("combobox").first()`,
+    // which would otherwise resolve to the filter sidebar's own Status
+    // select (it precedes the dialog in DOM order once the form is a
+    // portal instead of an inline block).
+    const dialog = page.getByRole("dialog", { name: "New change request" });
     // The requirement select defaults asynchronously once project data
     // loads — wait so Create doesn't submit with an empty requirement_id.
-    await expect(page.getByRole("combobox").first()).toContainText("Users can export their data");
+    await expect(dialog.getByRole("combobox").first()).toContainText("Users can export their data");
     // Modify-requirement CRs are field-toggle driven: a field's proposed
     // value is only editable (and only becomes part of `changed_fields`)
     // once its "Fields to change" checkbox is ticked. Each checkbox and its

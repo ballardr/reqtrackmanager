@@ -64,7 +64,6 @@ test.describe("requirements list: bulk operations", () => {
     await test.step("create four throwaway requirements", async () => {
       for (const name of names) {
         await page.getByRole("button", { name: "New requirement" }).click();
-        await page.getByRole("button", { name: "Add one" }).click();
         await page.getByPlaceholder("Name", { exact: true }).fill(name);
         await page.getByRole("button", { name: "Create", exact: true }).click();
         await expect(page.getByText(name)).toBeVisible();
