@@ -1,5 +1,5 @@
 import { Download, Eye, Lock, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
@@ -201,6 +201,19 @@ export function OrgAdminPage() {
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
+  // Guards the advanced-settings form fields above against `reload()` —
+  // called after every unrelated mutation on this page (e.g.
+  // `toggleDisplayNameLock`) and not awaited by its caller, so it can
+  // still be mid-flight when the user edits and saves this form right
+  // after triggering one of those other actions. Without this, a slow
+  // `reload()`'s own advanced-settings fetch resolving *after* the user's
+  // edit clobbers it back to the last-saved value before Save is even
+  // clicked — a real (CI-reproducible, native-fast-machine-invisible)
+  // race, not a test timing issue; see org-security-controls.spec.ts's
+  // own comment and docs/decisions.md. Set on every field's onChange,
+  // cleared once `saveAdvanced` succeeds (so a later, legitimate reload
+  // can resume populating the form again).
+  const advancedDirtyRef = useRef(false);
   const [outsideDomainUsers, setOutsideDomainUsers] = useState<OutsideDomainUser[] | null>(null);
   const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
@@ -366,15 +379,20 @@ export function OrgAdminPage() {
     try {
       const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
       setAdvanced(a);
-      setSmtpHost(a.smtp_host ?? "");
-      setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
-      setSmtpUsername(a.smtp_username ?? "");
-      setSmtpUseTls(a.smtp_use_tls);
-      setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
-      setRequire2fa(a.require_2fa);
-      setAllowSelfSignup(a.allow_self_signup);
-      setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
-      setExternalUserPolicy(a.external_user_policy);
+      // Skip re-populating the editable fields below if the user has an
+      // unsaved edit pending — this fetch may have been in flight since
+      // before that edit started (see `advancedDirtyRef`'s own comment).
+      if (!advancedDirtyRef.current) {
+        setSmtpHost(a.smtp_host ?? "");
+        setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
+        setSmtpUsername(a.smtp_username ?? "");
+        setSmtpUseTls(a.smtp_use_tls);
+        setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+        setRequire2fa(a.require_2fa);
+        setAllowSelfSignup(a.allow_self_signup);
+        setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
+        setExternalUserPolicy(a.external_user_policy);
+      }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
     } catch (err) {
@@ -520,6 +538,9 @@ export function OrgAdminPage() {
       });
       setAdvanced(saved);
       setSmtpPassword("");
+      // Saved successfully, so the fields now match the server again — a
+      // later reload() is safe to repopulate them from a fresh fetch.
+      advancedDirtyRef.current = false;
     } catch (err) {
       setAdvancedError(err instanceof Error ? err.message : strings.common.error);
     }
@@ -2171,14 +2192,20 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder={strings.orgAdmin.smtpHost}
                     value={smtpHost}
-                    onChange={(e) => setSmtpHost(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpHost(e.target.value);
+                    }}
                   />
                   <input
                     className="input"
                     style={{ maxWidth: 120 }}
                     placeholder={strings.orgAdmin.smtpPort}
                     value={smtpPort}
-                    onChange={(e) => setSmtpPort(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpPort(e.target.value);
+                    }}
                   />
                 </div>
                 <div className="row">
@@ -2186,18 +2213,31 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
-                    onChange={(e) => setSmtpUsername(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpUsername(e.target.value);
+                    }}
                   />
                   <input
                     className="input"
                     type="password"
                     placeholder={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
-                    onChange={(e) => setSmtpPassword(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpPassword(e.target.value);
+                    }}
                   />
                 </div>
                 <label className="row">
-                  <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={smtpUseTls}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpUseTls(e.target.checked);
+                    }}
+                  />
                   {strings.orgAdmin.smtpUseTls}
                 </label>
 
@@ -2248,7 +2288,14 @@ export function OrgAdminPage() {
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
                 <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
+                  <ToggleSwitch
+                    checked={require2fa}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setRequire2fa(next);
+                    }}
+                    label={strings.orgAdmin.require2fa}
+                  />
                   <span className="stack" style={{ gap: 0 }}>
                     {strings.orgAdmin.require2fa}
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
@@ -2256,7 +2303,14 @@ export function OrgAdminPage() {
                 </label>
 
                 <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
+                  <ToggleSwitch
+                    checked={allowSelfSignup}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setAllowSelfSignup(next);
+                    }}
+                    label={strings.orgAdmin.allowSelfSignup}
+                  />
                   <span className="stack" style={{ gap: 0 }}>
                     {strings.orgAdmin.allowSelfSignup}
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
@@ -2273,7 +2327,10 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder="acme.com"
                     value={autoAcceptEmailDomain}
-                    onChange={(e) => setAutoAcceptEmailDomain(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setAutoAcceptEmailDomain(e.target.value);
+                    }}
                   />
                   <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
                 </label>
@@ -2283,7 +2340,10 @@ export function OrgAdminPage() {
                   <select
                     className="input"
                     value={externalUserPolicy}
-                    onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setExternalUserPolicy(e.target.value as ExternalUserPolicy);
+                    }}
                   >
                     <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
                     <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
@@ -2335,7 +2395,10 @@ export function OrgAdminPage() {
                     max={3650}
                     style={{ maxWidth: 160 }}
                     value={patMaxLifetimeDays}
-                    onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setPatMaxLifetimeDays(e.target.value);
+                    }}
                   />
                   <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>
