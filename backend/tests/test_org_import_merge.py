@@ -323,7 +323,10 @@ def test_merge_skips_an_invalid_granted_org_role_with_a_warning_instead_of_500in
 
     target_org, target_token = create_org_admin_in(client, admin_token, "Invalid Granted Role Target")
 
-    manifest = {"kind": "org-export", "format_version": 1, "exported_at": "2026-08-25T00:00:00Z", "exported_by_email": "x@example.com", "org_name": "Bad Bundle"}
+    manifest = {
+        "kind": "org-export", "format_version": 1, "exported_at": "2026-08-25T00:00:00Z",
+        "exported_by_email": "x@example.com", "org_name": "Bad Bundle",
+    }
     org_json = {
         "name": "Bad Bundle", "accent_color_hex": None, "header_title": None,
         "require_2fa": False, "allow_self_signup": False, "auto_accept_email_domain": None,
