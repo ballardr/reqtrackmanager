@@ -1,5 +1,5 @@
 import { Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
@@ -292,17 +292,28 @@ function PlatformBrandingTab() {
   const [emailFooterAddress, setEmailFooterAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guards the branding fields above against `reload()` — also called
+  // from `uploadLogo`/`uploadLoginBackground` below, not just this
+  // component's own mount/save. If a background upload's own reload() is
+  // still in flight when the user edits and saves a text field right
+  // after starting that upload, its response clobbers the edit back to
+  // the last-saved value before Save is even clicked. Same real,
+  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
+  // own comment and docs/decisions.md.
+  const brandingDirtyRef = useRef(false);
 
   async function reload() {
     const s = await api.get<ServerSettings>("/api/v1/system/branding");
     setSettings(s);
-    setAccentColor(s.accent_color_hex);
-    setHeaderTitle(s.default_header_title ?? "");
-    setOrgLabelSingular(s.org_label_singular ?? "");
-    setOrgLabelPlural(s.org_label_plural ?? "");
-    setEmailFooterCompanyName(s.email_footer_company_name ?? "");
-    setEmailFooterWebsite(s.email_footer_website ?? "");
-    setEmailFooterAddress(s.email_footer_address ?? "");
+    if (!brandingDirtyRef.current) {
+      setAccentColor(s.accent_color_hex);
+      setHeaderTitle(s.default_header_title ?? "");
+      setOrgLabelSingular(s.org_label_singular ?? "");
+      setOrgLabelPlural(s.org_label_plural ?? "");
+      setEmailFooterCompanyName(s.email_footer_company_name ?? "");
+      setEmailFooterWebsite(s.email_footer_website ?? "");
+      setEmailFooterAddress(s.email_footer_address ?? "");
+    }
   }
 
   useEffect(() => {
@@ -323,6 +334,7 @@ function PlatformBrandingTab() {
         email_footer_address: emailFooterAddress || null,
       });
       setSaved(true);
+      brandingDirtyRef.current = false;
       reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : strings.common.error);
@@ -388,7 +400,10 @@ function PlatformBrandingTab() {
         {strings.serverSettings.headerTitle}
         <input
           className="input" placeholder={strings.appName}
-          value={headerTitle} onChange={(e) => setHeaderTitle(e.target.value)}
+          value={headerTitle} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setHeaderTitle(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.headerTitleHint}</span>
       </label>
@@ -396,7 +411,10 @@ function PlatformBrandingTab() {
         {strings.serverSettings.orgLabelSingular}
         <input
           className="input" placeholder="organisation"
-          value={orgLabelSingular} onChange={(e) => setOrgLabelSingular(e.target.value)}
+          value={orgLabelSingular} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setOrgLabelSingular(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelSingularHint}</span>
       </label>
@@ -404,14 +422,20 @@ function PlatformBrandingTab() {
         {strings.serverSettings.orgLabelPlural}
         <input
           className="input" placeholder="Organisations"
-          value={orgLabelPlural} onChange={(e) => setOrgLabelPlural(e.target.value)}
+          value={orgLabelPlural} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setOrgLabelPlural(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelPluralHint}</span>
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.accentColor}
         <input
-          type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)}
+          type="color" value={accentColor} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setAccentColor(e.target.value);
+          }}
           style={{ width: 60, height: 36, padding: 2 }}
         />
       </label>
@@ -441,20 +465,29 @@ function PlatformBrandingTab() {
         {strings.serverSettings.emailFooterCompanyName}
         <input
           className="input" placeholder={strings.appName}
-          value={emailFooterCompanyName} onChange={(e) => setEmailFooterCompanyName(e.target.value)}
+          value={emailFooterCompanyName} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterCompanyName(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.emailFooterCompanyNameHint}</span>
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.emailFooterWebsite}
         <input
-          className="input" value={emailFooterWebsite} onChange={(e) => setEmailFooterWebsite(e.target.value)}
+          className="input" value={emailFooterWebsite} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterWebsite(e.target.value);
+          }}
         />
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.emailFooterAddress}
         <textarea
-          className="input" rows={3} value={emailFooterAddress} onChange={(e) => setEmailFooterAddress(e.target.value)}
+          className="input" rows={3} value={emailFooterAddress} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterAddress(e.target.value);
+          }}
         />
       </label>
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}

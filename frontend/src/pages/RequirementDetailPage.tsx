@@ -86,6 +86,22 @@ export function RequirementDetailPage() {
     reviewLeadDays: "",
     reviewerId: "",
   });
+  // Guards `form` against `reload()` — called after every unrelated
+  // mutation on this page (posting a comment, uploading a file, linking an
+  // action, ...) and not awaited by its callers, so it can still be
+  // mid-flight when the user edits and saves this form right after
+  // triggering one of those other actions, clobbering the edit back to
+  // its last-saved value before Save is even clicked. Same real,
+  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
+  // own comment and docs/decisions.md. Set by every field's onChange via
+  // `updateForm` below, cleared once `save()` succeeds.
+  const formDirtyRef = useRef(false);
+
+  function updateForm(updater: (f: typeof form) => typeof form) {
+    formDirtyRef.current = true;
+    setForm(updater);
+  }
+
   const [saveError, setSaveError] = useState<string | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
@@ -182,7 +198,9 @@ export function RequirementDetailPage() {
     setComments(comm);
     setFiles(fls);
     setCustomFieldDefs(defs);
-    setCustomFieldValues(req.custom_fields);
+    // Submitted together with `form` in the same save() PUT below, so it
+    // shares formDirtyRef's guard against the same reload() race.
+    if (!formDirtyRef.current) setCustomFieldValues(req.custom_fields);
     setStages(stgs);
     setActivity(act);
     setLinks(lnks);
@@ -190,18 +208,20 @@ export function RequirementDetailPage() {
     setLinkedActions(linkedActs);
     setProjectActions(allActs);
     setProjectRequirements(reqs);
-    setForm({
-      name: req.name,
-      reasoning: req.reasoning,
-      clarification: req.clarification,
-      description: req.description,
-      changeNote: "",
-      targetStageId: req.target_stage_id,
-      level: req.level,
-      reviewDate: req.review_date ?? "",
-      reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
-      reviewerId: req.reviewer_id ?? "",
-    });
+    if (!formDirtyRef.current) {
+      setForm({
+        name: req.name,
+        reasoning: req.reasoning,
+        clarification: req.clarification,
+        description: req.description,
+        changeNote: "",
+        targetStageId: req.target_stage_id,
+        level: req.level,
+        reviewDate: req.review_date ?? "",
+        reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
+        reviewerId: req.reviewer_id ?? "",
+      });
+    }
   }
 
   function stageName(id: string | null) {
@@ -365,6 +385,7 @@ export function RequirementDetailPage() {
         review_lead_days: form.reviewLeadDays ? Number(form.reviewLeadDays) : null,
         reviewer_id: form.reviewerId || null,
       });
+      formDirtyRef.current = false;
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -591,7 +612,7 @@ export function RequirementDetailPage() {
         <div className="card stack">
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.name}
-            <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            <input className="input" value={form.name} onChange={(e) => updateForm((f) => ({ ...f, name: e.target.value }))} />
           </label>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.requirements.reasoning}
@@ -599,7 +620,7 @@ export function RequirementDetailPage() {
               className="input"
               rows={3}
               value={form.reasoning}
-              onChange={(e) => setForm((f) => ({ ...f, reasoning: e.target.value }))}
+              onChange={(e) => updateForm((f) => ({ ...f, reasoning: e.target.value }))}
             />
           </label>
           <label className="stack" style={{ gap: "0.25rem" }}>
@@ -608,7 +629,7 @@ export function RequirementDetailPage() {
               className="input"
               rows={2}
               value={form.clarification}
-              onChange={(e) => setForm((f) => ({ ...f, clarification: e.target.value }))}
+              onChange={(e) => updateForm((f) => ({ ...f, clarification: e.target.value }))}
             />
           </label>
           <label className="stack" style={{ gap: "0.25rem" }}>
@@ -617,7 +638,7 @@ export function RequirementDetailPage() {
               className="input"
               rows={2}
               value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              onChange={(e) => updateForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
           <div className="row">
@@ -626,7 +647,7 @@ export function RequirementDetailPage() {
               <select
                 className="input"
                 value={form.targetStageId}
-                onChange={(e) => setForm((f) => ({ ...f, targetStageId: e.target.value }))}
+                onChange={(e) => updateForm((f) => ({ ...f, targetStageId: e.target.value }))}
               >
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -640,7 +661,7 @@ export function RequirementDetailPage() {
               <select
                 className="input"
                 value={form.level}
-                onChange={(e) => setForm((f) => ({ ...f, level: e.target.value as RequirementLevel }))}
+                onChange={(e) => updateForm((f) => ({ ...f, level: e.target.value as RequirementLevel }))}
               >
                 <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
                 <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
@@ -653,14 +674,14 @@ export function RequirementDetailPage() {
               {strings.requirements.reviewDate}
               <input
                 className="input" type="date" value={form.reviewDate}
-                onChange={(e) => setForm((f) => ({ ...f, reviewDate: e.target.value }))}
+                onChange={(e) => updateForm((f) => ({ ...f, reviewDate: e.target.value }))}
               />
             </label>
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
               {strings.requirements.reviewLeadDays}
               <input
                 className="input" type="number" min={0} value={form.reviewLeadDays}
-                onChange={(e) => setForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
+                onChange={(e) => updateForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
               />
             </label>
             <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
@@ -668,12 +689,12 @@ export function RequirementDetailPage() {
               {reviewerPickerUnavailable ? (
                 <input
                   className="input" placeholder={strings.admin.userId} value={form.reviewerId}
-                  onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
+                  onChange={(e) => updateForm((f) => ({ ...f, reviewerId: e.target.value }))}
                 />
               ) : (
                 <select
                   className="input" value={form.reviewerId}
-                  onChange={(e) => setForm((f) => ({ ...f, reviewerId: e.target.value }))}
+                  onChange={(e) => updateForm((f) => ({ ...f, reviewerId: e.target.value }))}
                 >
                   <option value="">{strings.reviews.unassigned}</option>
                   {orgUsers.map((u) => (
@@ -693,13 +714,16 @@ export function RequirementDetailPage() {
           <CustomFieldsForm
             definitions={customFieldDefs}
             values={customFieldValues}
-            onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
+            onChange={(fieldId, value) => {
+              formDirtyRef.current = true;
+              setCustomFieldValues((v) => ({ ...v, [fieldId]: value }));
+            }}
           />
           <input
             className="input"
             placeholder={strings.requirements.changeNote}
             value={form.changeNote}
-            onChange={(e) => setForm((f) => ({ ...f, changeNote: e.target.value }))}
+            onChange={(e) => updateForm((f) => ({ ...f, changeNote: e.target.value }))}
           />
           {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
           <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>

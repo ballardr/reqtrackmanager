@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
@@ -108,6 +108,19 @@ export function ProjectAdminPage() {
   const [statusId, setStatusId] = useState("");
   const [orgProjectStatuses, setOrgProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
   const [terminology, setTerminology] = useState<Record<string, string>>({});
+  // Guards the two field groups above against `reload()` — called after
+  // every unrelated mutation on this page (adding/deleting a custom
+  // field, stage/component/category CRUD, action-type CRUD, ...; 33 call
+  // sites) and not awaited by its callers, so it can still be mid-flight
+  // when the user edits and saves one of these forms right after
+  // triggering one of those other actions, clobbering the edit back to
+  // its last-saved value before Save is even clicked. Same real,
+  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
+  // own comment and docs/decisions.md. Separate refs (not one shared
+  // guard) since `saveSettings()` and `saveTerminology()` are independent
+  // save actions on independent field groups.
+  const settingsDirtyRef = useRef(false);
+  const terminologyDirtyRef = useRef(false);
 
   // --- Action types (project-scoped, per docs/decisions.md) ------------
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
@@ -122,6 +135,9 @@ export function ProjectAdminPage() {
   });
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [defaultReportTemplateId, setDefaultReportTemplateId] = useState("");
+  // Same reasoning as settingsDirtyRef/terminologyDirtyRef above, for the
+  // fields `saveReportConfig()` submits.
+  const reportConfigDirtyRef = useRef(false);
 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
@@ -154,13 +170,15 @@ export function ProjectAdminPage() {
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
     ]);
     setProject(p);
-    setSettingsName(p.name);
-    setSettingsSummary(p.summary);
-    setAllowMemberCr(p.allow_member_change_requests);
-    setIsTemplate(p.is_template);
-    setVisibility(p.visibility);
-    setStatusId(p.status_id);
-    setTerminology(p.terminology);
+    if (!settingsDirtyRef.current) {
+      setSettingsName(p.name);
+      setSettingsSummary(p.summary);
+      setAllowMemberCr(p.allow_member_change_requests);
+      setIsTemplate(p.is_template);
+      setVisibility(p.visibility);
+      setStatusId(p.status_id);
+    }
+    if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
     setComponents(c);
     setCategories(cat);
@@ -177,15 +195,17 @@ export function ProjectAdminPage() {
     setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
     setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
     setOrgProjectStatuses(await api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`));
-    setReportIntro(rc.intro);
-    setReportChapters(rc.chapters);
-    setReportAppendices(rc.appendices);
+    if (!reportConfigDirtyRef.current) {
+      setReportIntro(rc.intro);
+      setReportChapters(rc.chapters);
+      setReportAppendices(rc.appendices);
+      setDefaultReportTemplateId(rc.default_report_template_id ?? "");
+    }
     setReportConfigDefaults({
       intro: rc.intro_is_organisation_default,
       chapters: rc.chapters_is_organisation_default,
       appendices: rc.appendices_is_organisation_default,
     });
-    setDefaultReportTemplateId(rc.default_report_template_id ?? "");
   }
 
   async function saveReportConfig() {
@@ -193,6 +213,7 @@ export function ProjectAdminPage() {
       intro: reportIntro, chapters: reportChapters, appendices: reportAppendices,
       default_report_template_id: defaultReportTemplateId || null,
     });
+    reportConfigDirtyRef.current = false;
     reload();
   }
 
@@ -221,11 +242,13 @@ export function ProjectAdminPage() {
       allow_member_change_requests: allowMemberCr, is_template: isTemplate,
       visibility, status_id: statusId || null,
     });
+    settingsDirtyRef.current = false;
     reload();
   }
 
   async function saveTerminology() {
     await api.put(`/api/v1/projects/${projectId}/terminology`, { terminology });
+    terminologyDirtyRef.current = false;
     reload();
   }
 
@@ -532,18 +555,47 @@ export function ProjectAdminPage() {
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.name}
-          <input className="input" value={settingsName} onChange={(e) => setSettingsName(e.target.value)} />
+          <input
+            className="input"
+            value={settingsName}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setSettingsName(e.target.value);
+            }}
+          />
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.summary}
-          <textarea className="input" rows={2} value={settingsSummary} onChange={(e) => setSettingsSummary(e.target.value)} />
+          <textarea
+            className="input"
+            rows={2}
+            value={settingsSummary}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setSettingsSummary(e.target.value);
+            }}
+          />
         </label>
         <label className="row">
-          <input type="checkbox" checked={allowMemberCr} onChange={(e) => setAllowMemberCr(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={allowMemberCr}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setAllowMemberCr(e.target.checked);
+            }}
+          />
           {strings.admin.allowMemberChangeRequests}
         </label>
         <label className="row">
-          <input type="checkbox" checked={isTemplate} onChange={(e) => setIsTemplate(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={isTemplate}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setIsTemplate(e.target.checked);
+            }}
+          />
           {strings.admin.isTemplate}
         </label>
         <label className="stack" style={{ gap: "0.25rem" }}>
@@ -551,7 +603,10 @@ export function ProjectAdminPage() {
           <select
             className="input"
             value={visibility}
-            onChange={(e) => setVisibility(e.target.value as "only_specified" | "org_wide")}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setVisibility(e.target.value as "only_specified" | "org_wide");
+            }}
           >
             <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
             <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
@@ -560,7 +615,14 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.projectStatus}
-          <select className="input" value={statusId} onChange={(e) => setStatusId(e.target.value)}>
+          <select
+            className="input"
+            value={statusId}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setStatusId(e.target.value);
+            }}
+          >
             {orgProjectStatuses.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -600,7 +662,10 @@ export function ProjectAdminPage() {
               className="input"
               placeholder={key}
               value={terminology[key] ?? ""}
-              onChange={(e) => setTerminology((t2) => ({ ...t2, [key]: e.target.value }))}
+              onChange={(e) => {
+                terminologyDirtyRef.current = true;
+                setTerminology((t2) => ({ ...t2, [key]: e.target.value }));
+              }}
             />
           </div>
         ))}
@@ -1182,7 +1247,10 @@ export function ProjectAdminPage() {
               {strings.admin.defaultReportTemplate}
               <select
                 className="input" value={defaultReportTemplateId}
-                onChange={(e) => setDefaultReportTemplateId(e.target.value)}
+                onChange={(e) => {
+                  reportConfigDirtyRef.current = true;
+                  setDefaultReportTemplateId(e.target.value);
+                }}
               >
                 <option value="">{strings.reports.noTemplate}</option>
                 {reportTemplates.map((tpl) => (
@@ -1201,14 +1269,26 @@ export function ProjectAdminPage() {
             Project intro
             {reportConfigDefaults.intro && <span className="text-muted"> (organisation default)</span>}
           </span>
-          <RichTextEditor rows={3} value={reportIntro} onChange={setReportIntro} organizationId={project?.organization_id} />
+          <RichTextEditor
+            rows={3}
+            value={reportIntro}
+            onChange={(v) => {
+              reportConfigDirtyRef.current = true;
+              setReportIntro(v);
+            }}
+            organizationId={project?.organization_id}
+          />
         </div>
         <div className="stack" style={{ gap: "0.25rem" }}>
           {reportConfigDefaults.chapters && (
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default body chapters.</span>
           )}
           <ReportChapterListEditor
-            label="Body chapters" list={reportChapters} setList={setReportChapters}
+            label="Body chapters" list={reportChapters}
+            setList={(list) => {
+              reportConfigDirtyRef.current = true;
+              setReportChapters(list);
+            }}
             organizationId={project?.organization_id}
           />
         </div>
@@ -1217,7 +1297,11 @@ export function ProjectAdminPage() {
             <span className="text-muted" style={{ fontSize: "0.85rem" }}>Using the organisation default appendices.</span>
           )}
           <ReportChapterListEditor
-            label="Appendices" list={reportAppendices} setList={setReportAppendices}
+            label="Appendices" list={reportAppendices}
+            setList={(list) => {
+              reportConfigDirtyRef.current = true;
+              setReportAppendices(list);
+            }}
             organizationId={project?.organization_id}
           />
         </div>
