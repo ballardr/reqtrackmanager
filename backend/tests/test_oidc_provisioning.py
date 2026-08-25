@@ -17,7 +17,7 @@ from app.services.oidc_provisioning import (
     sync_org_groups_from_claims,
     sync_org_roles_from_claims,
 )
-from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 from tests.test_access_review import _make_orphaned_user
 
 ISSUER_A = "https://idp-a.example.com/realms/tenant"
@@ -517,6 +517,38 @@ def test_org_group_idp_sync_target_round_trips(client, admin_token, org_id):
     )
     assert resp.status_code == 200
     assert resp.json()["idp_synced_group_name"] is None
+
+
+def test_granted_org_role_is_masked_from_a_plain_member_but_visible_to_an_org_admin(client, admin_token, org_id):
+    """Hardening-review finding: `granted_org_role` (item 522) landed on
+    `GET .../groups`, which — unlike the `ORG_ADMIN`-only
+    `GET .../advanced-settings` that held the equivalent
+    `sso_group_mappings` data before this feature replaced it — is open to
+    any org member (`require_org_role(ORG_ADMIN, PROJECT_CREATOR,
+    MEMBER)`), for legitimate reasons unrelated to this field (the org-
+    group nesting picker needs names/ids). Which SSO group auto-grants
+    `org_admin` is privilege-configuration recon that must stay
+    admin-only regardless of which endpoint happens to carry it."""
+    group = client.post(
+        f"/api/v1/orgs/{org_id}/groups",
+        json={"name": "Role Granting Group", "idp_synced_group_name": "role-granting-group", "granted_org_role": "org_admin"},
+        headers=auth_headers(admin_token),
+    ).json()
+    assert group["granted_org_role"] == "org_admin"
+
+    member_email = "plain-member-groups-view@example.com"
+    create_org_user(client, admin_token, org_id, member_email, role="member")
+    member_token = login(client, member_email, "Password123!")
+
+    member_view = client.get(f"/api/v1/orgs/{org_id}/groups", headers=auth_headers(member_token)).json()
+    member_group = next(g for g in member_view if g["id"] == group["id"])
+    assert member_group["granted_org_role"] is None
+    # Non-sensitive fields stay visible — this is a field mask, not a row hide.
+    assert member_group["idp_synced_group_name"] == "role-granting-group"
+
+    admin_view = client.get(f"/api/v1/orgs/{org_id}/groups", headers=auth_headers(admin_token)).json()
+    admin_group = next(g for g in admin_view if g["id"] == group["id"])
+    assert admin_group["granted_org_role"] == "org_admin"
 
 
 def test_two_org_groups_cannot_claim_the_same_idp_synced_group_name(client, admin_token, org_id):

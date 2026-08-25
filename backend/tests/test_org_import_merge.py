@@ -309,6 +309,55 @@ def test_merge_does_not_grant_a_role_or_group_membership_to_a_banned_member(clie
     assert banned_id not in group["member_user_ids"]
 
 
+def test_merge_skips_an_invalid_granted_org_role_with_a_warning_instead_of_500ing(client, admin_token):
+    """Hardening-review finding: `_import_org_groups` parsed a bundle
+    group's `granted_org_role` with a bare `OrgRole(...)` call and no
+    error handling, unlike every other untrusted-bundle-content case in
+    the same function (a name collision on `idp_synced_group_name`, a
+    cycle-forming nested edge, a banned member — all skipped with a
+    warning rather than raised). A hand-crafted or corrupted bundle
+    carrying a `granted_org_role` that isn't a real `OrgRole` value used
+    to 500 the whole merge instead of being reported like any other
+    malformed field; this pins the fix."""
+    import json
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Invalid Granted Role Target")
+
+    manifest = {"kind": "org-export", "format_version": 1, "exported_at": "2026-08-25T00:00:00Z", "exported_by_email": "x@example.com", "org_name": "Bad Bundle"}
+    org_json = {
+        "name": "Bad Bundle", "accent_color_hex": None, "header_title": None,
+        "require_2fa": False, "allow_self_signup": False, "auto_accept_email_domain": None,
+        "external_user_policy": "disabled", "smtp_host": None, "smtp_port": None, "smtp_username": None,
+        "smtp_use_tls": True, "source_sso_enabled": False, "source_sso_only": False,
+        "oidc_issuer_url": None, "oidc_client_id": None, "oidc_required_group": None, "pat_max_lifetime_days": None,
+        "default_report_intro": None, "default_report_chapters": None, "default_report_appendices": None,
+        "logo_file_ref": None, "logo_content_type": None, "login_background_file_ref": None,
+        "login_background_content_type": None, "default_template_project_ref": None,
+        "report_templates": [], "members": [],
+        "org_groups": [
+            {
+                "name": "Malformed Role Group", "member_emails": [], "nested_group_names": [],
+                "idp_synced_group_name": "malformed-role-group", "granted_org_role": "not_a_real_role",
+            },
+        ],
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(manifest))
+        zf.writestr("org.json", json.dumps(org_json))
+    bundle_bytes = buffer.getvalue()
+
+    merge_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={})
+    assert merge_resp.status_code == 200, merge_resp.text
+    warnings = merge_resp.json()["warnings"]
+    assert any("Malformed Role Group" in w and "granted role" in w for w in warnings)
+
+    target_groups = client.get(f"/api/v1/orgs/{target_org['id']}/groups", headers=auth_headers(target_token)).json()
+    group = next(g for g in target_groups if g["name"] == "Malformed Role Group")
+    assert group["granted_org_role"] is None
+    assert group["idp_synced_group_name"] == "malformed-role-group"
+
+
 def test_merge_rejects_a_bundle_of_the_wrong_kind(client, admin_token, org_id):
     import json
 

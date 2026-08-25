@@ -1200,7 +1200,18 @@ def list_org_groups(
     own org-group nesting picker, rely on exactly this to keep working
     unchanged), and when given, the pre-slice total is returned via
     `X-Total-Count`.
+
+    `granted_org_role` (item 522) is masked to `None` for a non-admin
+    caller — this endpoint is deliberately open to any org member (a
+    `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
+    picker above), but which group auto-grants which `OrgRole` via SSO
+    sync is exactly the kind of privilege-configuration detail
+    `sso_group_mappings` used to keep behind the `ORG_ADMIN`-only
+    `GET .../advanced-settings` before this field existed — hardening-pass
+    finding: it must not become member-readable recon just because it
+    moved onto an already-broadly-readable endpoint.
     """
+    is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
     if search:
         query = query.where(OrgGroup.name.ilike(f"%{search}%"))
@@ -1223,7 +1234,8 @@ def list_org_groups(
         out.append(
             OrgGroupOut(
                 id=g.id, name=g.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
-                idp_synced_group_name=g.idp_synced_group_name, granted_org_role=g.granted_org_role,
+                idp_synced_group_name=g.idp_synced_group_name,
+                granted_org_role=g.granted_org_role if is_admin else None,
             )
         )
     return out

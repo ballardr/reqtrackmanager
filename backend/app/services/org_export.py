@@ -410,12 +410,27 @@ def _import_org_groups(
                     f"'{idp_synced_group_name}' is already used by another group in this organisation."
                 )
                 idp_synced_group_name = None
-            granted_org_role = g.get("granted_org_role")
+            granted_org_role_raw = g.get("granted_org_role")
+            granted_org_role = None
+            if granted_org_role_raw and idp_synced_group_name:
+                try:
+                    granted_org_role = OrgRole(granted_org_role_raw)
+                except ValueError:
+                    # A malformed or adversarial bundle (a hand-crafted zip,
+                    # not one this app's own export could ever produce) —
+                    # skipped with a warning, the same as every other
+                    # untrusted-bundle-content case in this function, rather
+                    # than letting an invalid value raise past this point
+                    # and 500 the whole import.
+                    warnings.add(
+                        f"Group '{g['name']}' was imported without its granted role — "
+                        f"'{granted_org_role_raw}' isn't a recognised organisation role."
+                    )
             group = OrgGroup(
                 organization_id=org.id, name=g["name"], idp_synced_group_name=idp_synced_group_name,
                 # Meaningless (and, on merge, unenforced) without a synced
                 # name — dropped alongside it rather than left dangling.
-                granted_org_role=OrgRole(granted_org_role) if granted_org_role and idp_synced_group_name else None,
+                granted_org_role=granted_org_role,
             )
             db.add(group)
             db.flush()
