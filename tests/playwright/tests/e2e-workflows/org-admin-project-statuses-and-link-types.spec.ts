@@ -146,7 +146,7 @@ test.describe("org admin: project statuses and link types", () => {
       // and fixed here rather than deferred. Located structurally instead:
       // the Status <select> is the one whose own <option> list contains
       // "Active (E2E)" (a status name, never a project name).
-      const statusSelect = page.locator("select").filter({ has: page.locator("option", { hasText: "Active (E2E)" }) });
+      const statusSelect = page.locator("select").filter({ hasText: "Active (E2E)" });
       await expect(statusSelect.locator("option:checked")).toHaveText("Active (E2E)");
     });
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, PERSONAS } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -11,9 +11,22 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
  * reassigned (a baseline is an immutable historical snapshot, C-G-10).
  * Also covers project archiving (C-P-01).
  *
- * Uses Beta-2, untouched by any other spec in this suite, and creates its
- * own components/categories/stages for full control over the reassignment
- * scenarios rather than depending on seeded structure.
+ * Uses its own disposable, uniquely-named project (created fresh each run,
+ * seeded via direct API calls with the same Hardware/Software + Functional/
+ * Performance starting shape `seed_e2e_dataset.py`'s own `seed_project_content`
+ * gives every seeded project) rather than the shared "Beta-2" fixture this
+ * spec used to mutate in place. Found and fixed during a branch hardening
+ * pass, not part of that branch's own diff: this test renamed Beta-2's
+ * default "Scoping" stage to "Milestone 1" and deleted/recreated its
+ * components, so a second run — standalone or repeated, without a fresh
+ * reseed in between — could no longer find "Scoping" at all, violating this
+ * project's own rule that a test must pass "whether it runs alone, first,
+ * last, or repeated back-to-back against the same database". Mutating a
+ * shared, non-dedicated seed fixture like this is exactly the anti-pattern
+ * that rule calls out; every other spec in this suite that needs full
+ * control over a project's structure already uses a project dedicated to it
+ * alone (see PROJECT_NAMES.delta1/gamma3/gamma4 in ./helpers.ts) rather than
+ * repurposing one shared across many specs.
  *
  * Component/category/stage names are rendered as editable `<input>` value
  * attributes (the rename form), not text nodes — every locator below
@@ -22,11 +35,50 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
 test.describe("project admin: structural rename/delete and archiving", () => {
   test("stages, components, and categories can be renamed and deleted with reassignment", async ({ page }) => {
     let projectId = "";
+    const projectName = `Structural Test ${Date.now()}`;
 
-    await test.step("PM opens Beta-2's Project Admin", async () => {
+    await test.step("PM creates a disposable project and seeds its starting structure", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.beta2).click();
+      await page.goto("/projects");
+      await page.getByRole("button", { name: "New project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      // Which org this lands in doesn't matter to anything below — left on
+      // the dialog's own default (orgAdminAlphaBeta manages both Alpha and
+      // Beta) rather than explicitly switched, since switching away from
+      // the default here triggers a dependent Parent-project-list refetch
+      // that intermittently outraces Playwright's own selectOption action on
+      // a slower run (the org does end up correctly selected either way —
+      // this is a test-interaction timing quirk, not a product bug: a human
+      // clicking the dropdown at normal speed never hits it).
+      await dialog.getByLabel("Name", { exact: true }).fill(projectName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
       projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
+
+      // Same Hardware/Software + Functional/Performance starting shape
+      // `seed_e2e_dataset.py::seed_project_content` gives every seeded
+      // project (Beta-2 included) — created directly via API rather than
+      // through the UI form this spec's own "build a two-component tree"
+      // step already exercises below, so this setup step isn't itself
+      // duplicating the behaviour under test.
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const authHeaders = { Authorization: `Bearer ${token}` };
+      const hwResp = await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/components`, {
+        data: { name: "Hardware", prefix: "HW" }, headers: authHeaders,
+      });
+      const hw = await hwResp.json();
+      const swResp = await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/components`, {
+        data: { name: "Software", prefix: "SW" }, headers: authHeaders,
+      });
+      const sw = await swResp.json();
+      await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/categories`, {
+        data: { name: "Functional", prefix: "FN", component_id: hw.id }, headers: authHeaders,
+      });
+      await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/categories`, {
+        data: { name: "Performance", prefix: "PERF", component_id: sw.id }, headers: authHeaders,
+      });
+
+      await page.reload();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
     });
 
@@ -177,7 +229,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await page.getByRole("button", { name: "Archive project" }).click();
       await expect(page.getByRole("button", { name: "Unarchive project" })).toBeVisible();
       await page.goto("/projects");
-      await expect(page.getByText(PROJECT_NAMES.beta2)).toHaveCount(0);
+      await expect(page.getByText(projectName)).toHaveCount(0);
 
       await page.goto(`/projects/${projectId}/admin`);
       await page.getByRole("button", { name: "Unarchive project" }).click();

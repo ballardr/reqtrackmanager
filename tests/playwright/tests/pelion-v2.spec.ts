@@ -7,24 +7,56 @@ import { expect, test } from "@playwright/test";
  * attachment upload, an in-app notification (password change), favouriting
  * a project, and creating a new project from a template.
  *
- * The password-change step restores the original admin password before the
- * test ends, since golden-path.spec.ts's login step depends on the fixed
- * ADMIN_PASSWORD below staying valid across runs.
+ * The password-change step runs against a disposable org-admin persona this
+ * spec creates for itself, not the real bootstrap admin@example.com — a
+ * change this test's own diff had to make (see docs/decisions.md), since an
+ * earlier version changed that shared account's actual password mid-test.
+ * Its try/finally revert had a real gap (the redirect-to-/login wait
+ * between the forward change and the try block wasn't covered — a flake
+ * there left the change committed with no revert ever attempted), and even
+ * a gap-free try/finally would still leave the same account's password
+ * hostage to a browser crash or worker kill. `admin@example.com` is only
+ * ever used here, read-only, to bootstrap this spec's own throwaway
+ * org/persona via direct API calls — never to log in through the UI form,
+ * so this spec can never itself change that account's real password.
  */
 
-const ADMIN_EMAIL = "admin@example.com";
-const ADMIN_PASSWORD = "ChangeMe123!";
+const SERVER_ADMIN_EMAIL = "admin@example.com";
+const SERVER_ADMIN_PASSWORD = "ChangeMe123!";
 const TEMP_PASSWORD = "TempForE2E123!";
 const apiBaseUrl = "http://localhost:8000";
 
 test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourites, templates", async ({ page }) => {
   const templateProjectName = `Pelion Template ${Date.now()}`;
   const clonedProjectName = `Pelion From Template ${Date.now()}`;
+  const suffix = Date.now();
+  const orgAdminEmail = `pelion-v2-admin-${suffix}@example.com`;
+  let orgAdminPassword = "PelionV2Admin123!";
+
+  await test.step("provision a disposable org + org-admin persona for this run", async () => {
+    const serverAdminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: SERVER_ADMIN_EMAIL, password: SERVER_ADMIN_PASSWORD },
+    });
+    const serverAdminToken = (await serverAdminLoginResp.json()).access_token;
+    const authHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+
+    const org = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs`, {
+        headers: authHeaders, data: { name: `Pelion V2 Org ${suffix}` },
+      })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+      headers: authHeaders,
+      data: {
+        email: orgAdminEmail, display_name: "Pelion V2 Admin", password: orgAdminPassword, role: "org_admin",
+      },
+    });
+  });
 
   await test.step("login", async () => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(ADMIN_EMAIL);
-    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+    await page.getByLabel("Email").fill(orgAdminEmail);
+    await page.getByLabel("Password").fill(orgAdminPassword);
     await page.getByRole("button", { name: "Sign in" }).click();
     // Post-login landing depends on the admin's landing_preference (U-U-03:
     // "auto" goes straight to the sole accessible project instead of the
@@ -178,26 +210,33 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // invalidates the session's own current token (a stolen token must not
     // keep working after the legitimate user "locks out" that session by
     // changing credentials) — the frontend responds by logging the user out
-    // and redirecting to /login. Wrapped in try/finally: golden-path.spec.ts's
-    // login step depends on ADMIN_PASSWORD staying valid across runs, so the
-    // revert (and re-login as ADMIN_PASSWORD) must happen even if the
-    // notification assertion below fails.
-    await page.getByTitle("Preferences").click();
-    await page.getByRole("tab", { name: "Security", exact: true }).click();
-    await page.getByPlaceholder("Current password").fill(ADMIN_PASSWORD);
-    await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
-    const changeResponsePromise = page.waitForResponse(
-      (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
-    );
-    await page.getByRole("button", { name: "Change password", exact: true }).click();
-    const changeResponse = await changeResponsePromise;
-    expect(changeResponse.ok()).toBe(true);
-    await page.waitForURL(/\/login$/);
-
+    // and redirecting to /login. This account is this spec's own disposable
+    // persona (not the real bootstrap admin@example.com — see this file's
+    // header comment for why), so a stuck temp password here only strands a
+    // throwaway login, not the one this repo's developers use daily.
+    // Wrapped in try/finally regardless, starting *before* the forward
+    // change itself (not just around the re-login+notification-check that
+    // follows it): once `changeResponse.ok()` is true the mutation has
+    // already committed server-side, so a failure anywhere after that —
+    // including the very next `waitForURL` — must still trigger the revert.
+    // An earlier version of this test drew the try boundary after that
+    // waitForURL, missing exactly that window.
     try {
+      await page.getByTitle("Preferences").click();
+      await page.getByRole("tab", { name: "Security", exact: true }).click();
+      await page.getByPlaceholder("Current password").fill(orgAdminPassword);
+      await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
+      const changeResponsePromise = page.waitForResponse(
+        (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "Change password", exact: true }).click();
+      const changeResponse = await changeResponsePromise;
+      expect(changeResponse.ok()).toBe(true);
+      await page.waitForURL(/\/login$/);
+
       // Log back in with the new password to pick up a fresh session and
       // confirm the change-password notification was created.
-      await page.getByLabel("Email").fill(ADMIN_EMAIL);
+      await page.getByLabel("Email").fill(orgAdminEmail);
       await page.getByLabel("Password").fill(TEMP_PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
       await page.waitForURL(/\/projects(\/|$)/);
@@ -206,13 +245,13 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       await page.getByTitle("Notifications").click();
     } finally {
       // Revert through the UI, same as the forward change above. This also
-      // invalidates the TEMP_PASSWORD session, so log back in as
-      // ADMIN_PASSWORD afterwards to leave the shared admin account usable
-      // for the rest of this spec and every other spec that logs in with it.
+      // invalidates the TEMP_PASSWORD session, so log back in with the
+      // original password afterwards to leave this persona usable for the
+      // rest of this spec.
       await page.getByTitle("Preferences").click();
       await page.getByRole("tab", { name: "Security", exact: true }).click();
       await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
-      await page.getByPlaceholder("New password").fill(ADMIN_PASSWORD);
+      await page.getByPlaceholder("New password").fill(orgAdminPassword);
       const revertResponsePromise = page.waitForResponse(
         (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
       );
@@ -221,8 +260,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       expect(revertResponse.ok()).toBe(true);
       await page.waitForURL(/\/login$/);
 
-      await page.getByLabel("Email").fill(ADMIN_EMAIL);
-      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await page.getByLabel("Email").fill(orgAdminEmail);
+      await page.getByLabel("Password").fill(orgAdminPassword);
       await page.getByRole("button", { name: "Sign in" }).click();
       await page.waitForURL(/\/projects(\/|$)/);
     }
