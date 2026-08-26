@@ -615,6 +615,21 @@ def _has_member_source_access(db: Session, user_id: UUID, project_id: UUID) -> b
     forward-inherited roles — only its direct ones — per the module
     docstring's decoupling note.
 
+    Uses `_direct_project_member_ids` (not `_direct_effective_project_roles`)
+    for the same reason that helper's own docstring gives:
+    `ProjectVisibility.ORG_WIDE`'s baseline grant must stay excluded here too.
+    An earlier version of this function checked
+    `_direct_effective_project_roles(db, user_id, source_id)` directly, which
+    *does* include the ORG_WIDE baseline — so listing an ORG_WIDE-visible
+    child as a member source silently granted every user in the
+    organisation real `MEMBER` access to the parent (a genuine RBAC escalation:
+    `get_effective_project_roles` is the live authorization gate behind
+    `require_project_view`, not just a notification-targeting helper), exactly
+    the mass side effect `_direct_project_member_ids`'s own docstring already
+    warned against reintroducing "through a side channel". Fixed to match
+    `_member_source_contributed_user_ids`'s sibling (bulk) resolution, which
+    already excluded ORG_WIDE correctly.
+
     Iterative (not recursive) and capped at
     `_PROJECT_INHERITANCE_ITERATION_CAP` layers, matching every other
     unlimited-depth tree walk in this module — a project tree several
@@ -630,7 +645,7 @@ def _has_member_source_access(db: Session, user_id: UUID, project_id: UUID) -> b
         if not new:
             break
         for source_id in new:
-            if _direct_effective_project_roles(db, user_id, source_id):
+            if user_id in _direct_project_member_ids(db, source_id):
                 return True
         visited |= new
         frontier = new

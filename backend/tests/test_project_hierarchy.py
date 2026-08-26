@@ -220,6 +220,35 @@ def test_member_source_grants_baseline_member_on_the_parent(client, admin_token,
     assert manage_resp.status_code == 403
 
 
+def test_member_source_does_not_leak_org_wide_visibility_as_membership(client, admin_token, org_id):
+    """Regression test for a real RBAC-escalation bug found in this
+    branch's own hardening pass: `_has_member_source_access` used to check
+    `_direct_effective_project_roles` (which includes the `ORG_WIDE`
+    baseline grant) instead of `_direct_project_member_ids` (which
+    deliberately excludes it, per that helper's own docstring). Listing an
+    `ORG_WIDE`-visible child as a member source used to grant every user in
+    the organisation real `MEMBER` access to the parent — not just a read
+    grant on the child, but actual access to a potentially far more
+    sensitive parent — regardless of whether they held any concrete role on
+    the child at all."""
+    parent = create_project(client, admin_token, org_id, "MS OrgWide Parent")
+    child = create_project(client, admin_token, org_id, "MS OrgWide Child", parent_project_id=parent["id"])
+    assert _set_parent(client, admin_token, child["id"], visibility="org_wide").status_code == 200
+    assert client.post(
+        f"/api/v1/projects/{parent['id']}/member-sources",
+        json={"source_project_id": child["id"]}, headers=auth_headers(admin_token),
+    ).status_code == 201
+
+    # A user with no direct/group role on either project, only baseline
+    # org membership (which grants ORG_WIDE view of the child alone) must
+    # not gain access to the parent through the member-source mechanism.
+    create_org_user(client, admin_token, org_id, "ms_org_wide_bystander@example.com", role="member")
+    token = login(client, "ms_org_wide_bystander@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(token)).status_code == 200
+    resp = client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token))
+    assert resp.status_code == 403, resp.text
+
+
 def test_member_source_multilevel_requires_both_hops(client, admin_token, org_id):
     grandparent = create_project(client, admin_token, org_id, "MS Grandparent")
     parent = create_project(client, admin_token, org_id, "MS Parent", parent_project_id=grandparent["id"])
@@ -405,6 +434,39 @@ def test_get_project_redacts_parent_for_a_viewer_without_parent_access(client, a
     admin_resp = client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(admin_token)).json()
     assert admin_resp["parent_project_id"] == parent["id"]
     assert admin_resp["parent_project_name"] == "Redact Parent"
+
+
+def test_get_project_shows_true_parent_to_a_manager_with_no_independent_parent_access(client, admin_token, org_id):
+    """Regression test for a real bug found in this branch's own hardening
+    pass: `_project_out_with_redacted_parent` used to redact the parent for
+    *every* caller lacking independent view access to it, with no exemption
+    for a caller who manages the child itself — contradicting
+    `ProjectAdminPage.tsx`'s own documented assumption (and
+    docs/decisions.md's "Hierarchical projects" entry) that a project's own
+    manager always sees the true parent there, since they already hold the
+    highest authority over the relationship. A manager who happens to have
+    no role at all on the parent (a realistic, unremarkable case — managing
+    a child implies nothing about the parent) used to see a redacted
+    `parent_project_id: null` on the very form used to edit that
+    relationship, which — combined with that form always resending
+    `parent_project_id` on every save — silently detached the project from
+    its real parent on the next unrelated settings save."""
+    parent = create_project(client, admin_token, org_id, "Manager Redact Parent")
+    child = create_project(client, admin_token, org_id, "Manager Redact Child", parent_project_id=parent["id"])
+    manager_id = create_org_user(client, admin_token, org_id, "redact_child_manager@example.com", role="member")
+    assert _assign_role(client, admin_token, child["id"], manager_id, "project_manager").status_code == 204
+
+    token = login(client, "redact_child_manager@example.com", "Password123!")
+    # Confirm this manager genuinely has no independent access to the
+    # parent — the interesting case, not a false positive from some other
+    # source of access.
+    assert client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token)).status_code == 403
+
+    resp = client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["parent_project_id"] == parent["id"]
+    assert body["parent_project_name"] == "Manager Redact Parent"
 
 
 def test_member_source_listed_sibling_does_not_leak_via_mirror_all(client, admin_token, org_id):

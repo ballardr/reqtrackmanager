@@ -133,7 +133,21 @@ test.describe("org admin: project statuses and link types", () => {
     await test.step("the first project's own settings tab now shows the reassigned status", async () => {
       await page.goto(`/projects/${project1.id}`);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await expect(page.getByLabel("Status").locator("option:checked")).toHaveText("Active (E2E)");
+      // Not getByLabel("Status"): hierarchical projects added a "Parent
+      // project" <select> to this same tab, wrapped by an implicit
+      // <label> the same way the Status field is — a wrapping <label>'s
+      // computed accessible name flattens in all descendant text,
+      // including every <option>'s text, not just the label's own words.
+      // Project B (this test's own reassignment-target fixture, named
+      // `E2E Status Project B ...`) is a same-org sibling and so appears
+      // as one of "Parent project"'s <option>s, making its accessible
+      // name legitimately contain the substring "Status" too — a real,
+      // reproducible ambiguity (not stale test debris this time), found
+      // and fixed here rather than deferred. Located structurally instead:
+      // the Status <select> is the one whose own <option> list contains
+      // "Active (E2E)" (a status name, never a project name).
+      const statusSelect = page.locator("select").filter({ has: page.locator("option", { hasText: "Active (E2E)" }) });
+      await expect(statusSelect.locator("option:checked")).toHaveText("Active (E2E)");
     });
 
     await test.step("an unused status (Abandoned) deletes immediately, with no reassignment prompt", async () => {

@@ -747,6 +747,16 @@ export function ProjectAdminPage() {
             onChange={(e) => {
               settingsDirtyRef.current = true;
               setParentProjectId(e.target.value);
+              // Changing the parent while an elevated inheritance mode is
+              // set must not silently carry that mode's confirmation over
+              // to a *different* parent's role-holders — reset to "none"
+              // (the safe default) so re-selecting MIRROR_ALL/MIRROR_ROLE
+              // for the new parent goes back through
+              // requestInheritModeChange's own confirmation dialog, which
+              // will then correctly name the new parent.
+              if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                setRoleInheritanceMode("none");
+              }
             }}
           >
             <option value="">{strings.projects.noParent}</option>

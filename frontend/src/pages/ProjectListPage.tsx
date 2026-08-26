@@ -349,7 +349,19 @@ export function ProjectListPage() {
             <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.projects.parentProject}
-              <select className="input" value={parentProjectId} onChange={(e) => setParentProjectId(e.target.value)}>
+              <select
+                className="input"
+                value={parentProjectId}
+                onChange={(e) => {
+                  setParentProjectId(e.target.value);
+                  // Same reasoning as ProjectAdminPage.tsx's parent select:
+                  // don't let a mode confirmed for one candidate parent
+                  // silently carry over to a different one before submit.
+                  if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                    setRoleInheritanceMode("none");
+                  }
+                }}
+              >
                 <option value="">{strings.projects.noParent}</option>
                 {parentOptions.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>

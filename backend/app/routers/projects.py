@@ -203,27 +203,47 @@ def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     return accessible_ids
 
 
-def _project_out_with_redacted_parent(db: Session, user_id: UUID, project: Project) -> ProjectOut:
+def _project_out_with_redacted_parent(db: Session, current_user: User, project: Project) -> ProjectOut:
     """Builds a `ProjectOut` with `parent_project_id`/`parent_project_name`
-    redacted unless the caller has effective view access to the parent —
-    the same visibility-boundary rule `list_projects` already applies to
-    `ProjectListItemOut`, extended here to every endpoint that returns a
-    single `Project` directly (`GET/PATCH/POST .../archive/.../unarchive/
-    .../terminology`). Without this, `GET /{project_id}` — gated by
-    `require_project_view`, not manage — would let *any* project viewer
-    (not just its own manager, who legitimately needs to see this to
-    manage the relationship) learn a hidden parent's identity just by
-    fetching the project directly, even though `list_projects`/`/ancestors`
-    correctly redact it.
+    redacted unless the caller has effective view access to the parent, or
+    manages `project` itself — the same visibility-boundary rule
+    `list_projects` already applies to `ProjectListItemOut`, extended here
+    to every endpoint that returns a single `Project` directly (`GET/PATCH/
+    POST .../archive/.../unarchive/.../terminology`). Without the general
+    redaction, `GET /{project_id}` — gated by `require_project_view`, not
+    manage — would let *any* project viewer learn a hidden parent's
+    identity just by fetching the project directly, even though
+    `list_projects`/`/ancestors` correctly redact it.
+
+    The manager exemption closes a real gap found in this branch's own
+    hardening pass: `ProjectAdminPage.tsx`'s settings form (frontend) has
+    always assumed — per its own inline comment and docs/decisions.md's
+    "Hierarchical projects" entry ("a project's own manager already holds
+    the highest level of authority over this relationship and needs to see
+    it to do their job") — that a project's manager sees the true parent
+    here, never a redacted one. Before this fix that assumption was false:
+    a manager with no independent view access to the parent (a realistic,
+    common case — nothing ties managing a child to having any role on its
+    parent) saw `parent_project_id: null`, the same as any other viewer.
+    Combined with `saveSettings()` unconditionally resending
+    `parent_project_id` on every save (not just when the field was
+    actually touched), this silently detached the project from its real
+    parent on the next unrelated settings save — a genuine, unannounced
+    structural mutation the manager never intended. A project's own
+    manager already has unilateral authority to detach or reparent this
+    exact relationship via this same endpoint, so showing them the true
+    value they already have the power to change is not a new disclosure.
     """
     out = ProjectOut.model_validate(project)
     if project.parent_project_id is None:
         return out
-    if project.parent_project_id not in _accessible_project_ids(db, user_id):
-        out.parent_project_id = None
+    if can_manage_project_settings(db, current_user, project) or project.parent_project_id in _accessible_project_ids(
+        db, current_user.id
+    ):
+        parent = db.get(Project, project.parent_project_id)
+        out.parent_project_name = parent.name if parent is not None else None
         return out
-    parent = db.get(Project, project.parent_project_id)
-    out.parent_project_name = parent.name if parent is not None else None
+    out.parent_project_id = None
     return out
 
 
@@ -384,7 +404,7 @@ def create_project(
         )
     db.commit()
     db.refresh(project)
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
@@ -617,7 +637,7 @@ def get_project(project_id: UUID, current_user: User = Depends(require_project_v
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.get("/{project_id}/export")
@@ -779,7 +799,7 @@ def update_project(
         )
     db.commit()
     db.refresh(project)
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.put("/{project_id}/terminology", response_model=ProjectOut)
@@ -794,7 +814,7 @@ def update_terminology(
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.get("/{project_id}/ancestors", response_model=list[ProjectAncestorOut])
@@ -1162,7 +1182,7 @@ def archive_project(
               actor_id=current_user.id, project_id=project.id)
     db.commit()
     db.refresh(project)
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.post("/{project_id}/unarchive", response_model=ProjectOut)
@@ -1178,7 +1198,7 @@ def unarchive_project(
               actor_id=current_user.id, project_id=project.id)
     db.commit()
     db.refresh(project)
-    return _project_out_with_redacted_parent(db, current_user.id, project)
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.get("/{project_id}/changes", response_model=list[ChangeEntryOut])
