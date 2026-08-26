@@ -28,20 +28,25 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   });
 
   await test.step("create project", async () => {
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for
+    // entity create/rename") — scoped to it rather than a bare ".card", and
+    // its Name/Summary fields are real <label>s now, not placeholder-only
+    // (2026-08 UX audit roadmap item 521).
     await page.getByRole("button", { name: "New project" }).click();
+    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     // The org picker only renders at all when the caller belongs to more
     // than one organisation (see ProjectListPage.tsx) — the bootstrap admin
     // used here belongs to exactly one ("Default Organization"), so it's
     // implicit rather than offered as a choice. Select explicitly only if
     // a picker is actually present, so this still works if the admin ever
     // gains a second org membership in some other stack/seed configuration.
-    const orgPicker = page.locator("select:has(option:text-is('Default Organization'))");
+    const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
-    await page.getByPlaceholder("Name").fill(projectName);
-    await page.getByPlaceholder("Summary").fill("Created by Playwright");
-    await page.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByLabel("Name", { exact: true }).fill(projectName);
+    await newProjectDialog.getByLabel("Summary").fill("Created by Playwright");
+    await newProjectDialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
   });
@@ -101,7 +106,6 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("add requirement", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
-    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Boot in under 5 seconds");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByText("SW-PERF-001")).toBeVisible();
@@ -126,10 +130,16 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("raise and approve a change request", async () => {
     await page.getByText("Change Requests").click();
     await page.getByRole("button", { name: "New change request" }).click();
+    // The create form is a `Modal` portalled to the end of `document.body`
+    // — scope to it rather than an unscoped `getByRole("combobox").first()`,
+    // which would otherwise resolve to the filter sidebar's own Status
+    // select (it precedes the dialog in DOM order once the form is a
+    // portal instead of an inline block).
+    const dialog = page.getByRole("dialog", { name: "New change request" });
     // The requirement select defaults asynchronously once project data
     // loads — wait so Create doesn't submit with an empty requirement_id
     // (same race already worked around in mockup-engagement.spec.ts).
-    await expect(page.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
+    await expect(dialog.getByRole("combobox").first()).toContainText("Boot in under 5 seconds");
     // Modify-requirement CRs are field-toggle driven: a field's proposed
     // value is only editable (and only becomes part of `changed_fields`)
     // once its "Fields to change" checkbox is ticked. Each checkbox and its

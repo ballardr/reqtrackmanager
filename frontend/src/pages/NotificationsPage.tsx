@@ -7,6 +7,7 @@ import { notificationLink } from "../api/types";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -21,6 +22,7 @@ const PAGE_SIZE = 30;
  */
 export function NotificationsPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -51,8 +53,13 @@ export function NotificationsPage() {
   }
 
   async function markAllRead() {
-    await api.post("/api/v1/notifications/read-all");
-    load(0, false);
+    try {
+      await api.post("/api/v1/notifications/read-all");
+      load(0, false);
+      showToast(strings.notifications.markAllReadToast);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   function openNotification(n: Notification) {

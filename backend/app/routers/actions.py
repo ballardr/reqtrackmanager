@@ -177,6 +177,31 @@ def archive_action(
     return action_to_out(db, action)
 
 
+@router.post("/{action_id}/unarchive", response_model=RequirementActionOut)
+def unarchive_action(
+    project_id: UUID, action_id: UUID,
+    current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Restores an archived action to the active list, undoing `archive_action`
+    — same permission gate, mirroring `routers.projects::unarchive_project`
+    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
+    roadmap item on one-way archive). Unlike `archive_action`'s 409-on-
+    already-archived, calling this on an action that isn't archived is a
+    harmless no-op rather than an error, matching `unarchive_project`'s own
+    idempotent shape.
+    """
+    action = get_requirement_action_in_project(db, project_id, action_id)
+    action.is_archived = False
+    action.archived_at = None
+    action.archived_by = None
+    log_event(db, entity_type="requirement_action", entity_id=action.id, action="unarchived",
+              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
+    db.commit()
+    db.refresh(action)
+    return action_to_out(db, action)
+
+
 # --- Discussion thread (C-R-01) — direct mirror of the requirement's own ----
 
 

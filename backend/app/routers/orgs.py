@@ -525,6 +525,8 @@ def list_org_users(
     has_project_access: bool | None = None,
     is_active: bool | None = None,
     search: str | None = None,
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
@@ -552,6 +554,14 @@ def list_org_users(
     `list_requirements`, omitting `limit` returns every match unpaginated
     (unchanged from before pagination existed); when given, the total
     match count before slicing is returned via `X-Total-Count`.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally overrides the default `display_name` sort with
+    `email` or `last_login_at`; `order` picks `asc` (default) or `desc`.
+    `last_login_at` is nullable (a user who's never logged in) — those
+    rows sort last regardless of `order`, so "sort by last login,
+    descending" surfaces the most-recently-active users first without
+    "never logged in" accounts jumping to the top.
     """
     filters_requested = any(
         v is not None for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active)
@@ -603,7 +613,18 @@ def list_org_users(
     if search:
         needle = search.lower()
         results = [r for r in results if needle in r.display_name.lower() or needle in r.email.lower()]
-    results.sort(key=lambda r: r.display_name.lower())
+
+    if sort and sort != "display_name":
+        def _sort_value(item: OrgUserOut):
+            value = getattr(item, sort)
+            if sort == "last_login_at":
+                # Nulls (never logged in) always sort last, in either
+                # direction — see docstring.
+                return (value is None, value)
+            return value.lower()
+        results.sort(key=_sort_value, reverse=(order == "desc"))
+    else:
+        results.sort(key=lambda r: r.display_name.lower(), reverse=(sort == "display_name" and order == "desc"))
 
     response.headers["X-Total-Count"] = str(len(results))
     if limit is not None:
@@ -1119,10 +1140,16 @@ def create_org_group(
     db: Session = Depends(get_db),
 ):
     """Creates an organisation group (C-U-08), optionally marking it as
-    IdP-synced from creation (`payload.idp_synced_group_name`)."""
+    IdP-synced from creation (`payload.idp_synced_group_name`) and/or
+    granting an org role to anyone synced into it (`payload.
+    granted_org_role`, 2026-08 UX audit roadmap item 522)."""
     if payload.idp_synced_group_name:
         _require_idp_synced_name_available(db, organization_id, payload.idp_synced_group_name)
-    group = OrgGroup(organization_id=organization_id, name=payload.name, idp_synced_group_name=payload.idp_synced_group_name)
+    _require_granted_role_has_sync_target(payload.granted_org_role, payload.idp_synced_group_name)
+    group = OrgGroup(
+        organization_id=organization_id, name=payload.name, idp_synced_group_name=payload.idp_synced_group_name,
+        granted_org_role=payload.granted_org_role,
+    )
     db.add(group)
     db.flush()
     log_event(
@@ -1132,7 +1159,7 @@ def create_org_group(
     db.commit()
     return OrgGroupOut(
         id=group.id, name=group.name, member_user_ids=[], member_org_group_ids=[],
-        idp_synced_group_name=group.idp_synced_group_name,
+        idp_synced_group_name=group.idp_synced_group_name, granted_org_role=group.granted_org_role,
     )
 
 
@@ -1173,7 +1200,18 @@ def list_org_groups(
     own org-group nesting picker, rely on exactly this to keep working
     unchanged), and when given, the pre-slice total is returned via
     `X-Total-Count`.
+
+    `granted_org_role` (item 522) is masked to `None` for a non-admin
+    caller — this endpoint is deliberately open to any org member (a
+    `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
+    picker above), but which group auto-grants which `OrgRole` via SSO
+    sync is exactly the kind of privilege-configuration detail
+    `sso_group_mappings` used to keep behind the `ORG_ADMIN`-only
+    `GET .../advanced-settings` before this field existed — hardening-pass
+    finding: it must not become member-readable recon just because it
+    moved onto an already-broadly-readable endpoint.
     """
+    is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
     if search:
         query = query.where(OrgGroup.name.ilike(f"%{search}%"))
@@ -1197,9 +1235,25 @@ def list_org_groups(
             OrgGroupOut(
                 id=g.id, name=g.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
                 idp_synced_group_name=g.idp_synced_group_name,
+                granted_org_role=g.granted_org_role if is_admin else None,
             )
         )
     return out
+
+
+def _require_granted_role_has_sync_target(granted_org_role, idp_synced_group_name: str | None) -> None:
+    """Rejects with 400 if `granted_org_role` is set without a resolved
+    `idp_synced_group_name` — granting a role via SSO group membership is
+    meaningless without an IdP claim to trigger it on (`OrgGroup.
+    granted_org_role`'s model docstring). `idp_synced_group_name` is passed
+    already resolved (payload value if provided, otherwise the group's
+    existing one) so this same check works for both create and update."""
+    if granted_org_role is not None and not idp_synced_group_name:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "granted_org_role requires idp_synced_group_name to also be set — a role can only be granted via a "
+            "matching IdP group claim.",
+        )
 
 
 def _require_idp_synced_name_available(db: Session, organization_id: UUID, name: str, *, exclude_group_id: UUID | None = None) -> None:
@@ -1228,16 +1282,27 @@ def update_org_group(
     db: Session = Depends(get_db),
 ):
     """Sets or clears an org group's IdP-sync target
-    (`OrgGroup.idp_synced_group_name`) — the only mutable field an org
-    group has today (no rename endpoint exists for this or `ProjectGroup`).
+    (`OrgGroup.idp_synced_group_name`) and the org role it grants
+    (`OrgGroup.granted_org_role`, 2026-08 UX audit roadmap item 522) — the
+    only mutable fields an org group has today (no rename endpoint exists
+    for this or `ProjectGroup`). Both are always set wholesale from the
+    payload (not merged), matching this endpoint's existing "set or clear"
+    semantics for `idp_synced_group_name` from before `granted_org_role`
+    existed.
     """
     group = _get_org_group_in_org(db, organization_id, group_id)
     if payload.idp_synced_group_name:
         _require_idp_synced_name_available(db, organization_id, payload.idp_synced_group_name, exclude_group_id=group_id)
+    _require_granted_role_has_sync_target(payload.granted_org_role, payload.idp_synced_group_name)
     group.idp_synced_group_name = payload.idp_synced_group_name
+    group.granted_org_role = payload.granted_org_role
     log_event(
         db, entity_type="org_group", entity_id=group_id, action="idp_sync_updated", actor_id=current_user.id,
-        organization_id=organization_id, detail={"idp_synced_group_name": payload.idp_synced_group_name},
+        organization_id=organization_id,
+        detail={
+            "idp_synced_group_name": payload.idp_synced_group_name,
+            "granted_org_role": payload.granted_org_role.value if payload.granted_org_role else None,
+        },
     )
     db.commit()
     db.refresh(group)
@@ -1251,7 +1316,7 @@ def update_org_group(
     ).all()
     return OrgGroupOut(
         id=group.id, name=group.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
-        idp_synced_group_name=group.idp_synced_group_name,
+        idp_synced_group_name=group.idp_synced_group_name, granted_org_role=group.granted_org_role,
     )
 
 
@@ -1556,20 +1621,20 @@ def get_advanced_settings(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Per-organisation SMTP override and SSO group-mapping settings.
+    """Per-organisation SMTP override and security/self-signup settings.
 
-    `smtp_*` remain storage-only (see `Organization` model docstring);
-    `sso_group_mappings` is read by `services/oidc_provisioning.
-    sync_org_roles_from_claims` on every SSO login. The stored
-    `smtp_password` is never echoed back (write-only), matching how the
-    bootstrap/native-auth password is handled elsewhere.
+    `smtp_*` remain storage-only (see `Organization` model docstring). The
+    stored `smtp_password` is never echoed back (write-only), matching how
+    the bootstrap/native-auth password is handled elsewhere. SSO group→role
+    mapping used to live here (`sso_group_mappings`) — it's now managed per
+    `OrgGroup` instead (`GET .../groups`, item 522).
     """
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
-        smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
+        smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
@@ -1603,7 +1668,6 @@ def update_advanced_settings(
         # so a client re-submitting the form has no value to send back.
         org.smtp_password = payload.smtp_password
     org.smtp_use_tls = payload.smtp_use_tls
-    org.sso_group_mappings = [m.model_dump() for m in payload.sso_group_mappings]
     org.pat_max_lifetime_days = payload.pat_max_lifetime_days
     org.require_2fa = payload.require_2fa
     org.allow_self_signup = payload.allow_self_signup
@@ -1617,7 +1681,7 @@ def update_advanced_settings(
     db.refresh(org)
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
-        smtp_use_tls=org.smtp_use_tls, sso_group_mappings=org.sso_group_mappings,
+        smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,

@@ -31,9 +31,10 @@ test.describe("CSV import wizard", () => {
     const component = components[0];
     const category = categories.find((c) => c.component_id === component.id)!;
 
+    const rowOneTitle = `E2E CSV Import Row One (${Date.now()})`;
     const csv =
       "Title,Comp,Cat,Why\n" +
-      `E2E CSV Import Row One (${Date.now()}),${component.prefix},${category.prefix},Because it must.\n` +
+      `${rowOneTitle},${component.prefix},${category.prefix},Because it must.\n` +
       `E2E CSV Import Row Two Bad Component (${Date.now()}),ZZZ-NO-SUCH,${category.prefix},Should error.\n`;
 
     await test.step("upload a CSV with non-canonical headers and confirm auto-mapping", async () => {
@@ -58,7 +59,7 @@ test.describe("CSV import wizard", () => {
       await page.getByRole("button", { name: /^Import 2 row/ }).click();
       await expect(page.getByText("Import complete: 1 created, 1 error(s)")).toBeVisible();
       await expect(page.getByText(/ZZZ-NO-SUCH/)).toBeVisible();
-      await expect(page.getByText(new RegExp(`E2E CSV Import Row One`))).toBeVisible();
+      await expect(page.getByText(rowOneTitle, { exact: true })).toBeVisible();
     });
   });
 

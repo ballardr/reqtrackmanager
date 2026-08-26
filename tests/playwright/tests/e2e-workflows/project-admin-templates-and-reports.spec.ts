@@ -46,12 +46,19 @@ test.describe("org report templates and project report setup", () => {
       // at all.
       await selectOrgAdminGroup(page, "Templates & reports");
       await ensureExpanded(page, "Report templates");
-      await reportTemplatesSection.getByPlaceholder("Name", { exact: true }).fill(templateName);
-      await reportTemplatesSection.getByLabel("Include cover page").check();
-      await reportTemplatesSection.getByLabel("Include organisation logo").check();
-      await reportTemplatesSection.getByPlaceholder("Footer text").fill("Confidential — E2E Gamma Labs");
-      await reportTemplatesSection.getByLabel("Chapter per component by default").check();
-      await reportTemplatesSection.getByRole("button", { name: "Create", exact: true }).click();
+      // The create/edit form itself opens in a `Modal`, not inline within
+      // the section (2026-08 UX audit roadmap item 526, "Modal conversion
+      // sweep") — portalled to `document.body`, so it's queried from
+      // `page`, not scoped to `reportTemplatesSection`.
+      await reportTemplatesSection.getByRole("button", { name: "New template" }).click();
+      const createDialog = page.getByRole("dialog", { name: "New template" });
+      await createDialog.getByPlaceholder("Name", { exact: true }).fill(templateName);
+      await createDialog.getByLabel("Include cover page").check();
+      await createDialog.getByLabel("Include organisation logo").check();
+      await createDialog.getByPlaceholder("Footer text").fill("Confidential — E2E Gamma Labs");
+      await createDialog.getByLabel("Chapter per component by default").check();
+      await createDialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(createDialog).not.toBeVisible();
       await expect(reportTemplatesSection.getByText(templateName)).toBeVisible();
     });
 
@@ -59,8 +66,10 @@ test.describe("org report templates and project report setup", () => {
     await test.step("edit the template", async () => {
       const row = reportTemplatesSection.locator(".row", { hasText: templateName }).first();
       await row.getByRole("button", { name: "Edit" }).click();
-      await reportTemplatesSection.getByPlaceholder("Name", { exact: true }).fill(revisedName);
-      await reportTemplatesSection.getByRole("button", { name: "Save", exact: true }).click();
+      const editDialog = page.getByRole("dialog", { name: "Edit template" });
+      await editDialog.getByPlaceholder("Name", { exact: true }).fill(revisedName);
+      await editDialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editDialog).not.toBeVisible();
       await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();
     });
 
@@ -72,7 +81,17 @@ test.describe("org report templates and project report setup", () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByRole("tab", { name: "Report Setup" }).click();
       await page.getByLabel("Default report template").selectOption({ label: revisedName });
-      await page.getByRole("button", { name: "Save settings" }).click();
+      // Wait for the save's own PUT to actually land before reloading — a
+      // bare click() races the async `saveReportConfig()` against the
+      // immediate reload below, which can reload before the request even
+      // reaches the server and read the pre-save state back (same fix
+      // `preferences-and-theme.spec.ts`'s "pronouns save and persist" step
+      // and `requirements-and-cr-filters.spec.ts`'s view-mode-persistence
+      // step already use for this identical race).
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/report-config") && r.request().method() === "PUT"),
+        page.getByRole("button", { name: "Save settings" }).click(),
+      ]);
       await page.reload();
       await page.getByRole("tab", { name: "Report Setup" }).click();
       await expect(page.getByLabel("Default report template")).toHaveValue(/.+/);
@@ -102,8 +121,11 @@ test.describe("org report templates and project report setup", () => {
       await expect(page.getByLabel("Usable as a project template")).toBeChecked();
 
       await page.getByRole("link", { name: "Projects", exact: true }).click();
+      // "New project" opens a Modal (style guide "Pattern: modal dialog for
+      // entity create/rename") — scoped to it rather than the whole page.
       await page.getByRole("button", { name: "New project" }).click();
-      await expect(page.locator("option", { hasText: PROJECT_NAMES.gamma2 })).toHaveCount(1);
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await expect(dialog.locator("option", { hasText: PROJECT_NAMES.gamma2 })).toHaveCount(1);
     });
   });
 });

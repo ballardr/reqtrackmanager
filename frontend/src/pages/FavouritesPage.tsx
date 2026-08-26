@@ -4,10 +4,14 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { ProjectListItem, StageStatus } from "../api/types";
-import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { collapseProjectRoles, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
+import { useViewMode, ViewToggle } from "../components/ViewToggle";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 30;
 
@@ -23,9 +27,13 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
  * endpoint) rather than fetching and filtering every project client-side. */
 export function FavouritesPage() {
   const strings = useStrings();
+  const { showToast } = useToast();
+  const { refreshFavourites } = useFavourites();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useViewMode("favourites");
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({
@@ -48,25 +56,33 @@ export function FavouritesPage() {
   }, [search]);
 
   async function unfavorite(project: ProjectListItem) {
-    await api.delete(`/api/v1/projects/${project.id}/favorite`);
-    load(0, false);
+    try {
+      await api.delete(`/api/v1/projects/${project.id}/favorite`);
+      load(0, false);
+      refreshFavourites();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>{strings.nav.favourites}</h1>
 
-      <input
-        className="input"
-        style={{ maxWidth: 280 }}
-        placeholder={strings.projects.search}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <input
+          className="input"
+          style={{ maxWidth: 280 }}
+          placeholder={strings.projects.search}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      </div>
 
       {!projects && <Spinner />}
       {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
-      {projects && projects.length > 0 && (
+      {projects && projects.length > 0 && viewMode === "tiles" && (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
           {projects.map((p) => (
             <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
@@ -101,13 +117,59 @@ export function FavouritesPage() {
                 {p.summary || "—"}
               </p>
               <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
+                {strings.projects.roles}: {collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
               </div>
               <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                 {strings.projects.requirementCount}: {p.requirement_count}
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {projects && projects.length > 0 && viewMode === "list" && (
+        <div className="card" style={{ overflowX: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th />
+                <th>Name</th>
+                <th>{strings.projects.organisation(orgLabelCap)}</th>
+                <th>{strings.projects.stage}</th>
+                <th>{strings.projects.roles}</th>
+                <th>{strings.projects.requirementCount}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <button
+                      className="btn"
+                      onClick={() => unfavorite(p)}
+                      title={strings.projects.unfavorite}
+                      aria-label={strings.projects.unfavorite}
+                    >
+                      <Star size={14} fill="currentColor" />
+                    </button>
+                  </td>
+                  <td>
+                    <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      {p.summary || "—"}
+                    </div>
+                  </td>
+                  <td className="text-muted">{p.organization_name}</td>
+                  <td>
+                    {p.current_stage_name && (
+                      <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
+                    )}
+                  </td>
+                  <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
+                  <td className="text-muted">{p.requirement_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {projects && <LoadMoreButton loaded={projects.length} total={total} onClick={() => load(projects.length, true)} />}

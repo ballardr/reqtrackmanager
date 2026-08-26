@@ -45,7 +45,13 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   });
 
   await test.step("create the project that will become a template", async () => {
+    // "New project" opens a Modal (style guide "Pattern: modal dialog for
+    // entity create/rename") — scoped to it rather than the old bare-".card"
+    // xpath-ancestor climb, and its Name/Summary fields are real <label>s
+    // now, not placeholder-only (2026-08 UX audit roadmap item 521).
     await page.getByRole("button", { name: "New project" }).click();
+    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
+    await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();
     // The org picker only renders at all when the caller belongs to more
     // than one organisation (see ProjectListPage.tsx) — select explicitly
     // only if a picker is actually present, so this still works whether the
@@ -57,29 +63,14 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // picker untouched when it's present could create this template
     // project under the wrong org and silently break the "create from
     // template" step below (which only offers templates belonging to
-    // whichever org it explicitly selects). Scoped to the "New project"
-    // form card itself, not page-wide — once the admin belongs to more
-    // than one org, ProjectListPage's own "Organisation" FilterPanel select
-    // (persistent sidebar) *also* lists every org name as an option,
-    // including "Default Organization", so an unscoped locator is
-    // ambiguous between the two the moment that's true.
-    //
-    // `waitFor()` on the Name input first, not just a bare `.count()` on
-    // the org picker: `.count()` takes an immediate, non-retrying snapshot
-    // rather than auto-waiting, so checking it right after `.click()` races
-    // the form's own re-render — invisible with a single org (the check
-    // always legitimately came back 0 either way) but a real, silent
-    // "picker missed, wrong org used" failure now that a picker can
-    // actually be present.
-    await page.getByPlaceholder("Name").waitFor();
-    const newProjectForm = page.getByPlaceholder("Name").locator("xpath=ancestor::div[contains(@class,'card')][1]");
-    const orgPicker = newProjectForm.locator("select:has(option:text-is('Default Organization'))");
+    // whichever org it explicitly selects).
+    const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
-    await page.getByPlaceholder("Name").fill(templateProjectName);
-    await page.getByPlaceholder("Summary").fill("Created by Playwright (Pelion v2 spec)");
-    await page.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByLabel("Name", { exact: true }).fill(templateProjectName);
+    await newProjectDialog.getByLabel("Summary").fill("Created by Playwright (Pelion v2 spec)");
+    await newProjectDialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: templateProjectName })).toBeVisible();
   });
@@ -159,7 +150,6 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   await test.step("create a requirement with a custom field value", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await page.getByRole("button", { name: "New requirement" }).click();
-    await page.getByRole("button", { name: "Add one" }).click();
     await page.getByPlaceholder("Name", { exact: true }).fill("Ship the widget");
     await page.getByLabel("Priority").fill("High");
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -271,26 +261,26 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
   });
 
   await test.step("create a new project from the template and verify configuration was copied", async () => {
+    // "New project" opens a Modal — scoped to it, and its Name/Summary
+    // fields are real <label>s now, not placeholder-only (2026-08 UX audit
+    // roadmap item 521).
     await page.getByRole("button", { name: "New project" }).click();
+    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
+    await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();
     // The template dropdown only lists templates belonging to the
     // currently-selected org — must explicitly select the same org the
     // template project above was created under (see the identical picker
     // in the "create the project that will become a template" step above
-    // for the full reasoning on why this can't be left implicit, and why
-    // it's scoped to the form card rather than page-wide, and why
-    // `waitFor()` runs first rather than racing `.count()` against the
-    // form's own render).
-    await page.getByPlaceholder("Name").waitFor();
-    const newProjectForm = page.getByPlaceholder("Name").locator("xpath=ancestor::div[contains(@class,'card')][1]");
-    const orgPicker = newProjectForm.locator("select:has(option:text-is('Default Organization'))");
+    // for the full reasoning on why this can't be left implicit).
+    const orgPicker = newProjectDialog.locator("select:has(option:text-is('Default Organization'))");
     if (await orgPicker.count() > 0) {
       await orgPicker.selectOption({ label: "Default Organization" });
     }
-    await page.getByPlaceholder("Name").fill(clonedProjectName);
-    await page.getByPlaceholder("Summary").fill("Cloned by Playwright (Pelion v2 spec)");
-    await expect(page.getByLabel("Create from template")).toContainText(templateProjectName);
-    await page.getByLabel("Create from template").selectOption({ label: templateProjectName });
-    await page.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByLabel("Name", { exact: true }).fill(clonedProjectName);
+    await newProjectDialog.getByLabel("Summary").fill("Cloned by Playwright (Pelion v2 spec)");
+    await expect(newProjectDialog.getByLabel("Create from template")).toContainText(templateProjectName);
+    await newProjectDialog.getByLabel("Create from template").selectOption({ label: templateProjectName });
+    await newProjectDialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 

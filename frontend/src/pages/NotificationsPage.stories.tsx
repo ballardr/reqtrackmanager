@@ -2,13 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
-import { buildNotification, withRouter } from "../testing/storybook-helpers";
+import { buildNotification, withRouter, withToast } from "../testing/storybook-helpers";
 import { NotificationsPage } from "./NotificationsPage";
 
 const meta: Meta<typeof NotificationsPage> = {
   title: "Pages/NotificationsPage",
   component: NotificationsPage,
-  decorators: [withRouter("/notifications")],
+  decorators: [withRouter("/notifications"), withToast()],
 };
 export default meta;
 
@@ -41,6 +41,8 @@ export const MarkAllRead: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Mark all read" }));
     await expect(api.post).toHaveBeenCalledWith("/api/v1/notifications/read-all");
+    // Principle 7 — every mutation ends with feedback (sixth-pass audit).
+    await expect(within(document.body).getByText("All notifications marked as read")).toBeInTheDocument();
   },
 };
 

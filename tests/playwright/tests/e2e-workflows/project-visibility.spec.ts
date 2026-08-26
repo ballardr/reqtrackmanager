@@ -26,12 +26,15 @@ test.describe("project visibility: org-wide vs only specified", () => {
     await test.step("org admin creates a new Alpha project with Org-wide visibility set at creation", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto("/projects");
+      // "New project" opens a Modal (style guide "Pattern: modal dialog for
+      // entity create/rename") — scoped to it rather than the whole page.
       await page.getByRole("button", { name: "New project" }).click();
-      await expect(page.getByRole("combobox").first()).toContainText(ORG_NAMES.alpha);
-      await page.getByRole("combobox").first().selectOption({ label: ORG_NAMES.alpha });
-      await page.getByPlaceholder("Name").fill(projectName);
-      await page.getByLabel("Visibility").selectOption("org_wide");
-      await page.getByRole("button", { name: "Create", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await expect(dialog.getByRole("combobox").first()).toContainText(ORG_NAMES.alpha);
+      await dialog.getByRole("combobox").first().selectOption({ label: ORG_NAMES.alpha });
+      await dialog.getByLabel("Name", { exact: true }).fill(projectName);
+      await dialog.getByLabel("Visibility").selectOption("org_wide");
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     });
 

@@ -16,17 +16,22 @@ import type {
   RequirementStatus,
 } from "../api/types";
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
-import { SidePanel } from "../components/SidePanel";
+import { Modal } from "../components/Modal";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 
 const PAGE_SIZE = 30;
@@ -44,6 +49,7 @@ export function RequirementsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
   const canManageProject =
@@ -70,9 +76,21 @@ export function RequirementsPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
+  // 2026-08 UX audit roadmap ("unarchive endpoint + Restore button"): an
+  // archived requirement's detail page (`RequirementDetailPage.tsx`) is now
+  // where the Restore button lives, but until this filter existed there was
+  // no way to *reach* an archived requirement from this list at all — the
+  // default query already excludes them, mirroring `ProjectActionsPage.tsx`'s
+  // own `include_archived` checkbox.
+  const [includeArchived, setIncludeArchived] = useState(false);
+  // Column-header sorting (2026-08 UX audit roadmap): this list is
+  // backend-paginated (`PAGE_SIZE`/`LoadMoreButton` above), so sorting has
+  // to be a `sort`/`order` query param the backend honours rather than a
+  // client-side sort of just the currently-loaded page — sorting only the
+  // loaded rows would silently misrepresent the true full-list order.
+  type RequirementSortKey = "unique_code" | "name" | "status";
+  const [sort, setSort] = useState<SortState<RequirementSortKey> | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const addTriggerRef = useRef<HTMLButtonElement>(null);
   const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newName, setNewName] = useState("");
   const [newReasoning, setNewReasoning] = useState("");
@@ -88,6 +106,23 @@ export function RequirementsPage() {
   const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
+  // --- Bulk operations (list view only) ---------------------------------
+  // Style guide "Pattern: bulk operations on a list" — the first pilot of
+  // this shape in the app (2026-08 UX audit roadmap: bulk operations on
+  // list pages). Selection is a plain `id` Set rather than tied to array
+  // indices, so it survives `loadRequirements`'s append-on-"load more"
+  // without extra bookkeeping, and "select all" only ever means "all
+  // currently loaded rows" (U-P-06's incremental pagination makes a true
+  // "all 500 matching the filter" unsafe to promise from the client).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkArchiveDialogOpen, setBulkArchiveDialogOpen] = useState(false);
+  const [bulkMovePopoverOpen, setBulkMovePopoverOpen] = useState(false);
+  const [bulkMoveStageId, setBulkMoveStageId] = useState("");
+  const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
+  const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
@@ -96,6 +131,11 @@ export function RequirementsPage() {
     if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
+    if (includeArchived) params.set("include_archived", "true");
+    if (sort) {
+      params.set("sort", sort.key);
+      params.set("order", sort.direction);
+    }
     return params;
   }
 
@@ -111,6 +151,11 @@ export function RequirementsPage() {
   async function reload() {
     if (!projectId) return;
     setRequirements(null);
+    // A fresh load invalidates any prior selection (a filter/search change,
+    // or the post-bulk-op reload below, may drop previously-selected rows
+    // from the result set entirely) — "load more" append, by contrast,
+    // calls `loadRequirements` directly and never touches this.
+    setSelectedIds(new Set());
     const [comps, cats, stgs, defs] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
@@ -140,7 +185,7 @@ export function RequirementsPage() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, statusFilter, targetStageFilter, categoryFilter, hasCommentsOnly, onlyWatched]);
+  }, [projectId, search, statusFilter, targetStageFilter, categoryFilter, hasCommentsOnly, onlyWatched, includeArchived, sort]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
   // (?new=1) — opened once, then the param is stripped so a later reload
@@ -173,47 +218,60 @@ export function RequirementsPage() {
 
   async function createInlineComponent() {
     if (!projectId || !newInlineComponentName || !newInlineComponentPrefix) return;
-    await api.post(`/api/v1/projects/${projectId}/components`, {
-      name: newInlineComponentName,
-      prefix: newInlineComponentPrefix,
-    });
-    setNewInlineComponentName("");
-    setNewInlineComponentPrefix("");
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/components`, {
+        name: newInlineComponentName,
+        prefix: newInlineComponentPrefix,
+      });
+      setNewInlineComponentName("");
+      setNewInlineComponentPrefix("");
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function createInlineCategory() {
     if (!projectId || !newInlineCategoryName || !newInlineCategoryPrefix || !newComponentId) return;
-    await api.post(`/api/v1/projects/${projectId}/categories`, {
-      name: newInlineCategoryName,
-      prefix: newInlineCategoryPrefix,
-      component_id: newComponentId,
-    });
-    setNewInlineCategoryName("");
-    setNewInlineCategoryPrefix("");
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/categories`, {
+        name: newInlineCategoryName,
+        prefix: newInlineCategoryPrefix,
+        component_id: newComponentId,
+      });
+      setNewInlineCategoryName("");
+      setNewInlineCategoryPrefix("");
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function createRequirement() {
     if (!projectId || !newComponentId || !newCategoryId || !newTargetStageId) return;
-    await api.post(`/api/v1/projects/${projectId}/requirements`, {
-      name: newName,
-      reasoning: newReasoning,
-      description: newDescription,
-      component_id: newComponentId,
-      category_id: newCategoryId,
-      target_stage_id: newTargetStageId,
-      level: newLevel,
-      keywords: [],
-      custom_fields: customFieldValues,
-    });
-    setNewName("");
-    setNewReasoning("");
-    setNewDescription("");
-    setNewLevel("requirement");
-    setCustomFieldValues({});
-    setShowNewForm(false);
-    reload();
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements`, {
+        name: newName,
+        reasoning: newReasoning,
+        description: newDescription,
+        component_id: newComponentId,
+        category_id: newCategoryId,
+        target_stage_id: newTargetStageId,
+        level: newLevel,
+        keywords: [],
+        custom_fields: customFieldValues,
+      });
+      setNewName("");
+      setNewReasoning("");
+      setNewDescription("");
+      setNewLevel("requirement");
+      setCustomFieldValues({});
+      setShowNewForm(false);
+      reload();
+      showToast(strings.requirements.created);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function importCsv(file: File) {
@@ -225,14 +283,112 @@ export function RequirementsPage() {
       );
       setImportResult(result);
       reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     } finally {
       setImporting(false);
     }
   }
 
   async function move(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/projects/${projectId}/requirements/${id}/move`, { direction });
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${id}/move`, { direction });
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // `indeterminate` isn't a settable HTML attribute/React prop — it's a
+  // DOM-only property, so the "some but not all loaded rows selected"
+  // visual state has to be applied imperatively via the ref, same as any
+  // other indeterminate-checkbox implementation.
+  useEffect(() => {
+    if (!selectAllRef.current || !requirements) return;
+    const selectedLoaded = requirements.filter((r) => selectedIds.has(r.id)).length;
+    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < requirements.length;
+  }, [requirements, selectedIds]);
+
+  function toggleRowSelected(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllLoaded() {
+    if (!requirements) return;
+    setSelectedIds((current) => {
+      const allSelected = requirements.every((r) => current.has(r.id));
+      return allSelected ? new Set() : new Set(requirements.map((r) => r.id));
+    });
+  }
+
+  /** Runs `action` once per selected requirement, sequentially (simpler
+   * than bounded concurrency and fine for the list sizes this pilot
+   * targets), tolerating individual failures rather than aborting the
+   * whole batch — one locked/already-archived row shouldn't block the
+   * rest. Reports a CSV-import-wizard-style "N updated"/"N updated, M
+   * failed" summary via the shared `Toast`, then clears the selection and
+   * refreshes the list regardless of outcome. */
+  async function runBulkAction(action: (r: Requirement) => Promise<void>) {
+    if (!requirements) return;
+    const targets = requirements.filter((r) => selectedIds.has(r.id));
+    setBulkRunning(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const r of targets) {
+      try {
+        await action(r);
+        succeeded++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkRunning(false);
+    setBulkMoveStageId("");
     reload();
+    if (failed > 0) {
+      showToast(strings.requirements.bulkResultPartial(succeeded, failed), "error");
+    } else {
+      showToast(strings.requirements.bulkResultSuccess(succeeded));
+    }
+  }
+
+  async function bulkArchive() {
+    setBulkArchiveDialogOpen(false);
+    await runBulkAction((r) => api.delete(`/api/v1/projects/${projectId}/requirements/${r.id}`));
+  }
+
+  async function bulkMoveToStage() {
+    setBulkMoveDialogOpen(false);
+    const targetStageId = bulkMoveStageId;
+    // Mirrors `RequirementDetailPage.tsx`'s own `save()` payload exactly
+    // (the direct-edit `PUT` endpoint requires the full `RequirementUpdate`
+    // shape, not a partial patch) — every field except `target_stage_id`
+    // carries the row's own current value forward unchanged, so the only
+    // effective change is the stage.
+    await runBulkAction((r) =>
+      api.put(`/api/v1/projects/${projectId}/requirements/${r.id}`, {
+        name: r.name,
+        reasoning: r.reasoning,
+        clarification: r.clarification,
+        description: r.description,
+        component_id: r.component_id,
+        category_id: r.category_id,
+        owner_id: r.owner_id,
+        target_stage_id: targetStageId,
+        level: r.level,
+        keywords: r.keywords,
+        custom_fields: r.custom_fields,
+        change_note: "Bulk move to stage.",
+        review_date: r.review_date,
+        review_lead_days: r.review_lead_days,
+        reviewer_id: r.reviewer_id,
+      })
+    );
   }
 
   function componentName(id: string) {
@@ -275,35 +431,16 @@ export function RequirementsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.requirements.title}</h1>
-        <button ref={addTriggerRef} className="btn btn-primary" onClick={() => setAddMenuOpen((v) => !v)}>
-          <Plus size={16} /> {strings.requirements.newRequirement}
-        </button>
-        {addMenuOpen && (
-          <Popover anchorRef={addTriggerRef} title={strings.requirements.newRequirement} onClose={() => setAddMenuOpen(false)}>
-            <div className="stack" style={{ gap: "0.25rem", minWidth: 160 }}>
-              <button
-                className="btn"
-                style={{ justifyContent: "flex-start" }}
-                onClick={() => {
-                  setShowNewForm(true);
-                  setAddMenuOpen(false);
-                }}
-              >
-                {strings.requirements.addOne}
-              </button>
-              <button
-                className="btn"
-                style={{ justifyContent: "flex-start" }}
-                onClick={() => {
-                  csvWizardRef.current?.openFilePicker();
-                  setAddMenuOpen(false);
-                }}
-              >
-                {strings.requirements.importFromCsv}
-              </button>
-            </div>
-          </Popover>
-        )}
+        <SplitButtonTrigger
+          icon={<Plus size={16} />}
+          label={strings.requirements.newRequirement}
+          onDefaultAction={() => setShowNewForm(true)}
+          menuTitle={strings.requirements.newRequirement}
+          moreOptionsLabel={strings.common.moreOptions}
+          alternatives={[
+            { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
+          ]}
+        />
       </div>
 
       <CsvImportWizard
@@ -337,7 +474,10 @@ export function RequirementsPage() {
       )}
 
       {showNewForm && metaLoaded && (
-        <SidePanel title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)}>
+        // Style guide "Pattern: modal dialog for entity create/rename" —
+        // a brand-new entity opens in a Modal, not a layer that still
+        // occupies the side panel's "detail about the current view" slot.
+        <Modal title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)} size="lg">
           {components.length === 0 || categories.length === 0 ? (
             <>
               <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
@@ -407,21 +547,34 @@ export function RequirementsPage() {
             </>
           ) : (
             <>
-              <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
-              <textarea
-                className="input"
-                placeholder={strings.requirements.reasoning}
-                value={newReasoning}
-                onChange={(e) => setNewReasoning(e.target.value)}
-                rows={2}
-              />
-              <textarea
-                className="input"
-                placeholder={strings.requirements.description}
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                rows={2}
-              />
+              {/* Style guide Principle 13 ("every form field gets a visible
+                  label, not just placeholder text") — these three were
+                  previously the only fields on this form relying on
+                  placeholder text alone, which disappears the moment the
+                  field has real content. Reasoning/Description also swap
+                  their fixed `rows={2}` textareas for `AutoGrowTextarea`
+                  (roadmap item 525) so a longer answer grows to show itself
+                  instead of scrolling inside a two-line box. */}
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.name}
+                <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.reasoning}
+                <AutoGrowTextarea
+                  placeholder={strings.requirements.reasoning}
+                  value={newReasoning}
+                  onChange={setNewReasoning}
+                />
+              </label>
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.requirements.description}
+                <AutoGrowTextarea
+                  placeholder={strings.requirements.description}
+                  value={newDescription}
+                  onChange={setNewDescription}
+                />
+              </label>
               <label className="stack" style={{ gap: "0.25rem" }}>
                 {strings.requirements.component}
                 <select
@@ -489,7 +642,7 @@ export function RequirementsPage() {
               </button>
             </>
           )}
-        </SidePanel>
+        </Modal>
       )}
 
       <div className="side-grid">
@@ -504,6 +657,90 @@ export function RequirementsPage() {
             />
             <ViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
+
+          {/* Bulk operations toolbar (style guide "Pattern: bulk operations
+              on a list") — table/list view only, per this pilot's scope;
+              tile view has no checkbox column to select from. Sits directly
+              above the table rather than replacing the search/view-toggle
+              row above, so it's visible without scrolling away from the
+              list it acts on. Gated on `canManageProject` the same way the
+              checkbox column itself is (see below) — both bulk actions
+              require the same manager/administrator role the single-row
+              Archive button already requires on `RequirementDetailPage.tsx`. */}
+          {viewMode === "list" && canManageProject && selectedIds.size > 0 && (
+            <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+                <strong>{strings.requirements.bulkSelectedCount(selectedIds.size)}</strong>
+                <button className="btn" onClick={() => setSelectedIds(new Set())} disabled={bulkRunning}>
+                  {strings.requirements.bulkClearSelection}
+                </button>
+              </div>
+              <div className="row" style={{ gap: "0.5rem" }}>
+                <button className="btn btn-danger" onClick={() => setBulkArchiveDialogOpen(true)} disabled={bulkRunning}>
+                  {strings.requirements.bulkArchiveSelected}
+                </button>
+                <button
+                  ref={bulkMoveTriggerRef}
+                  className="btn"
+                  onClick={() => {
+                    setBulkMoveStageId((current) => current || stages[0]?.id || "");
+                    setBulkMovePopoverOpen((v) => !v);
+                  }}
+                  disabled={bulkRunning || stages.length === 0}
+                >
+                  {strings.requirements.bulkMoveToStage}
+                </button>
+                {bulkMovePopoverOpen && (
+                  <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
+                    <div className="stack" style={{ gap: "0.5rem", minWidth: 200 }}>
+                      <select
+                        className="input"
+                        aria-label={strings.requirements.targetVersion}
+                        value={bulkMoveStageId}
+                        onChange={(e) => setBulkMoveStageId(e.target.value)}
+                      >
+                        {stages.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn btn-primary"
+                        disabled={!bulkMoveStageId}
+                        onClick={() => {
+                          setBulkMovePopoverOpen(false);
+                          setBulkMoveDialogOpen(true);
+                        }}
+                      >
+                        {strings.requirements.bulkMoveApply}
+                      </button>
+                    </div>
+                  </Popover>
+                )}
+              </div>
+            </div>
+          )}
+
+          {bulkArchiveDialogOpen && (
+            <ConfirmDialog
+              title={strings.requirements.bulkArchiveTitle(selectedIds.size)}
+              message={strings.requirements.bulkArchiveConfirm}
+              confirmLabel={strings.requirements.bulkArchiveSelected}
+              onConfirm={bulkArchive}
+              onCancel={() => setBulkArchiveDialogOpen(false)}
+            />
+          )}
+
+          {bulkMoveDialogOpen && (
+            <ConfirmDialog
+              title={strings.requirements.bulkMoveTitle(selectedIds.size, stageName(bulkMoveStageId))}
+              message={strings.requirements.bulkMoveConfirm}
+              confirmLabel={strings.requirements.bulkMoveApply}
+              onConfirm={bulkMoveToStage}
+              onCancel={() => setBulkMoveDialogOpen(false)}
+            />
+          )}
 
           {!requirements && <Spinner />}
           {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
@@ -538,6 +775,7 @@ export function RequirementsPage() {
                         {REQUIREMENT_STATUS_LABEL[r.status]}
                       </FilterBadge>
                       {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
+                      {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
                     </div>
                     <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
                   </div>
@@ -556,9 +794,29 @@ export function RequirementsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: "9%" }}>ID</th>
-                    <th style={{ width: "38%" }}>Name</th>
-                    <th>{strings.changeRequests.status}</th>
+                    {canManageProject && (
+                      <th style={{ width: "3%" }}>
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={requirements.length > 0 && requirements.every((r) => selectedIds.has(r.id))}
+                          onChange={toggleSelectAllLoaded}
+                          aria-label={strings.requirements.bulkSelectAll}
+                        />
+                      </th>
+                    )}
+                    <SortableHeader
+                      style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
+                    <SortableHeader
+                      style={{ width: "38%" }} label="Name" sortKey="name" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
+                    <SortableHeader
+                      label={strings.changeRequests.status} sortKey="status" sort={sort}
+                      onSort={(key) => setSort((s) => cycleSort(s, key))}
+                    />
                     <th>Target · level</th>
                     <th>Component · category</th>
                     <th />
@@ -567,6 +825,16 @@ export function RequirementsPage() {
                 <tbody>
                   {requirements.map((r) => (
                     <tr key={r.id}>
+                      {canManageProject && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(r.id)}
+                            onChange={() => toggleRowSelected(r.id)}
+                            aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
+                          />
+                        </td>
+                      )}
                       <td className="text-muted">{r.unique_code}</td>
                       <td>
                         <Link to={`/projects/${projectId}/requirements/${r.id}`}>{r.name}</Link>
@@ -577,6 +845,7 @@ export function RequirementsPage() {
                             {REQUIREMENT_STATUS_LABEL[r.status]}
                           </FilterBadge>
                           {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
+                          {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
                           {badges(r)}
                         </div>
                       </td>
@@ -618,7 +887,7 @@ export function RequirementsPage() {
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {REQUIREMENT_STATUS_LABEL[s]}
                 </option>
               ))}
             </select>
@@ -645,6 +914,7 @@ export function RequirementsPage() {
           </FilterField>
           <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
           <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
+          <FilterCheckbox label={strings.requirements.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>
     </div>

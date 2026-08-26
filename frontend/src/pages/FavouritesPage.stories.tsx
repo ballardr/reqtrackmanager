@@ -1,14 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { api } from "../api/client";
-import { buildProjectListItem, withRouter } from "../testing/storybook-helpers";
+import { ApiError, api } from "../api/client";
+import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { FavouritesPage } from "./FavouritesPage";
 
 const meta: Meta<typeof FavouritesPage> = {
   title: "Pages/FavouritesPage",
   component: FavouritesPage,
-  decorators: [withRouter("/favourites")],
+  // `withStatefulAuth`: `ViewToggle`'s `useViewMode` reads/writes the view
+  // mode through `useUiPreference`, which needs a real `useAuth()` user.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/favourites"), withToast()],
 };
 export default meta;
 
@@ -45,6 +47,28 @@ export const Unfavorite: Story = {
     await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Remove from favourites" }));
     await expect(api.delete).toHaveBeenCalledWith("/api/v1/projects/p1/favorite");
+  },
+};
+
+/** A failed unfavorite call now surfaces an error toast (sixth-pass audit —
+ * this used to be an unhandled rejection with no feedback at all, since the
+ * card disappearing from the grid is the only success signal and isn't
+ * available to fall back on when the request itself fails). */
+export const UnfavoriteErrorShowsToast: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
+      total: 1,
+    });
+    spyOn(api, "delete").mockRejectedValue(new ApiError(500, "Something went wrong."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Remove from favourites" }));
+    await waitFor(() => expect(within(document.body).getByText("Something went wrong.")).toBeInTheDocument());
+    // The card is still there — the mutation genuinely failed.
+    await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
   },
 };
 
@@ -85,6 +109,25 @@ export const Empty: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("No projects to show.")).toBeInTheDocument();
+  },
+};
+
+/** `Pattern: view toggle` (2026-08 UX audit roadmap row 513) — `FavouritesPage`
+ * wired onto the same `useViewMode`/`ViewToggle` `ProjectListPage.tsx`/
+ * `RequirementsPage.tsx` already use, replacing its previous fixed
+ * CSS-grid-only layout. */
+export const ListView: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
+      total: 1,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
   },
 };
 

@@ -37,10 +37,12 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
 
     await test.step("deactivate then reactivate the orphaned account", async () => {
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
-      page.once("dialog", (dialog) => dialog.accept());
+      // Deactivate now confirms via the shared `ConfirmDialog` (sixth-pass
+      // audit) rather than `window.confirm`.
+      await row.getByRole("button", { name: "Deactivate" }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/deactivate") && r.request().method() === "POST"),
-        row.getByRole("button", { name: "Deactivate" }).click(),
+        page.getByRole("dialog", { name: "Deactivate this account?" }).getByRole("button", { name: "Deactivate" }).click(),
       ]);
       // The default listing excludes deactivated accounts entirely.
       await page.getByLabel("Include deactivated accounts").check();
@@ -53,11 +55,13 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
     });
 
     await test.step("ban the orphaned account", async () => {
-      page.once("dialog", (dialog) => dialog.accept());
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      // Ban now confirms via the shared `ConfirmDialog` (sixth-pass audit)
+      // rather than `window.confirm`.
+      await row.getByRole("button", { name: "Ban", exact: true }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/ban") && r.request().method() === "POST"),
-        row.getByRole("button", { name: "Ban", exact: true }).click(),
+        page.getByRole("dialog", { name: "Ban this account?" }).getByRole("button", { name: "Ban", exact: true }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toBeVisible();
     });

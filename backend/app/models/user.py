@@ -68,12 +68,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             preferences that don't (yet, or ever) warrant their own typed
             column — e.g. per-list tile/list view mode, keyed
             `view_mode:<page>` (`"view_mode:requirements": "tiles"`).
-            Deliberately generic (mirroring `Organization.
-            sso_group_mappings`'s precedent for "structured but open-ended,
-            rarely queried" per-row data) so a future preference of this
-            same low-stakes, display-only shape is just a new key, not a
-            schema change — synced across devices/sessions, unlike
-            equivalent client-only localStorage.
+            Deliberately generic (mirroring `ReportTemplate.chapters`'s
+            precedent for "structured but open-ended, rarely queried"
+            per-row data) so a future preference of this same low-stakes,
+            display-only shape is just a new key, not a schema change —
+            synced across devices/sessions, unlike equivalent client-only
+            localStorage.
         pronouns: Optional self-set pronouns (C-U-18).
         avatar_file_id: Optional uploaded avatar image (C-U-18). Uses
             `use_alter` since `file_assets` itself references `users`

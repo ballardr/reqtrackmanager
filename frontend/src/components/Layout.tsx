@@ -3,10 +3,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
-import type { ProjectListItem, SystemVersion } from "../api/types";
+import type { SystemVersion } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
+import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
@@ -65,7 +66,9 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <TerminologyProvider projectId={projectId}>
       <BrandingProvider projectId={projectId}>
-        <LayoutShell>{children}</LayoutShell>
+        <FavouritesProvider>
+          <LayoutShell>{children}</LayoutShell>
+        </FavouritesProvider>
       </BrandingProvider>
     </TerminologyProvider>
   );
@@ -79,32 +82,18 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
-  const [hasFavourites, setHasFavourites] = useState(false);
+  // Reactive to a favourite being toggled anywhere in the app, not just on
+  // arrival at /projects or /favourites — see `FavouritesContext`.
+  const { hasFavourites } = useFavourites();
   const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
 
-  const onFavouritableRoute = location.pathname === "/projects" || location.pathname === "/favourites";
-
   useEffect(() => {
     if (!user) return;
     api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
   }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    // Checked once on mount (so the link can appear no matter which page a
-    // session starts on) and again on every arrival at /projects or
-    // /favourites — the only two places a favourite can be toggled — since
-    // this shell never remounts across routes and would otherwise leave a
-    // freshly (un)favourited project unreflected until a hard refresh.
-    // Deliberately NOT re-checked on every navigation: that would fire this
-    // same request on every single route change for the entire session.
-    api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(
-      (list) => setHasFavourites(list.some((p) => p.is_favorite))
-    );
-  }, [user, onFavouritableRoute]);
 
   return (
     <div style={{ minHeight: "100%" }}>

@@ -153,14 +153,12 @@ def test_org_advanced_settings_roundtrip_and_password_never_returned(client, adm
         json={
             "smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_username": "relay-user",
             "smtp_password": "super-secret", "smtp_use_tls": True,
-            "sso_group_mappings": [{"sso_group": "engineering", "org_role": "member"}],
         },
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["smtp_host"] == "smtp.example.com"
     assert "smtp_password" not in resp.json()
-    assert resp.json()["sso_group_mappings"] == [{"sso_group": "engineering", "org_role": "member"}]
 
     fetched = client.get(f"/api/v1/orgs/{org_id}/advanced-settings", headers=auth_headers(admin_token))
     assert fetched.status_code == 200

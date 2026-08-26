@@ -4,7 +4,7 @@ Tests for the requirement lifecycle: creation, unique ID generation
 edit lock (C-G-12), and version history (C-A-02, C-A-09).
 """
 
-from tests.conftest import auth_headers, create_component_and_category, create_project
+from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
 
 def test_requirement_id_uses_component_and_category_prefix(client, admin_token, org_id):
@@ -111,6 +111,128 @@ def test_direct_edit_allowed_before_lock(client, admin_token, org_id):
     assert resp.json()["name"] == "Edited during scoping"
 
 
+# --- Standalone requirement approval (2026-08 UX audit roadmap, "No
+# requirement approval action; change requests can target draft
+# requirements") -------------------------------------------------------------
+
+
+def test_approve_requirement_transitions_draft_to_approved(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    assert requirement["status"] == "draft"
+    assert requirement["requires_approval"] is True
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "approved"
+    assert body["is_locked"] is True
+    assert body["requires_approval"] is False
+
+
+def test_approve_requirement_requires_project_manager_role(client, admin_token, org_id):
+    """C-U-03's clarification calls out requirement approval as a Project
+    Manager privilege specifically — an administrator (who can otherwise
+    edit/archive) is not enough, matching `decide_change_request`'s own gate
+    for change-request approval."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    admin_user_id = create_org_user(client, admin_token, org_id, "approve-admin@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": admin_user_id, "role": "project_administrator"}, headers=auth_headers(admin_token),
+    )
+    administrator_token = login(client, "approve-admin@example.com", "Password123!")
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve",
+        headers=auth_headers(administrator_token),
+    )
+    assert resp.status_code == 403, resp.text
+
+
+def test_approve_requirement_rejects_an_already_locked_requirement(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    first = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert first.status_code == 200, first.text
+
+    second = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert second.status_code == 409, second.text
+
+
+def test_create_change_request_rejects_a_still_draft_requirement(client, admin_token, org_id):
+    """The other half of the same fix: a change request exists to gate edits
+    once direct editing is locked — a draft/reviewed requirement isn't
+    locked yet, so it's edited directly instead."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["name"], "proposed_name": "x", "reason": "y",
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400, resp.text
+
+
+def test_decide_change_request_preserves_completed_status_instead_of_reverting_to_approved(client, admin_token, org_id):
+    """Regression test for the bug found alongside the requirement-approval
+    gap: `decide_change_request` used to force a MODIFY_REQUIREMENT change
+    request's target back to `RequirementStatus.APPROVED` unconditionally,
+    silently reverting an already-`COMPLETED` requirement. With the new
+    locked-requirement guard on change-request creation, the requirement's
+    status at decision time is always one of the two locked statuses
+    (`approved`/`completed`) — approving the change request must carry that
+    forward, not force it back down to `approved`."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
+    complete_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/complete", headers=auth_headers(admin_token)
+    )
+    assert complete_resp.status_code == 200, complete_resp.text
+    assert complete_resp.json()["status"] == "completed"
+
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["reasoning"], "proposed_reasoning": "Refined while completed", "reason": "clarify",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
+    decision = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
+        json={"approve": True, "note": ""}, headers=auth_headers(admin_token),
+    )
+    assert decision.status_code == 200, decision.text
+
+    updated = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    ).json()
+    assert updated["reasoning"] == "Refined while completed"
+    assert updated["status"] == "completed"
+
+
 def test_change_request_modifies_locked_requirement_and_is_logged(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
@@ -164,6 +286,64 @@ def test_archiving_preserves_history(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/history", headers=auth_headers(admin_token)
     ).json()
     assert len(history) == 1
+
+
+def test_unarchive_requirement_restores_it_and_is_idempotent(client, admin_token, org_id):
+    """Pins the `/unarchive` counterpart to `test_archiving_preserves_history`
+    above (2026-08 UX audit roadmap: archive was previously one-way for
+    requirements, unlike projects). Also covers the idempotency contract:
+    unlike `archive_action`'s 409-on-already-archived, calling unarchive on
+    an already-active requirement is a no-op, matching
+    `unarchive_project`'s own shape."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    client.delete(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    )
+    listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert requirement["id"] not in [r["id"] for r in listed]
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_archived"] is False
+
+    listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert requirement["id"] in [r["id"] for r in listed]
+
+    # Idempotent: unarchiving an already-active requirement doesn't error.
+    again = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(admin_token),
+    )
+    assert again.status_code == 200
+    assert again.json()["is_archived"] is False
+
+
+def test_unarchive_requirement_requires_manager_or_admin_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    client.delete(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    )
+
+    user_id = create_org_user(client, admin_token, org_id, "stakeholder_unarchive@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    stakeholder_token = login(client, "stakeholder_unarchive@example.com", "Password123!")
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/unarchive",
+        headers=auth_headers(stakeholder_token),
+    )
+    assert resp.status_code == 403
 
 
 def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, admin_token, org_id):
@@ -248,6 +428,14 @@ def test_target_stage_and_level_persist_through_create_update_and_change_request
         headers=auth_headers(admin_token),
     ).json()
     assert unrelated_edit["target_stage_id"] == second_stage["id"]
+
+    # A modify change request can only target an already-locked requirement
+    # (2026-08 UX audit roadmap, "No requirement approval action; change
+    # requests can target draft requirements") — approve it directly first.
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{created['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",

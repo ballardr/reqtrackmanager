@@ -20,10 +20,14 @@ type Story = StoryObj<typeof FileAttachmentList>;
 
 export const WithFilesAndUpload: Story = {
   args: { files, onUpload: fn(), onRemove: fn() },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("requirements-source.pdf")).toBeInTheDocument();
     await expect(canvas.getByText("screenshot.png")).toBeInTheDocument();
+    const file = new File(["data"], "spec.pdf", { type: "application/pdf" });
+    const input = canvasElement.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    await expect(args.onUpload).toHaveBeenCalledWith(file);
   },
 };
 

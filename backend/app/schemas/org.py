@@ -154,26 +154,19 @@ class DefaultTemplateUpdate(BaseModel):
     project_id: UUID | None
 
 
-class SsoGroupMapping(BaseModel):
-    """Maps one external SSO group name to a local org role (C-U-07, E-U-01)
-    — consumed by `services/oidc_provisioning.sync_org_roles_from_claims` on
-    every SSO login. Distinct from `Organization.oidc_required_group`, which
-    gates *whether* a login is admitted at all, not which role it gets."""
-
-    sso_group: str
-    org_role: OrgRole
-
-
 class OrgAdvancedSettingsOut(BaseModel):
-    """Per-organisation SMTP override, SSO group-mapping, Personal
-    Access Token lifetime-cap, self-signup, and external-user settings —
-    see `Organization` model docstring and docs/decisions.md."""
+    """Per-organisation SMTP override, Personal Access Token lifetime-cap,
+    self-signup, and external-user settings — see `Organization` model
+    docstring and docs/decisions.md. SSO group→role mapping used to live
+    here too (`sso_group_mappings`); it's now a per-`OrgGroup` property
+    (`OrgGroup.granted_org_role`, alongside `idp_synced_group_name`) —
+    2026-08 UX audit roadmap item 522 — managed via the org groups
+    endpoints, not this one."""
 
     smtp_host: str | None = None
     smtp_port: int | None = None
     smtp_username: str | None = None
     smtp_use_tls: bool = True
-    sso_group_mappings: list[SsoGroupMapping] = []
     pat_max_lifetime_days: int | None = None
     require_2fa: bool = False
     allow_self_signup: bool = False
@@ -187,7 +180,6 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = True
-    sso_group_mappings: list[SsoGroupMapping] = []
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
     require_2fa: bool = False
     allow_self_signup: bool = False
@@ -344,14 +336,22 @@ class OrgRoleAssign(BaseModel):
 class OrgGroupCreate(BaseModel):
     name: str
     idp_synced_group_name: str | None = None
+    # Only meaningful alongside `idp_synced_group_name` — see `OrgGroup.
+    # granted_org_role`'s model docstring. Validated together at the router
+    # layer, not here: a create payload can legitimately set `idp_synced_
+    # group_name` without `granted_org_role` (sync membership only, no
+    # role), but not the other way around.
+    granted_org_role: OrgRole | None = None
 
 
 class OrgGroupUpdate(BaseModel):
-    """Currently only the IdP-sync target can be changed after creation —
-    renaming isn't supported (matching this codebase's existing scope for
-    `OrgGroup`/`ProjectGroup`, neither of which have a rename endpoint)."""
+    """Currently only the IdP-sync target and its granted role can be
+    changed after creation — renaming isn't supported (matching this
+    codebase's existing scope for `OrgGroup`/`ProjectGroup`, neither of
+    which have a rename endpoint)."""
 
     idp_synced_group_name: str | None = None
+    granted_org_role: OrgRole | None = None
 
 
 class OrgGroupMemberAdd(BaseModel):
@@ -370,6 +370,7 @@ class OrgGroupOut(BaseModel):
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID] = []
     idp_synced_group_name: str | None = None
+    granted_org_role: OrgRole | None = None
 
 
 class UserAccessGroupRef(BaseModel):

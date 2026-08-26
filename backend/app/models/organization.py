@@ -44,12 +44,6 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             (`EncryptedString`, SOC 2 hardening pass) — same treatment as
             `oidc_client_secret`, since it's a genuine credential even
             though the feature it belongs to isn't wired in yet.
-        sso_group_mappings: Mapping of external SSO/OIDC claim values to a
-            local `OrgRole`, e.g. `[{"claim_value": "reqtrack-admins",
-            "org_role": "org_admin"}]` (C-U-07, E-U-01). Was storage-only
-            until Massif (v3)'s `OIDCAuthBackend`
-            (`app/services/oidc_provisioning.py`) started actually reading
-            it to provision org roles on first SSO login.
         slug: URL-safe identifier used to resolve this organisation's
             branded login page at `/login/{slug}` (E-P-03).
         sso_enabled / sso_only: Whether this organisation's login page offers
@@ -64,13 +58,13 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             this organisation's login page (E-P-03), same upload pattern as
             `logo_file_id`.
         oidc_required_group: Optional access gate, distinct from
-            `sso_group_mappings`. When set, a successfully-authenticated SSO
-            user whose IdP `groups`/`roles` claim doesn't contain this exact
-            value is refused a session entirely (`oidc_provisioning.
-            meets_required_group`) — "in the org" and "let in at all" are
-            deliberately separate checks, so an admin can gate access to a
-            specific provisioning group without that group needing to also
-            be one of the role-granting entries in `sso_group_mappings`.
+            `OrgGroup.granted_org_role`. When set, a successfully-
+            authenticated SSO user whose IdP `groups`/`roles` claim doesn't
+            contain this exact value is refused a session entirely
+            (`oidc_provisioning.meets_required_group`) — "in the org" and
+            "let in at all" are deliberately separate checks, so an admin
+            can gate access to a specific provisioning group without that
+            group needing to also be a role-granting one.
         pat_max_lifetime_days: Optional cap, set by this org's own admin, on
             how long a Personal Access Token scoped to this org may live.
             `None` means "use the deployment-wide default"
@@ -169,8 +163,6 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     smtp_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     smtp_password: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
     smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True)
-    sso_group_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
-
     slug: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     sso_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     sso_only: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -453,6 +445,18 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
     # (partial index — see migration 0011), so two groups can't both claim
     # to be the sync target for the same IdP group name.
     idp_synced_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # When set, alongside `idp_synced_group_name`: a user whose IdP groups/
+    # roles claim matches this group's sync name is granted this `OrgRole`
+    # at SSO login, synced down (revoked) again once the claim no longer
+    # matches — `services.oidc_provisioning.sync_org_roles_from_claims`.
+    # Replaces the previous flat, ungrouped `Organization.sso_group_mappings`
+    # (2026-08 UX audit roadmap item 522: role-granting via an SSO group
+    # claim is a property of the group being synced into, not a disconnected
+    # list keyed by a string that may or may not correspond to a real
+    # `OrgGroup`). Meaningless without `idp_synced_group_name` also set —
+    # enforced at the router layer, not a DB constraint, matching this
+    # model's existing convention of validating IdP-sync fields there.
+    granted_org_role: Mapped[OrgRole | None] = mapped_column(str_enum(OrgRole), nullable=True)
 
 
 class OrgGroupMember(UUIDPKMixin, TimestampMixin, Base):

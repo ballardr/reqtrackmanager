@@ -21,6 +21,9 @@ test("a Personal Access Token created via Preferences authenticates a real API c
 
   await page.goto("/preferences");
   await page.getByRole("tab", { name: "Personal Access Tokens", exact: true }).click();
+  // The create form opens in a `Modal` (2026-08 UX audit roadmap item
+  // 526), not a permanently-visible nested accordion.
+  await page.getByRole("button", { name: "New personal access token" }).click();
   await page.getByPlaceholder('e.g. "MCP server"').fill("Playwright E2E token");
   await page.getByRole("checkbox", { name: /Organisations this token can access/ }).first().click();
   await page.getByRole("button", { name: "Create token" }).click();
@@ -39,9 +42,10 @@ test("a Personal Access Token created via Preferences authenticates a real API c
   expect(me.email).toBe(PERSONAS.orgAdminAlphaBeta.email);
 
   // Revoking it through the UI kills that same credential for real, not
-  // just in the UI's own displayed state.
-  page.once("dialog", (dialog) => dialog.accept());
+  // just in the UI's own displayed state. Revoke now confirms via the
+  // shared `ConfirmDialog` (sixth-pass audit) rather than `window.confirm`.
   await page.getByRole("button", { name: "Revoke", exact: true }).first().click();
+  await page.getByRole("dialog", { name: "Revoke this token?" }).getByRole("button", { name: "Revoke" }).click();
   await expect(page.getByText("Playwright E2E token")).not.toBeVisible({ timeout: 10000 });
 
   const afterRevoke = await page.request.get(`${apiBaseUrl}/api/v1/auth/me`, {

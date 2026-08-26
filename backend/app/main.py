@@ -49,6 +49,7 @@ from app.services.bootstrap import run_bootstrap
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.notifications import run_digest_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
+from app.version import APP_VERSION
 
 settings = get_settings()
 
@@ -78,7 +79,13 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="ReqTrackManager API",
     description="Formal engineering requirements management system API (Ossa v1).",
-    version="1.0.0",
+    # Was hardcoded to a permanently-stale "1.0.0" (2026-08 UX audit
+    # roadmap, "Fix the hardcoded FastAPI(version=...) OpenAPI metadata
+    # constant") — now reads the same build-time version `app.version`
+    # already exposes live at `GET /api/v1/system/version`, so
+    # `/openapi.json`/`/docs` metadata tracks real releases instead of
+    # being frozen at the value set when the app was first scaffolded.
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 

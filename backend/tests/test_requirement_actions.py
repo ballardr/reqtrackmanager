@@ -2,7 +2,7 @@
 `unique_code` sequencing, outcome-transition stamping, comments, direct
 file attachments, and cross-project IDOR."""
 
-from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 
 def _action_types(client, token, project_id):
@@ -162,6 +162,57 @@ def test_archive_action_hides_it_from_default_list(client, admin_token, org_id):
     # Archiving again is refused (already archived), not silently accepted.
     resp = client.post(f"/api/v1/projects/{project['id']}/actions/{action['id']}/archive", headers=auth_headers(admin_token))
     assert resp.status_code == 409
+
+
+def test_unarchive_action_restores_it_and_is_idempotent(client, admin_token, org_id):
+    """Pins the `/unarchive` counterpart to
+    `test_archive_action_hides_it_from_default_list` above (2026-08 UX audit
+    roadmap: archive was previously one-way for actions, unlike projects).
+    Also covers the idempotency contract: unlike `archive`'s 409-on-already-
+    archived above, calling unarchive on an already-active action is a
+    no-op, matching `unarchive_project`'s own shape."""
+    project = create_project(client, admin_token, org_id)
+    action_type_id = _action_types(client, admin_token, project["id"])[0]["id"]
+    action = client.post(
+        f"/api/v1/projects/{project['id']}/actions", json={"title": "T", "action_type_id": action_type_id},
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/actions/{action['id']}/archive", headers=auth_headers(admin_token))
+
+    resp = client.post(f"/api/v1/projects/{project['id']}/actions/{action['id']}/unarchive", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.json()["is_archived"] is False
+    assert resp.json()["archived_at"] is None
+
+    default_list = client.get(f"/api/v1/projects/{project['id']}/actions", headers=auth_headers(admin_token)).json()
+    assert action["id"] in [a["id"] for a in default_list]
+
+    # Idempotent: unarchiving an already-active action doesn't error.
+    again = client.post(f"/api/v1/projects/{project['id']}/actions/{action['id']}/unarchive", headers=auth_headers(admin_token))
+    assert again.status_code == 200
+    assert again.json()["is_archived"] is False
+
+
+def test_unarchive_action_requires_manage_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    action_type_id = _action_types(client, admin_token, project["id"])[0]["id"]
+    action = client.post(
+        f"/api/v1/projects/{project['id']}/actions", json={"title": "T", "action_type_id": action_type_id},
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/actions/{action['id']}/archive", headers=auth_headers(admin_token))
+
+    user_id = create_org_user(client, admin_token, org_id, "stakeholder_action_unarchive@example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    stakeholder_token = login(client, "stakeholder_action_unarchive@example.com", "Password123!")
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/actions/{action['id']}/unarchive", headers=auth_headers(stakeholder_token)
+    )
+    assert resp.status_code == 403
 
 
 def test_action_comments_and_reactions(client, admin_token, org_id):

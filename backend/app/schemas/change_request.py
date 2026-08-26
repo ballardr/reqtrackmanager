@@ -72,6 +72,14 @@ class ChangeRequestCreate(BaseModel):
     proposed_review_date: date | None = None  # C-R-06
     proposed_review_lead_days: int | None = None
     proposed_reviewer_id: UUID | None = None  # C-R-10
+    # ADD_ACTION-only (item 514) — see `ChangeRequestVersion`'s docstring
+    # for the mutually-exclusive link-existing-vs-create-new split.
+    proposed_action_link_id: UUID | None = None
+    proposed_action_title: str | None = None
+    proposed_action_description: str | None = None
+    proposed_action_type_id: UUID | None = None
+    proposed_action_assignee_id: UUID | None = None
+    proposed_action_due_date: date | None = None
 
 
 class ChangeRequestOut(BaseModel):
@@ -103,6 +111,12 @@ class ChangeRequestOut(BaseModel):
     proposed_review_date: date | None = None
     proposed_review_lead_days: int | None = None
     proposed_reviewer_id: UUID | None = None
+    proposed_action_link_id: UUID | None = None
+    proposed_action_title: str | None = None
+    proposed_action_description: str | None = None
+    proposed_action_type_id: UUID | None = None
+    proposed_action_assignee_id: UUID | None = None
+    proposed_action_due_date: date | None = None
 
 
 class ChangeRequestDecision(BaseModel):

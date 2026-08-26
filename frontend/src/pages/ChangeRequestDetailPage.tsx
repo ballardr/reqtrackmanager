@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
+  ActionTypeDefinition,
   ChangeableRequirementField,
   ChangeEntry,
   ChangeRequest,
@@ -15,6 +16,7 @@ import type {
   Project,
   ProjectStage,
   Requirement,
+  RequirementAction,
 } from "../api/types";
 import { CHANGE_REQUEST_STATUS_LABEL, CHANGEABLE_FIELD_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
@@ -24,6 +26,7 @@ import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
@@ -38,6 +41,7 @@ export function ChangeRequestDetailPage() {
   const strings = useStrings();
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const myRoles = useMyProjectRoles(projectId);
   const canDecide = myRoles.includes("project_manager");
   const canManageTasks = canDecide || myRoles.includes("project_administrator");
@@ -55,6 +59,12 @@ export function ChangeRequestDetailPage() {
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
+  // ADD_ACTION-only (item 514) — the action type list to resolve
+  // `proposed_action_type_id` to a name, and (link-existing mode only) the
+  // action being linked, so a reviewer can see what they're actually
+  // approving rather than a bare id.
+  const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
+  const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
 
   async function reload() {
     if (!projectId || !crId) return;
@@ -76,6 +86,17 @@ export function ChangeRequestDetailPage() {
       setRequirement(await api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${crData.requirement_id}`));
     } else {
       setRequirement(null);
+    }
+    if (crData.kind === "add_action") {
+      setActionTypes(await api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`));
+      setLinkedActionPreview(
+        crData.proposed_action_link_id
+          ? await api.get<RequirementAction>(`/api/v1/projects/${projectId}/actions/${crData.proposed_action_link_id}`)
+          : null
+      );
+    } else {
+      setActionTypes([]);
+      setLinkedActionPreview(null);
     }
     try {
       const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
@@ -109,6 +130,10 @@ export function ChangeRequestDetailPage() {
   function userDisplayName(userId: string | null) {
     if (!userId) return strings.reviews.unassigned;
     return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
+  }
+
+  function actionTypeName(id: string | null) {
+    return actionTypes.find((t) => t.id === id)?.name ?? "—";
   }
 
   function targetLabel(): string {
@@ -158,11 +183,12 @@ export function ChangeRequestDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, crId]);
 
-  async function act(action: () => Promise<unknown>) {
+  async function act(action: () => Promise<unknown>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : strings.common.error);
     }
@@ -223,8 +249,12 @@ export function ChangeRequestDetailPage() {
       <div className="card stack">
         <div className="row">
           <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
-          <span className="badge">Target: {targetLabel()}</span>
-          <span className="badge">Level: {levelLabel()}</span>
+          {cr.kind !== "add_action" && (
+            <>
+              <span className="badge">Target: {targetLabel()}</span>
+              <span className="badge">Level: {levelLabel()}</span>
+            </>
+          )}
         </div>
 
         {cr.kind === "modify_requirement" ? (
@@ -235,6 +265,41 @@ export function ChangeRequestDetailPage() {
                 <span className="text-muted">{CHANGEABLE_FIELD_LABEL[field]}:</span> {proposedValueDisplay(field)}
               </div>
             ))}
+          </div>
+        ) : cr.kind === "add_action" ? (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <strong>
+              {cr.proposed_action_link_id ? strings.changeRequests.proposedLinkAction : strings.changeRequests.proposedAddAction}
+            </strong>
+            {cr.proposed_action_link_id ? (
+              <p>
+                {linkedActionPreview
+                  ? `${linkedActionPreview.unique_code} — ${linkedActionPreview.title}`
+                  : cr.proposed_action_link_id}
+              </p>
+            ) : (
+              <>
+                <p>
+                  <strong>{strings.actions.name}:</strong> {cr.proposed_action_title}
+                </p>
+                {cr.proposed_action_description && (
+                  <p>
+                    <strong>{strings.actions.description}:</strong> {cr.proposed_action_description}
+                  </p>
+                )}
+                <p>
+                  <strong>{strings.actions.actionType}:</strong> {actionTypeName(cr.proposed_action_type_id)}
+                </p>
+                <p>
+                  <strong>{strings.actions.assignee}:</strong> {userDisplayName(cr.proposed_action_assignee_id)}
+                </p>
+                {cr.proposed_action_due_date && (
+                  <p>
+                    <strong>{strings.actions.dueDate}:</strong> {cr.proposed_action_due_date}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         ) : (
           <div className="stack" style={{ gap: "0.5rem" }}>
@@ -267,7 +332,12 @@ export function ChangeRequestDetailPage() {
           {cr.status === "draft" && (
             <button
               className="btn btn-primary"
-              onClick={() => act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`))}
+              onClick={() =>
+                act(
+                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/submit`),
+                  strings.changeRequests.submittedToast
+                )
+              }
             >
               {strings.changeRequests.submit}
             </button>
@@ -275,7 +345,12 @@ export function ChangeRequestDetailPage() {
           {(cr.status === "draft" || cr.status === "submitted") && (
             <button
               className="btn"
-              onClick={() => act(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`))}
+              onClick={() =>
+                act(
+                  () => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/withdraw`),
+                  strings.changeRequests.withdrawnToast
+                )
+              }
             >
               {strings.changeRequests.withdraw}
             </button>
@@ -292,11 +367,13 @@ export function ChangeRequestDetailPage() {
               <button
                 className="btn btn-primary"
                 onClick={() =>
-                  act(() =>
-                    api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                      approve: true,
-                      note: decisionNote,
-                    })
+                  act(
+                    () =>
+                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                        approve: true,
+                        note: decisionNote,
+                      }),
+                    strings.changeRequests.approvedToast
                   )
                 }
               >
@@ -305,11 +382,13 @@ export function ChangeRequestDetailPage() {
               <button
                 className="btn btn-danger"
                 onClick={() =>
-                  act(() =>
-                    api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
-                      approve: false,
-                      note: decisionNote,
-                    })
+                  act(
+                    () =>
+                      api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                        approve: false,
+                        note: decisionNote,
+                      }),
+                    strings.changeRequests.rejectedToast
                   )
                 }
               >

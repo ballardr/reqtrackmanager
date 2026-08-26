@@ -1,5 +1,5 @@
-import { Archive } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Archive, ArchiveRestore } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -45,6 +45,21 @@ export function ActionDetailPage() {
   const [form, setForm] = useState({ title: "", description: "", actionTypeId: "", assigneeId: "", dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  // Guards `form` against `reload()` — called after every unrelated
+  // mutation on this page (posting a comment, uploading a file, linking a
+  // requirement, ...) and not awaited by its callers, so it can still be
+  // mid-flight when the user edits and saves this form right after
+  // triggering one of those other actions, clobbering the edit back to
+  // its last-saved value before Save is even clicked. Same real,
+  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
+  // own comment and docs/decisions.md. Set by every field's onChange via
+  // `updateForm` below, cleared once `save()` succeeds.
+  const formDirtyRef = useRef(false);
+
+  function updateForm(updater: (f: typeof form) => typeof form) {
+    formDirtyRef.current = true;
+    setForm(updater);
+  }
 
   async function reload() {
     if (!projectId || !actionId) return;
@@ -58,10 +73,12 @@ export function ActionDetailPage() {
     setActionTypes(types);
     setComments(comm);
     setFiles(fls);
-    setForm({
-      title: a.title, description: a.description, actionTypeId: a.action_type_id,
-      assigneeId: a.assignee_id ?? "", dueDate: a.due_date ?? "",
-    });
+    if (!formDirtyRef.current) {
+      setForm({
+        title: a.title, description: a.description, actionTypeId: a.action_type_id,
+        assigneeId: a.assignee_id ?? "", dueDate: a.due_date ?? "",
+      });
+    }
 
     // Every requirement in the project is fetched and filtered client-side
     // against `/requirements/{id}/actions` per requirement — mirrors how
@@ -107,6 +124,7 @@ export function ActionDetailPage() {
         assignee_id: form.assigneeId || null,
         due_date: form.dueDate || null,
       });
+      formDirtyRef.current = false;
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -124,6 +142,7 @@ export function ActionDetailPage() {
         due_date: form.dueDate || null,
         outcome_status: outcome,
       });
+      formDirtyRef.current = false;
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -135,6 +154,21 @@ export function ActionDetailPage() {
     try {
       await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/archive`);
       showToast(strings.actions.archivedToast);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
+  // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
+  // immediately, since restoring is reversible again (archive it right
+  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
+  // unarchive endpoint + Restore button).
+  async function restore() {
+    try {
+      await api.post(`/api/v1/projects/${projectId}/actions/${actionId}/unarchive`);
+      showToast(strings.actions.restoredToast);
       reload();
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
@@ -194,6 +228,11 @@ export function ActionDetailPage() {
             <Archive size={14} /> {strings.actions.archiveAction}
           </button>
         )}
+        {action.is_archived && (
+          <button className="btn" onClick={restore}>
+            <ArchiveRestore size={14} /> {strings.actions.restoreAction}
+          </button>
+        )}
       </div>
 
       {archiveDialogOpen && (
@@ -214,14 +253,14 @@ export function ActionDetailPage() {
               {strings.actions.name}
               <input
                 className="input" value={form.title} disabled={action.is_archived}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                onChange={(e) => updateForm((f) => ({ ...f, title: e.target.value }))}
               />
             </label>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.description}
               <textarea
                 className="input" rows={3} value={form.description} disabled={action.is_archived}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                onChange={(e) => updateForm((f) => ({ ...f, description: e.target.value }))}
               />
             </label>
             <div className="row">
@@ -234,7 +273,7 @@ export function ActionDetailPage() {
                 <select
                   className="input" aria-label={strings.actions.actionType}
                   value={form.actionTypeId} disabled={action.is_archived}
-                  onChange={(e) => setForm((f) => ({ ...f, actionTypeId: e.target.value }))}
+                  onChange={(e) => updateForm((f) => ({ ...f, actionTypeId: e.target.value }))}
                 >
                   {actionTypes.map((at) => (
                     <option key={at.id} value={at.id}>
@@ -248,7 +287,7 @@ export function ActionDetailPage() {
                 <select
                   className="input" aria-label={strings.actions.assignee}
                   value={form.assigneeId} disabled={action.is_archived}
-                  onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+                  onChange={(e) => updateForm((f) => ({ ...f, assigneeId: e.target.value }))}
                 >
                   <option value="">{strings.reviews.unassigned}</option>
                   {orgUsers.map((u) => (
@@ -262,7 +301,7 @@ export function ActionDetailPage() {
                 {strings.actions.dueDate}
                 <input
                   className="input" type="date" value={form.dueDate} disabled={action.is_archived}
-                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  onChange={(e) => updateForm((f) => ({ ...f, dueDate: e.target.value }))}
                 />
               </label>
             </div>

@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { ProjectReportConfig, ReportTemplate } from "../api/types";
-import { buildProject, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportsPage } from "./ReportsPage";
 
 const PROJECT_ID = "project-1";
@@ -40,7 +40,7 @@ function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unkno
 const meta: Meta<typeof ReportsPage> = {
   title: "Pages/ReportsPage",
   component: ReportsPage,
-  decorators: [withStatefulAuth(buildUser()), withRouter(`/projects/${PROJECT_ID}/reports`, "/projects/:projectId/reports")],
+  decorators: [withStatefulAuth(buildUser()), withRouter(`/projects/${PROJECT_ID}/reports`, "/projects/:projectId/reports"), withToast()],
 };
 export default meta;
 
@@ -90,6 +90,23 @@ export const FiltersSection: Story = {
     await waitFor(() => expect(canvas.getByText("Include archived requirements")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Keyword"), "safety");
     await expect(canvas.getByPlaceholderText("Keyword")).toHaveValue("safety");
+  },
+};
+
+/** A failed generation now surfaces an error toast (sixth-pass audit — this
+ * used to be a `try`/`finally` with no `catch` at all, so a failed request
+ * had literally zero visible feedback beyond the button re-enabling). */
+export const GenerateFailureShowsToast: Story = {
+  beforeEach: () => {
+    mockReportsApis();
+    spyOn(api, "postForBlob").mockRejectedValue(new ApiError(500, "Report generation failed."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Generate PDF" }));
+    await waitFor(() => expect(within(document.body).getByText("Report generation failed.")).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeEnabled();
   },
 };
 

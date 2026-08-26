@@ -15,6 +15,7 @@ const en = {
     viewAll: "View all notifications",
     search: "Search notifications",
     unreadOnly: "Unread only",
+    markAllReadToast: "All notifications marked as read",
     preferencesTitle: "Notification preferences",
     ui: "In-app",
     email: "Email",
@@ -111,6 +112,7 @@ const en = {
     empty: "No {projects} to show.",
     favorite: "Favourite",
     unfavorite: "Remove from favourites",
+    favouritesOnly: "Favourites only",
     allRoles: "All roles",
     stageStatusLabel: "{Stage} status",
     allStages: "All {stage} statuses",
@@ -119,6 +121,11 @@ const en = {
     organisation: (orgCap: string) => orgCap,
     importFromBundle: "Or import from an exported {project} bundle (.zip)",
     importWarnings: "Imported with warnings",
+    created: "{Project} created",
+    // Small usability fix noted in the 2026-08 UX audit's "How things get
+    // created" section: picking an import file used to silently hide the
+    // template picker with no explanation — this note replaces it instead.
+    importIgnoresTemplate: "A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.",
   },
   overview: {
     title: "{Project} overview",
@@ -136,7 +143,6 @@ const en = {
   requirements: {
     title: "{Requirements}",
     newRequirement: "New {requirement}",
-    addOne: "Add one",
     importFromCsv: "Import from CSV",
     search: "Search by name or ID",
     name: "Name",
@@ -155,10 +161,28 @@ const en = {
     archiveTitle: "Archive this {requirement}?",
     archiveConfirm: "It moves out of the active list, but its history and links are kept.",
     archived: "{Requirement} archived",
+    archivedBadge: "Archived",
+    includeArchived: "Include archived",
+    // No `ConfirmDialog` here, unlike Archive: mirrors `ProjectAdminPage.tsx`'s
+    // existing unarchive button, which also fires immediately — restoring is
+    // reversible again (archive it right back), unlike the Tier-1-confirmed
+    // archive action itself (2026-08 UX audit roadmap: unarchive endpoint +
+    // Restore button).
+    restore: "Restore",
+    restored: "{Requirement} restored",
     save: "Save",
     changeNote: "Reason for change",
-    history: "Change log",
     when: "When",
+    // The History/Activity cards merged into one, with a view toggle
+    // (2026-08 UX audit roadmap item 516) — "Version history" is
+    // specifically this {requirement}'s own approved version/status
+    // transitions (the `RequirementVersion` ledger); "Activity" is the
+    // broader audit-log feed covering everything that happened to it,
+    // version changes included, so the two labels need to read as
+    // genuinely distinct rather than synonyms. Card heading and the
+    // toggle's two button labels all share these two strings.
+    versionHistory: "Version history",
+    activity: "Activity",
     discussion: "Discussion",
     addComment: "Add comment",
     links: "Traceability links",
@@ -167,12 +191,16 @@ const en = {
     targetRequirement: "Target {requirement}",
     selectARequirementToLink: "Select a {requirement}…",
     removeLink: "Remove link",
+    removeLinkTitle: "Remove this link?",
+    removeLinkConfirm: "The link is removed from both {requirements}; the {requirement} itself is unaffected.",
     noLinks: "No links yet.",
     actionsSection: "Actions",
     linkExistingAction: "Link existing action",
     selectAnActionToLink: "Select an action…",
     createAndLinkAction: "Create and link a new action",
     unlinkAction: "Unlink",
+    unlinkActionTitle: "Unlink this action?",
+    unlinkActionConfirm: "The action itself isn't affected — it just stops appearing on this {requirement}'s Actions card.",
     noLinkedActions: "No actions linked yet.",
     attachments: "Attachments",
     subscribe: "Subscribe",
@@ -185,8 +213,12 @@ const en = {
     cancelEdit: "Cancel",
     attachFile: "Attach a file",
     removeAttachment: "Remove attachment",
+    approve: "Approve",
+    approved: "{Requirement} approved",
     markCompleted: "Mark completed",
     unmarkCompleted: "Revert completion",
+    completed: "{Requirement} marked completed",
+    completionReverted: "Completion reverted",
     reviewSection: "Review scheduling",
     reviewDate: "Review date",
     reviewLeadDays: "Reminder lead time (days)",
@@ -209,6 +241,26 @@ const en = {
     targetVersion: "Target version",
     level: "Level",
     attachmentsLockedNotice: "This {requirement} is approved — new attachments must be added via a {changeRequest}.",
+    created: "{Requirement} created",
+    // Bulk operations (list/table view only) — style guide "Pattern: bulk
+    // operations on a list". `bulkSelectRow`/`bulkSelectAll` label the
+    // checkbox column (accessible-name parity with the reorder buttons'
+    // existing aria-label convention); the `bulk*Title`/`bulk*Confirm`
+    // pairs follow the same split as the single-row `archiveTitle`/
+    // `archiveConfirm` above, just pluralised and count-bearing.
+    bulkSelectAll: "Select all",
+    bulkSelectRow: (label: string) => `Select ${label}`,
+    bulkSelectedCount: (n: number) => `${n} selected`,
+    bulkClearSelection: "Clear selection",
+    bulkArchiveSelected: "Archive selected",
+    bulkArchiveTitle: (n: number) => `Archive ${n} {requirements}?`,
+    bulkArchiveConfirm: "They move out of the active list, but their history and links are kept.",
+    bulkMoveToStage: "Move to stage",
+    bulkMoveApply: "Move",
+    bulkMoveTitle: (n: number, stageName: string) => `Move ${n} {requirements} to "${stageName}"?`,
+    bulkMoveConfirm: "Their target {stage} changes immediately.",
+    bulkResultSuccess: (n: number) => `${n} updated`,
+    bulkResultPartial: (n: number, failed: number) => `${n} updated, ${failed} failed`,
   },
   reviews: {
     projectTitle: "{Requirements} due for review",
@@ -225,6 +277,9 @@ const en = {
     newChangeRequest: "New {changeRequest}",
     kindNew: "New {requirement}",
     kindModify: "Modify {requirement}",
+    kindAddAction: "Add action",
+    proposedAddAction: "Proposed action",
+    proposedLinkAction: "Linking existing action",
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
@@ -252,6 +307,11 @@ const en = {
     fieldsToChange: "Fields to change",
     fieldsToChangeHint: "Select which fields this {changeRequest} proposes to change — values are pre-filled from the {requirement}'s current content. Unselected fields are left untouched when approved.",
     selectARequirement: "Select a {requirement}",
+    // A modify {changeRequest} can only target an already-approved
+    // {requirement} (2026-08 UX audit roadmap, "No requirement approval
+    // action; change requests can target draft requirements") — a
+    // still-draft/reviewed one is edited directly instead.
+    noLockableRequirements: "No {requirements} are approved yet — approve one first, or edit a draft {requirement} directly.",
     selectAtLeastOneField: "Select at least one field to change.",
     attachments: "Attachments",
     selectAttachment: (org: string) => `Select from ${org} resources`,
@@ -261,6 +321,11 @@ const en = {
     voteComments: "Vote comments",
     noVoteComments: "No comments were left with any vote.",
     defaultTarget: "Default (first {stage})",
+    created: "{ChangeRequest} created",
+    submittedToast: "{ChangeRequest} submitted",
+    withdrawnToast: "{ChangeRequest} withdrawn",
+    approvedToast: "{ChangeRequest} approved",
+    rejectedToast: "{ChangeRequest} rejected",
   },
   admin: {
     settings: "{Project} settings",
@@ -423,7 +488,12 @@ const en = {
     disabled: "Disabled",
     disable: "Disable",
     enable: "Enable",
-    disableConfirm: "Disable \"{name}\"? Every member, including its own admins, will immediately lose access to all of its projects and content until you re-enable it. No data will be touched.",
+    disableTitle: "Disable \"{name}\"?",
+    disableConfirm: "Every member, including its own admins, will immediately lose access to all of its projects and content until you re-enable it. No data will be touched.",
+    createdToast: (orgCap: string) => `${orgCap} created`,
+    disabledToast: (org: string) => `${org} disabled`,
+    enabledToast: (org: string) => `${org} enabled`,
+    deletedToast: (orgCap: string) => `${orgCap} permanently deleted`,
     delete: "Delete",
     deleteTitle: (org: string) => `Permanently delete this ${org}`,
     deleteHint: (name: string, org: string) =>
@@ -438,17 +508,35 @@ const en = {
     // settings hierarchy") — Org Admin's 15 flat accordions regrouped into
     // 6 route-addressable groups. Static text, not org-dependent, matching
     // the style guide's own "after" diagram exactly.
+    //
+    // "People" was later split into its own two top-level groups, "Users"
+    // and "Groups" (style guide "Pattern: settings hierarchy" addendum,
+    // 2026-08-24 — a flat regroup, no new navigation capability) — new
+    // strings rather than reusing `groupPeople` for one of the two.
     groupOverview: "Overview",
-    groupPeople: "People",
+    groupUsers: "Users",
+    groupGroups: "Groups",
     groupProjectsWorkflow: "Projects & workflow",
     groupBrandingDefaults: "Branding & defaults",
     groupTemplatesReports: "Templates & reports",
-    groupIntegrationsSecurity: "Integrations & security",
+    // "Integrations & security" was later split into its own three
+    // top-level groups — SSO/OIDC + SCIM (both identity-provisioning
+    // integrations) grouped as "OAuth/SSO", SMTP as its own "Email", and
+    // 2FA/self-signup/external-user-policy/PATs as "Security" — a flat
+    // regroup per the style guide's settings-hierarchy addendum, same
+    // reasoning as the earlier Users/Groups split above.
+    groupOauthSso: "OAuth/SSO",
+    groupEmail: "Email",
+    groupSecurity: "Security",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
     rename: "Rename",
     renameHint: (org: string) => `The new name is used everywhere this ${org} is displayed, including its own delete-confirmation prompt.`,
+    renamed: "Renamed",
+    // Style guide "Pattern: action menu" — the kebab trigger combining
+    // Rename and Export on the Overview group.
+    orgActions: (orgCap: string) => `${orgCap} actions`,
     backToOrganizations: (orgPlural: string) => `Back to ${orgPlural.toLowerCase()}`,
     notAMemberTitle: (org: string) => `You're not a member of this ${org}`,
     notAMemberHint: "As a server admin you can still set it up: become its admin yourself, or create an admin user for someone else to log in as.",
@@ -482,6 +570,7 @@ const en = {
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
     newUser: "New user",
+    userCreated: "User created",
     searchUsers: "Search by name or email",
     groups: (orgCap: string) => `${orgCap} groups`,
     searchGroups: "Search by name",
@@ -492,7 +581,15 @@ const en = {
     nestedGroupLabel: (name: string) => `${name} (nested group)`,
     idpSyncedGroupName: "IdP-synced group name",
     idpSyncedGroupNamePlaceholder: "e.g. eng-team",
-    saveIdpSync: "Save sync name",
+    // Role-granting (2026-08 UX audit roadmap item 522) is surfaced right
+    // next to the sync name and saved together via one button — replaces
+    // the old, disconnected "SSO group mappings" list this org's Advanced/
+    // OAuth-SSO settings used to carry (`ssoMappings` etc., retired).
+    grantedOrgRole: "Grants role on sync",
+    grantedOrgRoleNone: "No role granted",
+    grantedOrgRoleHint: "A user whose IdP group claim matches the sync name above is granted this role — requires a sync name to also be set.",
+    ssoNotConfiguredHint: (org: string) => `Set up SSO/OIDC for this ${org} first to grant a role here.`,
+    saveIdpSync: "Save sync settings",
     resources: "Shared resources",
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
     lockDisplayName: "Lock display name",
@@ -523,11 +620,19 @@ const en = {
     testEmailNoSmtp: "Set an SMTP host above first.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
-    ssoMappings: "SSO group mappings",
-    ssoGroup: "SSO group",
     orgRole: (orgCap: string) => `${orgCap} role`,
-    addMapping: "Add mapping",
-    saveAdvanced: "Save advanced settings",
+    // SSO group→role mapping moved from here (a flat, disconnected list)
+    // onto the group being synced into instead (2026-08 UX audit roadmap
+    // item 522) — see `grantedOrgRole` etc. above, managed from Groups.
+    ssoMappingsMovedHint: "Granting a role via an SSO group claim is now set on the group itself — see the Groups section.",
+    // `saveAdvanced` submits the whole `OrgAdvancedSettings` object — one
+    // shared PUT behind three separate resource-menu groups now (2026-08
+    // UX audit roadmap item 523: OAuth/SSO, Email, Security), each with
+    // its own button calling it. Labelled per the group it's actually on,
+    // not the retired "Advanced" concept the object's own backend name
+    // still carries.
+    saveAdvanced: "Save security settings",
+    saveEmailSettings: "Save email settings",
     accessReview: "Access review",
     filterStale: "Stale (180+ days)",
     filterNo2fa: "No 2FA",
@@ -585,12 +690,15 @@ const en = {
     patOtherOrgs: (n: number, orgPlural: string) => `Also scoped to ${n} other ${orgPlural.toLowerCase().replace(/s$/, "")}(s)`,
     patRevoke: "Revoke",
     patDescope: "Descope",
-    patDescopeConfirm: (org: string, orgPlural: string) =>
-      `Remove this ${org} from the token's scope? It will remain valid for the member's other ${orgPlural.toLowerCase()}.`,
-    patRevokeOneConfirm: "Revoke this token outright? This cannot be undone.",
+    patDescopeTitle: (org: string) => `Remove this ${org} from the token's scope?`,
+    patDescopeConfirm: (orgPlural: string) =>
+      `It will remain valid for the member's other ${orgPlural.toLowerCase()}.`,
+    patRevokeOneTitle: "Revoke this token outright?",
+    patRevokeOneConfirm: "This cannot be undone.",
     patRevokeAll: (org: string) => `Revoke all Personal Access Tokens for this ${org}`,
-    patRevokeAllConfirm: (org: string, orgPlural: string) =>
-      `Revoke every Personal Access Token that touches this ${org}? This fully revokes each matching token — including any other ${orgPlural.toLowerCase()} it's also scoped to, not just this one — and cannot be undone.`,
+    patRevokeAllTitle: (org: string) => `Revoke every Personal Access Token that touches this ${org}?`,
+    patRevokeAllConfirm: (orgPlural: string) =>
+      `This fully revokes each matching token — including any other ${orgPlural.toLowerCase()} it's also scoped to, not just this one — and cannot be undone.`,
     patRevokeAllResult: "Revoked {n} token(s).",
     patNone: (org: string) => `No tokens currently reach this ${org}.`,
     projectStatuses: "{Project} statuses",
@@ -605,7 +713,6 @@ const en = {
     deleteLinkType: "Delete this link type",
     deleteReportTemplate: (name: string) => `Delete ${name}`,
     deleteResource: (name: string) => `Delete ${name}`,
-    removeSsoMapping: (group: string) => `Remove mapping for ${group}`,
   },
   importMerge: {
     action: (org: string) => `Import into this ${org}`,
@@ -653,17 +760,28 @@ const en = {
     serverAdminBadge: "Server admin",
     deactivate: "Deactivate",
     reactivate: "Reactivate",
-    deactivateConfirm: "Deactivate this account? They will be unable to log in until reactivated.",
+    deactivateTitle: "Deactivate this account?",
+    deactivateConfirm: "They will be unable to log in until reactivated.",
+    deactivatedToast: "Account deactivated",
+    reactivatedToast: "Account reactivated",
     ban: "Ban",
     unban: "Unban",
-    banConfirm: (org: string) => `Ban this account? They will be deactivated immediately, and no ${org} admin will be able to grant them a role again until you unban them.`,
+    banTitle: "Ban this account?",
+    banConfirm: (org: string) => `They will be deactivated immediately, and no ${org} admin will be able to grant them a role again until you unban them.`,
+    bannedToast: "Account banned",
+    unbannedToast: "Account unbanned",
     grantServerAdmin: "Grant server admin",
     revokeServerAdmin: "Revoke server admin",
-    grantServerAdminConfirm: (orgPlural: string) => `Grant server admin to this user? They will be able to manage ${orgPlural.toLowerCase()} and other server admins.`,
-    revokeServerAdminConfirm: "Revoke server admin from this user?",
+    grantServerAdminTitle: "Grant server admin to this user?",
+    grantServerAdminConfirm: (orgPlural: string) => `They will be able to manage ${orgPlural.toLowerCase()} and other server admins.`,
+    grantedServerAdminToast: "Server admin granted",
+    revokeServerAdminTitle: "Revoke server admin from this user?",
+    revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
+    revokedServerAdminToast: "Server admin revoked",
     patRevokeAll: "Revoke all Personal Access Tokens platform-wide",
     patRevokeAllHint: (orgPlural: string) => `Incident-response action: revokes every non-revoked Personal Access Token in the deployment, regardless of who owns it or which ${orgPlural.toLowerCase()}(s) it's scoped to.`,
-    patRevokeAllConfirm: "Revoke every Personal Access Token on the entire platform? This cannot be undone.",
+    patRevokeAllTitle: "Revoke every Personal Access Token on the entire platform?",
+    patRevokeAllConfirm: "This cannot be undone.",
     patRevokeAllResult: "Revoked {n} token(s) platform-wide.",
     emailTab: "Email",
     testEmail: "Send test email",
@@ -734,6 +852,20 @@ const en = {
     myGroups: "Groups",
     inheritedGroup: "via a nested group",
     manageOrganisation: (org: string) => `Manage ${org}`,
+    // "Leave organisation" moved here from Org Admin (2026-08 UX audit
+    // roadmap item 520) — it's about the current user's own membership,
+    // not an org-level setting, so it belongs alongside the rest of "your
+    // access" rather than Org Admin's danger-zone-adjacent controls.
+    leaveOrg: "Leave",
+    // Short, per-row accessible name (distinguishes each org's "Leave"
+    // button from every other row's) — the longer explanation is the
+    // hover `title` only, not repeated into the accessible name.
+    leaveOrgAriaLabel: (orgName: string) => `Leave ${orgName}`,
+    leaveOrgTooltip: (orgName: string) => `Remove your own membership in ${orgName}`,
+    leaveOrgTitle: (orgName: string) => `Leave ${orgName}?`,
+    leaveOrgConfirm: (org: string) =>
+      `You'll lose access to every {project} in this ${org} unless an admin adds you back — this can be undone by re-inviting you.`,
+    leftOrgToast: (orgCap: string) => `Left ${orgCap.toLowerCase()}`,
     changePassword: "Change password",
     currentPassword: "Current password",
     newPassword: "New password",
@@ -758,6 +890,7 @@ const en = {
     patExpiry: "Expiry",
     patExpiryTooLong: (orgPlural: string) =>
       `Can't be extended past {date} — the longest lifetime the selected ${orgPlural.toLowerCase()}' policies currently allow.`,
+    patNew: "New personal access token",
     patCreate: "Create token",
     patCreatedTitle: "Token created",
     patCreatedHint: "Copy this token now — it won't be shown again.",
@@ -765,9 +898,13 @@ const en = {
     patLastUsed: "Last used",
     patNever: "Never used",
     patRevoke: "Revoke",
-    patRevokeConfirm: "Revoke this token? Anything using it will stop working immediately. This cannot be undone.",
+    patRevokeTitle: "Revoke this token?",
+    patRevokeConfirm: "Anything using it will stop working immediately. This cannot be undone.",
+    patRevokedToast: "Token revoked",
     patRevokeAll: "Revoke all",
-    patRevokeAllConfirm: "Revoke every one of your Personal Access Tokens? This cannot be undone.",
+    patRevokeAllTitle: "Revoke every one of your Personal Access Tokens?",
+    patRevokeAllConfirm: "This cannot be undone.",
+    patRevokedAllToast: "All tokens revoked",
     patNone: "You haven't created any Personal Access Tokens yet.",
     patNoOrgsSelected: (org: string) => `Select at least one ${org}.`,
   },
@@ -790,9 +927,26 @@ const en = {
     archivedToast: "Action archived",
     archiveTitle: "Archive this action?",
     archiveConfirm: "It can no longer be edited afterwards, but stays visible on every {requirement} it's linked to.",
+    // No `ConfirmDialog` here, matching `ProjectAdminPage.tsx`'s existing
+    // unarchive button (also fires immediately) — reversible again, unlike
+    // the Tier-1-confirmed archive action itself.
+    restoreAction: "Restore",
+    restoredToast: "Action restored",
     linkedRequirements: "Linked {requirements}",
     noLinkedRequirements: "Not linked to any {requirement} yet.",
     completedAt: "Completed",
+    created: "Action created",
+  },
+  // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
+  // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a
+  // shared file from a source (today just org shared resources) and
+  // attaching it to whatever opened the dialog.
+  resourcePicker: {
+    orgResourcesSource: (orgLabelCap: string) => `${orgLabelCap} shared resources`,
+    noFiles: "No files available in this source.",
+    attachSelected: (n: number) => (n === 0 ? "Attach selected" : `Attach ${n} selected`),
+    linkFromSharedResources: "Link from shared resources",
+    attachedToast: (n: number) => (n === 1 ? "1 file linked" : `${n} files linked`),
   },
   common: {
     loading: "Loading…",
@@ -812,7 +966,13 @@ const en = {
     platformDefault: "Platform default",
     customValue: "Custom",
     resetToPlatformDefault: "Reset to platform default",
+    chooseFile: "Choose file",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
+    // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:
+    // split-button trigger") — generic across every call site, not
+    // per-instance, since the chevron's own job ("reveal the alternatives")
+    // doesn't change with what those alternatives are.
+    moreOptions: "More options",
   },
 };
 

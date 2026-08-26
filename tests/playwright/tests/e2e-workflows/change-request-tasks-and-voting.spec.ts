@@ -28,7 +28,13 @@ test.describe("change-request tasks and stakeholder voting", () => {
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Change requests", exact: true }).click();
       await page.getByRole("button", { name: "New change request" }).click();
-      await expect(page.getByRole("combobox").first()).toContainText("HW-FN-001");
+      // The create form is a `Modal` portalled to the end of
+      // `document.body` — scope to it rather than an unscoped
+      // `getByRole("combobox").first()`, which would otherwise resolve to
+      // the filter sidebar's own Status select (it precedes the dialog in
+      // DOM order once the form is a portal instead of an inline block).
+      const dialog = page.getByRole("dialog", { name: "New change request" });
+      await expect(dialog.getByRole("combobox").first()).toContainText("HW-FN-001");
       const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
       await nameCheckbox.check();
       await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);

@@ -206,6 +206,16 @@ def complete_requirement(headers: dict, project_id: str, requirement_id: str) ->
     r.raise_for_status()
 
 
+def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
+    """Archives a requirement (soft-delete, C-A-06). Left archived rather
+    than restored in the demo dataset so a reviewer has a concrete example
+    to click "Restore" on — see `POST .../unarchive`, added per the 2026-08
+    UX audit roadmap ("archive was one-way for requirements, unlike
+    projects")."""
+    r = httpx.delete(f"{BASE}/projects/{project_id}/requirements/{requirement_id}", headers=headers, timeout=30)
+    r.raise_for_status()
+
+
 def add_requirement_comment(headers: dict, project_id: str, requirement_id: str, body: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments", json={"body": body}, headers=headers, timeout=30)
     r.raise_for_status()
@@ -231,6 +241,24 @@ def create_change_request(
         body["proposed_component_id"] = component_id
     if category_id:
         body["proposed_category_id"] = category_id
+    r = httpx.post(f"{BASE}/projects/{project_id}/change-requests", json=body, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_add_action_change_request(
+    headers: dict, project_id: str, requirement_id: str, *,
+    action_title: str, action_description: str, action_type_id: str, reason: str, assignee_id: str | None = None,
+) -> dict:
+    """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
+    only valid once `requirement_id` is already locked (APPROVED/COMPLETED);
+    see `create_change_request`'s sibling helpers, which each already
+    require the same, for a requirement to target with this."""
+    body = {
+        "kind": "add_action", "requirement_id": requirement_id, "reason": reason,
+        "proposed_action_title": action_title, "proposed_action_description": action_description,
+        "proposed_action_type_id": action_type_id, "proposed_action_assignee_id": assignee_id,
+    }
     r = httpx.post(f"{BASE}/projects/{project_id}/change-requests", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -353,6 +381,15 @@ def add_action_comment(headers: dict, project_id: str, action_id: str, body: str
     r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/comments", json={"body": body}, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
+
+
+def archive_action(headers: dict, project_id: str, action_id: str) -> None:
+    """Archives a requirement action. Left archived rather than restored in
+    the demo dataset so a reviewer has a concrete example to click
+    "Restore" on — see `POST .../unarchive`, added per the 2026-08 UX audit
+    roadmap ("archive was one-way for actions, unlike projects")."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/actions/{action_id}/archive", headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 def create_report_template(headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str) -> dict:
@@ -567,6 +604,9 @@ def main() -> None:
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])
 
+    print("Archiving a descoped Falcon-3 requirement (demonstrates the 'Include archived' filter and Restore button)...")
+    archive_requirement(h_pm, drone["id"], drone_reqs["Support geofencing with a configurable no-fly boundary"]["id"])
+
     print("Linking related Falcon-3 requirements (C-G-09)...")
     gps_req = drone_reqs["Acquire GPS position lock within 5 seconds of power-on in open-sky conditions"]
     return_to_home_req = drone_reqs["Autonomously return to launch point when battery charge falls below 15%"]
@@ -579,12 +619,27 @@ def main() -> None:
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
-    firmware_review = create_and_link_action(
-        h_pm, drone["id"], remote_id_req["id"], title="Review remote-ID firmware module against FAA rule text",
-        description="Line-by-line review of the broadcast module against the published Part 107 remote "
+    # `remote_id_req` is seeded directly into "complete" status (DRONE_
+    # REQUIREMENTS, above) — already locked, so adding an action to it goes
+    # through an ADD_ACTION change request (2026-08 UX audit roadmap item
+    # 514) rather than the direct create-and-link call every other action
+    # below still uses on its still-draft target requirement.
+    firmware_review_title = "Review remote-ID firmware module against FAA rule text"
+    firmware_review_cr = create_add_action_change_request(
+        h_pm, drone["id"], remote_id_req["id"],
+        action_title=firmware_review_title,
+        action_description="Line-by-line review of the broadcast module against the published Part 107 remote "
         "identification rule, ahead of the compliance deadline.",
-        action_type_id=drone_action_types["Review"]["id"], assignee_id=demo_engineer["user_id"],
-        due_date=(date.today() + timedelta(days=5)).isoformat(),
+        action_type_id=drone_action_types["Review"]["id"],
+        reason="Compliance deadline requires a documented review of the broadcast module, not just informal sign-off.",
+        assignee_id=demo_engineer["user_id"],
+    )
+    submit_change_request(h_pm, drone["id"], firmware_review_cr["id"])
+    decide_change_request(h_pm, drone["id"], firmware_review_cr["id"], approve=True,
+                           note="Approved — compliance review, proceed.")
+    firmware_review = next(
+        a for a in httpx.get(f"{BASE}/projects/{drone['id']}/requirements/{remote_id_req['id']}/actions", headers=h_pm, timeout=30).json()
+        if a["title"] == firmware_review_title
     )
     set_action_outcome(h_pm, drone["id"], firmware_review, "completed")
     add_action_comment(
@@ -592,6 +647,9 @@ def main() -> None:
         "Reviewed against the current rule text — one broadcast field was using the wrong units, fixed in "
         "firmware rev 2.3.1. No other gaps found.",
     )
+    # Completed and signed off — archived to demonstrate the 'Include
+    # archived' filter and Restore button on ActionDetailPage.
+    archive_action(h_pm, drone["id"], firmware_review["id"])
     wind_test = create_and_link_action(
         h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],
         title="Wind tunnel stability test at 45 km/h sustained gust",
@@ -671,6 +729,12 @@ def main() -> None:
     cloud_reqs = seed_project(h_pm, cloud, cloud_components, cloud_categories, CLOUD_REQUIREMENTS, demo_admin["user_id"])
 
     print("Opening and approving a change request on Solstice Cloud Platform...")
+    # A modify change request can only target an already-locked requirement
+    # (2026-08 UX audit roadmap, "No requirement approval action; change
+    # requests can target draft requirements") — already true here, since
+    # this requirement's CLOUD_REQUIREMENTS spec sets its status to
+    # "approved" directly (via `seed_project`/`set_requirement_status`), not
+    # left as "draft".
     latency_req = cloud_reqs["Respond to authenticated read requests within 200ms at the 95th percentile under nominal load"]
     cloud_cr = create_change_request(
         h_pm, cloud["id"], kind="modify_requirement", requirement_id=latency_req["id"],
@@ -683,6 +747,27 @@ def main() -> None:
     submit_change_request(h_pm, cloud["id"], cloud_cr["id"])
     decide_change_request(h_pm, cloud["id"], cloud_cr["id"], approve=True,
                            note="Approved — infra team confirmed headroom for the tighter target in the latest load test.")
+
+    print("Proposing an action on the now-locked latency requirement (add-action change request)...")
+    # 2026-08 UX audit roadmap item 514: once a requirement is locked
+    # (true for `latency_req` since the CR just above), adding an action to
+    # it goes through an ADD_ACTION change request instead of the direct
+    # create-and-link endpoint — `latency_req` is reused deliberately here
+    # (not a fresh requirement) specifically to demonstrate the gate on an
+    # already-locked one.
+    cloud_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{cloud['id']}/action-types", headers=h_pm, timeout=30).json()}
+    latency_action_cr = create_add_action_change_request(
+        h_pm, cloud["id"], latency_req["id"],
+        action_title="Re-run the p95 latency benchmark against the tightened 150ms target",
+        action_description="Confirm the renegotiated SLA is actually met under nominal load, not just "
+        "theoretically achievable, before the next customer review.",
+        action_type_id=cloud_action_types["Test"]["id"], reason="Need evidence against the tightened target "
+        "before the next customer review, not just the infra team's headroom estimate.",
+        assignee_id=demo_engineer["user_id"],
+    )
+    submit_change_request(h_pm, cloud["id"], latency_action_cr["id"])
+    decide_change_request(h_pm, cloud["id"], latency_action_cr["id"], approve=True,
+                           note="Approved — good idea to confirm with real numbers.")
 
     print("Opening a new-requirement change request on Solstice Cloud Platform...")
     audit_cr = create_change_request(

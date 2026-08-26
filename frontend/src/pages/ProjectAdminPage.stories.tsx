@@ -17,7 +17,7 @@ const groups: ProjectGroup[] = [
   { id: "g1", name: "Stakeholders", role: "stakeholder", is_default: true, member_user_ids: [], member_org_group_ids: [] },
 ];
 const orgGroups: OrgGroup[] = [
-  { id: "og1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
+  { id: "og1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
 ];
 const projectStatuses: ProjectStatusDefinition[] = [
   buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }),
@@ -269,13 +269,13 @@ export const CustomFieldsTabDeleteRequiresConfirmation: Story = {
   },
 };
 
-/** Style guide "Pattern: create panels, popovers, and one door for bulk":
- * "+ New group" opens a small popover instead of the Groups tab having no
- * create form at all (2026-08 UX audit finding) — mirrors OrgAdminPage's
- * own "New group" popover, just against the project-scoped endpoint, which
- * also requires a role up front (`ProjectGroupCreate.role`) since a
- * project group's role can't be changed after creation. */
-export const GroupsTabCreateGroupViaPopover: Story = {
+/** Style guide "Pattern: modal dialog for entity create/rename": "+ New
+ * group" opens a Modal instead of the Groups tab having no create form at
+ * all (2026-08 UX audit finding) — mirrors OrgAdminPage's own "New group"
+ * modal, just against the project-scoped endpoint, which also requires a
+ * role up front (`ProjectGroupCreate.role`) since a project group's role
+ * can't be changed after creation. */
+export const GroupsTabCreateGroupViaModal: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
     spyOn(api, "post").mockResolvedValue(undefined);

@@ -84,6 +84,14 @@ def test_change_request_submit_and_decide_notify_others_but_not_the_actor(client
     )
     stakeholder_token = login(client, "cr-notify-stakeholder@example.com", "Password123!")
 
+    # A modify change request can only target an already-locked requirement
+    # (2026-08 UX audit roadmap, "No requirement approval action; change
+    # requests can target draft requirements") — approve it directly first.
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
+
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
         json={
@@ -133,6 +141,10 @@ def test_change_request_approval_notifies_a_different_creator(client, admin_toke
         headers=auth_headers(admin_token),
     )
     creator_token = login(client, "cr-real-creator@example.com", "Password123!")
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",

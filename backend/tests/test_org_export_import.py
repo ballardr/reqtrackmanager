@@ -19,8 +19,7 @@ def test_export_never_includes_smtp_password_or_oidc_client_secret(client, admin
         f"/api/v1/orgs/{org_id}/advanced-settings",
         json={
             "smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_username": "notifier@example.com",
-            "smtp_password": smtp_secret, "smtp_use_tls": True, "sso_group_mappings": [],
-        },
+            "smtp_password": smtp_secret, "smtp_use_tls": True, },
         headers=auth_headers(admin_token),
     )
     assert adv_resp.status_code == 200, adv_resp.text

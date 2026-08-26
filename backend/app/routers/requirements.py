@@ -85,6 +85,7 @@ from app.services.requirements import (
     get_keywords,
     is_locked,
     set_keywords,
+    unarchive_requirement,
 )
 from app.services.reviews import get_due_reviews_for_project
 
@@ -215,6 +216,8 @@ def list_requirements(
     has_comments: bool | None = None,
     only_watched: bool | None = None,
     include_archived: bool = False,
+    sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
@@ -228,6 +231,14 @@ def list_requirements(
     When `limit` is given, the total match count (before slicing) is
     returned in the `X-Total-Count` response header so a client can tell
     whether more pages remain.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally overrides the default component/category/manual-
+    order sort below with a single-column sort by `unique_code`, `name`,
+    `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
+    Omitting `sort` leaves the existing default ordering completely
+    unchanged, so this is additive, not a breaking change to callers that
+    don't ask for it.
     """
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not include_archived:
@@ -259,11 +270,17 @@ def list_requirements(
             continue
         out.append(item)
 
-    comp_order = {c.id: c.sort_order for c in db.scalars(
-        select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-    cat_order = {c.id: c.sort_order for c in db.scalars(
-        select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-    out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
+    if sort:
+        def _sort_value(item: RequirementOut):
+            value = getattr(item, sort)
+            return value.lower() if isinstance(value, str) else value
+        out.sort(key=_sort_value, reverse=(order == "desc"))
+    else:
+        comp_order = {c.id: c.sort_order for c in db.scalars(
+            select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
+        cat_order = {c.id: c.sort_order for c in db.scalars(
+            select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
+        out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
@@ -642,6 +659,36 @@ def delete_requirement(
     pubsub.notify(project_id, {"type": "requirement", "action": "archived", "id": str(requirement.id)})
 
 
+@router.post("/{requirement_id}/unarchive", response_model=RequirementOut)
+def restore_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Restores an archived requirement to the active list, undoing
+    `delete_requirement` — same permission gate (managers/administrators),
+    same audit-log shape, mirroring `routers.projects::unarchive_project`
+    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
+    roadmap item on one-way archive). Unlike `delete_requirement`, calling
+    this on a requirement that isn't archived is a harmless no-op rather
+    than an error, matching `unarchive_project`'s own idempotent shape.
+    """
+    if not get_effective_project_roles(db, current_user.id, project_id) & {
+        ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR,
+    }:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators or managers may restore requirements.")
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    unarchive_requirement(db, requirement, current_user)
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="unarchived",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(requirement)
+    version = get_current_version(db, requirement.id)
+    pubsub.notify(project_id, {"type": "requirement", "action": "unarchived", "id": str(requirement.id)})
+    return _to_out(db, requirement, version, current_user.id)
+
+
 @router.post("/{requirement_id}/reviews", response_model=RequirementReviewOut, status_code=status.HTTP_201_CREATED)
 def record_review_outcome(
     project_id: UUID, requirement_id: UUID, payload: RequirementReviewCreate,
@@ -679,6 +726,51 @@ def record_review_outcome(
         id=review.id, requirement_id=review.requirement_id, reviewed_by=review.reviewed_by,
         reviewed_at=review.reviewed_at, outcome=review.outcome, comment=review.comment,
     )
+
+
+@router.post("/{requirement_id}/approve", response_model=RequirementOut)
+def approve_requirement(
+    project_id: UUID, requirement_id: UUID,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Approves a draft or reviewed requirement directly (C-G-11) — the
+    previously-missing standalone path out of draft/reviewed status (2026-08
+    UX audit roadmap, "No requirement approval action"). Before this
+    endpoint existed, `APPROVED` only ever happened as a side effect of a
+    change request (`decide_change_request`) or a stage baseline
+    (`services/baseline.py::create_baseline_for_stage`, which does the same
+    transition in bulk for every draft/reviewed requirement targeting the
+    stage being approved) — despite `update_requirement` already allowing a
+    project manager to set `status=approved` directly via a full edit
+    payload (`:578-591`). This gives that same transition its own
+    single-purpose action, matching `complete`/`uncomplete` below, so the
+    frontend doesn't have to resend the entire edit payload just to flip
+    status.
+
+    Gate: project manager only (C-U-03's clarification: "Project Managers
+    can also provide approvals for change requests and approval of project
+    requirements from scoping review to project requirements") — the same
+    check `decide_change_request` and `update_requirement`'s own
+    status=approved branch already use.
+    """
+    if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None or requirement.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    current_version = get_current_version(db, requirement.id)
+    if current_version.status not in REQUIRES_APPROVAL_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
+    new_version = apply_new_version(
+        db, requirement, current_version, current_user,
+        status_value=RequirementStatus.APPROVED, change_note="Approved directly.",
+    )
+    log_event(db, entity_type="requirement", entity_id=requirement.id, action="approved",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(requirement)
+    pubsub.notify(project_id, {"type": "requirement", "action": "approved", "id": str(requirement.id)})
+    return _to_out(db, requirement, new_version, current_user.id)
 
 
 @router.post("/{requirement_id}/complete", response_model=RequirementOut)
@@ -1222,9 +1314,22 @@ def link_action(
     """Links an existing action to this requirement. Unlike `create_link`
     (requirement-to-requirement), linking an action isn't itself content
     with a display direction — just membership in the action's "which
-    requirements does this satisfy" set — so this returns no body."""
+    requirements does this satisfy" set — so this returns no body.
+
+    Governed by the same creation-or-change-request-only rule as every
+    other requirement content once it's locked (C-G-12) — see
+    `upload_requirement_attachment`'s docstring. 2026-08 UX audit roadmap
+    item 514: this endpoint previously had no lock check at all, unlike
+    the requirement's own fields, letting an action bypass the
+    change-request-only rule entirely once approved.
+    """
     _require_edit_role(db, current_user, project_id)
-    _get_requirement_in_project(db, project_id, requirement_id)
+    requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved; actions can only be added via a change request.",
+        )
     action = get_requirement_action_in_project(db, project_id, payload.action_id)
     existing = db.scalar(
         select(RequirementActionLink).where(
@@ -1252,9 +1357,17 @@ def create_and_link_action(
     """Creates a new action and links it to this requirement in one
     transaction — avoids a two-request create-then-link race in the
     inline-create UI (create the action, then have the very next `POST
-    .../actions` fail or double-submit)."""
+    .../actions` fail or double-submit).
+
+    Same lock rule as `link_action`, above — see its docstring.
+    """
     _require_edit_role(db, current_user, project_id)
-    _get_requirement_in_project(db, project_id, requirement_id)
+    requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved; actions can only be added via a change request.",
+        )
     project = db.get(Project, project_id)
     action_type = db.get(ActionTypeDefinition, payload.action_type_id)
     if action_type is None or action_type.project_id != project_id:

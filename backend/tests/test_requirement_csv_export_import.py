@@ -226,6 +226,57 @@ def test_export_denies_users_without_project_access(client, admin_token, org_id)
     assert resp.status_code in (403, 404)
 
 
+def test_fixed_value_columns_apply_uniformly_across_every_row(client, admin_token, org_id):
+    """Pins the backend half of roadmap item 507 ("per-field 'map from
+    column' vs. 'fixed value for every row' toggle on CSV import" — see
+    docs/ux-audit-2026-08.md "CSV bulk import: no per-field fixed values").
+
+    The "fixed value" feature is implemented entirely in
+    `CsvImportWizard.tsx` on the frontend: this endpoint has no notion of a
+    "mapping" at all, and no request-schema change was made or was needed
+    for this feature — it only ever receives a plain canonical CSV where
+    every row already carries its own final per-row value (see that
+    component's own `FIXED_VALUE_FIELDS` doc comment for the full
+    reasoning). A "fixed value" column is, from this endpoint's
+    perspective, simply a column whose cell happens to be identical on
+    every row — indistinguishable from a genuinely per-row column that
+    happens to share a value. This test pins exactly that: a CSV where
+    `component_prefix`/`category_prefix`/`level`/`target_version` repeat
+    the same value on every row (as the frontend's fixed-value toggle
+    would produce) while `name` varies per row, confirming every row
+    imports with the shared field values intact — the actual wire contract
+    the new frontend toggle depends on already working, not a new backend
+    behaviour."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
+    stage_name = stages[0]["name"]
+
+    csv_content = (
+        "name,component_prefix,category_prefix,level,target_version\n"
+        f"First requirement,SW,PERF,recommended,{stage_name}\n"
+        f"Second requirement,SW,PERF,recommended,{stage_name}\n"
+        f"Third requirement,SW,PERF,recommended,{stage_name}\n"
+    )
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/import",
+        files={"file": ("fixed-values.csv", csv_content, "text/csv")}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["created"] == 3
+    assert body["errors"] == []
+
+    requirements = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert len(requirements) == 3
+    names = {r["name"] for r in requirements}
+    assert names == {"First requirement", "Second requirement", "Third requirement"}
+    for r in requirements:
+        assert r["component_id"] == component_id
+        assert r["category_id"] == category_id
+        assert r["level"] == "recommended"
+
+
 def test_import_rejects_a_csv_over_the_size_limit(client, admin_token, org_id, monkeypatch):
     """Same shared upload-size guard the bundle importers use
     (`services.bundle_common.enforce_upload_size_limit`) — a raw CSV upload

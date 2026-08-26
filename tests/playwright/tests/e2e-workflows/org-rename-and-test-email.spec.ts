@@ -119,15 +119,22 @@ test.describe("organisation rename and test-email actions", () => {
     await page.goto(`/orgs/${org.id}/admin`);
     await expect(page.getByRole("heading", { name: orgName })).toBeVisible();
 
-    await test.step("rename via the inline control next to the organisation's name", async () => {
-      const nameInput = page.getByLabel("Rename", { exact: true });
+    await test.step("rename via the Overview group's action menu and its Rename modal", async () => {
+      // Style guide "Pattern: action menu" — rename and export now live
+      // behind one kebab trigger instead of an always-visible inline
+      // input; selecting "Rename" opens a Modal with the field.
+      await page.getByRole("button", { name: "Organisation actions" }).click();
+      await page.getByRole("menuitem", { name: "Rename" }).click();
+      const dialog = page.getByRole("dialog", { name: "Rename" });
+      const nameInput = dialog.getByLabel("Rename", { exact: true });
       await expect(nameInput).toHaveValue(orgName);
       await nameInput.fill(renamedName);
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/name`) && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Rename" }).click(),
+        dialog.getByRole("button", { name: "Save" }).click(),
       ]);
       await expect(page.getByRole("heading", { name: renamedName })).toBeVisible();
+      await expect(dialog).not.toBeVisible();
     });
 
     await test.step("the new name survives a reload", async () => {
@@ -136,11 +143,12 @@ test.describe("organisation rename and test-email actions", () => {
     });
 
     await test.step("send test email is disabled until an SMTP host is configured", async () => {
-      // SMTP/test-email moved into the "SMTP & email" card under
-      // "Integrations & security" (2026-08 UX audit's Org Admin
-      // restructure), open by default there — no section-toggle click
-      // needed, just select the group.
-      await selectOrgAdminGroup(page, "Integrations & security");
+      // SMTP/test-email lives in the "SMTP & email" card under its own
+      // "Email" top-level resource-menu group (2026-08 UX audit's Org
+      // Admin restructure, later split further from a combined
+      // "Integrations & security" group), open by default there — no
+      // section-toggle click needed, just select the group.
+      await selectOrgAdminGroup(page, "Email");
       await expect(page.getByRole("button", { name: "Send test email" })).toBeDisabled();
       await expect(page.getByText("Set an SMTP host above first.")).toBeVisible();
     });
@@ -151,7 +159,7 @@ test.describe("organisation rename and test-email actions", () => {
       await page.getByRole("checkbox", { name: "Use TLS" }).uncheck();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save advanced settings" }).click(),
+        page.getByRole("button", { name: "Save email settings" }).click(),
       ]);
     });
 

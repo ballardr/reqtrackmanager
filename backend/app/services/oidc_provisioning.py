@@ -14,7 +14,6 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import OrgRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.user import User
 
@@ -94,16 +93,16 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str) -> User:
 
 def meets_required_group(org: Organization, claims: dict) -> bool:
     """Whether `claims` satisfy `org.oidc_required_group`, the access gate
-    checked before a token is ever issued (distinct from
-    `sso_group_mappings`, which decides *which* org role a user gets, not
-    *whether* they're let in at all).
+    checked before a token is ever issued (distinct from the role-granting
+    `OrgGroup`s `sync_org_roles_from_claims` reads, which decide *which*
+    org role a user gets, not *whether* they're let in at all).
 
     When `org.oidc_required_group` is unset, every successfully-authenticated
     user is admitted (today's default behaviour) — the gate is opt-in per
     organisation. When set, the IdP's `groups` or `roles` claim (whichever
     the provider uses — both are checked, same as role-mapping) must contain
     that exact group name, or the login is refused before a session is
-    created, regardless of what `sso_group_mappings` would otherwise grant.
+    created, regardless of what a role-granting group would otherwise grant.
     """
     if not org.oidc_required_group:
         return True
@@ -112,41 +111,54 @@ def meets_required_group(org: Organization, claims: dict) -> bool:
 
 
 def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claims: dict) -> None:
-    """Grants/updates `user`'s role in `org` based on `org.sso_group_mappings`
-    (C-U-07, E-U-01) — a list of `{"sso_group": ..., "org_role": ...}`
-    entries matched against the IdP's group/role claim.
+    """Grants/updates `user`'s role in `org` based on every `OrgGroup` in
+    this org that both is IdP-synced (`idp_synced_group_name` set) and
+    grants a role (`granted_org_role` set) — matched against the IdP's
+    group/role claim (C-U-07, E-U-01). Replaces the previous flat
+    `Organization.sso_group_mappings` list (2026-08 UX audit roadmap item
+    522 — role-granting via an SSO group claim is a property of the group
+    being synced into, not a disconnected list keyed by a string that may
+    or may not correspond to a real `OrgGroup`).
 
     This is the concrete answer to "how does a user provisioned via SSO gain
     their application permissions": the IdP asserts group membership (in the
     `groups` or `roles` claim, whichever the provider uses — both are
-    checked), each configured mapping whose `sso_group` appears in either
-    claim grants the corresponding `OrgRole`. A user with no matching group
-    still gets a `User` account (provisioned above) but no org role — they
-    can log in but see no organisation content until an admin either adds a
-    mapping or grants them a role directly, same as any other user with no
-    role.
+    checked), each role-granting synced group whose `idp_synced_group_name`
+    appears in either claim grants its `granted_org_role`. A user with no
+    matching group still gets a `User` account (provisioned above) but no
+    org role — they can log in but see no organisation content until an
+    admin either adds a role-granting group or grants them a role directly,
+    same as any other user with no role.
 
     Also syncs *down*: on a login where the IdP does assert a groups/roles
     claim (even an empty one), any role the user currently holds that came
-    from this org's mapping vocabulary but whose matching group is no
+    from this org's role-granting groups but whose matching group is no
     longer present is revoked — closing the timely-deprovisioning gap that
     existed when this function only ever granted. This never touches a
-    role outside `org.sso_group_mappings`' own vocabulary (e.g. one granted
-    manually), and is skipped entirely — neither granting nor revoking
-    anything — when the IdP asserts no groups/roles claim at all, since
-    that's ambiguous with "this provider doesn't send this claim" rather
-    than "this person is in zero groups."
+    role outside that vocabulary (e.g. one granted manually), and is
+    skipped entirely — neither granting nor revoking anything — when the
+    IdP asserts no groups/roles claim at all, since that's ambiguous with
+    "this provider doesn't send this claim" rather than "this person is in
+    zero groups."
     """
     idp_groups = set(claims.get("groups") or []) | set(claims.get("roles") or [])
 
-    # Every OrgRole this org's SSO mapping could ever grant — the only
-    # roles this function is allowed to touch in either direction. A role
-    # held outside this vocabulary (e.g. one an admin granted manually,
-    # with no corresponding sso_group entry) is never added *or* removed
-    # here, no matter what the IdP currently asserts.
-    sso_managed_roles = {OrgRole(m["org_role"]) for m in org.sso_group_mappings}
-    if not sso_managed_roles:
+    role_granting_groups = db.scalars(
+        select(OrgGroup).where(
+            OrgGroup.organization_id == org.id,
+            OrgGroup.idp_synced_group_name.is_not(None),
+            OrgGroup.granted_org_role.is_not(None),
+        )
+    ).all()
+    if not role_granting_groups:
         return
+
+    # Every OrgRole this org's role-granting groups could ever grant — the
+    # only roles this function is allowed to touch in either direction. A
+    # role held outside this vocabulary (e.g. one an admin granted
+    # manually, with no corresponding role-granting group) is never added
+    # *or* removed here, no matter what the IdP currently asserts.
+    sso_managed_roles = {g.granted_org_role for g in role_granting_groups}
 
     existing_roles = set(
         db.scalars(
@@ -166,7 +178,7 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
         # either, matching the original (grant-only) behaviour.
         return
 
-    mapped_roles = {OrgRole(m["org_role"]) for m in org.sso_group_mappings if m.get("sso_group") in idp_groups}
+    mapped_roles = {g.granted_org_role for g in role_granting_groups if g.idp_synced_group_name in idp_groups}
     for role in mapped_roles - existing_roles:
         db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=role))
 

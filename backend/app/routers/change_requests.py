@@ -25,6 +25,7 @@ from app.metrics import (
     change_requests_rejected_total,
     change_requests_submitted_total,
 )
+from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import (
     ChangeRequest,
     ChangeRequestTask,
@@ -46,6 +47,7 @@ from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement
+from app.models.requirement_action import RequirementAction, RequirementActionLink
 from app.models.user import User
 from app.schemas.change_request import (
     CHANGEABLE_REQUIREMENT_FIELDS,
@@ -64,6 +66,8 @@ from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut
 from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement, notifications, pubsub
+from app.services.actions import generate_unique_code as generate_action_unique_code
+from app.services.actions import get_requirement_action_in_project
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
@@ -76,7 +80,7 @@ from app.services.rbac import (
     require_project_role,
     require_project_view,
 )
-from app.services.requirements import apply_new_version, create_requirement, get_current_version
+from app.services.requirements import apply_new_version, create_requirement, get_current_version, is_locked
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/change-requests", tags=["change-requests"])
 
@@ -131,7 +135,33 @@ def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, curre
         proposed_review_date=version.proposed_review_date,
         proposed_review_lead_days=version.proposed_review_lead_days,
         proposed_reviewer_id=version.proposed_reviewer_id,
+        proposed_action_link_id=version.proposed_action_link_id,
+        proposed_action_title=version.proposed_action_title,
+        proposed_action_description=version.proposed_action_description,
+        proposed_action_type_id=version.proposed_action_type_id,
+        proposed_action_assignee_id=version.proposed_action_assignee_id,
+        proposed_action_due_date=version.proposed_action_due_date,
     )
+
+
+def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
+    """Human-readable label for a change request, used in notification
+    titles. `proposed_name` alone is only ever set for NEW_REQUIREMENT, or
+    for MODIFY_REQUIREMENT when `"name"` is itself one of `changed_fields`
+    — every other case needs a fallback, rather than a notification title
+    silently rendering "None" (a pre-existing gap for a MODIFY_REQUIREMENT
+    CR that doesn't rename anything, found while adding ADD_ACTION — item
+    514's own new kind never sets `proposed_name` at all, so it would hit
+    this on every single notification without a fallback)."""
+    if version.proposed_name:
+        return version.proposed_name
+    if cr.kind == ChangeRequestKind.ADD_ACTION:
+        return version.proposed_action_title or "add an action"
+    if cr.requirement_id is not None:
+        requirement = db.get(Requirement, cr.requirement_id)
+        if requirement is not None:
+            return get_current_version(db, requirement.id).name
+    return "change request"
 
 
 def _latest_version(db: Session, cr: ChangeRequest) -> ChangeRequestVersion:
@@ -167,6 +197,20 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+        # Requirement-status guard (2026-08 UX audit roadmap, "No requirement
+        # approval action; change requests can target draft requirements"):
+        # a change request exists to gate edits once direct editing is
+        # locked (`LOCKED_STATUSES = {APPROVED, COMPLETED}`,
+        # services/requirements.py:25) — a draft or reviewed requirement
+        # isn't locked, so it should be edited directly
+        # (routers/requirements.py::update_requirement), not through a
+        # change request. Extends that existing precedent rather than
+        # inventing a new one.
+        if not is_locked(get_current_version(db, requirement.id)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This requirement isn't approved yet — edit it directly instead of via a change request.",
+            )
         unknown_fields = set(payload.changed_fields) - CHANGEABLE_REQUIREMENT_FIELDS
         if unknown_fields:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown changed_fields: {sorted(unknown_fields)}.")
@@ -182,6 +226,52 @@ def create_change_request(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "proposed_attachment_file_ids is required since 'attachments' is listed in changed_fields."
             )
+    elif payload.kind == ChangeRequestKind.ADD_ACTION:
+        # Item 514 — mirrors MODIFY_REQUIREMENT's own guard above: adding an
+        # action is only routed through a change request once the target
+        # requirement is locked; while it's still draft/reviewed, add it
+        # directly (routers/requirements.py::create_and_link_action/
+        # link_action), which now reject the direct path once locked.
+        if payload.requirement_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to add an action.")
+        requirement = db.get(Requirement, payload.requirement_id)
+        if requirement is None or requirement.project_id != project_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+        if not is_locked(get_current_version(db, requirement.id)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This requirement isn't approved yet — add the action directly instead of via a change request.",
+            )
+        # Mutually exclusive, mirroring the requirement detail page's own
+        # "Link existing action" vs. "Create and link a new action" split —
+        # exactly one of the two modes, never both, never neither.
+        has_link = payload.proposed_action_link_id is not None
+        has_new = payload.proposed_action_title is not None or payload.proposed_action_type_id is not None
+        if has_link == has_new:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Provide either proposed_action_link_id (to link an existing action) or "
+                "proposed_action_title and proposed_action_type_id (to create a new one) — not both, not neither.",
+            )
+        if has_link:
+            action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
+            existing = db.scalar(
+                select(RequirementActionLink).where(
+                    RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
+                )
+            )
+            if existing is not None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is already linked to this requirement.")
+        else:
+            if payload.proposed_action_title is None or not payload.proposed_action_title.strip():
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_action_title is required to create a new action.")
+            if payload.proposed_action_type_id is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_action_type_id is required to create a new action.")
+            action_type = db.get(ActionTypeDefinition, payload.proposed_action_type_id)
+            if action_type is None or action_type.project_id != project_id:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "proposed_action_type_id must be an action type defined in this project."
+                )
     else:
         # NEW_REQUIREMENT ignores changed_fields entirely (there's no
         # existing version to diff against) but still needs the fields a
@@ -263,6 +353,12 @@ def create_change_request(
         proposed_review_date=payload.proposed_review_date,
         proposed_review_lead_days=payload.proposed_review_lead_days,
         proposed_reviewer_id=payload.proposed_reviewer_id,
+        proposed_action_link_id=payload.proposed_action_link_id,
+        proposed_action_title=payload.proposed_action_title,
+        proposed_action_description=payload.proposed_action_description,
+        proposed_action_type_id=payload.proposed_action_type_id,
+        proposed_action_assignee_id=payload.proposed_action_assignee_id,
+        proposed_action_due_date=payload.proposed_action_due_date,
     )
     db.add(version)
     log_event(db, entity_type="change_request", entity_id=cr.id, action="created",
@@ -277,17 +373,45 @@ def list_change_requests(
     project_id: UUID,
     response: Response,
     cr_status: ChangeRequestStatus | None = None,
+    active_only: bool = False,
     target_stage_id: UUID | None = None,
+    sort: str | None = Query(None, pattern="^(proposed_name|status|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists change requests, with optional status/target-version filters.
     `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
-    for the same pattern."""
+    for the same pattern.
+
+    `active_only` (2026-08 UX audit roadmap, "Default Change Requests to
+    an active-only status filter") filters to the three non-terminal
+    statuses (`draft`/`submitted`/`in_review`) in one round trip, so the
+    frontend's default view doesn't have to request every status and then
+    hide `approved`/`rejected`/`withdrawn` rows client-side — with the
+    list backend-paginated (`limit`/`offset`), a client-only filter would
+    silently filter just the current page rather than the true result
+    set. Ignored when `cr_status` is also given — an explicit single
+    status is more specific than "any active status" and wins.
+
+    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
+    tables") optionally sorts by `proposed_name`, `status`, or
+    `created_at`, `order` picks `asc` (default) or `desc`. Omitting `sort`
+    keeps the existing default (creation/query) order unchanged. Rows with
+    no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
+    touch the name — the list view falls back to the requirement's own
+    name for display, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as
+    if empty, since sorting by the raw column can't resolve that per-row
+    fallback without an extra join.
+    """
     query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
     if cr_status:
         query = query.where(ChangeRequest.status == cr_status)
+    elif active_only:
+        query = query.where(ChangeRequest.status.in_([
+            ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
+        ]))
     crs = db.scalars(query).all()
     out = []
     for cr in crs:
@@ -295,6 +419,15 @@ def list_change_requests(
         if target_stage_id and version.proposed_target_stage_id != target_stage_id:
             continue
         out.append(_to_out(db, cr, version, current_user.id))
+
+    if sort:
+        def _sort_value(item: ChangeRequestOut):
+            value = getattr(item, sort)
+            if isinstance(value, str):
+                value = value.lower()
+            return value or ""
+        out.sort(key=_sort_value, reverse=(order == "desc"))
+
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
         out = out[offset:offset + limit]
@@ -332,12 +465,13 @@ def submit_change_request(
     change_requests_submitted_total.inc()
 
     version = _latest_version(db, cr)
+    display_title = _display_title(db, cr, version)
     for user_id in get_project_users_by_role(db, project_id, ProjectRole.PROJECT_MANAGER):
         user = db.get(User, user_id)
         if user is not None:
             notifications.notify(
                 db, user, notification_type=NotificationType.CHANGE_REQUEST_SUBMITTED,
-                title=f"Change request submitted: {version.proposed_name}",
+                title=f"Change request submitted: {display_title}",
                 project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
                 actor_id=current_user.id,
             )
@@ -346,7 +480,7 @@ def submit_change_request(
         if user is not None:
             notifications.notify(
                 db, user, notification_type=NotificationType.STAKEHOLDER_INPUT_REQUESTED,
-                title=f"Your input is requested: {version.proposed_name}",
+                title=f"Your input is requested: {display_title}",
                 project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
                 actor_id=current_user.id,
             )
@@ -432,7 +566,18 @@ def decide_change_request(
                 reasoning=version.proposed_reasoning if "reasoning" in changed else None,
                 clarification=version.proposed_clarification if "clarification" in changed else None,
                 description=version.proposed_description if "description" in changed else None,
-                status_value=RequirementStatus.APPROVED,
+                # Was unconditionally `RequirementStatus.APPROVED` (2026-08
+                # UX audit roadmap, found alongside "No requirement approval
+                # action") — silently reverted an already-`COMPLETED`
+                # requirement back to `APPROVED` as a side effect of any
+                # modify-CR approval. `create_change_request`'s own guard
+                # (above) now only allows a MODIFY_REQUIREMENT change
+                # request against an already-locked (`APPROVED`/`COMPLETED`)
+                # requirement, so the current status is always one of those
+                # two by the time it's decided — `None` carries it forward
+                # unchanged (`apply_new_version`'s own convention) instead
+                # of forcing it back down to `APPROVED`.
+                status_value=None,
                 target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set="target_stage_id" in changed,
                 level=version.proposed_level if "level" in changed else None,
                 change_note=f"Applied via approved change request: {version.reason}",
@@ -469,6 +614,67 @@ def decide_change_request(
                             actor_id=current_user.id, project_id=project_id,
                             detail={"file_id": str(file_id), "via": "change_request", "change_request_id": str(cr.id)},
                         )
+        elif cr.kind == ChangeRequestKind.ADD_ACTION:
+            # Item 514 — mirrors the "attachments" re-check just above:
+            # the referenced action/action-type could have changed or been
+            # archived between submission and approval, so both are
+            # re-validated here rather than trusted from creation time.
+            # `linked_by`/`creator_id` attribute to `cr.creator_id` (the
+            # original submitter), matching `RequirementFile.linked_by`'s
+            # own convention just above rather than `apply_new_version`'s —
+            # an added action is closer in kind to a proposed attachment
+            # (a new artifact the submitter is contributing) than to a
+            # requirement version (whose authorship follows the approving
+            # PM, since approval is what actually changes the requirement's
+            # own content).
+            requirement = db.get(Requirement, cr.requirement_id)
+            project = db.get(Project, project_id)
+            if version.proposed_action_link_id is not None:
+                action = db.get(RequirementAction, version.proposed_action_link_id)
+                if action is not None and action.project_id == project_id:
+                    existing = db.scalar(
+                        select(RequirementActionLink).where(
+                            RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
+                        )
+                    )
+                    if existing is None:
+                        db.add(RequirementActionLink(
+                            requirement_id=requirement.id, action_id=action.id, linked_by=cr.creator_id,
+                            created_at=datetime.now(UTC),
+                        ))
+                        log_event(
+                            db, entity_type="requirement_action_link", entity_id=action.id, action="linked",
+                            actor_id=current_user.id, project_id=project_id,
+                            detail={
+                                "requirement_id": str(requirement.id), "action_id": str(action.id),
+                                "via": "change_request", "change_request_id": str(cr.id),
+                            },
+                        )
+            else:
+                action_type = db.get(ActionTypeDefinition, version.proposed_action_type_id)
+                if action_type is not None and action_type.project_id == project_id:
+                    action = RequirementAction(
+                        project_id=project_id, unique_code=generate_action_unique_code(project),
+                        action_type_id=version.proposed_action_type_id,
+                        title=version.proposed_action_title, description=version.proposed_action_description or "",
+                        assignee_id=version.proposed_action_assignee_id, due_date=version.proposed_action_due_date,
+                        creator_id=cr.creator_id,
+                    )
+                    db.add(action)
+                    db.flush()
+                    db.add(RequirementActionLink(
+                        requirement_id=requirement.id, action_id=action.id, linked_by=cr.creator_id,
+                        created_at=datetime.now(UTC),
+                    ))
+                    log_event(
+                        db, entity_type="requirement_action", entity_id=action.id, action="created",
+                        actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
+                        detail={
+                            "unique_code": action.unique_code, "title": action.title,
+                            "linked_requirement_id": str(requirement.id),
+                            "via": "change_request", "change_request_id": str(cr.id),
+                        },
+                    )
         else:
             project = db.get(Project, project_id)
             component = db.get(ProjectComponent, version.proposed_component_id)
@@ -515,12 +721,13 @@ def decide_change_request(
         actor_id=current_user.id, project_id=project_id, detail={"note": payload.note},
     )
 
+    display_title = _display_title(db, cr, version)
     creator = db.get(User, cr.creator_id)
     if creator is not None:
         notifications.notify(
             db, creator,
             notification_type=NotificationType.CHANGE_REQUEST_APPROVED if payload.approve else NotificationType.CHANGE_REQUEST_REJECTED,
-            title=f"Your change request was {'approved' if payload.approve else 'rejected'}: {version.proposed_name}",
+            title=f"Your change request was {'approved' if payload.approve else 'rejected'}: {display_title}",
             body=payload.note, project_id=project_id, entity_type="change_request", entity_id=str(cr.id),
             actor_id=current_user.id,
         )
@@ -532,7 +739,7 @@ def decide_change_request(
                 notifications.notify(
                     db, user, notification_type=NotificationType.REQUIREMENTS_UPDATED,
                     title=f"{project_name}: requirements updated via change request",
-                    body=version.proposed_name, project_id=project_id,
+                    body=display_title, project_id=project_id,
                     entity_type="change_request", entity_id=str(cr.id),
                     actor_id=current_user.id,
                 )

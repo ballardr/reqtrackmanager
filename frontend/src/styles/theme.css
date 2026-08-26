@@ -146,6 +146,28 @@ textarea {
   cursor: not-allowed;
 }
 
+/* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
+   adjacent `.btn`s read as one joined control — the primary action on the
+   left, a narrow chevron affordance revealing alternatives on the right,
+   sharing one border instead of each getting its own rounded corners on
+   every side. */
+.split-button {
+  display: inline-flex;
+}
+
+.split-button > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-button > .btn:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 /* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
    surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
    need their own rule here because their base styles pull --color-surface/
@@ -556,6 +578,32 @@ td {
   text-align: left;
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Sortable column headers (`SortableHeader`, 2026-08 UX audit roadmap
+   "Column-header sorting on data tables") — the button fills the `<th>`'s
+   own padding rather than adding its own, so a sortable header lines up
+   exactly with a plain-text one next to it. */
+th:has(> .th-sort) {
+  padding: 0;
+}
+.th-sort {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.th-sort:hover,
+.th-sort:focus-visible {
+  color: var(--color-primary);
 }
 
 /* Below 860px there isn't room for a full-width nav rail, a content

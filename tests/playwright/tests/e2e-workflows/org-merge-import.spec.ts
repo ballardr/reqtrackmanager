@@ -88,8 +88,11 @@ test.describe("organisation bundle merge-import", () => {
     await test.step("export the source organisation's bundle", async () => {
       await page.goto("/orgs");
       await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
+      // Style guide "Pattern: action menu" — rename + export now live
+      // behind the Overview group's kebab trigger, not a standalone button.
+      await page.getByRole("button", { name: "Organisation actions" }).click();
       const downloadPromise = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Export organisation bundle" }).click();
+      await page.getByRole("menuitem", { name: "Export organisation bundle" }).click();
       const download = await downloadPromise;
       exportedPath = (await download.path())!;
     });

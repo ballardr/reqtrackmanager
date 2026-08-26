@@ -16,10 +16,11 @@
  * so the reason attachments can't be added right now is explained rather
  * than the control silently disappearing.
  */
-import { Trash2 } from "lucide-react";
+import { Paperclip, Trash2 } from "lucide-react";
 
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
+import { FileUploadTrigger } from "./FileUploadTrigger";
 
 export function FileAttachmentList({
   files,
@@ -61,7 +62,9 @@ export function FileAttachmentList({
         )
       ) : (
         onUpload && (
-          <input type="file" onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
+          <FileUploadTrigger onSelect={onUpload} title="Attach a file" aria-label="Attach a file">
+            <Paperclip size={14} /> Attach a file
+          </FileUploadTrigger>
         )
       )}
     </div>

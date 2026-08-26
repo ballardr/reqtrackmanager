@@ -108,8 +108,7 @@ def test_org_test_email_uses_orgs_own_smtp_override(client, admin_token, org_id)
         f"/api/v1/orgs/{org_id}/advanced-settings",
         json={
             "smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_username": "relay-user",
-            "smtp_password": "super-secret", "smtp_use_tls": True, "sso_group_mappings": [],
-        },
+            "smtp_password": "super-secret", "smtp_use_tls": True, },
         headers=auth_headers(admin_token),
     )
 
@@ -132,7 +131,7 @@ def test_org_test_email_uses_orgs_own_smtp_override(client, admin_token, org_id)
 def test_org_test_email_requires_org_admin(client, admin_token, org_id):
     client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_use_tls": True, "sso_group_mappings": []},
+        json={"smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_use_tls": True, },
         headers=auth_headers(admin_token),
     )
     create_org_user(client, admin_token, org_id, "org_test_email_member@example.com", role="member")
@@ -147,7 +146,7 @@ def test_org_test_email_requires_org_admin(client, admin_token, org_id):
 def test_org_test_email_send_failure_returns_502_with_reason(client, admin_token, org_id):
     client.put(
         f"/api/v1/orgs/{org_id}/advanced-settings",
-        json={"smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_use_tls": True, "sso_group_mappings": []},
+        json={"smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_use_tls": True, },
         headers=auth_headers(admin_token),
     )
     with patch.object(orgs_router, "send_email", new=Mock(side_effect=TimeoutError("timed out"))):

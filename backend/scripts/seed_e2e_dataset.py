@@ -305,7 +305,12 @@ def main() -> None:
     seed_project_content(h_ab, beta2, 6)
     gamma1_reqs = seed_project_content(h_g, gamma1, 7)
     seed_project_content(h_g, gamma2, 6)
-    seed_project_content(h_ab, delta1, 3)
+    delta1_reqs = seed_project_content(h_ab, delta1, 3)
+
+    print("Locking Delta-1's first requirement so terminology-coverage.spec.ts can reach its 'Make {changeRequest}' link"
+          " (only rendered once a requirement is locked, 2026-08 UX audit roadmap 'No requirement approval action')...")
+    r = httpx.post(f"{BASE}/projects/{delta1['id']}/requirements/{delta1_reqs[0]['id']}/approve", headers=h_ab, timeout=30)
+    r.raise_for_status()
 
     print("Locking one Alpha-1 requirement (approves it directly) for the CR-approval and bypass-attempt workflows...")
     locked_req = alpha1_reqs[0]
@@ -324,6 +329,12 @@ def main() -> None:
     print("Seeding a couple of pre-existing change requests for volume...")
     for headers, project, reqs in [(h_ab, beta1, beta1_reqs), (h_g, gamma1, gamma1_reqs)]:
         target = reqs[1]
+        # A modify change request can only target an already-locked
+        # requirement (2026-08 UX audit roadmap, "No requirement approval
+        # action; change requests can target draft requirements") — approve
+        # it directly first.
+        r = httpx.post(f"{BASE}/projects/{project['id']}/requirements/{target['id']}/approve", headers=headers, timeout=30)
+        r.raise_for_status()
         r = httpx.post(
             f"{BASE}/projects/{project['id']}/change-requests",
             json={

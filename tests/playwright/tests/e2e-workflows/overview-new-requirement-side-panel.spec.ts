@@ -7,13 +7,15 @@ import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
  * `/requirements?new=1` rather than opening a form itself — before this
  * fix that deep link set `showNewForm` directly, which rendered
  * RequirementsPage's create form as an always-inline block above the list
- * (reflowing/hiding it), skipping the `SidePanel` layer the same form now
+ * (reflowing/hiding it), skipping the `Modal` layer the same form now
  * opens as when triggered from the Requirements page's own "+ New
- * requirement" → "Add one" popover. Both entry points now converge on the
- * same `SidePanel`, so this proves the deep-linked path stopped being the
- * odd one out.
+ * requirement" split button (a plain click on the button itself — see
+ * `SplitButtonTrigger`, style guide "Pattern: split-button trigger" —
+ * performs this same "Add one" action directly, no menu). Both entry
+ * points now converge on the same `Modal`, so this proves the
+ * deep-linked path stopped being the odd one out.
  */
-test.describe("Project Overview '+ New Requirement' opens the same side-panel form", () => {
+test.describe("Project Overview '+ New Requirement' opens the same create-form modal", () => {
   test("deep-linked create form is a layer, not a page reflow", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");

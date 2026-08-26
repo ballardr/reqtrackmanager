@@ -7,9 +7,11 @@ import type { Organization, OrgImportResult } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useToast } from "../context/ToastContext";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -45,6 +47,11 @@ export function ServerOrganisationsPage() {
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
+  // ConfirmDialog (Tier 1) state for disable — converted from
+  // `window.confirm` per the sixth-pass audit's "Confirmation and feedback
+  // rollout, precisely" list. Delete already uses ConfirmDialog (Tier 2).
+  const [disablingOrgId, setDisablingOrgId] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   async function reload() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
@@ -69,34 +76,41 @@ export function ServerOrganisationsPage() {
         setImportFile(null);
         setShowNewForm(false);
         reload();
+        showToast(strings.serverOrgs.createdToast(orgLabelCap));
         return;
       }
       await api.post("/api/v1/orgs", { name: newName });
       setNewName("");
       setShowNewForm(false);
       reload();
+      showToast(strings.serverOrgs.createdToast(orgLabelCap));
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Something went wrong.");
     }
   }
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       await reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
     }
   }
 
   function disableOrg(org: Organization) {
-    if (!window.confirm(strings.serverOrgs.disableConfirm.replace("{name}", org.name))) return;
-    runAction(() => api.post(`/api/v1/orgs/${org.id}/disable`));
+    setDisablingOrgId(org.id);
+  }
+
+  function confirmDisable(org: Organization) {
+    setDisablingOrgId(null);
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/disable`), strings.serverOrgs.disabledToast(orgLabelCap));
   }
 
   function enableOrg(org: Organization) {
-    runAction(() => api.post(`/api/v1/orgs/${org.id}/enable`));
+    runAction(() => api.post(`/api/v1/orgs/${org.id}/enable`), strings.serverOrgs.enabledToast(orgLabelCap));
   }
 
   function startDelete(org: Organization) {
@@ -111,7 +125,7 @@ export function ServerOrganisationsPage() {
   async function confirmDelete(org: Organization) {
     await runAction(async () => {
       await api.delete(`/api/v1/orgs/${org.id}`, { confirm_name: org.name });
-    });
+    }, strings.serverOrgs.deletedToast(orgLabelCap));
     setDeletingOrgId(null);
   }
 
@@ -128,34 +142,44 @@ export function ServerOrganisationsPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+        <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
           <Plus size={16} /> New {orgLabel}
         </button>
       </div>
 
+      {/* Style guide "Pattern: modal dialog for entity create/rename" —
+          a brand-new entity opens in a Modal, not a permanently-visible
+          inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <div className="card stack">
-          <input
-            className="input"
-            placeholder={importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            Or import from an exported {orgLabel} bundle (.zip)
-            <input
-              className="input" type="file" accept=".zip,application/zip"
-              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-          <button
-            className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}
-            style={{ alignSelf: "flex-start" }}
-          >
-            Create
-          </button>
-        </div>
+        <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)}>
+          <div className="stack">
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
+              <input
+                className="input"
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              Or import from an exported {orgLabel} bundle (.zip)
+              <input
+                className="input" type="file" accept=".zip,application/zip"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setShowNewForm(false)}>
+                {strings.common.cancel}
+              </button>
+              <button className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}>
+                {strings.common.create}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {importWarnings && importWarnings.length > 0 && (
         <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
@@ -260,6 +284,21 @@ export function ServerOrganisationsPage() {
               requireTypedText={org.name}
               onConfirm={() => confirmDelete(org)}
               onCancel={cancelDelete}
+            />
+          );
+        })()}
+
+      {disablingOrgId &&
+        (() => {
+          const org = orgs.find((o) => o.id === disablingOrgId);
+          if (!org) return null;
+          return (
+            <ConfirmDialog
+              title={strings.serverOrgs.disableTitle.replace("{name}", org.name)}
+              message={strings.serverOrgs.disableConfirm}
+              confirmLabel={strings.serverOrgs.disable}
+              onConfirm={() => confirmDisable(org)}
+              onCancel={() => setDisablingOrgId(null)}
             />
           );
         })()}

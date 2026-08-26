@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgPersonalAccessToken, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -22,7 +22,7 @@ const orgUser: OrgUser = {
 };
 
 const advanced: OrgAdvancedSettings = {
-  smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true, sso_group_mappings: [],
+  smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
   pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled",
 };
@@ -33,13 +33,14 @@ const ssoConfig: OrgSsoConfig = {
 };
 
 const groups: OrgGroup[] = [
-  { id: "grp1", name: "Engineering", member_user_ids: ["user-1"], member_org_group_ids: [], idp_synced_group_name: null },
-  { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null },
+  { id: "grp1", name: "Engineering", member_user_ids: ["user-1"], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
+  { id: "grp2", name: "Platform", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
 ];
 
 function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
+  pats?: OrgPersonalAccessToken[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -53,7 +54,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/report-templates")) return [];
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return overrides.advanced ?? advanced;
-    if (path.includes("/pats")) return [];
+    if (path.includes("/pats")) return overrides.pats ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -96,13 +97,158 @@ export const UsersSectionAndCreateUser: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
-    // Users now lives under the "People" resource-menu group and is open
-    // by default there (the resource-menu selection does the "focus" job
-    // the accordion collapse used to do), so selecting the group is enough
-    // — no separate section-toggle click needed.
-    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    // Users is its own top-level resource-menu group (previously combined
+    // with Groups under "People" — split 2026-08-25) and is open by
+    // default there (the resource-menu selection does the "focus" job the
+    // accordion collapse used to do), so selecting the group is enough —
+    // no separate section-toggle click needed.
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("Org admin")).toBeInTheDocument();
+  },
+};
+
+/** Style guide "Pattern: modal dialog for entity create/rename" (revised
+ * Principle 3): "New user" now opens a `Modal` instead of the permanently-
+ * visible three-field inline form it used to be — the first real usage of
+ * that pattern in this codebase (items 519/521 in the same roadmap batch
+ * follow the shape this establishes). */
+export const NewUserOpensModalAndCreates: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
+
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    const dialog = body.getByRole("dialog", { name: "New user" });
+    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByLabelText("Email"), "sam@example.com");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Sam Rivera");
+    await userEvent.type(within(dialog).getByLabelText("Password"), "correct-horse-battery-staple");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users`, {
+        email: "sam@example.com", display_name: "Sam Rivera", password: "correct-horse-battery-staple", role: "member",
+      })
+    );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(body.getByText("User created")).toBeInTheDocument();
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Cancelling the "New user" modal creates nothing and leaves the Users
+ * table untouched. */
+export const NewUserModalCancel: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New user" });
+    await userEvent.type(within(dialog).getByLabelText("Email"), "discarded@example.com");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** Roadmap item 526's remaining "org report-template nested-accordion
+ * create flow" case: "New template" now opens a `Modal` (a brand-new
+ * `ReportTemplate` entity, per the revised Principle 3) instead of an
+ * always-visible nested `CollapsibleSection` form. */
+export const NewReportTemplateOpensModalAndCreates: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New template" })).toBeInTheDocument());
+
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "New template" }));
+    const dialog = body.getByRole("dialog", { name: "New template" });
+    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+
+    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Corporate Template");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/report-templates`,
+        expect.objectContaining({ name: "Corporate Template" })
+      )
+    );
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Cancelling the "New template" modal creates nothing. */
+export const NewReportTemplateModalCancel: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New template" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "New template" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New template" });
+    await userEvent.type(within(dialog).getByPlaceholderText("Name", { exact: true }), "Discarded Template");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** Column-header sorting (2026-08 UX audit roadmap) — the Users table is
+ * backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`), so a header click
+ * refetches with `sort`/`order` query params rather than reordering just
+ * the loaded page. */
+export const UsersSectionSortByEmail: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=email&order=asc"))
+    );
+    const th = canvas.getByRole("button", { name: "Email" }).closest("th");
+    await expect(th).toHaveAttribute("aria-sort", "ascending");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("sort=email&order=desc"))
+    );
   },
 };
 
@@ -129,7 +275,7 @@ export const ViewUserAccessPanel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "View Alex Morgan's access" }));
     const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's access" });
@@ -176,6 +322,10 @@ export const DisabledOrgServerAdminCanReEnable: Story = {
   },
 };
 
+/** Style guide "Pattern: action menu": rename now lives behind the
+ * Overview group's kebab (`ActionMenu`, "Organisation actions") instead of an
+ * always-visible inline input — selecting "Rename" from the menu opens a
+ * `Modal` containing the rename field and its own Save/Cancel row. */
 export const RenameOrganization: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -185,14 +335,45 @@ export const RenameOrganization: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByLabelText("Rename")).toHaveValue("Acme Corp"));
-    await userEvent.clear(canvas.getByLabelText("Rename"));
-    await userEvent.type(canvas.getByLabelText("Rename"), "Renamed Corp");
-    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Organisation actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Organisation actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Rename" });
+    await expect(within(dialog).getByLabelText("Rename")).toHaveValue("Acme Corp");
+    await userEvent.clear(within(dialog).getByLabelText("Rename"));
+    await userEvent.type(within(dialog).getByLabelText("Rename"), "Renamed Corp");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/name`, { name: "Renamed Corp" })
     );
     await expect(canvas.getByRole("heading", { name: "Renamed Corp" })).toBeInTheDocument();
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Renamed")).toBeInTheDocument();
+    await expect(within(document.body).queryByRole("dialog", { name: "Rename" })).not.toBeInTheDocument();
+  },
+};
+
+/** The other half of the same `ActionMenu`: "Export {org} bundle" calls
+ * the existing export flow directly — no modal, it's a relocated button,
+ * not a create/rename flow (roadmap item 519's own scope note). */
+export const ExportOrgBundleViaActionMenu: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["fake zip"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Organisation actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Organisation actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Export organisation bundle" }));
+
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/export`));
   },
 };
 
@@ -312,16 +493,16 @@ export const SelfSignupSsoConflictBlocksSave: Story = {
   beforeEach: () => mockOrgAdminApis({ sso: { ...ssoConfig, sso_only: true } }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // The old "Advanced settings" accordion split into separate cards
-    // under "Integrations & security" — self-signup now lives in the
-    // "Security" card, open by default there.
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    // "Integrations & security" later split into three top-level groups
+    // (2026-08 UX audit roadmap item 523) — self-signup now lives in its
+    // own "Security" group, open by default there.
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     await waitFor(() => expect(canvas.getByRole("switch", { name: "Allow self-signup" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("switch", { name: "Allow self-signup" }));
     await expect(
       canvas.getByText("Self-signup can't be enabled while this organisation is SSO-only — turn off \"SSO only\" in the SSO configuration below first, or turn off self-signup here.")
     ).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save advanced settings" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save security settings" })).toBeDisabled();
   },
 };
 
@@ -332,10 +513,10 @@ export const AdvancedSettingsRequire2fa: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     await waitFor(() => expect(canvas.getByRole("switch", { name: "Require two-factor authentication" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("switch", { name: "Require two-factor authentication" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Save advanced settings" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save security settings" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
@@ -349,9 +530,10 @@ export const AdvancedSettingsTestEmailNoSmtpConfigured: Story = {
   beforeEach: () => mockOrgAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Test email now lives in the "SMTP & email" card under "Integrations
-    // & security", split out of the old "Advanced settings" catch-all.
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    // Test email lives in the "SMTP & email" card under its own "Email"
+    // top-level group now, split out of the old "Integrations & security"
+    // combination (2026-08 UX audit roadmap item 523).
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Send test email" })).toBeDisabled();
     await expect(canvas.getByText("Set an SMTP host above first.")).toBeInTheDocument();
@@ -365,7 +547,7 @@ export const AdvancedSettingsTestEmailSend: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Send test email" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
     await waitFor(() =>
@@ -375,12 +557,87 @@ export const AdvancedSettingsTestEmailSend: Story = {
   },
 };
 
+/** SMTP fields are saved via the same `OrgAdvancedSettings` PUT the
+ * Security group's own save button also submits (2026-08 UX audit roadmap
+ * item 523) — the Email group needs its own explicit save button now that
+ * they're on separate pages. */
+export const EmailSettingsSave: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
+    await waitFor(() => expect(canvas.getByPlaceholderText("SMTP host")).toBeInTheDocument());
+    await userEvent.type(canvas.getByPlaceholderText("SMTP host"), "smtp.example.com");
+    await userEvent.click(canvas.getByRole("button", { name: "Save email settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ smtp_host: "smtp.example.com" })
+      )
+    );
+  },
+};
+
 export const SsoSectionSaveDisabledWhenNotConfigured: Story = {
   beforeEach: () => mockOrgAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    // SSO/OIDC and SCIM share the "OAuth/SSO" top-level group (both
+    // identity-provisioning integrations) — see docs/decisions.md for the
+    // SCIM-placement call.
+    await userEvent.click(canvas.getByRole("link", { name: "OAuth/SSO" }));
     await waitFor(() => expect(canvas.getByLabelText("OIDC issuer URL")).toHaveValue("https://idp.example.com"));
+  },
+};
+
+/** SSO group→role mapping (2026-08 UX audit roadmap item 522) is now a
+ * property of the group being synced into — set alongside its IdP-sync
+ * name and saved together via one button on the Groups section, replacing
+ * the old flat "SSO group mappings" list this OAuth/SSO group used to
+ * carry. The mock's `ssoConfig` already has an issuer/client id set, so
+ * the role select renders instead of the "set up SSO first" hint. */
+export const GroupsSectionSaveIdpSyncAndGrantedRole: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "patch").mockResolvedValue({ ...groups[0], idp_synced_group_name: "eng-team", granted_org_role: "member" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /Engineering/ }));
+    const engineeringGroup = canvas.getByText(/Engineering/, { selector: "strong" }).closest<HTMLElement>(".stack")!;
+
+    await userEvent.type(within(engineeringGroup).getByPlaceholderText("e.g. eng-team"), "eng-team");
+    await userEvent.selectOptions(within(engineeringGroup).getByLabelText("Grants role on sync"), "member");
+    await userEvent.click(within(engineeringGroup).getByRole("button", { name: "Save sync settings" }));
+
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/groups/grp1`,
+        { idp_synced_group_name: "eng-team", granted_org_role: "member" }
+      )
+    );
+  },
+};
+
+/** Without SSO configured (no issuer/client id), the granted-role select
+ * doesn't render at all — a role can't be granted via a claim the org has
+ * no way to receive. */
+export const GroupsSectionGrantedRoleHiddenWithoutSso: Story = {
+  beforeEach: () => mockOrgAdminApis({ sso: { slug: null, sso_enabled: false, sso_only: false, oidc_issuer_url: null, oidc_client_id: null, oidc_required_group: null } }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
+    await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /Engineering/ }));
+    const engineeringGroup = canvas.getByText(/Engineering/, { selector: "strong" }).closest<HTMLElement>(".stack")!;
+
+    await expect(within(engineeringGroup).queryByLabelText("Grants role on sync")).not.toBeInTheDocument();
+    await expect(within(engineeringGroup).getByText(/Set up SSO\/OIDC/)).toBeInTheDocument();
   },
 };
 
@@ -391,7 +648,7 @@ export const ScimSectionGenerateToken: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "OAuth/SSO" }));
     await waitFor(() => expect(canvas.getByText("Not enabled.")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Generate SCIM token" }));
     await waitFor(() =>
@@ -405,17 +662,17 @@ export const GroupsSectionShowsMembers: Story = {
   beforeEach: () => mockOrgAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
     await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
     // Groups render collapsed by default (2026-08 UX audit "Directories
     // at scale") — expand Engineering's own section before its member
     // list is visible at all.
     await userEvent.click(canvas.getByRole("button", { name: /Engineering/ }));
-    // Users and Groups are both open by default under the "People" group
-    // now (no more per-section accordion click to focus on just one), so
-    // "Alex Morgan" appears twice on screen — once in the Users table, once
-    // in Engineering's member list. Scope to the Engineering group's own
-    // container rather than the whole canvas.
+    // Scope to the Engineering group's own container rather than the whole
+    // canvas — Groups is now its own resource-menu group, separate from
+    // Users (previously combined under "People"), so this is just the
+    // usual defensive scoping, not working around a second "Alex Morgan"
+    // match from a Users table rendered on the same page.
     const engineeringGroup = canvas.getByText(/Engineering/, { selector: "strong" }).closest<HTMLElement>(".stack")!;
     await expect(within(engineeringGroup).getByText(/Alex Morgan/)).toBeInTheDocument();
   },
@@ -428,7 +685,7 @@ export const GroupsSectionNestGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
     await waitFor(() => expect(canvas.getByText(/Engineering/, { selector: "strong" })).toBeInTheDocument());
     // Groups render collapsed by default — expand Engineering's own
     // section before its nest-a-group picker becomes visible.
@@ -452,17 +709,18 @@ export const GroupsSectionNestGroup: Story = {
   },
 };
 
-/** Style guide "Pattern: create panels, popovers, and one door for bulk":
- * "+ New group" opens a small popover with just a name field, instead of a
- * permanently-visible inline form pinned below the group list. */
-export const GroupsSectionCreateGroupViaPopover: Story = {
+/** Style guide "Pattern: modal dialog for entity create/rename": "+ New
+ * group" opens a Modal with just a name field, instead of a
+ * permanently-visible inline form pinned below the group list (or, as it
+ * used to be before the revised Principle 3, a Popover). */
+export const GroupsSectionCreateGroupViaModal: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "People" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Groups" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "New group" })).toBeInTheDocument());
 
     const body = within(document.body);
@@ -486,8 +744,56 @@ export const PatsSectionNoneReachOrg: Story = {
   beforeEach: () => mockOrgAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Integrations & security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     await waitFor(() => expect(canvas.getByText("No tokens currently reach this organisation.")).toBeInTheDocument());
+  },
+};
+
+const onePat: OrgPersonalAccessToken = {
+  id: "pat-1", user_id: "user-1", user_email: "alex@example.com", user_display_name: "Alex Morgan",
+  name: "MCP server", token_prefix: "rtm_pat_abcd", expires_at: "2027-01-01T00:00:00Z",
+  other_org_count: 0, last_used_at: null, created_at: "2026-01-01T00:00:00Z",
+};
+
+/** Revoking a single org-scoped PAT opens the shared `ConfirmDialog`
+ * (sixth-pass audit — this used to fire via `window.confirm`), then shows
+ * a success toast once revoked. */
+export const PatsSectionRevokeOneConfirms: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ pats: [onePat] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token outright?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/pats/pat-1/revoke`));
+  },
+};
+
+/** Cancelling the revoke confirmation leaves the token untouched. */
+export const PatsSectionRevokeOneCancelled: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ pats: [onePat] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Revoke this token outright?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(api.post).not.toHaveBeenCalled();
+    await expect(canvas.getByText("MCP server")).toBeInTheDocument();
   },
 };
 
@@ -588,6 +894,45 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+  },
+};
+
+/** A project group's role badge under Projects & workflow renders through
+ * `PROJECT_ROLE_LABEL` (2026-08 UX audit roadmap, "Fix raw-enum filter/table
+ * text") — "Project administrator", not the raw `project_administrator`
+ * enum value. */
+export const ProjectGroupRoleBadgeUsesLabelMap: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+      if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
+      if (path === "/api/v1/projects/proj-1/groups") {
+        return [{ id: "pg1", name: "Reviewers", role: "project_administrator", is_default: false, member_user_ids: [], member_org_group_ids: [] }];
+      }
+      if (path.includes("/project-statuses")) return [];
+      if (path.includes("/link-types")) return [];
+      if (path.includes("/groups")) return groups;
+      if (path.includes("/resources")) return [];
+      if (path.includes("archived=false")) return [];
+      if (path.includes("/report-templates")) return [];
+      if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
+      if (path.includes("/advanced-settings")) return advanced;
+      if (path.includes("/pats")) return [];
+      if (path.includes("/sso-config")) return ssoConfig;
+      if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
+      if (path.includes("/access")) return { org_groups: [], projects: [] };
+      if (path.includes("/users")) return [orgUser];
+      throw new Error(`unmocked path: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+    await waitFor(() => expect(canvas.getByText("Project administrator")).toBeInTheDocument());
+    await expect(canvas.queryByText("project_administrator")).not.toBeInTheDocument();
   },
 };
 

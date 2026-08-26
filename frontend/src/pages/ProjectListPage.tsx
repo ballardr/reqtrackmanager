@@ -4,15 +4,18 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, Project, ProjectImportResult, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
-import { PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { collapseProjectRoles, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
+import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 30;
 
@@ -30,6 +33,8 @@ export function ProjectListPage() {
   const strings = useStrings();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const { refreshFavourites } = useFavourites();
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
@@ -40,6 +45,7 @@ export function ProjectListPage() {
   const [roleFilter, setRoleFilter] = useState<ProjectRole | "">("");
   const [stageStatusFilter, setStageStatusFilter] = useState<StageStatus | "">("");
   const [orgFilter, setOrgFilter] = useState("");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -59,6 +65,12 @@ export function ProjectListPage() {
     if (roleFilter) params.set("role", roleFilter);
     if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
     if (orgFilter) params.set("organization_id", orgFilter);
+    // Same `favorite_only` param `FavouritesPage.tsx` already uses server-side
+    // (2026-08 UX audit roadmap 511) — filtering here rather than
+    // client-side keeps this consistent with every other filter on this
+    // page, all of which narrow the paginated result set itself rather
+    // than hiding already-loaded rows.
+    if (favoriteOnly) params.set("favorite_only", "true");
     return params;
   }
 
@@ -93,7 +105,7 @@ export function ProjectListPage() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showArchived, search, roleFilter, stageStatusFilter, orgFilter]);
+  }, [showArchived, search, roleFilter, stageStatusFilter, orgFilter, favoriteOnly]);
 
   useEffect(() => {
     // C-E-04: pre-select the organisation's default template project (if
@@ -106,12 +118,17 @@ export function ProjectListPage() {
   }, [newOrgId]);
 
   async function toggleFavorite(project: ProjectListItem) {
-    if (project.is_favorite) {
-      await api.delete(`/api/v1/projects/${project.id}/favorite`);
-    } else {
-      await api.put(`/api/v1/projects/${project.id}/favorite`);
+    try {
+      if (project.is_favorite) {
+        await api.delete(`/api/v1/projects/${project.id}/favorite`);
+      } else {
+        await api.put(`/api/v1/projects/${project.id}/favorite`);
+      }
+      reload();
+      refreshFavourites();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
-    reload();
   }
 
   const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
@@ -135,6 +152,7 @@ export function ProjectListPage() {
           organization_id: newOrgId, name: newName, summary: newSummary,
         });
         if (result.warnings.length > 0) setImportWarnings(result.warnings);
+        showToast(strings.projects.created);
         navigate(`/projects/${result.project.id}`);
         return;
       }
@@ -145,6 +163,7 @@ export function ProjectListPage() {
         template_project_id: templateProjectId || null,
         visibility: newVisibility,
       });
+      showToast(strings.projects.created);
       navigate(`/projects/${project.id}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : strings.common.error);
@@ -155,72 +174,98 @@ export function ProjectListPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>{strings.projects.title}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+        <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
           <Plus size={16} /> {strings.projects.newProject}
         </button>
       </div>
 
+      {/* Style guide "Pattern: modal dialog for entity create/rename" —
+          a brand-new entity opens in a Modal, not a permanently-visible
+          inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <div className="card stack">
-          {orgs.length > 1 && (
-            <select className="input" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)}>
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <input
-            className="input"
-            placeholder={strings.projects.name}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <textarea
-            className="input"
-            rows={2}
-            placeholder={strings.projects.summary}
-            value={newSummary}
-            onChange={(e) => setNewSummary(e.target.value)}
-          />
-          {templateOptions.length > 0 && !importFile && (
+        <Modal title={strings.projects.newProject} onClose={() => setShowNewForm(false)}>
+          <div className="stack">
+            {orgs.length > 1 && (
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {orgLabelCap}
+                <select className="input" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} autoFocus>
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.useTemplate}
-              <select className="input" value={templateProjectId} onChange={(e) => setTemplateProjectId(e.target.value)}>
-                <option value="">{strings.projects.noTemplate}</option>
-                {templateOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+              {strings.projects.name}
+              <input
+                className="input"
+                autoFocus={orgs.length <= 1}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.projects.summary}
+              <textarea
+                className="input"
+                rows={2}
+                value={newSummary}
+                onChange={(e) => setNewSummary(e.target.value)}
+              />
+            </label>
+            {!importFile && templateOptions.length > 0 && (
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.projects.useTemplate}
+                <select className="input" value={templateProjectId} onChange={(e) => setTemplateProjectId(e.target.value)}>
+                  <option value="">{strings.projects.noTemplate}</option>
+                  {templateOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {/* Small usability fix noted alongside this item in the 2026-08
+                UX audit: picking an import file below used to silently hide
+                the template picker above with no explanation — this note
+                replaces the silent disappearance, rather than a bigger
+                redesign of the two fields' relationship. */}
+            {importFile && templateOptions.length > 0 && (
+              <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
+            )}
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.admin.visibility}
+              <select
+                className="input"
+                value={newVisibility}
+                onChange={(e) => setNewVisibility(e.target.value as "only_specified" | "org_wide")}
+              >
+                <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
+                <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
               </select>
             </label>
-          )}
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.admin.visibility}
-            <select
-              className="input"
-              value={newVisibility}
-              onChange={(e) => setNewVisibility(e.target.value as "only_specified" | "org_wide")}
-            >
-              <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
-              <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
-            </select>
-          </label>
-          <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.projects.importFromBundle}
-            <input
-              className="input" type="file" accept=".zip,application/zip"
-              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-          <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId}>
-            {strings.common.create}
-          </button>
-        </div>
+            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.projects.importFromBundle}
+              <input
+                className="input" type="file" accept=".zip,application/zip"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setShowNewForm(false)}>
+                {strings.common.cancel}
+              </button>
+              <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId}>
+                {strings.common.create}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {importWarnings && importWarnings.length > 0 && (
         <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
@@ -285,7 +330,7 @@ export function ProjectListPage() {
                     {p.summary || "—"}
                   </p>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    {strings.projects.roles}: {p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
+                    {strings.projects.roles}: {collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
                   </div>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {strings.projects.requirementCount}: {p.requirement_count}
@@ -341,7 +386,7 @@ export function ProjectListPage() {
                           </FilterBadge>
                         )}
                       </td>
-                      <td className="text-muted">{p.my_roles.map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
+                      <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
                       <td className="text-muted">{p.requirement_count}</td>
                       <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
                     </tr>
@@ -357,6 +402,7 @@ export function ProjectListPage() {
 
         <FilterPanel>
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+          <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
           <FilterField label="Status">
             <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
               <option value="active">{strings.projects.active}</option>

@@ -25,17 +25,23 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     await page.getByLabel("Status").selectOption("all");
 
     await test.step("create the organisation", async () => {
+      // "New organisation" opens a Modal (style guide "Pattern: modal
+      // dialog for entity create/rename") — scoped to it rather than the
+      // whole page.
       await page.getByRole("button", { name: "New organisation" }).click();
-      await page.getByPlaceholder("Organisation name").fill(orgName);
-      await page.getByRole("button", { name: "Create", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New organisation" });
+      await dialog.getByLabel("Organisation name").fill(orgName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("row", { name: new RegExp(orgName) })).toContainText("Active");
     });
 
     const row = page.getByRole("row", { name: new RegExp(orgName) });
 
     await test.step("disable it", async () => {
-      page.once("dialog", (dialog) => dialog.accept());
+      // Disable now confirms via the shared `ConfirmDialog` (sixth-pass
+      // audit) rather than `window.confirm`.
       await row.getByRole("button", { name: "Disable" }).click();
+      await page.getByRole("dialog", { name: `Disable "${orgName}"?` }).getByRole("button", { name: "Disable" }).click();
       await expect(row).toContainText("Disabled");
     });
 

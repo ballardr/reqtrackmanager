@@ -1,6 +1,6 @@
-import { Download, Eye, Lock, LogOut, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Eye, Lock, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -34,17 +34,21 @@ import type {
   UserAccess,
 } from "../api/types";
 import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { ActionMenu } from "../components/ActionMenu";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
+import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { Modal } from "../components/Modal";
 import { OverridePill } from "../components/OverridePill";
-import { Popover } from "../components/Popover";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -52,7 +56,7 @@ import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
 /**
- * The 6 resource-menu groups Org Admin's previous 15 flat accordions were
+ * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
  * regrouped into (2026-08 UX audit, style guide "Pattern: settings
  * hierarchy" — see its "after" diagram). Each key is also the route
  * segment under `/orgs/:orgId/admin/:group?` (App.tsx), so a group
@@ -60,22 +64,39 @@ import { defaultResolutions } from "../utils/mergeConflicts";
  * a bookmark to one specific group both work. An unrecognised or absent
  * `:group` (including the bare `/orgs/:orgId/admin` used by every existing
  * link into this page) falls back to "overview".
+ *
+ * "people" (Users and Groups combined in one panel) was later split into
+ * its own two top-level groups, "users" and "groups" — a flat regroup per
+ * the style guide's settings-hierarchy addendum, not a new navigation
+ * capability (`ResourceMenu` already renders any number of flat groups).
+ * "integrations-security" was later split the same way, into "oauth-sso"
+ * (SSO/OIDC + SCIM — both identity-provisioning integrations, grouped
+ * together rather than splitting SCIM into "security"), "email" (SMTP +
+ * test email), and "security" (2FA/self-signup/external-user policy, plus
+ * Personal Access Tokens — see `docs/decisions.md` for the SCIM placement
+ * call).
  */
 type OrgAdminGroupKey =
   | "overview"
-  | "people"
+  | "users"
+  | "groups"
   | "projects-workflow"
   | "branding-defaults"
   | "templates-reports"
-  | "integrations-security";
+  | "oauth-sso"
+  | "email"
+  | "security";
 
 const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "overview",
-  "people",
+  "users",
+  "groups",
   "projects-workflow",
   "branding-defaults",
   "templates-reports",
-  "integrations-security",
+  "oauth-sso",
+  "email",
+  "security",
 ];
 
 /**
@@ -97,7 +118,6 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
 export function OrgAdminPage() {
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -106,6 +126,10 @@ export function OrgAdminPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [orgNameEdit, setOrgNameEdit] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
+  // Rename now opens in a `Modal` from the Overview group's `ActionMenu`
+  // (style guide "Pattern: action menu") rather than an always-visible
+  // inline input.
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [degradedOrgName, setDegradedOrgName] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -117,7 +141,6 @@ export function OrgAdminPage() {
   const [bootstrapPassword, setBootstrapPassword] = useState("");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [bootstrapCreated, setBootstrapCreated] = useState(false);
-  const [leaveError, setLeaveError] = useState<string | null>(null);
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [usersTotal, setUsersTotal] = useState(0);
   const [userSearch, setUserSearch] = useState("");
@@ -147,9 +170,13 @@ export function OrgAdminPage() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  // "New user" now opens in a `Modal` (style guide "Pattern: modal dialog
+  // for entity create/rename") rather than the permanently-visible inline
+  // form it used to be — the first real usage of that pattern, setting the
+  // shape items 521/519 (New Project/New Organisation, org rename) follow.
+  const [newUserModalOpen, setNewUserModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupPopoverOpen, setNewGroupPopoverOpen] = useState(false);
-  const newGroupTriggerRef = useRef<HTMLButtonElement>(null);
+  const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
 
   const [advanced, setAdvanced] = useState<OrgAdvancedSettings | null>(null);
   const [smtpHost, setSmtpHost] = useState("");
@@ -161,19 +188,42 @@ export function OrgAdminPage() {
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
-  const [newMappingGroup, setNewMappingGroup] = useState("");
-  const [newMappingRole, setNewMappingRole] = useState<OrgRole>("member");
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
+  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // `order`, same reasoning as the Requirements/Change Requests lists:
+  // this table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`
+  // below), so sorting has to be honoured server-side.
+  type OrgUserSortKey = "display_name" | "email" | "last_login_at";
+  const [userSort, setUserSort] = useState<SortState<OrgUserSortKey> | null>(null);
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
   const [require2fa, setRequire2fa] = useState(false);
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
+  // Guards the advanced-settings form fields above against `reload()` —
+  // called after every unrelated mutation on this page (e.g.
+  // `toggleDisplayNameLock`) and not awaited by its caller, so it can
+  // still be mid-flight when the user edits and saves this form right
+  // after triggering one of those other actions. Without this, a slow
+  // `reload()`'s own advanced-settings fetch resolving *after* the user's
+  // edit clobbers it back to the last-saved value before Save is even
+  // clicked — a real (CI-reproducible, native-fast-machine-invisible)
+  // race, not a test timing issue; see org-security-controls.spec.ts's
+  // own comment and docs/decisions.md. Set on every field's onChange,
+  // cleared once `saveAdvanced` succeeds (so a later, legitimate reload
+  // can resume populating the form again).
+  const advancedDirtyRef = useRef(false);
   const [outsideDomainUsers, setOutsideDomainUsers] = useState<OutsideDomainUser[] | null>(null);
   const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
   const [patBulkResult, setPatBulkResult] = useState<string | null>(null);
+  // ConfirmDialog (Tier 1) state for the three PAT actions below — converted
+  // from `window.confirm` per the sixth-pass audit's "Confirmation and
+  // feedback rollout, precisely" list.
+  const [patToDescope, setPatToDescope] = useState<string | null>(null);
+  const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
+  const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [expandedProjectGroups, setExpandedProjectGroups] = useState<ProjectGroup[]>([]);
@@ -208,6 +258,11 @@ export function OrgAdminPage() {
   const [newTemplateAppendices, setNewTemplateAppendices] = useState<ReportChapter[]>([]);
   const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  // The create/edit form for a report template is a brand-new (or, when
+  // editing, an existing) entity's full field set, not contextual detail
+  // about anything already on screen — per the revised Principle 3 it
+  // opens in a `Modal`, not a permanently-visible nested accordion.
+  const [templateFormOpen, setTemplateFormOpen] = useState(false);
 
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
@@ -217,14 +272,12 @@ export function OrgAdminPage() {
   const [emailFooterAddressInput, setEmailFooterAddressInput] = useState("");
   const [brandingError, setBrandingError] = useState<string | null>(null);
 
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const resourceInputRef = useRef<HTMLInputElement>(null);
-  const loginBackgroundInputRef = useRef<HTMLInputElement>(null);
-
   const USERS_PAGE_SIZE = 30;
   const GROUPS_PAGE_SIZE = 20;
 
-  async function loadUsers(filter: typeof userFilter, search: string, offset: number, append: boolean) {
+  async function loadUsers(
+    filter: typeof userFilter, search: string, offset: number, append: boolean, sort: typeof userSort = userSort
+  ) {
     if (!orgId) return;
     function query(includeFilter: boolean) {
       const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE), offset: String(offset) });
@@ -234,6 +287,10 @@ export function OrgAdminPage() {
         if (filter === "noaccess") params.set("has_project_access", "false");
       }
       if (search) params.set("search", search);
+      if (sort) {
+        params.set("sort", sort.key);
+        params.set("order", sort.direction);
+      }
       return params.toString();
     }
     try {
@@ -322,15 +379,20 @@ export function OrgAdminPage() {
     try {
       const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
       setAdvanced(a);
-      setSmtpHost(a.smtp_host ?? "");
-      setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
-      setSmtpUsername(a.smtp_username ?? "");
-      setSmtpUseTls(a.smtp_use_tls);
-      setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
-      setRequire2fa(a.require_2fa);
-      setAllowSelfSignup(a.allow_self_signup);
-      setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
-      setExternalUserPolicy(a.external_user_policy);
+      // Skip re-populating the editable fields below if the user has an
+      // unsaved edit pending — this fetch may have been in flight since
+      // before that edit started (see `advancedDirtyRef`'s own comment).
+      if (!advancedDirtyRef.current) {
+        setSmtpHost(a.smtp_host ?? "");
+        setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
+        setSmtpUsername(a.smtp_username ?? "");
+        setSmtpUseTls(a.smtp_use_tls);
+        setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+        setRequire2fa(a.require_2fa);
+        setAllowSelfSignup(a.allow_self_signup);
+        setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
+        setExternalUserPolicy(a.external_user_policy);
+      }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
     } catch (err) {
@@ -391,6 +453,12 @@ export function OrgAdminPage() {
     loadUsers(userFilter, value, 0, false);
   }
 
+  function applyUserSort(key: OrgUserSortKey) {
+    const next = cycleSort(userSort, key);
+    setUserSort(next);
+    loadUsers(userFilter, userSearch, 0, false, next);
+  }
+
   function handleGroupSearchChange(value: string) {
     setGroupSearch(value);
     loadGroups(value, 0, false);
@@ -429,8 +497,11 @@ export function OrgAdminPage() {
       const updated = await api.put<Organization>(`/api/v1/orgs/${orgId}/name`, { name: orgNameEdit });
       setOrg(updated);
       setOrgNameEdit(updated.name);
+      setRenameModalOpen(false);
+      showToast(strings.orgAdmin.renamed);
     } catch (err) {
       setRenameError(err instanceof ApiError ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -459,7 +530,6 @@ export function OrgAdminPage() {
         smtp_username: smtpUsername || null,
         smtp_password: smtpPassword || undefined,
         smtp_use_tls: smtpUseTls,
-        sso_group_mappings: advanced?.sso_group_mappings ?? [],
         pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
         require_2fa: require2fa,
         allow_self_signup: allowSelfSignup,
@@ -468,6 +538,9 @@ export function OrgAdminPage() {
       });
       setAdvanced(saved);
       setSmtpPassword("");
+      // Saved successfully, so the fields now match the server again — a
+      // later reload() is safe to repopulate them from a fresh fetch.
+      advancedDirtyRef.current = false;
     } catch (err) {
       setAdvancedError(err instanceof Error ? err.message : strings.common.error);
     }
@@ -475,35 +548,24 @@ export function OrgAdminPage() {
 
   async function revokeOrgPat(patId: string) {
     if (!orgId) return;
+    setPatToRevoke(null);
     await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`);
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function descopeOrgPat(patId: string) {
-    if (!orgId || !window.confirm(strings.orgAdmin.patDescopeConfirm(orgLabel, orgLabelPlural))) return;
+    if (!orgId) return;
+    setPatToDescope(null);
     await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function revokeAllOrgPats() {
-    if (!orgId || !window.confirm(strings.orgAdmin.patRevokeAllConfirm(orgLabel, orgLabelPlural))) return;
+    if (!orgId) return;
+    setRevokeAllPatsOpen(false);
     const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
     setOrgPats([]);
     setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
-  }
-
-  function addMapping() {
-    if (!newMappingGroup || !advanced) return;
-    setAdvanced({
-      ...advanced,
-      sso_group_mappings: [...advanced.sso_group_mappings, { sso_group: newMappingGroup, org_role: newMappingRole }],
-    });
-    setNewMappingGroup("");
-  }
-
-  function removeMapping(idx: number) {
-    if (!advanced) return;
-    setAdvanced({ ...advanced, sso_group_mappings: advanced.sso_group_mappings.filter((_, i) => i !== idx) });
   }
 
   async function setDefaultTemplate(projectId: string) {
@@ -642,20 +704,26 @@ export function OrgAdminPage() {
   }
 
   async function createUser() {
-    await api.post(`/api/v1/orgs/${orgId}/users`, {
-      email: newUserEmail, display_name: newUserName, password: newUserPassword, role: "member",
-    });
-    setNewUserEmail("");
-    setNewUserName("");
-    setNewUserPassword("");
-    reload();
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/users`, {
+        email: newUserEmail, display_name: newUserName, password: newUserPassword, role: "member",
+      });
+      setNewUserEmail("");
+      setNewUserName("");
+      setNewUserPassword("");
+      setNewUserModalOpen(false);
+      showToast(strings.orgAdmin.userCreated);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   async function createGroup() {
     try {
       await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
       setNewGroupName("");
-      setNewGroupPopoverOpen(false);
+      setNewGroupModalOpen(false);
       showToast(strings.orgAdmin.groupCreated);
       reload();
     } catch (err) {
@@ -693,13 +761,27 @@ export function OrgAdminPage() {
   }
 
   const [idpSyncEdits, setIdpSyncEdits] = useState<Record<string, string>>({});
+  // Granted-role edits (2026-08 UX audit roadmap item 522), saved together
+  // with the sync name above via one button — a role only makes sense
+  // alongside a sync name, so splitting them into separate save actions
+  // would let the UI momentarily represent the invalid "role with no sync
+  // target" state the backend itself rejects.
+  const [grantedRoleEdits, setGrantedRoleEdits] = useState<Record<string, OrgRole | "">>({});
   const [idpSyncErrors, setIdpSyncErrors] = useState<Record<string, string | null>>({});
 
-  async function saveIdpSync(groupId: string, value: string) {
+  async function saveIdpSync(groupId: string, syncName: string, grantedRole: OrgRole | "") {
     setIdpSyncErrors((prev) => ({ ...prev, [groupId]: null }));
     try {
-      await api.patch(`/api/v1/orgs/${orgId}/groups/${groupId}`, { idp_synced_group_name: value.trim() || null });
+      await api.patch(`/api/v1/orgs/${orgId}/groups/${groupId}`, {
+        idp_synced_group_name: syncName.trim() || null,
+        granted_org_role: grantedRole || null,
+      });
       setIdpSyncEdits((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      setGrantedRoleEdits((prev) => {
         const next = { ...prev };
         delete next[groupId];
         return next;
@@ -852,6 +934,16 @@ export function OrgAdminPage() {
     setNewTemplateChaptersPerComponent(true);
   }
 
+  function openNewTemplateForm() {
+    resetTemplateForm();
+    setTemplateFormOpen(true);
+  }
+
+  function closeTemplateForm() {
+    resetTemplateForm();
+    setTemplateFormOpen(false);
+  }
+
   function startEditTemplate(tpl: ReportTemplate) {
     setEditingTemplateId(tpl.id);
     setNewTemplateName(tpl.name);
@@ -863,6 +955,7 @@ export function OrgAdminPage() {
     setNewTemplateChapters(tpl.chapters);
     setNewTemplateAppendices(tpl.appendices);
     setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
+    setTemplateFormOpen(true);
   }
 
   async function saveReportTemplate() {
@@ -883,7 +976,7 @@ export function OrgAdminPage() {
     } else {
       await api.post(`/api/v1/orgs/${orgId}/report-templates`, payload);
     }
-    resetTemplateForm();
+    closeTemplateForm();
     reload();
   }
 
@@ -908,16 +1001,6 @@ export function OrgAdminPage() {
       display_name_locked: !user.display_name_locked,
     });
     reload();
-  }
-
-  async function leaveOrg() {
-    setLeaveError(null);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/membership`);
-      navigate("/orgs");
-    } catch (err) {
-      setLeaveError(err instanceof ApiError ? err.message : "Something went wrong.");
-    }
   }
 
   const [exportingOrg, setExportingOrg] = useState(false);
@@ -1087,11 +1170,14 @@ export function OrgAdminPage() {
     : "overview";
   const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
-    { key: "people", label: strings.orgAdmin.groupPeople, href: `/orgs/${orgId}/admin/people` },
+    { key: "users", label: strings.orgAdmin.groupUsers, href: `/orgs/${orgId}/admin/users` },
+    { key: "groups", label: strings.orgAdmin.groupGroups, href: `/orgs/${orgId}/admin/groups` },
     { key: "projects-workflow", label: strings.orgAdmin.groupProjectsWorkflow, href: `/orgs/${orgId}/admin/projects-workflow` },
     { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
     { key: "templates-reports", label: strings.orgAdmin.groupTemplatesReports, href: `/orgs/${orgId}/admin/templates-reports` },
-    { key: "integrations-security", label: strings.orgAdmin.groupIntegrationsSecurity, href: `/orgs/${orgId}/admin/integrations-security` },
+    { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
+    { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
+    { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
   ];
 
   return (
@@ -1112,41 +1198,65 @@ export function OrgAdminPage() {
                     second <h1> (previously the only place it appeared at
                     all — every other group had no page title whatsoever)
                     would just duplicate that same text on this one group. */}
-                {advanced && (
-                  <div className="row" style={{ gap: "0.4rem" }}>
-                    <input
-                      className="input"
-                      style={{ maxWidth: 280 }}
-                      value={orgNameEdit}
-                      onChange={(e) => setOrgNameEdit(e.target.value)}
-                      aria-label={strings.orgAdmin.rename}
-                      title={strings.orgAdmin.renameHint(orgLabel)}
-                    />
-                    {orgNameEdit.trim() && orgNameEdit !== org.name && (
-                      <button className="btn" onClick={renameOrg} title={strings.orgAdmin.rename}>
-                        <Pencil size={14} /> {strings.orgAdmin.rename}
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="row">
                 {org.logo_file_id && (
                   <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
                 )}
-                <button
-                  className="btn" onClick={exportOrg} disabled={exportingOrg}
-                  title={`Downloads a self-contained .zip with this ${orgLabel}'s settings, members, report templates, and every project's full structure/history — re-importable as a new ${orgLabel} from the server ${orgLabelPlural.toLowerCase()} page.`}
-                >
-                  <Download size={14} /> {exportingOrg ? "Exporting…" : `Export ${orgLabel} bundle`}
-                </button>
-                <button className="btn btn-danger" onClick={leaveOrg} title={`Remove your own membership in this ${orgLabel}`}>
-                  <LogOut size={14} /> Leave {orgLabel}
-                </button>
+                {/* Style guide "Pattern: action menu" — rename and export
+                    combined behind one kebab trigger instead of an
+                    always-visible rename input plus a separate export
+                    button. Rename is only offered when `advanced` has
+                    loaded (the same org-admin-only gate the inline input
+                    used to carry — a non-admin 403s on advanced-settings);
+                    export stays available to every member, matching its
+                    previous ungated placement. */}
+                <ActionMenu
+                  triggerLabel={strings.orgAdmin.orgActions(orgLabelCap)}
+                  disabled={exportingOrg}
+                  items={[
+                    ...(advanced
+                      ? [{ label: strings.orgAdmin.rename, icon: <Pencil size={14} />, onSelect: () => setRenameModalOpen(true) }]
+                      : []),
+                    {
+                      label: `Export ${orgLabel} bundle`,
+                      icon: <Download size={14} />,
+                      onSelect: exportOrg,
+                    },
+                  ]}
+                />
               </div>
             </div>
-            {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
-            {leaveError && <div style={{ color: "var(--color-danger)" }}>{leaveError}</div>}
+
+            {renameModalOpen && (
+              <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
+                <div className="stack">
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.rename}
+                    <input
+                      className="input"
+                      autoFocus
+                      value={orgNameEdit}
+                      onChange={(e) => setOrgNameEdit(e.target.value)}
+                    />
+                  </label>
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.renameHint(orgLabel)}</span>
+                  {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setRenameModalOpen(false)}>
+                      {strings.common.cancel}
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={renameOrg}
+                      disabled={!orgNameEdit.trim() || orgNameEdit === org.name}
+                    >
+                      {strings.common.save}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+            )}
 
             <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed>
               <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
@@ -1228,28 +1338,29 @@ export function OrgAdminPage() {
                   </button>
                 </div>
               ))}
-              <input
-                ref={resourceInputRef}
-                type="file"
-                onChange={(e) => e.target.files?.[0] && uploadResource(e.target.files[0])}
-              />
-              <span className="text-muted row">
-                <Upload size={14} /> {strings.orgAdmin.resourcesHint(orgLabel)}
-              </span>
+              <FileUploadTrigger onSelect={uploadResource}>
+                <Upload size={14} /> {strings.common.chooseFile}
+              </FileUploadTrigger>
+              <span className="text-muted row">{strings.orgAdmin.resourcesHint(orgLabel)}</span>
             </CollapsibleSection>
           </div>
         )}
 
-        {activeGroup === "people" && (
+        {activeGroup === "users" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
-              <input
-                className="input"
-                style={{ maxWidth: 320 }}
-                placeholder={strings.orgAdmin.searchUsers}
-                value={userSearch}
-                onChange={(e) => handleUserSearchChange(e.target.value)}
-              />
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <input
+                  className="input"
+                  style={{ maxWidth: 320 }}
+                  placeholder={strings.orgAdmin.searchUsers}
+                  value={userSearch}
+                  onChange={(e) => handleUserSearchChange(e.target.value)}
+                />
+                <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
+                  <Plus size={14} /> {strings.orgAdmin.newUser}
+                </button>
+              </div>
               <div className="row">
                 <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
                   {strings.orgAdmin.filterStale}
@@ -1304,11 +1415,11 @@ export function OrgAdminPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>{strings.orgAdmin.email}</th>
-                    <th>{strings.orgAdmin.name}</th>
+                    <SortableHeader label={strings.orgAdmin.email} sortKey="email" sort={userSort} onSort={applyUserSort} />
+                    <SortableHeader label={strings.orgAdmin.name} sortKey="display_name" sort={userSort} onSort={applyUserSort} />
                     <th>{strings.orgAdmin.roles}</th>
                     <th>{strings.orgAdmin.status}</th>
-                    <th>{strings.orgAdmin.lastLogin}</th>
+                    <SortableHeader label={strings.orgAdmin.lastLogin} sortKey="last_login_at" sort={userSort} onSort={applyUserSort} />
                     <th>{strings.orgAdmin.twoFactor}</th>
                     <th></th>
                   </tr>
@@ -1353,15 +1464,45 @@ export function OrgAdminPage() {
                 </tbody>
               </table>
               <LoadMoreButton loaded={users.length} total={usersTotal} onClick={() => loadUsers(userFilter, userSearch, users.length, true)} />
-              <div className="row">
-                <input className="input" placeholder={strings.orgAdmin.email} value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
-                <input className="input" placeholder={strings.orgAdmin.name} value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-                <input className="input" type="password" placeholder={strings.orgAdmin.password} value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
-                <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
-                  <Plus size={14} /> {strings.orgAdmin.newUser}
-                </button>
-              </div>
             </CollapsibleSection>
+
+            {newUserModalOpen && (
+              <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)}>
+                <div className="stack">
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.email}
+                    <input
+                      className="input"
+                      type="email"
+                      autoFocus
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                    />
+                  </label>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.name}
+                    <input className="input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
+                  </label>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.password}
+                    <input
+                      className="input"
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                    />
+                  </label>
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setNewUserModalOpen(false)}>
+                      {strings.common.cancel}
+                    </button>
+                    <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
+                      {strings.common.create}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+            )}
 
             {viewingUser && (
               <SidePanel title={strings.orgAdmin.userAccessTitle(viewingUser.display_name)} onClose={() => setViewingUser(null)}>
@@ -1407,7 +1548,11 @@ export function OrgAdminPage() {
                 )}
               </SidePanel>
             )}
+          </div>
+        )}
 
+        {activeGroup === "groups" && (
+          <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)}>
               <input
                 className="input"
@@ -1417,23 +1562,24 @@ export function OrgAdminPage() {
                 onChange={(e) => handleGroupSearchChange(e.target.value)}
               />
               <button
-                ref={newGroupTriggerRef}
                 className="btn btn-primary"
                 style={{ alignSelf: "flex-start" }}
-                onClick={() => setNewGroupPopoverOpen((o) => !o)}
+                onClick={() => setNewGroupModalOpen(true)}
               >
                 <Plus size={14} /> {strings.orgAdmin.newGroup}
               </button>
-              {newGroupPopoverOpen && (
-                <Popover
-                  anchorRef={newGroupTriggerRef}
-                  title={strings.orgAdmin.newGroup}
-                  onClose={() => setNewGroupPopoverOpen(false)}
-                >
+              {newGroupModalOpen && (
+                // Style guide "Pattern: modal dialog for entity create/rename"
+                // — a brand-new entity (a group) opens in a Modal, not a
+                // Popover — the Popover-vs-Modal decision tree reserves
+                // Popover for a one/two-field quick action on something
+                // that already exists, not creating a new entity.
+                <Modal title={strings.orgAdmin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
                   <label className="stack" style={{ gap: "0.25rem" }}>
                     {strings.admin.name}
                     <input
                       className="input"
+                      autoFocus
                       placeholder={strings.orgAdmin.groupNamePlaceholder}
                       value={newGroupName}
                       onChange={(e) => setNewGroupName(e.target.value)}
@@ -1443,14 +1589,14 @@ export function OrgAdminPage() {
                     />
                   </label>
                   <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setNewGroupPopoverOpen(false)}>
+                    <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
                       {strings.common.cancel}
                     </button>
                     <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
                       {strings.common.create}
                     </button>
                   </div>
-                </Popover>
+                </Modal>
               )}
               {groups.map((g) => {
                 const memberIds = new Set(g.member_user_ids);
@@ -1552,10 +1698,42 @@ export function OrgAdminPage() {
                         value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
                         onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
                       />
-                      <button className="btn" onClick={() => saveIdpSync(g.id, idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "")}>
-                        {strings.orgAdmin.saveIdpSync}
-                      </button>
                     </label>
+                    {/* Granting a role via this group's own SSO sync claim
+                        (2026-08 UX audit roadmap item 522) only makes sense
+                        once SSO is actually configured for this org —
+                        gated on the issuer/client ID actually being set,
+                        not merely on the settings payload having loaded. */}
+                    {ssoConfig?.oidc_issuer_url && ssoConfig?.oidc_client_id ? (
+                      <label className="row" style={{ gap: "0.25rem" }}>
+                        {strings.orgAdmin.grantedOrgRole}
+                        <select
+                          className="input"
+                          value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
+                          onChange={(e) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: e.target.value as OrgRole | "" }))}
+                        >
+                          <option value="">{strings.orgAdmin.grantedOrgRoleNone}</option>
+                          <option value="member">{ORG_ROLE_LABEL.member}</option>
+                          <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                          <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.ssoNotConfiguredHint(orgLabel)}</span>
+                    )}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.grantedOrgRoleHint}</span>
+                    <button
+                      className="btn" style={{ alignSelf: "flex-start" }}
+                      onClick={() =>
+                        saveIdpSync(
+                          g.id,
+                          idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "",
+                          grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""
+                        )
+                      }
+                    >
+                      {strings.orgAdmin.saveIdpSync}
+                    </button>
                     {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
                   </CollapsibleSection>
                 );
@@ -1590,7 +1768,7 @@ export function OrgAdminPage() {
                           return (
                             <div key={g.id} className="stack">
                               <span>
-                                {g.name} <span className="badge">{g.role}</span>
+                                {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
                               </span>
                               {members.length > 0 && (
                                 <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
@@ -1669,14 +1847,9 @@ export function OrgAdminPage() {
                   <label htmlFor="org-logo-input">{strings.orgAdmin.logo(orgLabel)}</label>
                   <OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />
                 </span>
-                <input
-                  id="org-logo-input"
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/*"
-                  disabled={logoUploading}
-                  onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-                />
+                <FileUploadTrigger id="org-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
+                  <Upload size={14} /> {strings.common.chooseFile}
+                </FileUploadTrigger>
               </div>
               {logoUploading && <Spinner />}
               {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
@@ -1696,12 +1869,14 @@ export function OrgAdminPage() {
                     disabled={loginBackgroundUploading}
                   />
                 </span>
-                <input
+                <FileUploadTrigger
                   id="org-login-background-input"
-                  ref={loginBackgroundInputRef} type="file" accept="image/*"
+                  accept="image/*"
                   disabled={loginBackgroundUploading}
-                  onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
-                />
+                  onSelect={uploadLoginBackground}
+                >
+                  <Upload size={14} /> {strings.common.chooseFile}
+                </FileUploadTrigger>
               </div>
               {loginBackgroundUploading && <Spinner />}
               {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
@@ -1820,6 +1995,11 @@ export function OrgAdminPage() {
             )}
 
             <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates}>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button className="btn btn-primary" onClick={openNewTemplateForm}>
+                  <Plus size={14} /> {strings.admin.newReportTemplate}
+                </button>
+              </div>
               {reportTemplates.map((tpl) => (
                 <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
                   <span>
@@ -1840,10 +2020,12 @@ export function OrgAdminPage() {
                   </div>
                 </div>
               ))}
-              <CollapsibleSection
-                sectionKey="orgAdmin.reportTemplates.form"
-                variant="plain"
+            </CollapsibleSection>
+            {templateFormOpen && (
+              <Modal
                 title={editingTemplateId ? strings.admin.editReportTemplate : strings.admin.newReportTemplate}
+                onClose={closeTemplateForm}
+                size="lg"
               >
                 <div className="row">
                   <input
@@ -1902,18 +2084,16 @@ export function OrgAdminPage() {
                   <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
                     <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.common.create}
                   </button>
-                  {editingTemplateId && (
-                    <button className="btn" onClick={resetTemplateForm}>
-                      {strings.common.cancel}
-                    </button>
-                  )}
+                  <button className="btn" onClick={closeTemplateForm}>
+                    {strings.common.cancel}
+                  </button>
                 </div>
-              </CollapsibleSection>
-            </CollapsibleSection>
+              </Modal>
+            )}
           </div>
         )}
 
-        {activeGroup === "integrations-security" && (
+        {activeGroup === "oauth-sso" && (
           <div className="stack">
             {ssoConfig && (
               <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
@@ -1956,49 +2136,13 @@ export function OrgAdminPage() {
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
                 </label>
 
-                {/* SSO group → org-role mapping — an SSO/OIDC concept, moved
-                    here from the old catch-all "Advanced" section rather
-                    than staying lumped in with unrelated SMTP/2FA/self-
-                    signup settings (style guide "after" diagram, G6a). */}
-                {advanced && (
-                  <div className="stack">
-                    <strong>{strings.orgAdmin.ssoMappings}</strong>
-                    {advanced.sso_group_mappings.map((m, idx) => (
-                      <div key={idx} className="row" style={{ justifyContent: "space-between" }}>
-                        <span>
-                          {m.sso_group} <span className="badge">{ORG_ROLE_LABEL[m.org_role]}</span>
-                        </span>
-                        <button
-                          className="btn btn-danger"
-                          title={strings.orgAdmin.removeSsoMapping(m.sso_group)}
-                          aria-label={strings.orgAdmin.removeSsoMapping(m.sso_group)}
-                          onClick={() => removeMapping(idx)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    <div className="row">
-                      <input
-                        className="input"
-                        placeholder={strings.orgAdmin.ssoGroup}
-                        value={newMappingGroup}
-                        onChange={(e) => setNewMappingGroup(e.target.value)}
-                      />
-                      <select className="input" value={newMappingRole} onChange={(e) => setNewMappingRole(e.target.value as OrgRole)}>
-                        <option value="member">{ORG_ROLE_LABEL.member}</option>
-                        <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                        <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                      </select>
-                      <button className="btn" onClick={addMapping} disabled={!newMappingGroup}>
-                        <Plus size={14} /> {strings.orgAdmin.addMapping}
-                      </button>
-                    </div>
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      Mappings are saved with the Security settings below.
-                    </span>
-                  </div>
-                )}
+                {/* SSO group → org-role mapping used to live here, as a
+                    flat, disconnected list (`sso_group_mappings`) — it's
+                    now a property of the org group being synced into
+                    instead (`OrgGroup.granted_org_role`, alongside
+                    `idp_synced_group_name`), managed from the Groups
+                    section (2026-08 UX audit roadmap item 522). */}
+                <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.ssoMappingsMovedHint}</p>
 
                 {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
                 <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
@@ -2036,7 +2180,11 @@ export function OrgAdminPage() {
                 </div>
               </CollapsibleSection>
             )}
+          </div>
+        )}
 
+        {activeGroup === "email" && (
+          <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
                 <div className="row">
@@ -2044,14 +2192,20 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder={strings.orgAdmin.smtpHost}
                     value={smtpHost}
-                    onChange={(e) => setSmtpHost(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpHost(e.target.value);
+                    }}
                   />
                   <input
                     className="input"
                     style={{ maxWidth: 120 }}
                     placeholder={strings.orgAdmin.smtpPort}
                     value={smtpPort}
-                    onChange={(e) => setSmtpPort(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpPort(e.target.value);
+                    }}
                   />
                 </div>
                 <div className="row">
@@ -2059,18 +2213,31 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
-                    onChange={(e) => setSmtpUsername(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpUsername(e.target.value);
+                    }}
                   />
                   <input
                     className="input"
                     type="password"
                     placeholder={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
-                    onChange={(e) => setSmtpPassword(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpPassword(e.target.value);
+                    }}
                   />
                 </div>
                 <label className="row">
-                  <input type="checkbox" checked={smtpUseTls} onChange={(e) => setSmtpUseTls(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={smtpUseTls}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setSmtpUseTls(e.target.checked);
+                    }}
+                  />
                   {strings.orgAdmin.smtpUseTls}
                 </label>
 
@@ -2093,16 +2260,42 @@ export function OrgAdminPage() {
                   {testEmailError && <div style={{ color: "var(--color-danger)" }}>{testEmailError}</div>}
                   {testEmailSuccess && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.testEmailSent}</div>}
                 </div>
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                  Saved with the Security settings below.
-                </span>
+                {/* SMTP fields are part of the same `OrgAdvancedSettings`
+                    object the Security group's own save button submits —
+                    previously a shared button on the same page ("saved
+                    with the Security settings below"), now its own
+                    explicit button now that Email and Security are
+                    separate top-level groups (2026-08 UX audit roadmap
+                    item 523). See the SSO mappings save button's own
+                    comment for why calling the same `saveAdvanced()` from
+                    here is still correct. */}
+                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
+                <button
+                  className="btn btn-primary"
+                  onClick={saveAdvanced}
+                  disabled={selfSignupConflict}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  {strings.orgAdmin.saveEmailSettings}
+                </button>
               </CollapsibleSection>
             )}
+          </div>
+        )}
 
+        {activeGroup === "security" && (
+          <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
                 <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch checked={require2fa} onChange={setRequire2fa} label={strings.orgAdmin.require2fa} />
+                  <ToggleSwitch
+                    checked={require2fa}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setRequire2fa(next);
+                    }}
+                    label={strings.orgAdmin.require2fa}
+                  />
                   <span className="stack" style={{ gap: 0 }}>
                     {strings.orgAdmin.require2fa}
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
@@ -2110,7 +2303,14 @@ export function OrgAdminPage() {
                 </label>
 
                 <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch checked={allowSelfSignup} onChange={setAllowSelfSignup} label={strings.orgAdmin.allowSelfSignup} />
+                  <ToggleSwitch
+                    checked={allowSelfSignup}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setAllowSelfSignup(next);
+                    }}
+                    label={strings.orgAdmin.allowSelfSignup}
+                  />
                   <span className="stack" style={{ gap: 0 }}>
                     {strings.orgAdmin.allowSelfSignup}
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
@@ -2127,7 +2327,10 @@ export function OrgAdminPage() {
                     className="input"
                     placeholder="acme.com"
                     value={autoAcceptEmailDomain}
-                    onChange={(e) => setAutoAcceptEmailDomain(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setAutoAcceptEmailDomain(e.target.value);
+                    }}
                   />
                   <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
                 </label>
@@ -2137,7 +2340,10 @@ export function OrgAdminPage() {
                   <select
                     className="input"
                     value={externalUserPolicy}
-                    onChange={(e) => setExternalUserPolicy(e.target.value as ExternalUserPolicy)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setExternalUserPolicy(e.target.value as ExternalUserPolicy);
+                    }}
                   >
                     <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
                     <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
@@ -2146,13 +2352,21 @@ export function OrgAdminPage() {
                 </label>
 
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-                {/* One shared save button for the whole OrgAdvancedSettings
-                    resource — SMTP & email above and the PAT lifetime field
-                    in Personal Access Tokens below are all part of the same
-                    underlying settings object/PUT, just split across
-                    separate cards now that they're grouped by what they
-                    actually govern rather than crammed into one "Advanced"
-                    accordion (style guide "after" diagram notes). */}
+                {/* `onClick={saveAdvanced}` submits the *whole*
+                    `OrgAdvancedSettings` object — SMTP/email (its own
+                    "Email" group now) and the SSO mappings (its own
+                    "OAuth/SSO" group) are all part of the same underlying
+                    settings resource/PUT, just split across three separate
+                    top-level resource-menu groups by what they actually
+                    govern (2026-08 UX audit roadmap item 523, splitting
+                    the earlier "Integrations & security" group further)
+                    rather than one combined page. Each group that touches
+                    a field on this object now has its own save button
+                    calling the same `saveAdvanced()` — see the SSO
+                    mappings and SMTP & email save buttons' own comments —
+                    since every field lives in this one component's shared
+                    state regardless of which group is currently
+                    rendered. */}
                 <button
                   className="btn btn-primary"
                   onClick={saveAdvanced}
@@ -2169,8 +2383,9 @@ export function OrgAdminPage() {
                 {/* PAT lifetime joins the existing PAT list per the style
                     guide's regrouping notes, rather than staying under the
                     old "Advanced" catch-all. Still saved via the shared
-                    Security-card button above, since it's one field on the
-                    same OrgAdvancedSettings object. */}
+                    Security-card button above, on this same "Security"
+                    group/page, since it's one field on the same
+                    OrgAdvancedSettings object. */}
                 <label className="stack" style={{ gap: "0.25rem" }}>
                   {strings.orgAdmin.patMaxLifetime}
                   <input
@@ -2180,7 +2395,10 @@ export function OrgAdminPage() {
                     max={3650}
                     style={{ maxWidth: 160 }}
                     value={patMaxLifetimeDays}
-                    onChange={(e) => setPatMaxLifetimeDays(e.target.value)}
+                    onChange={(e) => {
+                      advancedDirtyRef.current = true;
+                      setPatMaxLifetimeDays(e.target.value);
+                    }}
                   />
                   <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>
@@ -2218,15 +2436,13 @@ export function OrgAdminPage() {
                           <td>
                             <div className="row">
                               {p.other_org_count > 0 && (
-                                <button className="btn" onClick={() => descopeOrgPat(p.id)}>
+                                <button className="btn" onClick={() => setPatToDescope(p.id)}>
                                   {strings.orgAdmin.patDescope}
                                 </button>
                               )}
                               <button
                                 className="btn btn-danger"
-                                onClick={() => {
-                                  if (window.confirm(strings.orgAdmin.patRevokeOneConfirm)) revokeOrgPat(p.id);
-                                }}
+                                onClick={() => setPatToRevoke(p.id)}
                               >
                                 {strings.orgAdmin.patRevoke}
                               </button>
@@ -2239,7 +2455,7 @@ export function OrgAdminPage() {
                 )}
 
                 {orgPats.length > 0 && (
-                  <button className="btn btn-danger" onClick={revokeAllOrgPats} style={{ alignSelf: "flex-start" }}>
+                  <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
                     {strings.orgAdmin.patRevokeAll(orgLabel)}
                   </button>
                 )}
@@ -2249,6 +2465,34 @@ export function OrgAdminPage() {
           </div>
         )}
       </ResourceMenu>
+
+      {patToDescope && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patDescopeTitle(orgLabel)}
+          message={strings.orgAdmin.patDescopeConfirm(orgLabelPlural)}
+          confirmLabel={strings.orgAdmin.patDescope}
+          onConfirm={() => descopeOrgPat(patToDescope)}
+          onCancel={() => setPatToDescope(null)}
+        />
+      )}
+      {patToRevoke && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patRevokeOneTitle}
+          message={strings.orgAdmin.patRevokeOneConfirm}
+          confirmLabel={strings.orgAdmin.patRevoke}
+          onConfirm={() => revokeOrgPat(patToRevoke)}
+          onCancel={() => setPatToRevoke(null)}
+        />
+      )}
+      {revokeAllPatsOpen && (
+        <ConfirmDialog
+          title={strings.orgAdmin.patRevokeAllTitle(orgLabel)}
+          message={strings.orgAdmin.patRevokeAllConfirm(orgLabelPlural)}
+          confirmLabel={strings.orgAdmin.patRevokeAll(orgLabel)}
+          onConfirm={revokeAllOrgPats}
+          onCancel={() => setRevokeAllPatsOpen(false)}
+        />
+      )}
     </div>
   );
 }

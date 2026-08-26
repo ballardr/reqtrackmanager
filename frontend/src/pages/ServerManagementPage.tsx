@@ -1,11 +1,15 @@
+import { Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
 const strings = t();
@@ -13,6 +17,8 @@ const strings = t();
 const PAGE_SIZE = 30;
 
 type ReviewView = "orphaned" | "server_admins" | "all";
+
+type AccessReviewConfirmKind = "deactivate" | "ban" | "grantServerAdmin" | "revokeServerAdmin";
 
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
@@ -23,6 +29,12 @@ function AccessReviewTab() {
   const [patResult, setPatResult] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
+  const { showToast } = useToast();
+  // ConfirmDialog (Tier 1) state for the account/access actions below —
+  // converted from `window.confirm` per the sixth-pass audit's
+  // "Confirmation and feedback rollout, precisely" list.
+  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
+  const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -48,49 +60,91 @@ function AccessReviewTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, includeDeactivated]);
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>, successMessage?: string) {
     setActionError(null);
     try {
       await action();
       await reload();
+      if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
     }
   }
 
   function deactivate(userId: string) {
-    if (!window.confirm(strings.system.deactivateConfirm)) return;
-    runAction(() => api.post(`/api/v1/system/users/${userId}/deactivate`));
+    setConfirmAction({ kind: "deactivate", userId });
   }
 
   function reactivate(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/reactivate`));
+    runAction(() => api.post(`/api/v1/system/users/${userId}/reactivate`), strings.system.reactivatedToast);
   }
 
   function ban(userId: string) {
-    if (!window.confirm(strings.system.banConfirm(orgLabel))) return;
-    runAction(() => api.post(`/api/v1/system/users/${userId}/ban`));
+    setConfirmAction({ kind: "ban", userId });
   }
 
   function unban(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/unban`));
+    runAction(() => api.post(`/api/v1/system/users/${userId}/unban`), strings.system.unbannedToast);
   }
 
   function grantServerAdmin(userId: string) {
-    if (!window.confirm(strings.system.grantServerAdminConfirm(orgLabelPlural))) return;
-    runAction(() => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: true }));
+    setConfirmAction({ kind: "grantServerAdmin", userId });
   }
 
   function revokeServerAdmin(userId: string) {
-    if (!window.confirm(strings.system.revokeServerAdminConfirm)) return;
-    runAction(() => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: false }));
+    setConfirmAction({ kind: "revokeServerAdmin", userId });
+  }
+
+  function confirmPendingAction() {
+    if (!confirmAction) return;
+    const { kind, userId } = confirmAction;
+    setConfirmAction(null);
+    switch (kind) {
+      case "deactivate":
+        runAction(() => api.post(`/api/v1/system/users/${userId}/deactivate`), strings.system.deactivatedToast);
+        break;
+      case "ban":
+        runAction(() => api.post(`/api/v1/system/users/${userId}/ban`), strings.system.bannedToast);
+        break;
+      case "grantServerAdmin":
+        runAction(
+          () => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: true }),
+          strings.system.grantedServerAdminToast
+        );
+        break;
+      case "revokeServerAdmin":
+        runAction(
+          () => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: false }),
+          strings.system.revokedServerAdminToast
+        );
+        break;
+    }
   }
 
   async function revokeAllPatsPlatformWide() {
-    if (!window.confirm(strings.system.patRevokeAllConfirm)) return;
-    const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
-    setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    setRevokeAllPatsOpen(false);
+    try {
+      const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
+      setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
+
+  const confirmActionCopy: Record<AccessReviewConfirmKind, { title: string; message: string; confirmLabel: string }> = {
+    deactivate: { title: strings.system.deactivateTitle, message: strings.system.deactivateConfirm, confirmLabel: strings.system.deactivate },
+    ban: { title: strings.system.banTitle, message: strings.system.banConfirm(orgLabel), confirmLabel: strings.system.ban },
+    grantServerAdmin: {
+      title: strings.system.grantServerAdminTitle,
+      message: strings.system.grantServerAdminConfirm(orgLabelPlural),
+      confirmLabel: strings.system.grantServerAdmin,
+    },
+    revokeServerAdmin: {
+      title: strings.system.revokeServerAdminTitle,
+      message: strings.system.revokeServerAdminConfirm,
+      confirmLabel: strings.system.revokeServerAdmin,
+    },
+  };
 
   return (
     <div className="stack">
@@ -198,11 +252,30 @@ function AccessReviewTab() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.patRevokeAll}</h2>
         <p className="text-muted">{strings.system.patRevokeAllHint(orgLabelPlural)}</p>
-        <button className="btn btn-danger" onClick={revokeAllPatsPlatformWide} style={{ alignSelf: "flex-start" }}>
+        <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
           {strings.system.patRevokeAll}
         </button>
         {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
       </div>
+
+      {confirmAction && (
+        <ConfirmDialog
+          title={confirmActionCopy[confirmAction.kind].title}
+          message={confirmActionCopy[confirmAction.kind].message}
+          confirmLabel={confirmActionCopy[confirmAction.kind].confirmLabel}
+          onConfirm={confirmPendingAction}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+      {revokeAllPatsOpen && (
+        <ConfirmDialog
+          title={strings.system.patRevokeAllTitle}
+          message={strings.system.patRevokeAllConfirm}
+          confirmLabel={strings.system.patRevokeAll}
+          onConfirm={revokeAllPatsPlatformWide}
+          onCancel={() => setRevokeAllPatsOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -219,18 +292,28 @@ function PlatformBrandingTab() {
   const [emailFooterAddress, setEmailFooterAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
+  // Guards the branding fields above against `reload()` — also called
+  // from `uploadLogo`/`uploadLoginBackground` below, not just this
+  // component's own mount/save. If a background upload's own reload() is
+  // still in flight when the user edits and saves a text field right
+  // after starting that upload, its response clobbers the edit back to
+  // the last-saved value before Save is even clicked. Same real,
+  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
+  // own comment and docs/decisions.md.
+  const brandingDirtyRef = useRef(false);
 
   async function reload() {
     const s = await api.get<ServerSettings>("/api/v1/system/branding");
     setSettings(s);
-    setAccentColor(s.accent_color_hex);
-    setHeaderTitle(s.default_header_title ?? "");
-    setOrgLabelSingular(s.org_label_singular ?? "");
-    setOrgLabelPlural(s.org_label_plural ?? "");
-    setEmailFooterCompanyName(s.email_footer_company_name ?? "");
-    setEmailFooterWebsite(s.email_footer_website ?? "");
-    setEmailFooterAddress(s.email_footer_address ?? "");
+    if (!brandingDirtyRef.current) {
+      setAccentColor(s.accent_color_hex);
+      setHeaderTitle(s.default_header_title ?? "");
+      setOrgLabelSingular(s.org_label_singular ?? "");
+      setOrgLabelPlural(s.org_label_plural ?? "");
+      setEmailFooterCompanyName(s.email_footer_company_name ?? "");
+      setEmailFooterWebsite(s.email_footer_website ?? "");
+      setEmailFooterAddress(s.email_footer_address ?? "");
+    }
   }
 
   useEffect(() => {
@@ -251,6 +334,7 @@ function PlatformBrandingTab() {
         email_footer_address: emailFooterAddress || null,
       });
       setSaved(true);
+      brandingDirtyRef.current = false;
       reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : strings.common.error);
@@ -300,16 +384,12 @@ function PlatformBrandingTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.logo}
-        <input
-          ref={logoInputRef}
-          type="file"
-          accept="image/*"
-          disabled={logoUploading}
-          onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-        />
-      </label>
+      <div className="stack" style={{ gap: "0.25rem" }}>
+        <label htmlFor="platform-logo-input">{strings.serverSettings.logo}</label>
+        <FileUploadTrigger id="platform-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
+          <Upload size={14} /> {strings.common.chooseFile}
+        </FileUploadTrigger>
+      </div>
       {logoUploading && <Spinner />}
       {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
       {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
@@ -320,7 +400,10 @@ function PlatformBrandingTab() {
         {strings.serverSettings.headerTitle}
         <input
           className="input" placeholder={strings.appName}
-          value={headerTitle} onChange={(e) => setHeaderTitle(e.target.value)}
+          value={headerTitle} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setHeaderTitle(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.headerTitleHint}</span>
       </label>
@@ -328,7 +411,10 @@ function PlatformBrandingTab() {
         {strings.serverSettings.orgLabelSingular}
         <input
           className="input" placeholder="organisation"
-          value={orgLabelSingular} onChange={(e) => setOrgLabelSingular(e.target.value)}
+          value={orgLabelSingular} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setOrgLabelSingular(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelSingularHint}</span>
       </label>
@@ -336,26 +422,34 @@ function PlatformBrandingTab() {
         {strings.serverSettings.orgLabelPlural}
         <input
           className="input" placeholder="Organisations"
-          value={orgLabelPlural} onChange={(e) => setOrgLabelPlural(e.target.value)}
+          value={orgLabelPlural} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setOrgLabelPlural(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelPluralHint}</span>
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.accentColor}
         <input
-          type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)}
+          type="color" value={accentColor} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setAccentColor(e.target.value);
+          }}
           style={{ width: 60, height: 36, padding: 2 }}
         />
       </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.loginBackground}
-        <input
-          type="file"
+      <div className="stack" style={{ gap: "0.25rem" }}>
+        <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
+        <FileUploadTrigger
+          id="platform-login-background-input"
           accept="image/*"
           disabled={loginBackgroundUploading}
-          onChange={(e) => e.target.files?.[0] && uploadLoginBackground(e.target.files[0])}
-        />
-      </label>
+          onSelect={uploadLoginBackground}
+        >
+          <Upload size={14} /> {strings.common.chooseFile}
+        </FileUploadTrigger>
+      </div>
       {loginBackgroundUploading && <Spinner />}
       {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
       {loginBackgroundUploaded && (
@@ -371,20 +465,29 @@ function PlatformBrandingTab() {
         {strings.serverSettings.emailFooterCompanyName}
         <input
           className="input" placeholder={strings.appName}
-          value={emailFooterCompanyName} onChange={(e) => setEmailFooterCompanyName(e.target.value)}
+          value={emailFooterCompanyName} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterCompanyName(e.target.value);
+          }}
         />
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.emailFooterCompanyNameHint}</span>
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.emailFooterWebsite}
         <input
-          className="input" value={emailFooterWebsite} onChange={(e) => setEmailFooterWebsite(e.target.value)}
+          className="input" value={emailFooterWebsite} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterWebsite(e.target.value);
+          }}
         />
       </label>
       <label className="stack" style={{ gap: "0.25rem" }}>
         {strings.serverSettings.emailFooterAddress}
         <textarea
-          className="input" rows={3} value={emailFooterAddress} onChange={(e) => setEmailFooterAddress(e.target.value)}
+          className="input" rows={3} value={emailFooterAddress} onChange={(e) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterAddress(e.target.value);
+          }}
         />
       </label>
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}

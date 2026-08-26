@@ -38,10 +38,13 @@ test.describe("project access is scoped per-project, not per-org", () => {
     });
 
     await test.step("attempting to create a project is rejected server-side", async () => {
+      // "New project" opens a Modal (style guide "Pattern: modal dialog for
+      // entity create/rename") — scoped to it rather than the whole page.
       await page.getByRole("button", { name: "New project" }).click();
-      await page.getByPlaceholder("Name").fill(`Should not be created ${Date.now()}`);
-      await page.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByText(/only org admins or project creators/i)).toBeVisible();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name", { exact: true }).fill(`Should not be created ${Date.now()}`);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(dialog.getByText(/only org admins or project creators/i)).toBeVisible();
     });
   });
 });
