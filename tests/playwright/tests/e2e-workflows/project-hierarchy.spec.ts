@@ -214,7 +214,8 @@ test.describe("hierarchical (parent/child) projects", () => {
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
       const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
-      await row.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click();
+      await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
+      await page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click();
 
       await loginAs(page, PERSONAS.projectMgrGamma.email);
       await openProjectByName(page, childName);

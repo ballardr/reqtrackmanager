@@ -42,6 +42,7 @@ import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
+import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -724,11 +725,23 @@ export function OrgAdminPage() {
     }
   }
 
+  // Updates just the affected row's own `roles` array in local state on
+  // success, rather than calling the page-wide `reload()` every other
+  // mutation on this page uses. `reload()` re-fetches ~10 endpoints
+  // (including the users list from offset 0), so toggling a role would
+  // silently drop any users paged in past the first 30 and — if two
+  // toggles landed close together — race two overlapping reload bundles
+  // against each other; a transient failure in either one replaces the
+  // whole page with a load-error state (see docs/decisions.md, this entry).
+  // A single grant/revoke only ever changes this one row's own role set, so
+  // there's nothing else on the page a full reload would need to refresh.
   async function grantOrgRole(u: OrgUser, role: OrgRole) {
     try {
       await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { role });
+      setUsers((prev) =>
+        prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: [...x.roles, role] } : x))
+      );
       showToast(strings.orgAdmin.roleGranted);
-      reload();
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -737,8 +750,10 @@ export function OrgAdminPage() {
   async function revokeOrgRole(u: OrgUser, role: OrgRole) {
     try {
       await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles/${role}`);
+      setUsers((prev) =>
+        prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: x.roles.filter((r) => r !== role) } : x))
+      );
       showToast(strings.orgAdmin.roleRevoked);
-      reload();
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -1455,8 +1470,10 @@ export function OrgAdminPage() {
                       <td>{u.email}</td>
                       <td>{u.display_name}</td>
                       <td>
-                        <div className="stack" style={{ gap: "0.15rem" }}>
-                          {(["member", "project_creator", "org_admin"] as const).map((role) => {
+                        <MultiSelectDropdown
+                          triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
+                          emptyLabel={strings.orgAdmin.noRoles}
+                          options={(["member", "project_creator", "org_admin"] as const).map((role) => {
                             const checked = u.roles.includes(role);
                             // A user can never revoke their own org role via this
                             // control — mirrors the backend's self-targeting block
@@ -1465,24 +1482,19 @@ export function OrgAdminPage() {
                             // role to oneself is still allowed, matching the
                             // backend, so only the "uncheck" direction is disabled.
                             const disabled = checked && u.user_id === user?.id;
-                            return (
-                              <label key={role} className="row" style={{ gap: "0.35rem", fontSize: "0.85rem" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={disabled}
-                                  aria-label={
-                                    checked
-                                      ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
-                                      : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name)
-                                  }
-                                  onChange={() => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role))}
-                                />
-                                {ORG_ROLE_LABEL[role]}
-                              </label>
-                            );
+                            return {
+                              value: role,
+                              label: ORG_ROLE_LABEL[role],
+                              checked,
+                              disabled,
+                              title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
+                              optionLabel: checked
+                                ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
+                                : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
+                              onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
+                            };
                           })}
-                        </div>
+                        />
                       </td>
                       <td>
                         {u.is_archived

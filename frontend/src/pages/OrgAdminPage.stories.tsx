@@ -198,11 +198,17 @@ export const NewUserModalRoleSelect: Story = {
   },
 };
 
-/** Per-row role grant/revoke (2026-08 org-role-management fix): the roles
- * cell used to be a read-only `ORG_ROLE_LABEL.join(", ")` with no way to
- * change anything — the only UI path to `assign_org_role`/the new revoke
- * endpoint. Granting a role the user doesn't hold calls `POST .../roles`;
- * revoking one they do hold calls `DELETE .../roles/{role}`. */
+/** Per-row role grant/revoke (2026-08 org-role-management fix, reworked
+ * 2026-08-27 from an always-visible checkbox stack to a `MultiSelectDropdown`
+ * — see docs/decisions.md's "Org Users role picker" entry): the roles cell
+ * used to be a read-only `ORG_ROLE_LABEL.join(", ")` with no way to change
+ * anything — the only UI path to `assign_org_role`/the revoke endpoint.
+ * Granting a role the user doesn't hold calls `POST .../roles`; revoking one
+ * they do hold calls `DELETE .../roles/{role}`. The dropdown stays a
+ * multi-select (not a single-value `<select>`) because `UserOrgRole` allows
+ * a user to hold more than one org role at once — see that same decisions.md
+ * entry for why collapsing it to one value would be a real behaviour change,
+ * not just a reskin. */
 const secondOrgUser: OrgUser = {
   user_id: "user-2", email: "jordan@example.com", display_name: "Jordan Lee", is_active: true,
   is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null,
@@ -222,14 +228,19 @@ export const UsersSectionGrantAndRevokeRole: Story = {
 
     // orgUser (the logged-in user) only holds "org_admin" — granting
     // "Project creator" posts.
-    await userEvent.click(canvas.getByRole("checkbox", { name: "Grant Project creator to Alex Morgan" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await userEvent.click(within(alexRoles).getByRole("checkbox", { name: "Grant Project creator to Alex Morgan" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, { role: "project_creator" })
     );
 
     // secondOrgUser (not the logged-in user) holds "project_creator" —
-    // revoking it deletes.
-    await userEvent.click(canvas.getByRole("checkbox", { name: "Revoke Project creator from Jordan Lee" }));
+    // revoking it deletes. Opening this row's dropdown closes Alex's own,
+    // via the shared `Popover` outside-click behaviour.
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's roles" }));
+    const jordanRoles = within(document.body).getByRole("group", { name: "Jordan Lee's roles" });
+    await userEvent.click(within(jordanRoles).getByRole("checkbox", { name: "Revoke Project creator from Jordan Lee" }));
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/roles/project_creator`)
     );
@@ -245,7 +256,9 @@ export const UsersSectionCannotRevokeOwnRole: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
-    await expect(canvas.getByRole("checkbox", { name: "Revoke Org admin from Alex Morgan" })).toBeDisabled();
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await expect(within(alexRoles).getByRole("checkbox", { name: "Revoke Org admin from Alex Morgan" })).toBeDisabled();
   },
 };
 
