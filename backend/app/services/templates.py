@@ -21,6 +21,7 @@ created from scratch.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +43,9 @@ from app.services.definitions import get_default_project_status_id
 from app.services.requirements import get_current_version
 
 
-def clone_project(db: Session, source: Project, *, name: str, summary: str, creator: User) -> Project:
+def clone_project(
+    db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None
+) -> Project:
     """Creates a new project by copying a template project's configuration.
 
     Args:
@@ -52,6 +55,13 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
         name: The new project's name.
         summary: The new project's summary.
         creator: The user creating the new project.
+        parent_project_id: Optional parent for the new project
+            (hierarchical projects) — orthogonal to cloning from a
+            template: a project can be both cloned from a template *and*
+            parented under another project. Validation (same-org, caller
+            manages the parent) is the caller's responsibility
+            (`routers.projects.create_project`), same as every other field
+            here.
 
     Returns:
         The newly created Project.
@@ -61,6 +71,7 @@ def clone_project(db: Session, source: Project, *, name: str, summary: str, crea
         allow_member_change_requests=source.allow_member_change_requests,
         terminology=dict(source.terminology),
         status_id=get_default_project_status_id(db, source.organization_id),
+        parent_project_id=parent_project_id,
     )
     db.add(new_project)
     db.flush()

@@ -18,6 +18,7 @@ export const PERSONAS = {
   stakeholderAlpha2: { email: "e2e-stakeholder-a2@example.com", name: "E2E Stakeholder AlphaOnly Two" },
   memberAlphaBeta: { email: "e2e-member-ab@example.com", name: "E2E Member AlphaBeta" },
   orphan: { email: "e2e-orphan@example.com", name: "E2E Orphan Candidate" },
+  projectMgrGamma: { email: "e2e-projectmgr-g@example.com", name: "E2E ProjectMgr Gamma Only" },
 } as const;
 
 export const ORG_NAMES = {
@@ -38,6 +39,13 @@ export const PROJECT_NAMES = {
    * backend/scripts/seed_e2e_dataset.py. No other spec may depend on this
    * project's terminology staying at, or moving away from, that override. */
   delta1: "Delta-1 Terminology Demo",
+  /** Fixed hierarchy fixture (see backend/scripts/seed_e2e_dataset.py):
+   * gamma4 mirror-all-inherits from gamma3, and gamma3 also consumes
+   * members from gamma4 (member-source, reverse). Dedicated solely to
+   * project-hierarchy.spec.ts — no other spec may depend on this pair's
+   * configuration. */
+  gamma3: "Gamma-3 Hierarchy Parent",
+  gamma4: "Gamma-4 Hierarchy Child",
 } as const;
 
 /** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the

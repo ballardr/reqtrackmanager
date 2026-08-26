@@ -125,6 +125,15 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             someone to a project by email who isn't already an org member
             (`ExternalUserPolicy`; see its docstring in `models/enums.py`).
             Defaults to DISABLED — an org must opt in to external users.
+        allow_relaxed_child_project_creation: Whether a user who manages a
+            project (but holds no org-level `ORG_ADMIN`/`PROJECT_CREATOR`
+            role) may create a child project under it
+            (`routers.projects.create_project`'s relaxed authorization
+            path — see `Project.parent_required`). Defaults to `True`,
+            matching the workflow a project's own "Add sub-project" entry
+            point is meant to support; an org admin who wants the stricter
+            "all project creation needs `ORG_ADMIN`/`PROJECT_CREATOR`"
+            behaviour, including for children, can turn this off.
         email_footer_company_name / email_footer_website /
             email_footer_address: Optional per-org override of the
             outgoing HTML email footer's legal/company identity (name,
@@ -145,6 +154,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     external_user_policy: Mapped[ExternalUserPolicy] = mapped_column(
         str_enum(ExternalUserPolicy), default=ExternalUserPolicy.DISABLED
     )
+    allow_relaxed_child_project_creation: Mapped[bool] = mapped_column(Boolean, default=True)
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     logo_file_id: Mapped[uuid.UUID | None] = mapped_column(

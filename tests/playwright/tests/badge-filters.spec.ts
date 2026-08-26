@@ -15,7 +15,14 @@ test("clicking a requirement status badge filters the list, and clicking it agai
   await page.waitForURL(/\/projects(\/|$)/);
 
   await page.goto("/projects");
-  await page.getByRole("link", { name: "Falcon-3 Inspection Drone" }).click();
+  // .first(): hierarchical projects (docs/decisions.md) seeded a
+  // "Falcon-3 Avionics Subsystem" sub-project whose tile shows a
+  // "Child of: Falcon-3 Inspection Drone" link (ProjectHierarchyLabels)
+  // alongside the parent's own tile heading link — both resolve to the
+  // exact same `/projects/{id}` destination (the child's link target IS
+  // the parent's id), so picking either is equivalent for this test's
+  // purpose of navigating onto the parent project.
+  await page.getByRole("link", { name: "Falcon-3 Inspection Drone" }).first().click();
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByLabel("List view").click();
 

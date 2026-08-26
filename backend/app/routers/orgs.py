@@ -95,8 +95,8 @@ from app.services.pats import effective_expiry, revoke_matching
 from app.services.rbac import (
     can_manage_project_settings,
     get_effective_org_roles,
+    get_effective_project_managers,
     get_effective_project_roles,
-    get_project_managers,
     require_org_admin_or_server_admin,
     require_org_role,
     require_server_admin,
@@ -795,7 +795,7 @@ def _org_users_with_project_access(db: Session, organization_id: UUID) -> set[UU
     membership on any project in this organisation (used by the
     `has_project_access` access-review filter, C-A-13). Direct resolution
     only, not nested org groups — matches the same scope already used by
-    `get_project_managers` for similar bulk/administrative queries."""
+    `get_effective_project_managers` for similar bulk/administrative queries."""
     direct_role_ids = set(
         db.scalars(
             select(UserProjectRole.user_id)
@@ -889,6 +889,44 @@ def assign_org_role(
         db.commit()
 
 
+@router.delete("/{organization_id}/users/{user_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_org_role(
+    organization_id: UUID,
+    user_id: UUID,
+    role: OrgRole,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Revokes an organisation role from a user — `assign_org_role`'s
+    counterpart, which had none until now (hierarchical projects surfaced
+    this as a real, pre-existing gap: see docs/decisions.md's "Hierarchical
+    projects" entry). No-op if the user doesn't currently hold `role`.
+
+    Blocks the caller from targeting their own account, the same guard
+    `deactivate_org_user` already uses for the same reason: since this
+    endpoint requires the caller to already hold `ORG_ADMIN` (never derived
+    indirectly, unlike project roles) and self-targeting is blocked, the
+    calling admin's own admin-ness is untouched by any revoke they perform
+    on someone else — so an organisation can never reach zero admins
+    through this endpoint, by construction, with no separate "last admin"
+    count check needed.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot revoke your own organisation role.")
+    existing = db.scalar(
+        select(UserOrgRole).where(
+            UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id, UserOrgRole.role == role
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_org_role", entity_id=user_id, action="revoked", actor_id=current_user.id,
+            organization_id=organization_id, detail={"role": role.value},
+        )
+        db.commit()
+
+
 @router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
 def leave_organization(
     organization_id: UUID,
@@ -912,7 +950,7 @@ def leave_organization(
     Also removes the caller's `OrgGroupMember` rows for this organisation's
     groups, not just their direct project roles/memberships — project access
     can be granted through an org group nested into a project group (C-U-12),
-    and `get_project_managers` (used for the sole-manager guard below)
+    and `get_effective_project_managers` (used for the sole-manager guard below)
     deliberately only resolves *direct* managers, not nested-group-derived
     ones (see its own docstring). Leaving that cleanup out would let a user
     "leave" an org while silently retaining full project access through a
@@ -958,13 +996,13 @@ def leave_organization(
     blocking_projects = []
     for p in projects:
         lock_project_for_update(db, p.id)
-        concrete_managers = get_project_managers(db, p.id)
-        # Fold in nested-org-group-derived PM status too: get_project_managers
+        concrete_managers = get_effective_project_managers(db, p.id)
+        # Fold in nested-org-group-derived PM status too: get_effective_project_managers
         # only resolves direct assignments/direct group membership, so a
         # manager role held solely via a nested org group would otherwise be
         # invisible here, letting this guard miss a soon-to-be-orphaned
         # project (its only "manager" isn't a *concrete* manager per
-        # get_project_managers' own definition, but removing this user's
+        # get_effective_project_managers' own definition, but removing this user's
         # nested-group access below would still leave nobody with the role).
         i_am_manager = current_user.id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
             db, current_user.id, p.id
@@ -1071,18 +1109,32 @@ def deactivate_org_user(
     projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
     for project in projects:
         lock_project_for_update(db, project.id)
-        managers_before = get_project_managers(db, project.id)
-        if user_id not in managers_before:
-            continue
+
+    # Hierarchical projects (docs/decisions.md): a project's effective
+    # manager set can now be pulled from a *different* project (forward
+    # inheritance) in this same org, so this loop's own per-project deletes
+    # can no longer be interleaved with its own C-U-08 checks — a project
+    # whose only manager was actually inherited from a not-yet-processed
+    # sibling in this same loop would look fine at check time and only lose
+    # its manager once THAT project's turn came, with the fallback never
+    # triggered for it. Every one of this user's direct/group roles across
+    # every project in this org is deleted first, in one upfront pass, so
+    # every later fallback check runs against fully up-to-date state.
+    managers_before_by_project = {
+        project.id: user_id in get_effective_project_managers(db, project.id) for project in projects
+    }
+    for project in projects:
         db.execute(
             UserProjectRole.__table__.delete().where(
                 UserProjectRole.user_id == user_id, UserProjectRole.project_id == project.id
             )
         )
-        db.execute(
-            ProjectGroupMember.__table__.delete().where(ProjectGroupMember.user_id == user_id)
-        )
-        remaining = get_project_managers(db, project.id) - {user_id}
+    db.execute(ProjectGroupMember.__table__.delete().where(ProjectGroupMember.user_id == user_id))
+
+    for project in projects:
+        if not managers_before_by_project[project.id]:
+            continue
+        remaining = get_effective_project_managers(db, project.id) - {user_id}
         if not remaining:
             from app.models.enums import ProjectRole
 
@@ -1638,6 +1690,7 @@ def get_advanced_settings(
         pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
+        allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
     )
 
 
@@ -1673,6 +1726,11 @@ def update_advanced_settings(
     org.allow_self_signup = payload.allow_self_signup
     org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
     org.external_user_policy = payload.external_user_policy
+    # Hierarchical projects (decision 13 in docs/decisions.md): lets an org
+    # admin opt back into the stricter "all project creation needs
+    # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
+    # off routers.projects.create_project's relaxed parent-manage-only path.
+    org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
@@ -1685,6 +1743,7 @@ def update_advanced_settings(
         pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
+        allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
     )
 
 

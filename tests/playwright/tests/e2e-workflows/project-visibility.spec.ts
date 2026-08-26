@@ -1,6 +1,22 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { loginAs, logout, ORG_NAMES, PERSONAS } from "./helpers";
+
+/** The hierarchical-projects "Parent project" <select> shares every form
+ * this spec's own "Visibility" <select> lives on. A wrapping <label>'s
+ * computed accessible name flattens in all descendant text, including
+ * every <option> — so once "Parent project" lists every project in the
+ * org, a leftover/dynamically-named project (this spec's own included,
+ * since it names its throwaway project `Org Wide Visibility ${Date.now()}`,
+ * repeated back-to-back without an org wipe between runs per this
+ * project's own idempotency rule) can make its accessible name contain
+ * "Visibility" too, and getByLabel("Visibility") ambiguous. Located
+ * structurally instead — the Visibility select is the one whose own
+ * <option> list contains "Only specified" (never a project name) —
+ * rather than by label, so this doesn't depend on a debris-free org. */
+function visibilitySelect(scope: Page | Locator): Locator {
+  return scope.locator("select").filter({ hasText: "Only specified" });
+}
 
 /**
  * Job to be done: a project can be marked "Org-wide visibility" so every
@@ -33,14 +49,14 @@ test.describe("project visibility: org-wide vs only specified", () => {
       await expect(dialog.getByRole("combobox").first()).toContainText(ORG_NAMES.alpha);
       await dialog.getByRole("combobox").first().selectOption({ label: ORG_NAMES.alpha });
       await dialog.getByLabel("Name", { exact: true }).fill(projectName);
-      await dialog.getByLabel("Visibility").selectOption("org_wide");
+      await visibilitySelect(dialog).selectOption("org_wide");
       await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     });
 
     await test.step("Project Admin's settings tab reflects Org-wide visibility", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await expect(page.getByLabel("Visibility")).toHaveValue("org_wide");
+      await expect(visibilitySelect(page)).toHaveValue("org_wide");
     });
 
     await test.step("a plain Alpha org member with no explicit role sees and can open the project", async () => {
@@ -58,9 +74,9 @@ test.describe("project visibility: org-wide vs only specified", () => {
       await page.goto("/projects");
       await page.getByText(projectName).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByLabel("Visibility").selectOption("only_specified");
+      await visibilitySelect(page).selectOption("only_specified");
       await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByLabel("Visibility")).toHaveValue("only_specified");
+      await expect(visibilitySelect(page)).toHaveValue("only_specified");
     });
 
     await test.step("the same org member no longer sees the project", async () => {

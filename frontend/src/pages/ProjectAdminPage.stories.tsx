@@ -2,8 +2,29 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, Category, Component, CustomFieldDefinition, OrgGroup, ProjectGroup, ProjectStage, ProjectStatusDefinition } from "../api/types";
-import { buildActionType, buildProject, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
+import type {
+  ActionTypeDefinition,
+  Category,
+  Component,
+  CustomFieldDefinition,
+  EffectiveMember,
+  OrgGroup,
+  ProjectGroup,
+  ProjectMemberSource,
+  ProjectStage,
+  ProjectStatusDefinition,
+} from "../api/types";
+import {
+  buildActionType,
+  buildProject,
+  buildProjectListItem,
+  buildProjectStatus,
+  buildUser,
+  withRouter,
+  withStatefulAuth,
+  withTerminology,
+  withToast,
+} from "../testing/storybook-helpers";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -24,11 +45,22 @@ const projectStatuses: ProjectStatusDefinition[] = [
   buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 }),
 ];
 
-function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[]; customFields?: CustomFieldDefinition[] } = {}) {
+function mockProjectAdminApis(
+  overrides: {
+    actionTypes?: ActionTypeDefinition[];
+    customFields?: CustomFieldDefinition[];
+    project?: ReturnType<typeof buildProject>;
+    orgProjects?: ReturnType<typeof buildProjectListItem>[];
+    memberSources?: ProjectMemberSource[];
+    children?: ReturnType<typeof buildProjectListItem>[];
+    effectiveMembers?: EffectiveMember[];
+  } = {}
+) {
   const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
   const customFields = overrides.customFields ?? [];
+  const project = overrides.project ?? buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
+    if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
     if (path.includes("/stages")) return stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
@@ -46,6 +78,12 @@ function mockProjectAdminApis(overrides: { actionTypes?: ActionTypeDefinition[];
       default_report_template_id: null,
     };
     if (path.includes("/report-templates")) return [];
+    // Hierarchical projects (docs/decisions.md). Checked before the plain
+    // "/users" check below — /orgs/{id}/users also matches that.
+    if (path.includes("/member-sources")) return overrides.memberSources ?? [];
+    if (path.includes("/effective-members")) return overrides.effectiveMembers ?? [];
+    if (path.includes(`/projects/${PROJECT_ID}/children`)) return overrides.children ?? [];
+    if (path.startsWith("/api/v1/projects?")) return overrides.orgProjects ?? [];
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -463,6 +501,194 @@ export const CustomFieldsTabEntityKindDropdownReflectsTerminology: Story = {
     // The "New field" row's entity-kind <select> options.
     await expect(canvas.getByRole("option", { name: "Spec" })).toBeInTheDocument();
     await expect(canvas.getByRole("option", { name: "ECR" })).toBeInTheDocument();
+  },
+};
+
+// --- Hierarchical projects (docs/decisions.md) ------------------------
+
+export const ParentFieldShowsCurrentParentPlainly: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      project: buildProject({
+        id: PROJECT_ID, organization_id: "org-1", name: "Authentication", status_id: "st1",
+        parent_project_id: "parent-1", role_inheritance_mode: "mirror_all",
+      }),
+      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1" })],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByDisplayValue("Platform")).toBeInTheDocument());
+    await expect(canvas.getByDisplayValue("Mirror all roles")).toBeInTheDocument();
+  },
+};
+
+/** Selecting MIRROR_ALL/MIRROR_ROLE requires the tier-2 confirmation
+ * (docs/decisions.md) before it takes effect — the setting doesn't change
+ * until the dialog is confirmed. */
+export const SelectingMirrorAllRequiresConfirmation: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1", can_be_parent: true })],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Parent project")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Parent project"), "Platform");
+    await userEvent.selectOptions(canvas.getByLabelText("Inherit access from parent"), "Mirror all roles");
+    await expect(within(document.body).getByText("Enable access inheritance?")).toBeInTheDocument();
+    // Still showing "None" until confirmed.
+    await expect(canvas.getByDisplayValue("None")).toBeInTheDocument();
+    await userEvent.click(within(document.body).getByRole("button", { name: "Enable inheritance" }));
+    await expect(canvas.getByDisplayValue("Mirror all roles")).toBeInTheDocument();
+  },
+};
+
+export const SaveErrorShowsInline: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1", can_be_parent: true })],
+    });
+    spyOn(api, "patch").mockRejectedValue(new Error("This project's only manager is inherited from 'Platform'; assign a direct project manager before disabling inheritance or changing its parent."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Parent project")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(canvas.getByText(/only manager is inherited/)).toBeInTheDocument());
+  },
+};
+
+export const MemberSourcesListAndAdd: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      memberSources: [{ source_project_id: "child-1", source_project_name: "Authentication" }],
+      children: [
+        buildProjectListItem({ id: "child-1", name: "Authentication", organization_id: "org-1" }),
+        buildProjectListItem({ id: "child-2", name: "Billing", organization_id: "org-1" }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Authentication" })).toBeInTheDocument());
+    // Already-listed child isn't offered again in the add dropdown.
+    await expect(canvas.queryByRole("option", { name: "Authentication" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("option", { name: "Billing" })).toBeInTheDocument();
+  },
+};
+
+export const EffectiveMembersShowsProvenance: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      effectiveMembers: [
+        {
+          user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
+          sources: [
+            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all" },
+          ],
+        },
+        {
+          user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
+          sources: [{ kind: "direct", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+        },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
+    await waitFor(() => expect(canvas.getByText("Priya Shah", { exact: false })).toBeInTheDocument());
+    await expect(canvas.getByText(/Inherited from 'Platform'/)).toBeInTheDocument();
+    await expect(canvas.getByText("Sam Lee", { exact: false })).toBeInTheDocument();
+    await expect(canvas.getByText(/Direct/)).toBeInTheDocument();
+  },
+};
+
+export const MaterializeButtonConvertsInheritedAccess: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      effectiveMembers: [
+        {
+          user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
+          sources: [
+            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all" },
+          ],
+        },
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue({ created: [{ user_id: "u1", role: "project_manager" }], skipped: [] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Convert all inherited access to direct roles" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Convert all inherited access to direct roles" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/materialize-inherited-access`));
+    await waitFor(() => expect(within(document.body).getByText("Converted 1 user to direct roles.")).toBeInTheDocument());
+  },
+};
+
+/** "Add sub-project" navigates to ProjectListPage with the parent
+ * pre-filled, rather than duplicating the create-project modal here. Only
+ * reachable once this project has opted in to being a parent
+ * (can_be_parent) — see AddSubProjectDisabledUntilEligible below for the
+ * disabled case. */
+export const AddSubProjectNavigatesToProjectList: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1", can_be_parent: true }),
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeInTheDocument());
+    // Navigation itself is exercised end-to-end in the Playwright suite —
+    // this just confirms the entry point renders and is reachable.
+    await expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeEnabled();
+  },
+};
+
+/** can_be_parent (docs/decisions.md) defaults to false — "Add sub-project"
+ * must not offer a path straight into a create flow the backend would
+ * reject. */
+export const AddSubProjectDisabledUntilEligible: Story = {
+  beforeEach: () => mockProjectAdminApis({}),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeDisabled();
+  },
+};
+
+/** The checkbox itself: toggling it and saving sends can_be_parent through
+ * to the PATCH payload. */
+export const CanBeParentToggleSaves: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({});
+    spyOn(api, "patch").mockResolvedValue(buildProject({ id: PROJECT_ID, organization_id: "org-1", can_be_parent: true }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText(/Allow this .* to be a parent/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByLabelText(/Allow this .* to be a parent/));
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ can_be_parent: true })),
+    );
+  },
+};
+
+/** No eligible candidates and no parent currently set — the "Parent
+ * project" field (and its dependent inheritance-mode fields) render
+ * nothing rather than an empty picker with only "None" in it. */
+export const ParentFieldHiddenWithNoEligibleCandidates: Story = {
+  beforeEach: () => mockProjectAdminApis({ orgProjects: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Name")).toHaveValue("Atlas Platform"));
+    await expect(canvas.queryByText("Parent project")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Inherit access from parent")).not.toBeInTheDocument();
   },
 };
 

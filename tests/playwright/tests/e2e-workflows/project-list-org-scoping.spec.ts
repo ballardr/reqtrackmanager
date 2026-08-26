@@ -86,11 +86,17 @@ test.describe("project list organisation scoping for a server admin", () => {
     const soloDialog = page.getByRole("dialog", { name: "New project" });
     // No org select now (org A has no projects yet either, so the template
     // picker is also absent) — org A is the only valid choice, applied
-    // implicitly rather than asked for. The Visibility select is a real,
-    // always-meaningful choice independent of org count, so it's the one
-    // select still expected here.
+    // implicitly rather than asked for. Visibility is a real,
+    // always-meaningful choice independent of org count, so that select is
+    // still expected here. The hierarchical-projects "Parent project"
+    // picker, by contrast, is can_be_parent-gated (docs/decisions.md) and
+    // org A has zero projects at all yet, let alone any eligible ones — so
+    // it correctly renders nothing rather than a picker with only "None"
+    // to offer (requested directly: showing that field with nothing
+    // eligible in it was confusing).
     await expect(soloDialog.locator("select")).toHaveCount(1);
     await expect(soloDialog.getByLabel("Visibility")).toBeVisible();
+    await expect(soloDialog.getByText("Parent project")).toHaveCount(0);
 
     // Delete org A too, restoring the shared persona to its documented
     // zero-org baseline for any other spec that runs after this one.

@@ -72,6 +72,87 @@ export const ListView: Story = {
   },
 };
 
+// Hierarchical projects (docs/decisions.md).
+const hierarchyProjects = [
+  buildProjectListItem({
+    id: "parent1", name: "Platform", organization_id: "org-1", organization_name: "Acme Corp",
+    children: [{ id: "child1", name: "Authentication" }],
+  }),
+  buildProjectListItem({
+    id: "child1", name: "Authentication", organization_id: "org-1", organization_name: "Acme Corp",
+    parent_project_id: "parent1", parent_project_name: "Platform",
+  }),
+];
+
+function mockProjectListApisWithTree(opts: {
+  orgs: Organization[];
+  projects: ReturnType<typeof buildProjectListItem>[];
+  treeNodes?: unknown[];
+}) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/orgs?mine=true")) return opts.orgs;
+    if (path.startsWith("/api/v1/projects/tree")) return opts.treeNodes ?? [];
+    if (path.startsWith("/api/v1/projects?archived=false") && !path.includes("limit")) return opts.projects;
+    return opts.projects;
+  });
+  spyOn(api, "getPage").mockResolvedValue({ items: opts.projects, total: opts.projects.length });
+}
+
+export const HierarchyLabelsOnTileView: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: hierarchyProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // "Platform" appears twice — its own tile heading, and inside "Child
+    // of: Platform" on the child's tile — so assert on the unambiguous
+    // "Child of:"/"Parent of:" label text instead of the name itself.
+    await waitFor(() => expect(canvas.getByText("Child of:")).toBeInTheDocument());
+    await expect(canvas.getByText("Parent of:")).toBeInTheDocument();
+  },
+};
+
+export const HierarchyLabelsOnListView: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: hierarchyProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getAllByText("Platform").length).toBeGreaterThan(0));
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByText("Child of:")).toBeInTheDocument();
+  },
+};
+
+/** No hierarchy anywhere in the accessible project set: the tree toggle
+ * button must not render at all (`showTreeOption`), not just be disabled —
+ * a tree mode with nothing to show a hierarchy for doesn't mean anything. */
+export const TreeToggleHiddenWithoutHierarchy: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Tree view" })).not.toBeInTheDocument();
+  },
+};
+
+export const TreeViewRendersHierarchy: Story = {
+  beforeEach: () =>
+    mockProjectListApisWithTree({
+      orgs: [org({})],
+      projects: hierarchyProjects,
+      treeNodes: [
+        {
+          id: "parent1", name: "Platform", organization_id: "org-1", is_archived: false,
+          children: [{ id: "child1", name: "Authentication", organization_id: "org-1", is_archived: false, children: [] }],
+        },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Tree view" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Tree view" }));
+    await waitFor(() => expect(canvas.getAllByRole("link", { name: "Platform" }).length).toBeGreaterThan(0));
+    await expect(canvas.getByRole("link", { name: "Authentication" })).toBeInTheDocument();
+  },
+};
+
 /** Favourites-only filter (2026-08 UX audit roadmap row 511) — a new
  * `FilterCheckbox` in the existing `FilterPanel`, sending `favorite_only=true`
  * on the same `GET /projects` param `FavouritesPage.tsx` already used. */
@@ -217,6 +298,45 @@ export const CreateProjectImportFileHidesTemplateWithNote: Story = {
     await expect(
       within(dialog).getByText("A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.")
     ).toBeInTheDocument();
+  },
+};
+
+/** can_be_parent (docs/decisions.md) defaults to false — with nothing
+ * eligible in the org, the "Parent project" field doesn't render at all
+ * rather than showing a picker with only "None" in it. */
+export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+  },
+};
+
+/** Once at least one project in the org has opted in (can_be_parent), the
+ * field appears and offers it. */
+export const CreateProjectOffersEligibleParent: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({})],
+      projects: [...singleOrgProjects, buildProjectListItem({ id: "p3", name: "Eligible Parent", organization_id: "org-1", organization_name: "Acme Corp", can_be_parent: true })],
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).getByText("Parent project")).toBeInTheDocument();
+    // Not offered: opted-out sibling projects.
+    await expect(within(dialog).queryByRole("option", { name: "Beacon Mobile" })).not.toBeInTheDocument();
+    await expect(within(dialog).getByRole("option", { name: "Eligible Parent" })).toBeInTheDocument();
   },
 };
 

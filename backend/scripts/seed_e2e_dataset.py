@@ -86,13 +86,35 @@ def assign_org_role(org_admin_headers: dict, org_id: str, user_id: str, role: st
     r.raise_for_status()
 
 
-def create_project(headers: dict, org_id: str, name: str, summary: str) -> dict:
+def create_project(
+    headers: dict, org_id: str, name: str, summary: str,
+    *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None,
+    role_inheritance_filter_role: str | None = None, can_be_parent: bool = False,
+) -> dict:
+    payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if parent_project_id is not None:
+        payload["parent_project_id"] = parent_project_id
+    if role_inheritance_mode is not None:
+        payload["role_inheritance_mode"] = role_inheritance_mode
+    if role_inheritance_filter_role is not None:
+        payload["role_inheritance_filter_role"] = role_inheritance_filter_role
+    if can_be_parent:
+        payload["can_be_parent"] = True
+    r = httpx.post(f"{BASE}/projects", json=payload, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_member_source(headers: dict, project_id: str, source_project_id: str) -> None:
+    """Adds `source_project_id` (a direct child of `project_id`) to
+    `project_id`'s member-source list — the reverse (child -> parent) RBAC
+    mechanism, authorized by managing the parent (`project_id`), per
+    docs/decisions.md's "Hierarchical projects" entry."""
     r = httpx.post(
-        f"{BASE}/projects", json={"organization_id": org_id, "name": name, "summary": summary},
+        f"{BASE}/projects/{project_id}/member-sources", json={"source_project_id": source_project_id},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
-    return r.json()
 
 
 def assign_project_role(headers: dict, project_id: str, user_id: str, role: str) -> None:
@@ -124,6 +146,13 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
 # these values.
 TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
 TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
+
+# Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
+# all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
+# Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
+# projects" entry. No other spec may depend on this pair's configuration.
+GAMMA3_NAME = "Gamma-3 Hierarchy Parent"
+GAMMA4_NAME = "Gamma-4 Hierarchy Child"
 
 
 def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
@@ -231,6 +260,12 @@ def main() -> None:
     stakeholder_a2 = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a2@example.com", "E2E Stakeholder AlphaOnly Two", "member")
     member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
     create_org_user(h_admin, alpha["id"], "e2e-orphan@example.com", "E2E Orphan Candidate", "member")
+    # No org-level role at all — deliberately, for project-hierarchy.spec.ts:
+    # exercises the relaxed parent-manage-only child-creation path (decision
+    # 11, docs/decisions.md), which must work for a plain project manager
+    # with zero org-level standing, and the `parent_required` bypass-closure
+    # block that keeps them from detaching what they create that way.
+    projectmgr_g = create_org_user(h_admin, gamma["id"], "e2e-projectmgr-g@example.com", "E2E ProjectMgr Gamma Only", "member")
 
     # Bootstrap helper: no product endpoint lets a server admin grant a role
     # in an org they don't already belong to (assign_org_role requires a
@@ -282,8 +317,26 @@ def main() -> None:
     alpha2 = create_project(h_ab, alpha["id"], "Alpha-2 Sensor Fusion Platform", "E2E seed project.")
     beta1 = create_project(h_ab, beta["id"], "Beta-1 Billing Engine", "E2E seed project.")
     beta2 = create_project(h_ab, beta["id"], "Beta-2 Customer Portal", "E2E seed project.")
-    gamma1 = create_project(h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.")
+    gamma1 = create_project(
+        h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.",
+        # Eligible to be a parent (docs/decisions.md): project-hierarchy.spec.ts's
+        # relaxed-creation-path test creates a sub-project of Gamma-1 live.
+        can_be_parent=True,
+    )
     gamma2 = create_project(h_g, gamma["id"], "Gamma-2 Data Pipeline", "E2E seed project.")
+
+    print(f"Creating {GAMMA3_NAME!r} / {GAMMA4_NAME!r} (fixed project-hierarchy fixture for project-hierarchy.spec.ts)...")
+    gamma3 = create_project(
+        h_g, gamma["id"], GAMMA3_NAME, "E2E seed project — hierarchy parent fixture.", can_be_parent=True,
+    )
+    gamma4 = create_project(
+        h_g, gamma["id"], GAMMA4_NAME, "E2E seed project — hierarchy child fixture.",
+        parent_project_id=gamma3["id"], role_inheritance_mode="mirror_all",
+    )
+    # Reverse direction (child -> parent), authorized by managing the
+    # parent: Gamma-3 consumes members from Gamma-4 too, so the same fixed
+    # pair demonstrates both RBAC-cascade mechanisms at once.
+    add_member_source(h_g, gamma3["id"], gamma4["id"])
 
     print(f"Creating {TERMINOLOGY_PROJECT_NAME!r} and setting its terminology override (C-C-03)...")
     delta1 = create_project(
@@ -297,6 +350,12 @@ def main() -> None:
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], member_ab["user_id"], "member")
     assign_project_role(h_ab, beta1["id"], member_ab["user_id"], "member")
+    assign_project_role(h_g, gamma1["id"], projectmgr_g["user_id"], "project_manager")
+    # A direct (non-inherited) role on Gamma-3 only, so it shows up on
+    # Gamma-4 as forward-inherited (mirror_all) — orgAdminGamma is a direct
+    # PM on both Gamma-3 and Gamma-4 already (project-creation seeding), so
+    # they can't demonstrate the "inherited, not direct" provenance case.
+    assign_project_role(h_g, gamma3["id"], projectmgr_g["user_id"], "stakeholder")
 
     print("Seeding requirements (6-8 per project)...")
     alpha1_reqs = seed_project_content(h_ab, alpha1, 8)
@@ -368,6 +427,10 @@ def main() -> None:
     print("  e2e-stakeholder-a2@example.com - second stakeholder on Alpha-1 only (for vote-tally coverage)")
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
+    print("  e2e-projectmgr-g@example.com  - Gamma member only (no org-admin/project-creator); PM on Gamma-1,"
+          " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")
+    print(f"\n{GAMMA3_NAME!r} (id {gamma3['id']}) mirror-all-inherits into {GAMMA4_NAME!r} (id {gamma4['id']});"
+          f" {GAMMA3_NAME!r} also consumes members from {GAMMA4_NAME!r} (member-source) — fixed project-hierarchy.spec.ts fixture.")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")

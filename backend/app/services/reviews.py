@@ -20,7 +20,7 @@ from app.models.project import Project
 from app.models.requirement import Requirement, RequirementReview, RequirementVersion
 from app.models.user import User
 from app.services import notifications
-from app.services.rbac import get_project_managers
+from app.services.rbac import get_effective_project_managers
 
 
 def _due_versions_query(project_id: UUID | None = None):
@@ -106,7 +106,7 @@ def send_due_review_reminders(db: Session) -> None:
         if today < version.review_date - timedelta(days=lead_days):
             continue
 
-        recipient_ids: set[UUID] = {version.reviewer_id} if version.reviewer_id else get_project_managers(db, project.id)
+        recipient_ids: set[UUID] = {version.reviewer_id} if version.reviewer_id else get_effective_project_managers(db, project.id)
         for recipient_id in recipient_ids:
             recipient = db.get(User, recipient_id)
             if recipient is None:

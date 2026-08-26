@@ -42,6 +42,7 @@ import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
+import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -170,6 +171,7 @@ export function OrgAdminPage() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState<OrgRole>("member");
   // "New user" now opens in a `Modal` (style guide "Pattern: modal dialog
   // for entity create/rename") rather than the permanently-visible inline
   // form it used to be — the first real usage of that pattern, setting the
@@ -201,6 +203,7 @@ export function OrgAdminPage() {
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
+  const [allowRelaxedChildProjectCreation, setAllowRelaxedChildProjectCreation] = useState(true);
   // Guards the advanced-settings form fields above against `reload()` —
   // called after every unrelated mutation on this page (e.g.
   // `toggleDisplayNameLock`) and not awaited by its caller, so it can
@@ -392,6 +395,7 @@ export function OrgAdminPage() {
         setAllowSelfSignup(a.allow_self_signup);
         setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
         setExternalUserPolicy(a.external_user_policy);
+        setAllowRelaxedChildProjectCreation(a.allow_relaxed_child_project_creation);
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
@@ -535,6 +539,7 @@ export function OrgAdminPage() {
         allow_self_signup: allowSelfSignup,
         auto_accept_email_domain: autoAcceptEmailDomain || null,
         external_user_policy: externalUserPolicy,
+        allow_relaxed_child_project_creation: allowRelaxedChildProjectCreation,
       });
       setAdvanced(saved);
       setSmtpPassword("");
@@ -706,14 +711,49 @@ export function OrgAdminPage() {
   async function createUser() {
     try {
       await api.post(`/api/v1/orgs/${orgId}/users`, {
-        email: newUserEmail, display_name: newUserName, password: newUserPassword, role: "member",
+        email: newUserEmail, display_name: newUserName, password: newUserPassword, role: newUserRole,
       });
       setNewUserEmail("");
       setNewUserName("");
       setNewUserPassword("");
+      setNewUserRole("member");
       setNewUserModalOpen(false);
       showToast(strings.orgAdmin.userCreated);
       reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // Updates just the affected row's own `roles` array in local state on
+  // success, rather than calling the page-wide `reload()` every other
+  // mutation on this page uses. `reload()` re-fetches ~10 endpoints
+  // (including the users list from offset 0), so toggling a role would
+  // silently drop any users paged in past the first 30 and — if two
+  // toggles landed close together — race two overlapping reload bundles
+  // against each other; a transient failure in either one replaces the
+  // whole page with a load-error state (see docs/decisions.md, this entry).
+  // A single grant/revoke only ever changes this one row's own role set, so
+  // there's nothing else on the page a full reload would need to refresh.
+  async function grantOrgRole(u: OrgUser, role: OrgRole) {
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { role });
+      setUsers((prev) =>
+        prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: [...x.roles, role] } : x))
+      );
+      showToast(strings.orgAdmin.roleGranted);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeOrgRole(u: OrgUser, role: OrgRole) {
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles/${role}`);
+      setUsers((prev) =>
+        prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: x.roles.filter((r) => r !== role) } : x))
+      );
+      showToast(strings.orgAdmin.roleRevoked);
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -1429,7 +1469,33 @@ export function OrgAdminPage() {
                     <tr key={u.user_id}>
                       <td>{u.email}</td>
                       <td>{u.display_name}</td>
-                      <td>{u.roles.map((r) => ORG_ROLE_LABEL[r]).join(", ")}</td>
+                      <td>
+                        <MultiSelectDropdown
+                          triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
+                          emptyLabel={strings.orgAdmin.noRoles}
+                          options={(["member", "project_creator", "org_admin"] as const).map((role) => {
+                            const checked = u.roles.includes(role);
+                            // A user can never revoke their own org role via this
+                            // control — mirrors the backend's self-targeting block
+                            // on the revoke endpoint (an org can never reach zero
+                            // admins through here, by construction). Granting a
+                            // role to oneself is still allowed, matching the
+                            // backend, so only the "uncheck" direction is disabled.
+                            const disabled = checked && u.user_id === user?.id;
+                            return {
+                              value: role,
+                              label: ORG_ROLE_LABEL[role],
+                              checked,
+                              disabled,
+                              title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
+                              optionLabel: checked
+                                ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
+                                : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
+                              onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
+                            };
+                          })}
+                        />
+                      </td>
                       <td>
                         {u.is_archived
                           ? strings.orgAdmin.statusArchived
@@ -1491,6 +1557,14 @@ export function OrgAdminPage() {
                       value={newUserPassword}
                       onChange={(e) => setNewUserPassword(e.target.value)}
                     />
+                  </label>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.role}
+                    <select className="input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as OrgRole)}>
+                      <option value="member">{ORG_ROLE_LABEL.member}</option>
+                      <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                      <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
+                    </select>
                   </label>
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <button className="btn" onClick={() => setNewUserModalOpen(false)}>
@@ -2349,6 +2423,21 @@ export function OrgAdminPage() {
                     <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
                     <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
                   </select>
+                </label>
+
+                <label className="row" style={{ gap: "0.6rem" }}>
+                  <ToggleSwitch
+                    checked={allowRelaxedChildProjectCreation}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setAllowRelaxedChildProjectCreation(next);
+                    }}
+                    label={strings.orgAdmin.allowRelaxedChildProjectCreation}
+                  />
+                  <span className="stack" style={{ gap: 0 }}>
+                    {strings.orgAdmin.allowRelaxedChildProjectCreation}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowRelaxedChildProjectCreationHint}</span>
+                  </span>
                 </label>
 
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}

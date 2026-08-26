@@ -11,13 +11,39 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
-from app.models.enums import ProjectRole, ProjectVisibility, StageReviewResponseChoice, StageStatus
+from app.models.enums import (
+    ProjectRole,
+    ProjectRoleInheritanceMode,
+    ProjectVisibility,
+    StageReviewResponseChoice,
+    StageStatus,
+)
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
 TERMINOLOGY_KEYS = {"project", "stage", "component", "category", "requirement", "change_request"}
+
+# MIRROR_ROLE's companion role_inheritance_filter_role must be one of these —
+# MEMBER is deliberately excluded, since "any parent role -> MEMBER" is
+# already covered, more broadly, by MEMBER_ONLY mode (see
+# ProjectRoleInheritanceMode's docstring).
+_MIRROR_ROLE_ALLOWED_FILTERS = {ProjectRole.STAKEHOLDER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER}
+
+
+def _validate_role_inheritance_filter(mode: ProjectRoleInheritanceMode | None, filter_role: ProjectRole | None) -> None:
+    """Shared MIRROR_ROLE/role_inheritance_filter_role invariant (see
+    `Project.role_inheritance_filter_role`'s docstring) for both
+    `ProjectCreate` and `ProjectUpdate`."""
+    if mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
+        if filter_role not in _MIRROR_ROLE_ALLOWED_FILTERS:
+            raise ValueError(
+                "role_inheritance_filter_role must be one of stakeholder, project_administrator, "
+                "project_manager when role_inheritance_mode is mirror_role."
+            )
+    elif filter_role is not None:
+        raise ValueError("role_inheritance_filter_role must not be set unless role_inheritance_mode is mirror_role.")
 
 
 class ProjectCreate(BaseModel):
@@ -32,6 +58,18 @@ class ProjectCreate(BaseModel):
     # org-wide-visible shouldn't silently make every project cloned from it
     # org-wide too.
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
+    # Hierarchical projects: see Project.parent_project_id/role_inheritance_mode's
+    # docstrings and routers/projects.py::create_project for the two
+    # authorization paths (org-level vs. parent-manage-only) this field enables.
+    parent_project_id: UUID | None = None
+    role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
+    role_inheritance_filter_role: ProjectRole | None = None
+    # Whether *this new* project should itself be eligible to be selected as
+    # a parent later — see Project.can_be_parent's docstring. Not surfaced
+    # in the standard "New project" form (a settings-tab decision, not a
+    # creation-time one); exists on this schema for API/scripted use, e.g.
+    # seeding a project that's immediately meant to gain children.
+    can_be_parent: bool = False
 
     @field_validator("terminology")
     @classmethod
@@ -41,6 +79,11 @@ class ProjectCreate(BaseModel):
         if unknown:
             raise ValueError(f"Unknown terminology keys: {sorted(unknown)}. Allowed: {sorted(TERMINOLOGY_KEYS)}")
         return value
+
+    @model_validator(mode="after")
+    def _validate_role_inheritance_filter(self) -> ProjectCreate:
+        _validate_role_inheritance_filter(self.role_inheritance_mode, self.role_inheritance_filter_role)
+        return self
 
 
 class ProjectOut(BaseModel):
@@ -58,6 +101,21 @@ class ProjectOut(BaseModel):
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
     status_id: UUID
+    # Both None unless the caller has effective view access to the parent —
+    # same visibility-boundary rule as ProjectListItemOut's own
+    # parent_project_id/parent_project_name (see routers/projects.py's
+    # _redact_parent helper) — this endpoint is require_project_view-gated,
+    # not manage-gated, so an ordinary viewer must not learn a hidden
+    # parent's identity just by fetching this project directly.
+    parent_project_id: UUID | None = None
+    parent_project_name: str | None = None
+    role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
+    role_inheritance_filter_role: ProjectRole | None = None
+    # Whether *this* project may be selected as a parent for other projects
+    # — see Project.can_be_parent's docstring. Unlike parent_project_id/
+    # parent_project_name above, never redacted: it says nothing about any
+    # other project's identity, just this one's own setting.
+    can_be_parent: bool = False
 
 
 class ProjectImportResult(BaseModel):
@@ -72,7 +130,20 @@ class ProjectImportResult(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    """Project settings update (name/summary, C-U-13 toggle, C-E-05 template flag)."""
+    """Project settings update (name/summary, C-U-13 toggle, C-E-05 template flag).
+
+    `parent_project_id` uses FastAPI/Pydantic's `model_fields_set` to
+    distinguish "not sent, leave unchanged" from "explicitly sent" — unlike
+    every other field on this schema, `parent_project_id: None` is a
+    meaningful, legal value (detach from parent), not just Pydantic's
+    optional-field marker, so the router checks
+    `"parent_project_id" in payload.model_fields_set` rather than
+    `payload.parent_project_id is not None`. `role_inheritance_filter_role`
+    doesn't need the same treatment: the router forces it to `None`
+    whenever the resulting `role_inheritance_mode` isn't `MIRROR_ROLE`,
+    regardless of what was sent, so an explicit clear is never required
+    from the client.
+    """
 
     name: str | None = None
     summary: str | None = None
@@ -82,6 +153,10 @@ class ProjectUpdate(BaseModel):
     # Must belong to the project's own organisation (400 otherwise) — see
     # `routers/projects.py::update_project`.
     status_id: UUID | None = None
+    parent_project_id: UUID | None = None
+    role_inheritance_mode: ProjectRoleInheritanceMode | None = None
+    role_inheritance_filter_role: ProjectRole | None = None
+    can_be_parent: bool | None = None
 
 
 class TerminologyUpdate(BaseModel):
@@ -99,6 +174,78 @@ class TerminologyUpdate(BaseModel):
         return value
 
 
+class ProjectAncestorOut(BaseModel):
+    """One entry in a project's ancestor chain (`GET /{id}/ancestors`) or a
+    project's list of direct children — just enough to render a link/label,
+    never more. See `list_projects`'s `parent_project_name`/`children`
+    population for the visibility-boundary rule both of these share: never
+    includes a project the caller can't view."""
+
+    id: UUID
+    name: str
+
+
+class ProjectTreeNodeOut(BaseModel):
+    """One node of `GET /projects/tree` — a project plus its accessible
+    children, recursively. A node whose real parent isn't in the caller's
+    accessible set is rendered as a root here rather than omitted or
+    hinting at a hidden parent (see `routers/projects.py::project_tree`)."""
+
+    id: UUID
+    name: str
+    organization_id: UUID
+    is_archived: bool
+    children: list[ProjectTreeNodeOut] = []
+
+
+class ProjectMemberSourceAdd(BaseModel):
+    source_project_id: UUID
+
+
+class ProjectMemberSourceOut(BaseModel):
+    """One entry in a project's member-source list (`GET/POST/DELETE
+    /{id}/member-sources`) — the child this project consumes members from.
+    See `models.project.ProjectMemberSource`'s docstring for why this is a
+    parent-owned list rather than a flag on the child."""
+
+    source_project_id: UUID
+    source_project_name: str
+
+
+class MemberSourceProvenanceOut(BaseModel):
+    """One reason a user has a given effective role — see
+    `services.rbac.get_effective_project_members_with_provenance`'s
+    docstring for exactly what `kind`/`via_project_id`/`via_mode` mean."""
+
+    kind: str
+    role: ProjectRole
+    via_project_id: UUID | None = None
+    via_project_name: str | None = None
+    via_mode: ProjectRoleInheritanceMode | None = None
+
+
+class EffectiveMemberOut(BaseModel):
+    """One user's effective access to a project, with full provenance
+    (`GET /{id}/effective-members`, decision 10) — a user can have more
+    than one source simultaneously (e.g. a direct grant plus an inherited
+    one), so `sources` lists all of them rather than collapsing to one."""
+
+    user_id: UUID
+    display_name: str
+    email: str
+    effective_role: ProjectRole
+    sources: list[MemberSourceProvenanceOut]
+
+
+class MaterializeResultOut(BaseModel):
+    """Outcome of `POST /{id}/materialize-inherited-access` (decision 9) —
+    which users/roles were newly created as direct grants, and which were
+    skipped because they already held an equal-or-higher direct role."""
+
+    created: list[dict[str, str]]
+    skipped: list[dict[str, str]]
+
+
 class ProjectListItemOut(ProjectOut):
     """Project list view row (U-E-03): includes stage and role context."""
 
@@ -108,6 +255,13 @@ class ProjectListItemOut(ProjectOut):
     is_favorite: bool = False
     organization_name: str = ""
     requirement_count: int = 0
+    # Both None unless the caller has effective view access to the parent —
+    # deliberately redacted for casual list/tile browsing, never a hint that
+    # a hidden parent exists. See `list_projects`'s population logic.
+    parent_project_name: str | None = None
+    # Direct children only, filtered to ones the caller can view — no count
+    # of hidden ones either, for the same reason.
+    children: list[ProjectAncestorOut] = []
 
 
 class ProjectStageCreate(BaseModel):

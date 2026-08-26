@@ -29,6 +29,7 @@ from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
 from app.services.ordering import move_ordered
+from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import require_project_manage, require_project_view
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/action-types", tags=["action-types"])
@@ -67,10 +68,11 @@ def list_action_types(
 ):
     """Lists a project's action types — any project member may select one
     when creating an action, so listing isn't manage-only (only
-    create/rename/move/delete are)."""
-    return db.scalars(
-        select(ActionTypeDefinition).where(ActionTypeDefinition.project_id == project_id).order_by(ActionTypeDefinition.sort_order)
-    ).all()
+    create/rename/move/delete are). A project with none of its own falls
+    back to its nearest ancestor's (hierarchical projects, always on
+    independent of RBAC inheritance settings — see
+    `services.project_hierarchy.resolve_effective_action_types`)."""
+    return resolve_effective_action_types(db, project_id)
 
 
 @router.post("/{action_type_id}/move", response_model=ActionTypeOut)
@@ -124,10 +126,13 @@ def delete_action_type(
     db: Session = Depends(get_db),
 ):
     """Deletes an action type, applying the shared rename/delete/reassign
-    rules (§4.0): refuses to leave the project with zero action types
-    (409), and requires an explicit `reassign_to_id` to delete a type
-    that's currently in use by any `RequirementAction` (409 naming the
-    count if omitted; bulk-reassigns then deletes if provided) — see
+    rules (§4.0): refuses to leave a *root* project with zero action types
+    (409) — a project with a parent may always be emptied of its own,
+    since it falls back to its nearest ancestor's
+    (`services.project_hierarchy.resolve_effective_action_types`) — and
+    requires an explicit `reassign_to_id` to delete a type that's currently
+    in use by any `RequirementAction` (409 naming the count if omitted;
+    bulk-reassigns then deletes if provided) — see
     `services.definitions.delete_definition_with_reassignment`'s docstring
     for the exact behaviour.
     """
@@ -139,5 +144,6 @@ def delete_action_type(
         plural_noun="action(s)", reassign_verb="move",
         min_count_message="A project must always have at least one action type.",
         actor_id=current_user.id, organization_id=project.organization_id, project_id=project.id,
+        allow_empty=project.parent_project_id is not None,
     )
     db.commit()

@@ -147,6 +147,7 @@ def delete_definition_with_reassignment(
     organization_id: UUID | None,
     project_id: UUID | None,
     name_attr: str = "name",
+    allow_empty: bool = False,
 ) -> None:
     """Deletes a definition row, applying the shared rename/delete/reassign
     rules described in this module's docstring. Writes are added to `db`
@@ -187,23 +188,33 @@ def delete_definition_with_reassignment(
         name_attr: Attribute name to read for the audit log's "name"
             detail (`"name"` for statuses/action-types, `"forward_name"`
             for link types, which have no single `name` column).
+        allow_empty: Skips the "scope must retain at least one definition"
+            floor check below. Only `action_types.py::delete_action_type`
+            passes `True` today, and only for a project with a parent
+            (hierarchical projects) — such a project can always fall back
+            to its nearest ancestor's action types
+            (`services.project_hierarchy.resolve_effective_action_types`),
+            non-empty by induction since a root project's own floor is
+            still unconditionally enforced. Statuses and link types have no
+            equivalent fallback, so they never pass this.
 
     Raises:
         HTTPException: 404 if `item_id` isn't found in `scope_id`; 409 if
-            deleting would leave the scope with zero definitions, or if the
-            row is in use and no `reassign_to_id` was given; 400 if
-            `reassign_to_id` equals `item_id` or doesn't resolve to an
-            existing row in the same scope.
+            deleting would leave the scope with zero definitions (unless
+            `allow_empty`), or if the row is in use and no `reassign_to_id`
+            was given; 400 if `reassign_to_id` equals `item_id` or doesn't
+            resolve to an existing row in the same scope.
     """
     item = db.get(definition_model, item_id)
     if item is None or getattr(item, scope_column.key) != scope_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{noun.capitalize()} not found.")
 
-    total_in_scope = db.scalar(
-        select(func.count()).select_from(definition_model).where(scope_column == scope_id)
-    ) or 0
-    if total_in_scope <= 1:
-        raise HTTPException(status.HTTP_409_CONFLICT, min_count_message)
+    if not allow_empty:
+        total_in_scope = db.scalar(
+            select(func.count()).select_from(definition_model).where(scope_column == scope_id)
+        ) or 0
+        if total_in_scope <= 1:
+            raise HTTPException(status.HTTP_409_CONFLICT, min_count_message)
 
     in_use_count = db.scalar(
         select(func.count()).select_from(referencing_model).where(referencing_fk_column == item_id)

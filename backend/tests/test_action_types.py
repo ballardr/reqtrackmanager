@@ -144,3 +144,70 @@ def test_action_type_endpoints_require_project_membership(client, admin_token, o
     _other_org, other_token = create_org_admin_in(client, admin_token, "Action Type Auth Other Org")
     resp = client.get(f"/api/v1/projects/{project['id']}/action-types", headers=auth_headers(other_token))
     assert resp.status_code == 403
+
+
+# --- Hierarchical projects: action-type fallback (always on, independent
+# of RBAC inheritance settings — see docs/decisions.md) ----------------------
+
+
+def test_child_project_falls_back_to_parent_action_types_when_empty(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "Fallback Parent", can_be_parent=True)
+    child = create_project(
+        client, admin_token, org_id, "Fallback Child", parent_project_id=parent["id"],
+    )
+    # A project created with a parent starts with zero of its own, so the
+    # *effective* list (what list_action_types always returns) falls back
+    # to the parent's — Review/Test, the same defaults every root project
+    # is seeded with.
+    assert [t["name"] for t in _action_types(client, admin_token, child["id"])] == ["Review", "Test"]
+
+
+def test_child_with_its_own_action_types_does_not_fall_back(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "No Fallback Parent", can_be_parent=True)
+    child = create_project(client, admin_token, org_id, "No Fallback Child", parent_project_id=parent["id"])
+    client.post(f"/api/v1/projects/{child['id']}/action-types", json={"name": "Child Only"}, headers=auth_headers(admin_token))
+    names = {t["name"] for t in _action_types(client, admin_token, child["id"])}
+    assert names == {"Child Only"}
+    assert "Review" not in names
+
+
+def test_fallback_walks_multiple_ancestor_levels(client, admin_token, org_id):
+    grandparent = create_project(client, admin_token, org_id, "Fallback Grandparent", can_be_parent=True)
+    parent = create_project(
+        client, admin_token, org_id, "Fallback Mid Parent", parent_project_id=grandparent["id"], can_be_parent=True,
+    )
+    child = create_project(client, admin_token, org_id, "Fallback Grandchild", parent_project_id=parent["id"])
+    resp = client.get(f"/api/v1/projects/{child['id']}/action-types", headers=auth_headers(admin_token))
+    assert [t["name"] for t in resp.json()] == ["Review", "Test"]
+
+
+def test_deleting_last_child_action_type_is_allowed_but_not_for_a_root(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "Delete Floor Parent", can_be_parent=True)
+    child = create_project(client, admin_token, org_id, "Delete Floor Child", parent_project_id=parent["id"])
+    child_type = client.post(
+        f"/api/v1/projects/{child['id']}/action-types", json={"name": "Only Child Type"}, headers=auth_headers(admin_token)
+    ).json()
+    resp = client.delete(f"/api/v1/projects/{child['id']}/action-types/{child_type['id']}", headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+    # allow_empty let the child be emptied of its own — it now falls back
+    # to the parent's Review/Test, same as the always-empty case above.
+    assert [t["name"] for t in _action_types(client, admin_token, child["id"])] == ["Review", "Test"]
+
+    # A root project keeps the unconditional floor-of-1.
+    root_types = _action_types(client, admin_token, parent["id"])
+    resp = client.delete(
+        f"/api/v1/projects/{parent['id']}/action-types/{root_types[0]['id']}",
+        params={"reassign_to_id": root_types[1]["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 204
+    remaining = _action_types(client, admin_token, parent["id"])
+    resp2 = client.delete(f"/api/v1/projects/{parent['id']}/action-types/{remaining[0]['id']}", headers=auth_headers(admin_token))
+    assert resp2.status_code == 409
+
+
+def test_action_on_child_can_reference_an_inherited_parent_action_type(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "Inherited Action Parent", can_be_parent=True)
+    child = create_project(client, admin_token, org_id, "Inherited Action Child", parent_project_id=parent["id"])
+    parent_types = _action_types(client, admin_token, parent["id"])
+    action = _create_action(client, admin_token, child["id"], parent_types[0]["id"])
+    assert action["action_type_id"] == parent_types[0]["id"]

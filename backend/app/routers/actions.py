@@ -26,7 +26,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ReviewComment
 from app.models.enums import ProjectRole, RequirementActionOutcome, ReviewTargetType
 from app.models.file import CommentFile, FileAsset, RequirementActionFile
@@ -45,6 +44,7 @@ from app.services.actions import (
 )
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/actions", tags=["actions"])
@@ -63,13 +63,21 @@ def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
 
 
 def _validate_action_type(db: Session, project_id: UUID, action_type_id: UUID) -> None:
-    """400s unless `action_type_id` is a real `ActionTypeDefinition` in
-    `project_id` — the project-scoped analogue of the org-scope checks
-    already used for `RequirementLinkCreate.link_type_id`/
-    `ProjectUpdate.status_id`."""
-    action_type = db.get(ActionTypeDefinition, action_type_id)
-    if action_type is None or action_type.project_id != project_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action_type_id must be an action type defined in this project.")
+    """400s unless `action_type_id` is one of `project_id`'s *effective*
+    action types — its own, or (hierarchical projects, always on) a
+    fallback inherited from its nearest ancestor
+    (`services.project_hierarchy.resolve_effective_action_types`). This is
+    what lets a `RequirementAction` in a child project reference the
+    parent's `ActionTypeDefinition` row directly — a deliberate
+    cross-project FK reference, the same shape nested-org-group role
+    inheritance already uses (referencing another scope's row rather than
+    copying it)."""
+    effective_ids = {at.id for at in resolve_effective_action_types(db, project_id)}
+    if action_type_id not in effective_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "action_type_id must be an action type defined in this project, or inherited from a parent project.",
+        )
 
 
 @router.post("", response_model=RequirementActionOut, status_code=status.HTTP_201_CREATED)

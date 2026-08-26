@@ -8,6 +8,10 @@
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
 export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
+// Hierarchical projects: forward (parent -> child) RBAC-cascade mode — see
+// backend/app/models/enums.py::ProjectRoleInheritanceMode and
+// docs/decisions.md's "Hierarchical projects" entry.
+export type ProjectRoleInheritanceMode = "none" | "mirror_all" | "mirror_role" | "member_only";
 
 // Display-only wording (matches the design mocks); the underlying API value
 // stays unchanged since it gates real approval/locking logic server-side.
@@ -400,6 +404,83 @@ export interface Project {
   visibility: "only_specified" | "org_wide";
   terminology: Record<string, string>;
   status_id: string;
+  // Hierarchical projects (docs/decisions.md). parent_project_id/
+  // parent_project_name are both null unless the caller has effective view
+  // access to the parent — a visibility-boundary redaction applied
+  // server-side, not something this frontend needs to re-derive.
+  parent_project_id: string | null;
+  parent_project_name?: string | null;
+  role_inheritance_mode: ProjectRoleInheritanceMode;
+  role_inheritance_filter_role: ProjectRole | null;
+  // Whether *this* project may be selected as a parent for other projects —
+  // defaults to false; a project's own manager must opt in before the
+  // "Parent project" picker elsewhere will offer it. Never redacted (unlike
+  // parent_project_id/parent_project_name above) — it's this project's own
+  // setting, not information about another project.
+  can_be_parent: boolean;
+}
+
+/** One entry in a project's ancestor chain or direct-children list — just
+ * enough to render a link/label. See `Project`'s visibility-boundary note:
+ * a list of these never includes a project the caller can't view. */
+export interface ProjectAncestor {
+  id: string;
+  name: string;
+}
+
+/** One node of the project hierarchy tree (`GET /projects/tree`). A node
+ * whose real parent isn't in the caller's accessible set is rendered as a
+ * root, never omitted or hinting at a hidden parent. */
+export interface ProjectTreeNode {
+  id: string;
+  name: string;
+  organization_id: string;
+  is_archived: boolean;
+  children: ProjectTreeNode[];
+}
+
+/** One entry in a project's member-source list (the child -> parent RBAC
+ * mechanism) — the child this project consumes members from. Managed
+ * entirely from the *parent's* side; see docs/decisions.md for why. */
+export interface ProjectMemberSource {
+  source_project_id: string;
+  source_project_name: string;
+}
+
+export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceMode, string> = {
+  none: "None",
+  mirror_all: "Mirror all roles",
+  mirror_role: "Mirror one role",
+  member_only: "Member only",
+};
+
+// Access provenance (decision 10, docs/decisions.md) — why a user has a
+// given effective role: direct (any of the four direct sources on this
+// exact project), forward-inherited (role_inheritance_mode, with
+// via_project_name/via_mode naming the ancestor hop), or member-source-
+// inherited (always MEMBER; via_project_name intentionally omitted — see
+// the backend's get_effective_project_members_with_provenance docstring).
+export type MemberSourceProvenanceKind = "direct" | "forward_inherited" | "member_source_inherited";
+
+export interface MemberSourceProvenance {
+  kind: MemberSourceProvenanceKind;
+  role: ProjectRole;
+  via_project_id: string | null;
+  via_project_name: string | null;
+  via_mode: ProjectRoleInheritanceMode | null;
+}
+
+export interface EffectiveMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+  effective_role: ProjectRole;
+  sources: MemberSourceProvenance[];
+}
+
+export interface MaterializeResult {
+  created: { user_id: string; role: string }[];
+  skipped: { user_id: string; role: string }[];
 }
 
 /** Org-definable project status (C-G-XX) — seeded with Proposed/Active/
@@ -447,6 +528,9 @@ export interface ProjectListItem extends Project {
   is_favorite: boolean;
   organization_name: string;
   requirement_count: number;
+  // Direct children, filtered to ones the caller can view (visibility
+  // boundary — see `Project`'s note). No count of hidden ones either.
+  children: ProjectAncestor[];
 }
 
 export type CustomFieldEntityKind = "requirement" | "change_request";
@@ -887,6 +971,7 @@ export interface OrgAdvancedSettings {
   allow_self_signup: boolean;
   auto_accept_email_domain: string | null;
   external_user_policy: ExternalUserPolicy;
+  allow_relaxed_child_project_creation: boolean;
 }
 
 export interface PersonalAccessTokenOrgRef {

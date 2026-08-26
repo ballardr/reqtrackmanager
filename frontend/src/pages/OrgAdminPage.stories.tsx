@@ -24,7 +24,7 @@ const orgUser: OrgUser = {
 const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
   pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
-  external_user_policy: "disabled",
+  external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
 };
 
 const ssoConfig: OrgSsoConfig = {
@@ -40,10 +40,11 @@ const groups: OrgGroup[] = [
 function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
-  pats?: OrgPersonalAccessToken[];
+  pats?: OrgPersonalAccessToken[]; users?: OrgUser[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
+  const orgUsers = overrides.users ?? [orgUser];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/project-statuses")) return statuses;
@@ -61,7 +62,7 @@ function mockOrgAdminApis(overrides: {
     // Checked before the plain "/users" branch below — a user-access
     // summary request also contains that substring.
     if (path.includes("/access")) return overrides.userAccess ?? { org_groups: [], projects: [] };
-    if (path.includes("/users")) return [orgUser];
+    if (path.includes("/users")) return orgUsers;
     throw new Error(`unmocked path: ${path}`);
   });
   // Users and Groups both paginate/search (2026-08 UX audit "Directories
@@ -71,7 +72,7 @@ function mockOrgAdminApis(overrides: {
   // view each section actually renders.
   spyOn(api, "getPage").mockImplementation(async (path: string) => {
     if (path.includes("/groups")) return { items: groups, total: groups.length };
-    if (path.includes("/users")) return { items: [orgUser], total: 1 };
+    if (path.includes("/users")) return { items: orgUsers, total: orgUsers.length };
     throw new Error(`unmocked getPage path: ${path}`);
   });
 }
@@ -165,6 +166,99 @@ export const NewUserModalCancel: Story = {
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** The "New user" modal's role select (added alongside the hierarchical-
+ * projects org-role-management fix — `createUser()` used to hardcode
+ * `role: "member"` even though the backend always accepted the field). */
+export const NewUserModalRoleSelect: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New user" });
+
+    await userEvent.type(within(dialog).getByLabelText("Email"), "sam@example.com");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Sam Rivera");
+    await userEvent.type(within(dialog).getByLabelText("Password"), "correct-horse-battery-staple");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Role"), "Project creator");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users`, {
+        email: "sam@example.com", display_name: "Sam Rivera", password: "correct-horse-battery-staple", role: "project_creator",
+      })
+    );
+  },
+};
+
+/** Per-row role grant/revoke (2026-08 org-role-management fix, reworked
+ * 2026-08-27 from an always-visible checkbox stack to a `MultiSelectDropdown`
+ * — see docs/decisions.md's "Org Users role picker" entry): the roles cell
+ * used to be a read-only `ORG_ROLE_LABEL.join(", ")` with no way to change
+ * anything — the only UI path to `assign_org_role`/the revoke endpoint.
+ * Granting a role the user doesn't hold calls `POST .../roles`; revoking one
+ * they do hold calls `DELETE .../roles/{role}`. The dropdown stays a
+ * multi-select (not a single-value `<select>`) because `UserOrgRole` allows
+ * a user to hold more than one org role at once — see that same decisions.md
+ * entry for why collapsing it to one value would be a real behaviour change,
+ * not just a reskin. */
+const secondOrgUser: OrgUser = {
+  user_id: "user-2", email: "jordan@example.com", display_name: "Jordan Lee", is_active: true,
+  is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null,
+  is_2fa_enabled: false,
+};
+
+export const UsersSectionGrantAndRevokeRole: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    // orgUser (the logged-in user) only holds "org_admin" — granting
+    // "Project creator" posts.
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await userEvent.click(within(alexRoles).getByRole("checkbox", { name: "Grant Project creator to Alex Morgan" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, { role: "project_creator" })
+    );
+
+    // secondOrgUser (not the logged-in user) holds "project_creator" —
+    // revoking it deletes. Opening this row's dropdown closes Alex's own,
+    // via the shared `Popover` outside-click behaviour.
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's roles" }));
+    const jordanRoles = within(document.body).getByRole("group", { name: "Jordan Lee's roles" });
+    await userEvent.click(within(jordanRoles).getByRole("checkbox", { name: "Revoke Project creator from Jordan Lee" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/roles/project_creator`)
+    );
+  },
+};
+
+/** A user can never revoke their own org role via this control (mirrors the
+ * backend's self-targeting block on the revoke endpoint) — `orgUser` here is
+ * also the logged-in user (`user-1`, per `withStatefulAuth` in `meta`). */
+export const UsersSectionCannotRevokeOwnRole: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await expect(within(alexRoles).getByRole("checkbox", { name: "Revoke Org admin from Alex Morgan" })).toBeDisabled();
   },
 };
 
@@ -503,6 +597,31 @@ export const SelfSignupSsoConflictBlocksSave: Story = {
       canvas.getByText("Self-signup can't be enabled while this organisation is SSO-only — turn off \"SSO only\" in the SSO configuration below first, or turn off self-signup here.")
     ).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save security settings" })).toBeDisabled();
+  },
+};
+
+/** The hierarchical-projects org toggle (decision 13): defaults to enabled
+ * (project managers can create sub-projects without Project creator/Org
+ * admin rights); an org admin can opt back into the stricter status-quo
+ * behaviour by turning it off. */
+export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    const toggle = await waitFor(() => canvas.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ }));
+    await expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    await userEvent.click(canvas.getByRole("button", { name: "Save security settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ allow_relaxed_child_project_creation: false })
+      )
+    );
   },
 };
 

@@ -35,3 +35,29 @@ export const ListActive: Story = {
 
 export const LightTheme: Story = { ...TilesActive, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...TilesActive, globals: { theme: "dark" } };
+
+export const TreeOptionHidden: Story = {
+  args: { mode: "tiles", showTreeOption: false },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Tree view" })).not.toBeInTheDocument();
+  },
+};
+
+export const TreeOptionShown: Story = {
+  args: { mode: "tiles", showTreeOption: true },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Tree view" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Tree view" }));
+    await expect(args.onChange).toHaveBeenCalledWith("tree");
+  },
+};
+
+export const TreeActive: Story = {
+  args: { mode: "tree", showTreeOption: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Tree view" })).toHaveAttribute("aria-pressed", "true");
+  },
+};

@@ -27,6 +27,33 @@ class ProjectRole(str, enum.Enum):
     MEMBER = "member"
 
 
+class ProjectRoleInheritanceMode(str, enum.Enum):
+    """How a project's effective roles are extended from its parent project
+    (`Project.parent_project_id`), resolved in `services.rbac`.
+
+    NONE: no cascade (default) — the project's roles are exactly its own
+        direct/group/org-wide resolution, same as any project today.
+    MIRROR_ALL: every role a user holds on the parent (via the parent's own
+        direct resolution) is mirrored onto this project as that same role.
+    MIRROR_ROLE: only users holding the specific role named in
+        `Project.role_inheritance_filter_role` on the parent get that same
+        role mirrored onto this project; everyone else on the parent gets
+        nothing from this mechanism.
+    MEMBER_ONLY: any user holding any role on the parent gets baseline
+        `ProjectRole.MEMBER` on this project, regardless of which role they
+        actually hold on the parent.
+
+    MIRROR_ALL/MIRROR_ROLE can convey PROJECT_MANAGER/PROJECT_ADMINISTRATOR
+    control and require a tier-2 UI confirmation; MEMBER_ONLY caps at
+    baseline read access, the same risk profile as `ProjectVisibility.ORG_WIDE`.
+    """
+
+    NONE = "none"
+    MIRROR_ALL = "mirror_all"
+    MIRROR_ROLE = "mirror_role"
+    MEMBER_ONLY = "member_only"
+
+
 class ProjectVisibility(str, enum.Enum):
     """Who can see a project without an explicit user/group assignment.
 

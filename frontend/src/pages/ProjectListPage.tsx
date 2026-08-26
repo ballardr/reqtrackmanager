@@ -1,14 +1,26 @@
 import { Plus, Star } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Organization, Project, ProjectImportResult, ProjectListItem, ProjectRole, StageStatus } from "../api/types";
-import { collapseProjectRoles, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import type {
+  Organization,
+  Project,
+  ProjectImportResult,
+  ProjectListItem,
+  ProjectRole,
+  ProjectRoleInheritanceMode,
+  ProjectTreeNode,
+  StageStatus,
+} from "../api/types";
+import { collapseProjectRoles, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
+import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
+import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +28,11 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+
+// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
+// MEMBER_ONLY, which caps at baseline MEMBER — parity with
+// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
+const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
 
 const PAGE_SIZE = 30;
 
@@ -32,6 +49,7 @@ function stageBadgeText(stageName: string, status: StageStatus | null): string {
 export function ProjectListPage() {
   const strings = useStrings();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { refreshFavourites } = useFavourites();
@@ -58,6 +76,58 @@ export function ProjectListPage() {
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
   const [viewMode, setViewMode] = useViewMode("projects");
+  // Hierarchical projects (docs/decisions.md).
+  const [parentProjectId, setParentProjectId] = useState("");
+  const [roleInheritanceMode, setRoleInheritanceMode] = useState<ProjectRoleInheritanceMode>("none");
+  const [roleInheritanceFilterRole, setRoleInheritanceFilterRole] = useState<ProjectRole>("project_manager");
+  const [pendingInheritMode, setPendingInheritMode] = useState<ProjectRoleInheritanceMode | null>(null);
+  const [treeNodes, setTreeNodes] = useState<ProjectTreeNode[] | null>(null);
+  const [treeOrgId, setTreeOrgId] = useState("");
+
+  // The tree option only appears when the caller's accessible project set
+  // actually contains a parent/child relationship — a tree mode with
+  // nothing to show a hierarchy for doesn't mean anything (see
+  // `ViewToggle`'s own `showTreeOption` docstring).
+  const hasHierarchy = allProjects.some((p) => p.parent_project_id || p.children.length > 0);
+  const orgsWithHierarchy = orgs.filter((o) =>
+    allProjects.some((p) => p.organization_id === o.id && (p.parent_project_id || p.children.length > 0))
+  );
+
+  useEffect(() => {
+    if (!hasHierarchy && viewMode === "tree") setViewMode("tiles");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHierarchy]);
+
+  useEffect(() => {
+    if (!treeOrgId && orgsWithHierarchy[0]) setTreeOrgId(orgsWithHierarchy[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgsWithHierarchy.length]);
+
+  useEffect(() => {
+    if (viewMode !== "tree" || !treeOrgId) return;
+    api.get<ProjectTreeNode[]>(`/api/v1/projects/tree?organization_id=${treeOrgId}`).then(setTreeNodes);
+  }, [viewMode, treeOrgId]);
+
+  function openAddSubProject(parentId: string, orgId: string) {
+    setNewOrgId(orgId);
+    setParentProjectId(parentId);
+    setShowNewForm(true);
+  }
+
+  // "Add sub-project" from a project's own page (ProjectAdminPage) or a
+  // ProjectTree node navigates here with these query params rather than
+  // duplicating the create-project modal's logic on that page. Cleared
+  // immediately after opening so a later reload/back-navigation doesn't
+  // silently re-open the modal.
+  useEffect(() => {
+    const parentId = searchParams.get("parentProjectId");
+    const orgId = searchParams.get("organizationId");
+    if (parentId && orgId) {
+      openAddSubProject(parentId, orgId);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ archived: String(showArchived), limit: String(PAGE_SIZE), offset: String(offset) });
@@ -162,6 +232,9 @@ export function ProjectListPage() {
         summary: newSummary,
         template_project_id: templateProjectId || null,
         visibility: newVisibility,
+        parent_project_id: parentProjectId || null,
+        role_inheritance_mode: roleInheritanceMode,
+        role_inheritance_filter_role: roleInheritanceMode === "mirror_role" ? roleInheritanceFilterRole : null,
       });
       showToast(strings.projects.created);
       navigate(`/projects/${project.id}`);
@@ -169,6 +242,41 @@ export function ProjectListPage() {
       setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
   }
+
+  function closeNewForm() {
+    setShowNewForm(false);
+    setParentProjectId("");
+    setRoleInheritanceMode("none");
+  }
+
+  function requestInheritModeChange(mode: ProjectRoleInheritanceMode) {
+    if (MODES_NEEDING_CONFIRMATION.includes(mode)) {
+      setPendingInheritMode(mode);
+    } else {
+      setRoleInheritanceMode(mode);
+    }
+  }
+
+  // No "exclude self" filter needed here, unlike ProjectAdminPage's own
+  // equivalent (which excludes the project currently being edited from its
+  // own parent-picker) — this is the *create* form, so the project being
+  // created doesn't exist yet and there's nothing to exclude. `parentProjectId`
+  // here is simply the currently-selected parent's id, not a "self" to avoid;
+  // filtering it out was a bug (copied from the edit-form pattern without
+  // adjusting for this different context) that made a pre-selected parent
+  // (e.g. via "Add sub-project") permanently unable to render as selected,
+  // since its own <option> never existed in the list at all.
+  // can_be_parent-gated (docs/decisions.md) — a project isn't eligible to
+  // be a parent until its own manager opts in; `p.id === parentProjectId`
+  // keeps a pre-filled selection (via "Add sub-project") selectable even
+  // in the edge case of a stale/manually-crafted URL.
+  const parentOptions = allProjects.filter(
+    (p) => p.organization_id === newOrgId && !p.is_archived && (p.can_be_parent || p.id === parentProjectId),
+  );
+  const selectedParent = allProjects.find((p) => p.id === parentProjectId);
+  // Nothing eligible to pick — hide the field entirely rather than show a
+  // picker with only "None" in it (see ProjectAdminPage's identical rule).
+  const showParentField = parentOptions.length > 0 || parentProjectId !== "";
 
   return (
     <div className="stack">
@@ -183,7 +291,7 @@ export function ProjectListPage() {
           a brand-new entity opens in a Modal, not a permanently-visible
           inline block that reflows the list underneath it. */}
       {showNewForm && (
-        <Modal title={strings.projects.newProject} onClose={() => setShowNewForm(false)}>
+        <Modal title={strings.projects.newProject} onClose={closeNewForm}>
           <div className="stack">
             {orgs.length > 1 && (
               <label className="stack" style={{ gap: "0.25rem" }}>
@@ -248,6 +356,64 @@ export function ProjectListPage() {
               </select>
             </label>
             <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
+            {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
+                when there's nothing eligible to pick, rather than showing a
+                picker with only "None" in it. */}
+            {showParentField && (
+              <>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.projects.parentProject}
+                  <select
+                    className="input"
+                    value={parentProjectId}
+                    onChange={(e) => {
+                      setParentProjectId(e.target.value);
+                      // Same reasoning as ProjectAdminPage.tsx's parent select:
+                      // don't let a mode confirmed for one candidate parent
+                      // silently carry over to a different one before submit.
+                      if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                        setRoleInheritanceMode("none");
+                      }
+                    }}
+                  >
+                    <option value="">{strings.projects.noParent}</option>
+                    {parentOptions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {parentProjectId && (
+                  <>
+                    <label className="stack" style={{ gap: "0.25rem" }}>
+                      {strings.projects.inheritFromParent}
+                      <select
+                        className="input"
+                        value={roleInheritanceMode}
+                        onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+                      >
+                        {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
+                          <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {roleInheritanceMode === "mirror_role" && (
+                      <label className="stack" style={{ gap: "0.25rem" }}>
+                        {strings.projects.inheritModeFilterRole}
+                        <select
+                          className="input"
+                          value={roleInheritanceFilterRole}
+                          onChange={(e) => setRoleInheritanceFilterRole(e.target.value as ProjectRole)}
+                        >
+                          <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                          <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                          <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                        </select>
+                      </label>
+                    )}
+                  </>
+                )}
+              </>
+            )}
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.projects.importFromBundle}
               <input
@@ -257,7 +423,7 @@ export function ProjectListPage() {
             </label>
             {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setShowNewForm(false)}>
+              <button className="btn" onClick={closeNewForm}>
                 {strings.common.cancel}
               </button>
               <button className="btn btn-primary" onClick={createProject} disabled={!newName || !newOrgId}>
@@ -266,6 +432,22 @@ export function ProjectListPage() {
             </div>
           </div>
         </Modal>
+      )}
+      {pendingInheritMode && selectedParent && (
+        <ConfirmDialog
+          title={strings.projects.inheritConfirmTitle}
+          message={
+            pendingInheritMode === "mirror_role"
+              ? strings.projects.inheritConfirmMirrorRole(selectedParent.name, PROJECT_ROLE_LABEL[roleInheritanceFilterRole])
+              : strings.projects.inheritConfirmMirrorAll(selectedParent.name)
+          }
+          confirmLabel={strings.projects.inheritConfirmButton}
+          onCancel={() => setPendingInheritMode(null)}
+          onConfirm={() => {
+            setRoleInheritanceMode(pendingInheritMode);
+            setPendingInheritMode(null);
+          }}
+        />
       )}
       {importWarnings && importWarnings.length > 0 && (
         <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
@@ -286,11 +468,29 @@ export function ProjectListPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <ViewToggle mode={viewMode} onChange={setViewMode} />
+            <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
           </div>
 
-          {!projects && <Spinner />}
-          {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
+          {viewMode === "tree" && hasHierarchy && (
+            <div className="stack">
+              {orgsWithHierarchy.length > 1 && (
+                <select className="input" style={{ maxWidth: 280 }} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
+                  {orgsWithHierarchy.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              )}
+              {!treeNodes && <Spinner />}
+              {treeNodes && (
+                <div className="card">
+                  <ProjectTree nodes={treeNodes} onAddChild={(parentId) => openAddSubProject(parentId, treeOrgId)} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {viewMode !== "tree" && !projects && <Spinner />}
+          {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
           {projects && projects.length > 0 && viewMode === "tiles" && (
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {projects.map((p) => (
@@ -317,6 +517,7 @@ export function ProjectListPage() {
                     </button>
                   </div>
                   {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
+                  <ProjectHierarchyLabels project={p} />
                   {p.current_stage_name && (
                     <FilterBadge
                       active={stageStatusFilter === p.current_stage_status}
@@ -374,6 +575,7 @@ export function ProjectListPage() {
                         <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                           {p.summary || "—"}
                         </div>
+                        <ProjectHierarchyLabels project={p} />
                       </td>
                       {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
                       <td>
@@ -395,7 +597,7 @@ export function ProjectListPage() {
               </table>
             </div>
           )}
-          {projects && (
+          {viewMode !== "tree" && projects && (
             <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
           )}
         </div>

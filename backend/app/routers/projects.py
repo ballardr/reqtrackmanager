@@ -26,6 +26,7 @@ from app.models.enums import (
     ExternalUserPolicy,
     OrgRole,
     ProjectRole,
+    ProjectRoleInheritanceMode,
     ProjectVisibility,
     RequirementStatus,
     StageStatus,
@@ -40,6 +41,7 @@ from app.models.project import (
     ProjectComponent,
     ProjectGroup,
     ProjectGroupMember,
+    ProjectMemberSource,
     ProjectStage,
     StageReviewResponse,
     UserProjectRole,
@@ -56,18 +58,24 @@ from app.schemas.project import (
     ComponentCreate,
     ComponentOut,
     ComponentUpdate,
+    EffectiveMemberOut,
+    MaterializeResultOut,
     MoveDirection,
+    ProjectAncestorOut,
     ProjectCreate,
     ProjectGroupCreate,
     ProjectGroupMemberAdd,
     ProjectGroupOut,
     ProjectImportResult,
     ProjectListItemOut,
+    ProjectMemberSourceAdd,
+    ProjectMemberSourceOut,
     ProjectMetricsOut,
     ProjectOut,
     ProjectStageCreate,
     ProjectStageOut,
     ProjectStageUpdate,
+    ProjectTreeNodeOut,
     ProjectUpdate,
     StageCompleteRequest,
     StageProgressOut,
@@ -88,12 +96,16 @@ from app.services.downloads import filename_safe
 from app.services.notifications import notify
 from app.services.ordering import move_ordered
 from app.services.project_export import build_project_bundle, import_project_bundle
+from app.services.project_hierarchy import build_project_tree, get_ancestor_chain, would_create_project_cycle
 from app.services.rbac import (
+    can_manage_project_settings,
     check_pat_scope,
     get_effective_org_roles,
+    get_effective_project_managers,
+    get_effective_project_members_with_provenance,
     get_effective_project_roles,
-    get_project_managers,
     get_project_member_user_ids,
+    is_inherited_manager,
     lock_project_for_update,
     require_project_manage,
     require_project_view,
@@ -112,6 +124,128 @@ DEFAULT_GROUPS = [
     ("Members", ProjectRole.MEMBER),
 ]
 
+_ACCESSIBLE_EXPANSION_ITERATION_CAP = 50
+
+
+def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
+    """Every project id the user has *some* effective role on — direct,
+    group, org-wide visibility, plus (hierarchical projects) any project
+    reachable *only* through forward or member-source inheritance from one
+    of those.
+
+    Without the inheritance expansion below, a user with access to a child
+    purely via `role_inheritance_mode` (no direct/group/org-wide role of
+    their own on the child) would never see it in `list_projects`/the tree/
+    ancestors/children endpoints at all — the whole point of the feature
+    would be invisible to exactly the users it's for. The expansion walks
+    structural neighbours (children of, and member-source parents of,
+    already-accessible projects) iteratively, since a multi-hop chain can
+    make a project only reachable after an earlier hop's own expansion —
+    but verifies each candidate's *actual* effective role
+    (`get_effective_project_roles`) before including it, rather than
+    trusting structural adjacency alone: a `MIRROR_ROLE`-filtered child, for
+    instance, is only actually reachable by users holding the filtered
+    role on the parent, not every accessible-parent user.
+    """
+    project_ids_via_role = set(
+        db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == user_id)).all()
+    )
+    project_ids_via_group = set(
+        db.scalars(
+            select(ProjectGroup.project_id)
+            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+            .where(ProjectGroupMember.user_id == user_id)
+        ).all()
+    )
+    user_org_ids = set(db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == user_id)).all())
+    project_ids_via_org_wide = (
+        set(
+            db.scalars(
+                select(Project.id).where(
+                    Project.visibility == ProjectVisibility.ORG_WIDE, Project.organization_id.in_(user_org_ids)
+                )
+            ).all()
+        )
+        if user_org_ids
+        else set()
+    )
+    accessible_ids = project_ids_via_role | project_ids_via_group | project_ids_via_org_wide
+
+    frontier = set(accessible_ids)
+    iterations = 0
+    while frontier and iterations < _ACCESSIBLE_EXPANSION_ITERATION_CAP:
+        iterations += 1
+        candidate_children = set(
+            db.scalars(
+                select(Project.id).where(
+                    Project.parent_project_id.in_(frontier),
+                    Project.role_inheritance_mode != ProjectRoleInheritanceMode.NONE,
+                )
+            ).all()
+        )
+        candidate_via_member_source = set(
+            db.scalars(
+                select(ProjectMemberSource.project_id)
+                .join(Project, Project.id == ProjectMemberSource.source_project_id)
+                .where(
+                    ProjectMemberSource.source_project_id.in_(frontier),
+                    Project.parent_project_id == ProjectMemberSource.project_id,
+                )
+            ).all()
+        )
+        new_frontier: set[UUID] = set()
+        for candidate_id in (candidate_children | candidate_via_member_source) - accessible_ids:
+            if get_effective_project_roles(db, user_id, candidate_id):
+                accessible_ids.add(candidate_id)
+                new_frontier.add(candidate_id)
+        frontier = new_frontier
+
+    return accessible_ids
+
+
+def _project_out_with_redacted_parent(db: Session, current_user: User, project: Project) -> ProjectOut:
+    """Builds a `ProjectOut` with `parent_project_id`/`parent_project_name`
+    redacted unless the caller has effective view access to the parent, or
+    manages `project` itself — the same visibility-boundary rule
+    `list_projects` already applies to `ProjectListItemOut`, extended here
+    to every endpoint that returns a single `Project` directly (`GET/PATCH/
+    POST .../archive/.../unarchive/.../terminology`). Without the general
+    redaction, `GET /{project_id}` — gated by `require_project_view`, not
+    manage — would let *any* project viewer learn a hidden parent's
+    identity just by fetching the project directly, even though
+    `list_projects`/`/ancestors` correctly redact it.
+
+    The manager exemption closes a real gap found in this branch's own
+    hardening pass: `ProjectAdminPage.tsx`'s settings form (frontend) has
+    always assumed — per its own inline comment and docs/decisions.md's
+    "Hierarchical projects" entry ("a project's own manager already holds
+    the highest level of authority over this relationship and needs to see
+    it to do their job") — that a project's manager sees the true parent
+    here, never a redacted one. Before this fix that assumption was false:
+    a manager with no independent view access to the parent (a realistic,
+    common case — nothing ties managing a child to having any role on its
+    parent) saw `parent_project_id: null`, the same as any other viewer.
+    Combined with `saveSettings()` unconditionally resending
+    `parent_project_id` on every save (not just when the field was
+    actually touched), this silently detached the project from its real
+    parent on the next unrelated settings save — a genuine, unannounced
+    structural mutation the manager never intended. A project's own
+    manager already has unilateral authority to detach or reparent this
+    exact relationship via this same endpoint, so showing them the true
+    value they already have the power to change is not a new disclosure.
+    """
+    out = ProjectOut.model_validate(project)
+    if project.parent_project_id is None:
+        return out
+    if can_manage_project_settings(db, current_user, project) or project.parent_project_id in _accessible_project_ids(
+        db, current_user.id
+    ):
+        parent = db.get(Project, project.parent_project_id)
+        out.parent_project_name = parent.name if parent is not None else None
+        return out
+    out.parent_project_id = None
+    return out
+
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
@@ -120,7 +254,24 @@ def create_project(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Creates a project within an organisation (C-U-01: project_creator/org_admin).
+    """Creates a project within an organisation.
+
+    Two authorization paths (hierarchical-projects decision 11 in
+    docs/decisions.md):
+      1. Org-level (C-U-01: project_creator/org_admin) — today's original
+         behaviour, unchanged. Works with or without `parent_project_id`.
+      2. Relaxed, parent-scoped — the caller lacks an org-level role but
+         `parent_project_id` is set, they manage that exact parent
+         (`can_manage_project_settings`), and the organisation hasn't
+         turned this path off (`Organization.allow_relaxed_child_project_
+         creation`, default on). This is what makes "Add sub-project" from
+         a project's own page usable by an ordinary project manager. The
+         resulting project is marked `parent_required=True` — see
+         `Project.parent_required`'s docstring for why, and
+         `update_project` below for the one behavioural consequence.
+    Either path: if `parent_project_id` is set, the caller must also manage
+    the target parent (not just view it) — attaching to a parent is
+    authorized by *both* sides, unlike detaching (see decision 12).
 
     On creation, the four standard project groups are created and the
     creator is added to the Project Managers group (C-U-10) — unless a
@@ -128,7 +279,11 @@ def create_project(
     a template project" clause: groups/members are copied from the template
     instead. If that leaves the new project with no manager at all, the
     creator is still added as a fallback so C-U-08 (every project must have
-    a manager) can never be violated.
+    a manager) can never be violated. This is unconditional regardless of
+    `parent_project_id`/`role_inheritance_mode` — a newly created project
+    always gets its own direct, individually accountable manager, so
+    creation-time C-U-08 never depends on inheritance being present or
+    stable later.
 
     `organization_id` lives in the request body here (the project doesn't
     exist yet to have a path segment of its own), so — unlike every other
@@ -137,9 +292,32 @@ def create_project(
     here instead.
     """
     check_pat_scope(request, payload.organization_id)
+    org = db.get(Organization, payload.organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+
     org_roles = get_effective_org_roles(db, current_user.id, payload.organization_id)
-    if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
+    has_org_level_create_rights = bool(org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR})
+
+    parent_project: Project | None = None
+    if payload.parent_project_id is not None:
+        parent_project = db.get(Project, payload.parent_project_id)
+        if parent_project is None or parent_project.organization_id != payload.organization_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_project_id must be a project in this organisation.")
+        if not can_manage_project_settings(db, current_user, parent_project):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You must manage the parent project to create a child under it.")
+        if not parent_project.can_be_parent:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This project has not been made eligible to be a parent — enable "
+                "\"Allow this project to be a parent\" on it first.",
+            )
+
+    parent_required = False
+    if not has_org_level_create_rights:
+        if parent_project is None or not org.allow_relaxed_child_project_creation:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
+        parent_required = True
 
     template_project_id = payload.template_project_id
     if template_project_id is None:
@@ -147,9 +325,7 @@ def create_project(
         # when the caller didn't specify one. The frontend's "New project"
         # form pre-selects this same default in its template dropdown so a
         # user can still explicitly override it before submitting.
-        org = db.get(Organization, payload.organization_id)
-        if org is not None:
-            template_project_id = org.default_template_project_id
+        template_project_id = org.default_template_project_id
 
     if template_project_id is not None:
         template = db.get(Project, template_project_id)
@@ -159,9 +335,12 @@ def create_project(
             or not template.is_template
         ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
-        project = clone_project(db, template, name=payload.name, summary=payload.summary, creator=current_user)
+        project = clone_project(
+            db, template, name=payload.name, summary=payload.summary, creator=current_user,
+            parent_project_id=payload.parent_project_id,
+        )
         db.flush()
-        if not get_project_managers(db, project.id):
+        if not get_effective_project_managers(db, project.id):
             fallback_group = db.scalar(
                 select(ProjectGroup).where(ProjectGroup.project_id == project.id, ProjectGroup.role == ProjectRole.PROJECT_MANAGER)
             )
@@ -173,6 +352,7 @@ def create_project(
         project = Project(
             organization_id=payload.organization_id, name=payload.name, summary=payload.summary,
             status_id=get_default_project_status_id(db, payload.organization_id),
+            parent_project_id=payload.parent_project_id,
         )
         db.add(project)
         db.flush()
@@ -195,7 +375,12 @@ def create_project(
         # own action types (see `clone_project`), the same treatment as its
         # custom field definitions, so an admin's customisations to a
         # template carry over rather than being silently reset to defaults.
-        seed_action_types(db, project.id)
+        # A project created with a parent is skipped entirely: it starts
+        # with zero of its own and immediately falls back to the nearest
+        # ancestor's (`services.project_hierarchy.resolve_effective_action_types`),
+        # always on regardless of the RBAC inheritance settings above.
+        if payload.parent_project_id is None:
+            seed_action_types(db, project.id)
 
     if payload.terminology:
         project.terminology = payload.terminology
@@ -204,15 +389,29 @@ def create_project(
     # Always explicit, never inherited from a cloned template — see
     # ProjectCreate.visibility's docstring.
     project.visibility = payload.visibility
+    project.role_inheritance_mode = payload.role_inheritance_mode
+    project.role_inheritance_filter_role = payload.role_inheritance_filter_role
+    project.parent_required = parent_required
+    project.can_be_parent = payload.can_be_parent
 
     log_event(
         db, entity_type="project", entity_id=project.id, action="created", actor_id=current_user.id,
         organization_id=payload.organization_id, project_id=project.id,
         detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
+    if payload.parent_project_id is not None:
+        log_event(
+            db, entity_type="project", entity_id=project.id, action="parented", actor_id=current_user.id,
+            organization_id=payload.organization_id, project_id=project.id,
+            detail={
+                "parent_project_id": str(payload.parent_project_id),
+                "parent_required": parent_required,
+                "role_inheritance_mode": payload.role_inheritance_mode.value,
+            },
+        )
     db.commit()
     db.refresh(project)
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
@@ -246,6 +445,25 @@ async def import_project(
         db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
     )
     return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
+
+
+@router.get("/tree", response_model=list[ProjectTreeNodeOut])
+def get_project_tree(
+    organization_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Returns the full project hierarchy for one organisation, restricted
+    to the caller's accessible set — a node whose real parent isn't
+    accessible is rendered as a root, never omitted or hinting at a hidden
+    parent (visibility-boundary rule, see docs/decisions.md). Registered
+    before `GET /{project_id}` so the static "/tree" path isn't swallowed
+    by that dynamic route (same reasoning as `POST /import`'s ordering).
+    """
+    accessible_ids = _accessible_project_ids(db, current_user.id)
+    # Defence in depth: same-org is already enforced when parent_project_id
+    # is set, but build_project_tree also re-filters by organization_id
+    # itself, matching this codebase's existing pattern of re-checking a
+    # write-time invariant on the read side too.
+    return build_project_tree(db, organization_id, accessible_ids)
 
 
 @router.get("", response_model=list[ProjectListItemOut])
@@ -283,34 +501,7 @@ def list_projects(
     # No server-admin bypass here (I-M-05): project listings are "data within
     # organisations", so even server admins only see projects they hold a
     # genuine role in, same as anyone else.
-    project_ids_via_role = set(
-        db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == current_user.id)).all()
-    )
-    project_ids_via_group = set(
-        db.scalars(
-            select(ProjectGroup.project_id)
-            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-            .where(ProjectGroupMember.user_id == current_user.id)
-        ).all()
-    )
-    # ProjectVisibility.ORG_WIDE (see services.rbac.get_effective_project_roles
-    # for the matching content-access grant): any project in an organisation
-    # the user holds any role in, regardless of a direct/group assignment.
-    user_org_ids = set(
-        db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)).all()
-    )
-    project_ids_via_org_wide = (
-        set(
-            db.scalars(
-                select(Project.id).where(
-                    Project.visibility == ProjectVisibility.ORG_WIDE, Project.organization_id.in_(user_org_ids)
-                )
-            ).all()
-        )
-        if user_org_ids
-        else set()
-    )
-    accessible_ids = project_ids_via_role | project_ids_via_group | project_ids_via_org_wide
+    accessible_ids = _accessible_project_ids(db, current_user.id)
     if not accessible_ids:
         projects = []
     else:
@@ -353,6 +544,30 @@ def list_projects(
         ).all()
     )
 
+    # Hierarchical projects: parent_project_name/children are populated only
+    # from projects in `accessible_ids` — the caller's own accessible set,
+    # already computed above — so a hidden parent/child never surfaces even
+    # from a project the caller *can* see (visibility-boundary rule, see
+    # docs/decisions.md). Both batch-fetched, matching org_names/
+    # requirement_counts's existing pattern, to avoid N+1.
+    visible_parent_ids = {p.parent_project_id for p in projects if p.parent_project_id is not None} & accessible_ids
+    parent_names = (
+        dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).all())
+        if visible_parent_ids
+        else {}
+    )
+    children_by_parent: dict[UUID, list[ProjectAncestorOut]] = {}
+    project_ids = {p.id for p in projects}
+    if project_ids:
+        for child_id, child_parent_id, child_name in db.execute(
+            select(Project.id, Project.parent_project_id, Project.name).where(
+                Project.parent_project_id.in_(project_ids), Project.id.in_(accessible_ids)
+            )
+        ).all():
+            children_by_parent.setdefault(child_parent_id, []).append(
+                ProjectAncestorOut(id=child_id, name=child_name)
+            )
+
     out = []
     for p in projects:
         stage = db.scalar(
@@ -363,6 +578,7 @@ def list_projects(
         roles = sorted(get_effective_project_roles(db, current_user.id, p.id), key=lambda r: r.value)
         if role is not None and role not in roles:
             continue
+        parent_visible = p.parent_project_id is not None and p.parent_project_id in parent_names
         out.append(
             ProjectListItemOut(
                 id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
@@ -376,6 +592,12 @@ def list_projects(
                 is_favorite=p.id in favorite_ids,
                 organization_name=org_names.get(p.organization_id, ""),
                 requirement_count=requirement_counts.get(p.id, 0),
+                parent_project_id=p.parent_project_id if parent_visible else None,
+                parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
+                role_inheritance_mode=p.role_inheritance_mode,
+                role_inheritance_filter_role=p.role_inheritance_filter_role,
+                can_be_parent=p.can_be_parent,
+                children=children_by_parent.get(p.id, []),
             )
         )
     if favorite_only:
@@ -423,7 +645,7 @@ def get_project(project_id: UUID, current_user: User = Depends(require_project_v
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.get("/{project_id}/export")
@@ -451,7 +673,29 @@ def update_project(
     db: Session = Depends(get_db),
 ):
     """Updates project settings: name/summary, the member change-request
-    toggle (C-U-13), the template flag (C-E-05), visibility, and status."""
+    toggle (C-U-13), the template flag (C-E-05), visibility, status, and
+    hierarchical-projects settings (parent, forward RBAC inheritance mode).
+
+    Parent/inheritance validation order (see docs/decisions.md's
+    "Hierarchical projects" entry):
+      1. Attaching to a new/different parent requires the caller to manage
+         *both* this project and the target parent (decision 12) — same-org
+         too — and the target parent must have `can_be_parent=True` (a
+         project isn't eligible to be a parent until its own manager opts
+         in; see `Project.can_be_parent`'s docstring).
+      2. Detaching (clearing `parent_project_id` to null) is instead gated
+         by `Project.parent_required` (decision 11): rejected unless it's
+         `False` or the current actor holds `ORG_ADMIN`/`PROJECT_CREATOR`
+         in this project's organisation.
+      3. Cycle prevention (attach/reparent only).
+      4. The `role_inheritance_mode`/`role_inheritance_filter_role`
+         MIRROR_ROLE invariant, enforced against the fully-merged proposed
+         state.
+      5. C-U-08: if the change would leave zero effective managers
+         (`get_effective_project_managers` with the proposed values),
+         reject — inside the same row lock as the write, to close the
+         TOCTOU window a separate check-then-write would leave open.
+    """
     if payload.name is not None:
         project.name = payload.name
     if payload.summary is not None:
@@ -460,6 +704,8 @@ def update_project(
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.is_template is not None:
         project.is_template = payload.is_template
+    if payload.can_be_parent is not None:
+        project.can_be_parent = payload.can_be_parent
     if payload.visibility is not None:
         project.visibility = payload.visibility
     if payload.status_id is not None:
@@ -467,12 +713,111 @@ def update_project(
         if new_status is None or new_status.organization_id != project.organization_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "status_id must be a project status defined in this project's organisation.")
         project.status_id = payload.status_id
+
+    parent_changing = "parent_project_id" in payload.model_fields_set and payload.parent_project_id != project.parent_project_id
+    new_parent_id = payload.parent_project_id if "parent_project_id" in payload.model_fields_set else project.parent_project_id
+    mode_sent = payload.role_inheritance_mode is not None
+    new_mode = payload.role_inheritance_mode if mode_sent else project.role_inheritance_mode
+    new_filter_role = (
+        payload.role_inheritance_filter_role if payload.role_inheritance_filter_role is not None
+        else project.role_inheritance_filter_role
+    )
+    if new_mode != ProjectRoleInheritanceMode.MIRROR_ROLE:
+        new_filter_role = None
+    elif new_filter_role not in {ProjectRole.STAKEHOLDER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER}:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "role_inheritance_filter_role must be one of stakeholder, project_administrator, project_manager "
+            "when role_inheritance_mode is mirror_role.",
+        )
+    inheritance_settings_changing = (
+        new_mode != project.role_inheritance_mode or new_filter_role != project.role_inheritance_filter_role
+    )
+
+    if parent_changing:
+        lock_project_for_update(db, project_id)
+        if new_parent_id is not None:
+            # Attach/reparent: both sides must be managed by the caller.
+            target_parent = db.get(Project, new_parent_id)
+            if target_parent is None or target_parent.organization_id != project.organization_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_project_id must be a project in this organisation.")
+            if not can_manage_project_settings(db, current_user, target_parent):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "You must manage the parent project to attach this project to it.")
+            if not target_parent.can_be_parent:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "This project has not been made eligible to be a parent — enable "
+                    "\"Allow this project to be a parent\" on it first.",
+                )
+            if would_create_project_cycle(db, project_id, new_parent_id):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "This would create a cycle in the project hierarchy.")
+        else:
+            # Detach: gated by parent_required, not by managing the old parent.
+            if project.parent_required:
+                org_roles = get_effective_org_roles(db, current_user.id, project.organization_id)
+                if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+                    raise HTTPException(
+                        status.HTTP_403_FORBIDDEN,
+                        "This project was created without organisation-level project-creation rights and must "
+                        "remain nested under a parent; only an organisation admin or project creator can make "
+                        "it standalone.",
+                    )
+
+    mode_changing_from_manager_contributing = (
+        project.role_inheritance_mode == ProjectRoleInheritanceMode.MIRROR_ALL
+        or (
+            project.role_inheritance_mode == ProjectRoleInheritanceMode.MIRROR_ROLE
+            and project.role_inheritance_filter_role == ProjectRole.PROJECT_MANAGER
+        )
+    )
+    new_mode_manager_contributing = (
+        new_mode == ProjectRoleInheritanceMode.MIRROR_ALL
+        or (new_mode == ProjectRoleInheritanceMode.MIRROR_ROLE and new_filter_role == ProjectRole.PROJECT_MANAGER)
+    )
+    if mode_changing_from_manager_contributing and (not new_mode_manager_contributing or parent_changing):
+        if not parent_changing:
+            # Already locked above when parent_changing is True.
+            lock_project_for_update(db, project_id)
+        proposed_managers = get_effective_project_managers(
+            db, project_id,
+            mode_override=new_mode, filter_role_override_set=True, filter_role_override=new_filter_role,
+            parent_override_set=True, parent_override=new_parent_id,
+        )
+        if not proposed_managers:
+            parent_name = None
+            if project.parent_project_id is not None:
+                parent = db.get(Project, project.parent_project_id)
+                parent_name = parent.name if parent is not None else None
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"This project's only manager is inherited from '{parent_name}'; assign a direct project manager "
+                "before disabling inheritance or changing its parent." if parent_name
+                else "This project's only manager is inherited from its parent; assign a direct project manager "
+                "before disabling inheritance or changing its parent.",
+            )
+
+    if parent_changing:
+        project.parent_project_id = new_parent_id
+    if inheritance_settings_changing:
+        project.role_inheritance_mode = new_mode
+        project.role_inheritance_filter_role = new_filter_role
+
     log_event(db, entity_type="project", entity_id=project_id, action="settings_updated",
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
               detail={"visibility": payload.visibility.value} if payload.visibility is not None else None)
+    if parent_changing or inheritance_settings_changing:
+        log_event(
+            db, entity_type="project", entity_id=project_id, action="parented", actor_id=current_user.id,
+            project_id=project_id, organization_id=project.organization_id,
+            detail={
+                "parent_project_id": str(new_parent_id) if new_parent_id else None,
+                "role_inheritance_mode": new_mode.value,
+                "role_inheritance_filter_role": new_filter_role.value if new_filter_role else None,
+            },
+        )
     db.commit()
     db.refresh(project)
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.put("/{project_id}/terminology", response_model=ProjectOut)
@@ -487,7 +832,302 @@ def update_terminology(
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id)
     db.commit()
     db.refresh(project)
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
+
+
+@router.get("/{project_id}/ancestors", response_model=list[ProjectAncestorOut])
+def get_project_ancestors(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Returns `project_id`'s ancestor chain, root-first, for a breadcrumb.
+
+    Truncated at the first ancestor the caller can't view — never skips
+    over an inaccessible ancestor and continues listing further-up ones,
+    since that would present a broken/misleading breadcrumb (visibility-
+    boundary rule, see docs/decisions.md).
+    """
+    accessible_ids = _accessible_project_ids(db, current_user.id)
+    chain = get_ancestor_chain(db, project_id)
+    result: list[ProjectAncestorOut] = []
+    for ancestor in chain:
+        if ancestor.id not in accessible_ids:
+            break
+        result.append(ProjectAncestorOut(id=ancestor.id, name=ancestor.name))
+    return result
+
+
+@router.get("/{project_id}/children", response_model=list[ProjectListItemOut])
+def get_project_children(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Returns `project_id`'s direct children, filtered to the caller's
+    accessible set — no hidden-count hint for the ones omitted, same
+    visibility-boundary rule as `list_projects`'s `children` field."""
+    accessible_ids = _accessible_project_ids(db, current_user.id)
+    children = db.scalars(
+        select(Project).where(Project.parent_project_id == project_id, Project.id.in_(accessible_ids))
+    ).all()
+    favorite_ids = set(
+        db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
+    )
+    org_names = dict(
+        db.execute(
+            select(Organization.id, Organization.name).where(
+                Organization.id.in_({c.organization_id for c in children})
+            )
+        ).all()
+    )
+    out = []
+    for c in children:
+        stage = db.scalar(select(ProjectStage).where(ProjectStage.project_id == c.id, ProjectStage.is_current.is_(True)))
+        roles = sorted(get_effective_project_roles(db, current_user.id, c.id), key=lambda r: r.value)
+        out.append(
+            ProjectListItemOut(
+                id=c.id, organization_id=c.organization_id, name=c.name, summary=c.summary,
+                created_at=c.created_at, updated_at=c.updated_at,
+                is_archived=c.is_archived, is_template=c.is_template,
+                allow_member_change_requests=c.allow_member_change_requests, visibility=c.visibility,
+                terminology=c.terminology, status_id=c.status_id,
+                current_stage_name=stage.name if stage else None,
+                current_stage_status=stage.status if stage else None,
+                my_roles=list(roles), is_favorite=c.id in favorite_ids,
+                organization_name=org_names.get(c.organization_id, ""),
+                parent_project_id=project_id, parent_project_name=None,
+                role_inheritance_mode=c.role_inheritance_mode, role_inheritance_filter_role=c.role_inheritance_filter_role,
+                can_be_parent=c.can_be_parent,
+            )
+        )
+    return out
+
+
+@router.get("/{project_id}/member-sources", response_model=list[ProjectMemberSourceOut])
+def list_member_sources(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Lists the children `project_id` currently consumes members from (the
+    reverse/child->parent RBAC mechanism — see
+    `models.project.ProjectMemberSource`'s docstring)."""
+    rows = db.execute(
+        select(ProjectMemberSource.source_project_id, Project.name)
+        .join(Project, Project.id == ProjectMemberSource.source_project_id)
+        .where(ProjectMemberSource.project_id == project_id)
+    ).all()
+    return [ProjectMemberSourceOut(source_project_id=sid, source_project_name=name) for sid, name in rows]
+
+
+@router.post("/{project_id}/member-sources", response_model=ProjectMemberSourceOut, status_code=status.HTTP_201_CREATED)
+def add_member_source(
+    project_id: UUID, payload: ProjectMemberSourceAdd, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Adds a child to `project_id`'s member-source list — gated by managing
+    `project_id` (the *parent*) only, never the child, per the
+    authorization-asymmetry correction described in `models.project.
+    ProjectMemberSource`'s docstring and docs/decisions.md.
+
+    `source_project_id` (the child) must currently be a direct child of
+    `project_id` — no separate accessible-set check on top of that: unlike
+    the parent-selector on create/update (whose value space is "any
+    project," where an accessible-set restriction genuinely prevents an
+    existence-oracle), this field's value space is already constrained to
+    `project_id`'s own real, structural children, and the caller already
+    manages `project_id` itself. Requiring the caller to *also*
+    independently hold some role on the specific child would defeat the
+    feature's own purpose — a parent's manager must be able to consume
+    members from any of their real children, including one with no
+    existing role structure of its own yet.
+    """
+    source_project_id = payload.source_project_id
+    source_project = db.get(Project, source_project_id)
+    if source_project is None or source_project.parent_project_id != project_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must be a direct child of this project.")
+    existing = db.scalar(
+        select(ProjectMemberSource).where(
+            ProjectMemberSource.project_id == project_id, ProjectMemberSource.source_project_id == source_project_id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This child is already a member source.")
+    db.add(ProjectMemberSource(project_id=project_id, source_project_id=source_project_id))
+    log_event(
+        db, entity_type="project_member_source", entity_id=project_id, action="added", actor_id=current_user.id,
+        project_id=project_id, organization_id=project.organization_id,
+        detail={"source_project_id": str(source_project_id)},
+    )
+    db.commit()
+    return ProjectMemberSourceOut(source_project_id=source_project_id, source_project_name=source_project.name)
+
+
+@router.delete("/{project_id}/member-sources/{source_project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_member_source(
+    project_id: UUID, source_project_id: UUID, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Removes a child from `project_id`'s member-source list — always
+    allowed (removing a grant is safe unilaterally), including for an
+    already-stale entry."""
+    existing = db.scalar(
+        select(ProjectMemberSource).where(
+            ProjectMemberSource.project_id == project_id, ProjectMemberSource.source_project_id == source_project_id
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="project_member_source", entity_id=project_id, action="removed", actor_id=current_user.id,
+            project_id=project_id, organization_id=project.organization_id,
+            detail={"source_project_id": str(source_project_id)},
+        )
+        db.commit()
+
+
+@router.delete("/{project_id}/children/{child_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_child_project(
+    child_id: UUID, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Lets a parent detach a specific child from its own side, without
+    needing `require_project_manage` on the child itself (decision 12 in
+    docs/decisions.md) — gated purely on managing `project_id` (the
+    parent — `require_project_manage`'s own `{project_id}` path parameter
+    name is why this route uses `project_id` rather than `parent_id`, even
+    though "parent" is the more natural name for what it means here).
+    Still subject to the child's own `Project.parent_required` gate
+    (decision 11): a parent's own manage rights are not sufficient on
+    their own to force a `parent_required` child loose, the same rule
+    `update_project` applies to a child-initiated detach.
+    """
+    parent_id = project.id
+    child = db.get(Project, child_id)
+    if child is None or child.parent_project_id != parent_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This project is not a direct child of the given parent.")
+    lock_project_for_update(db, child_id)
+    if child.parent_required:
+        org_roles = get_effective_org_roles(db, current_user.id, child.organization_id)
+        if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "This project was created without organisation-level project-creation rights and must remain "
+                "nested under a parent; only an organisation admin or project creator can detach it.",
+            )
+    proposed_managers = get_effective_project_managers(
+        db, child_id, parent_override_set=True, parent_override=None,
+    )
+    if not proposed_managers:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"'{child.name}''s only manager is inherited from this project; it must be given a direct project "
+            "manager before it can be detached.",
+        )
+    child.parent_project_id = None
+    log_event(
+        db, entity_type="project", entity_id=child_id, action="detached_by_parent", actor_id=current_user.id,
+        project_id=child_id, organization_id=child.organization_id, detail={"former_parent_id": str(parent_id)},
+    )
+    db.commit()
+
+
+@router.get("/{project_id}/effective-members", response_model=list[EffectiveMemberOut])
+def get_effective_members(
+    project_id: UUID, project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+):
+    """Every user with effective access to this project, with provenance —
+    direct, or inherited (and how) — for the project admin/access-review
+    view (decision 10 in docs/decisions.md). `require_project_manage`-gated
+    rather than view-only: this is an access-review surface, appropriately
+    restricted to people who already manage the project — see the
+    forward/member-source-inheritance blast-radius discussion in
+    docs/decisions.md for why that's not a new disclosure beyond what
+    `role_inheritance_mode` already implies once enabled.
+    """
+    provenance = get_effective_project_members_with_provenance(db, project_id)
+    project_name_cache: dict[UUID, str] = {}
+
+    def project_name(pid: UUID | None) -> str | None:
+        if pid is None:
+            return None
+        if pid not in project_name_cache:
+            p = db.get(Project, pid)
+            project_name_cache[pid] = p.name if p is not None else ""
+        return project_name_cache[pid] or None
+
+    out: list[EffectiveMemberOut] = []
+    for user_id, entries in provenance.items():
+        user = db.get(User, user_id)
+        if user is None:
+            continue
+        effective_roles = get_effective_project_roles(db, user_id, project_id)
+        if not effective_roles:
+            continue
+        if ProjectRole.PROJECT_MANAGER in effective_roles:
+            effective_role = ProjectRole.PROJECT_MANAGER
+        elif ProjectRole.PROJECT_ADMINISTRATOR in effective_roles:
+            effective_role = ProjectRole.PROJECT_ADMINISTRATOR
+        elif ProjectRole.STAKEHOLDER in effective_roles:
+            effective_role = ProjectRole.STAKEHOLDER
+        else:
+            effective_role = ProjectRole.MEMBER
+        out.append(
+            EffectiveMemberOut(
+                user_id=user_id, display_name=user.display_name, email=user.email, effective_role=effective_role,
+                sources=[
+                    {
+                        "kind": e["kind"], "role": e["role"], "via_project_id": e["via_project_id"],
+                        "via_project_name": project_name(e["via_project_id"]), "via_mode": e["via_mode"],
+                    }
+                    for e in entries
+                ],
+            )
+        )
+    return out
+
+
+@router.post("/{project_id}/materialize-inherited-access", response_model=MaterializeResultOut)
+def materialize_inherited_access(
+    project_id: UUID, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Snapshots every currently forward- or member-source-inherited user
+    onto a direct `UserProjectRole` row at their currently-effective role
+    (decision 9 in docs/decisions.md) — a one-time conversion, not an
+    ongoing sync, so those users keep access once inheritance is
+    subsequently disabled/changed/removed. Idempotent: skips anyone who
+    already holds an equal-or-higher direct role. Offered proactively
+    (before disabling a manager-contributing mode, reparenting, or
+    removing a member-source entry) so nobody's access silently
+    disappears.
+    """
+    _ROLE_RANK = {
+        ProjectRole.MEMBER: 0, ProjectRole.STAKEHOLDER: 1,
+        ProjectRole.PROJECT_ADMINISTRATOR: 1, ProjectRole.PROJECT_MANAGER: 2,
+    }
+    provenance = get_effective_project_members_with_provenance(db, project_id)
+    created: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    for user_id, entries in provenance.items():
+        inherited_roles = {e["role"] for e in entries if e["kind"] in ("forward_inherited", "member_source_inherited")}
+        if not inherited_roles:
+            continue
+        best_inherited = max(inherited_roles, key=lambda r: _ROLE_RANK[r])
+        direct_roles = set(
+            db.scalars(
+                select(UserProjectRole.role).where(UserProjectRole.user_id == user_id, UserProjectRole.project_id == project_id)
+            ).all()
+        )
+        direct_rank = max((_ROLE_RANK[r] for r in direct_roles), default=-1)
+        if direct_rank >= _ROLE_RANK[best_inherited]:
+            skipped.append({"user_id": str(user_id), "role": best_inherited.value})
+            continue
+        db.add(UserProjectRole(user_id=user_id, project_id=project_id, role=best_inherited))
+        created.append({"user_id": str(user_id), "role": best_inherited.value})
+    if created:
+        log_event(
+            db, entity_type="project", entity_id=project_id, action="inherited_access_materialized",
+            actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
+            detail={"created": created},
+        )
+        db.commit()
+    return MaterializeResultOut(created=created, skipped=skipped)
 
 
 @router.get("/{project_id}/report-config", response_model=ProjectReportConfig)
@@ -561,7 +1201,7 @@ def archive_project(
               actor_id=current_user.id, project_id=project.id)
     db.commit()
     db.refresh(project)
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.post("/{project_id}/unarchive", response_model=ProjectOut)
@@ -577,7 +1217,7 @@ def unarchive_project(
               actor_id=current_user.id, project_id=project.id)
     db.commit()
     db.refresh(project)
-    return project
+    return _project_out_with_redacted_parent(db, current_user, project)
 
 
 @router.get("/{project_id}/changes", response_model=list[ChangeEntryOut])
@@ -1411,13 +2051,18 @@ def remove_project_group_member(
     Blocks the removal if `group` is the project-manager-role group and
     `member_id` is currently the project's only manager (C-U-08), mirroring
     the same guard `revoke_project_role` applies to direct role revocation —
-    a project must always retain at least one manager.
+    a project must always retain at least one manager. Same
+    `is_inherited_manager` exception as that guard: removing this
+    membership is safe if `member_id` would remain a manager via forward
+    inheritance alone (member_id may be a user id or an org-group id here —
+    `is_inherited_manager` only applies to a real user, so a group removal
+    always falls through to the block, unchanged from before).
     """
     group = _get_group_in_project(db, project.id, group_id)
     if group.role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
-        managers = get_project_managers(db, project.id)
-        if managers == {member_id}:
+        managers = get_effective_project_managers(db, project.id)
+        if managers == {member_id} and not is_inherited_manager(db, member_id, project.id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
     db.execute(
         ProjectGroupMember.__table__.delete().where(
@@ -1574,11 +2219,17 @@ def revoke_project_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Revokes a direct project role, blocking removal of the last manager (C-U-08)."""
+    """Revokes a direct project role, blocking removal of the last manager
+    (C-U-08). Removing user_id's *direct* manager role is allowed even when
+    they're currently the only effective manager, as long as they'd remain
+    one via forward inheritance alone (`is_inherited_manager`) — otherwise
+    this would over-block a safe removal for any manager who happens to
+    also be a direct manager of a project they inherit that same role
+    from."""
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
-        managers = get_project_managers(db, project.id)
-        if managers == {user_id}:
+        managers = get_effective_project_managers(db, project.id)
+        if managers == {user_id} and not is_inherited_manager(db, user_id, project.id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
     db.execute(
         UserProjectRole.__table__.delete().where(
