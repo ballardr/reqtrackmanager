@@ -172,6 +172,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = None
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
+    allow_relaxed_child_project_creation: bool = True
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -185,6 +186,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = Field(default=None, max_length=255)
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
+    allow_relaxed_child_project_creation: bool = True
 
 
 class OrgUserCreate(BaseModel):

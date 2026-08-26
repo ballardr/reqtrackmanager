@@ -126,6 +126,22 @@ const en = {
     // created" section: picking an import file used to silently hide the
     // template picker with no explanation — this note replaces it instead.
     importIgnoresTemplate: "A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.",
+    // Hierarchical projects (docs/decisions.md).
+    childOf: "Child of:",
+    parentOf: "Parent of:",
+    viewAll: "view all",
+    parentProject: "Parent {project}",
+    noParent: "None (top-level {project})",
+    inheritFromParent: "Inherit access from parent",
+    inheritModeFilterRole: "Role to mirror",
+    addSubProject: "Add sub-{project}",
+    treeView: "Tree view",
+    inheritConfirmTitle: "Enable access inheritance?",
+    inheritConfirmMirrorAll: (parentName: string) =>
+      `Anyone who holds any role on '${parentName}' will also hold that same role on this {project}. Managers of this {project} will also be able to see who those people are and which role they hold on '${parentName}'.`,
+    inheritConfirmMirrorRole: (parentName: string, role: string) =>
+      `Anyone who is '${role}' on '${parentName}' will also be '${role}' on this {project}. Managers of this {project} will also be able to see who those people are.`,
+    inheritConfirmButton: "Enable inheritance",
   },
   overview: {
     title: "{Project} overview",
@@ -340,6 +356,25 @@ const en = {
       `"Org-wide visibility" gives every ${org} member automatic view access to this {project}, without an explicit assignment — manager/administrator/stakeholder roles still require one.`,
     projectStatus: "Status",
     saveSettings: "Save settings",
+    // Hierarchical projects (docs/decisions.md).
+    memberSources: "Member sources",
+    memberSourcesHint: "Direct children this {project} consumes members from — anyone with a role on a listed child gets baseline Member access here.",
+    addMemberSource: "Add",
+    removeMemberSource: "Remove",
+    noChildrenToAdd: "No direct sub-{projects} available to add.",
+    // Deliberately not just "Members" — every project seeds a default
+    // group of that exact name (`DEFAULT_GROUPS` in `routers/projects.py`),
+    // which renders as its own "Members (...) section" card lower on this
+    // same "Project groups" tab; a title collision there broke
+    // `openGroupCard`'s prefix-matching regex in the Playwright suite.
+    effectiveMembers: "Effective members",
+    effectiveMembersHint: "Everyone with access to this {project}, direct or inherited.",
+    loadEffectiveMembers: "Show members",
+    sourceDirect: "Direct",
+    sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
+    sourceMemberSourceInherited: "Inherited via a sub-{project}",
+    materializeAll: "Convert all inherited access to direct roles",
+    materializedCount: (n: number) => (n === 0 ? "Nothing to convert — no inherited access to make direct." : `Converted ${n} ${n === 1 ? "user" : "users"} to direct roles.`),
     terminology: "Terminology",
     terminologyHint: "Override how these terms are labelled in this {project}'s UI. Leave blank to use the default.",
     // Distinct from `saveSettings` only because Terminology's Save button
@@ -571,6 +606,11 @@ const en = {
     statusDeactivated: "Deactivated",
     newUser: "New user",
     userCreated: "User created",
+    role: "Role",
+    grantRole: (role: string, name: string) => `Grant ${role} to ${name}`,
+    revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
+    roleGranted: "Role granted",
+    roleRevoked: "Role revoked",
     searchUsers: "Search by name or email",
     groups: (orgCap: string) => `${orgCap} groups`,
     searchGroups: "Search by name",
@@ -672,6 +712,9 @@ const en = {
     require2faHint: (org: string) => `Blocks every member of this ${org}, including its own admins, from any of its projects or settings until they enable 2FA in Preferences. They can still enrol themselves at any time to regain access immediately — no admin action needed.`,
     allowSelfSignup: "Allow self-signup",
     allowSelfSignupHint: (org: string) => `When the deployment's sign-up mode is "org specified", anyone with a matching email domain (below) can create their own account and join this ${org} as a member. Cannot be enabled for an SSO-only ${org}.`,
+    allowRelaxedChildProjectCreation: "Allow {project} managers to create sub-{project}s",
+    allowRelaxedChildProjectCreationHint:
+      "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
     selfSignupSsoConflict: (org: string) => `Self-signup can't be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
     autoAcceptEmailDomain: "Accepted email domain",
     autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
@@ -967,6 +1010,7 @@ const en = {
     customValue: "Custom",
     resetToPlatformDefault: "Reset to platform default",
     chooseFile: "Choose file",
+    selectOption: "Select…",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
     // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:
     // split-button trigger") — generic across every call site, not

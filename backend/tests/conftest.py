@@ -180,11 +180,18 @@ def create_org_user(client, admin_token, org_id, email, password="Password123!",
     return resp.json()["user_id"]
 
 
-def create_project(client, admin_token, org_id, name="Demo Project") -> dict:
-    resp = client.post(
-        "/api/v1/projects", json={"organization_id": org_id, "name": name, "summary": ""},
-        headers=auth_headers(admin_token),
-    )
+def create_project(
+    client, admin_token, org_id, name="Demo Project", *,
+    parent_project_id=None, role_inheritance_mode=None, role_inheritance_filter_role=None,
+) -> dict:
+    payload = {"organization_id": org_id, "name": name, "summary": ""}
+    if parent_project_id is not None:
+        payload["parent_project_id"] = parent_project_id
+    if role_inheritance_mode is not None:
+        payload["role_inheritance_mode"] = role_inheritance_mode
+    if role_inheritance_filter_role is not None:
+        payload["role_inheritance_filter_role"] = role_inheritance_filter_role
+    resp = client.post("/api/v1/projects", json=payload, headers=auth_headers(admin_token))
     assert resp.status_code == 201, resp.text
     return resp.json()
 

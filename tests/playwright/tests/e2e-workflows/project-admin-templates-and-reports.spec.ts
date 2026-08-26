@@ -125,7 +125,11 @@ test.describe("org report templates and project report setup", () => {
       // entity create/rename") — scoped to it rather than the whole page.
       await page.getByRole("button", { name: "New project" }).click();
       const dialog = page.getByRole("dialog", { name: "New project" });
-      await expect(dialog.locator("option", { hasText: PROJECT_NAMES.gamma2 })).toHaveCount(1);
+      // Scoped to the template picker specifically — the "Parent project"
+      // field (hierarchical projects) also lists every non-archived project
+      // in the org as an option now, so an unscoped option-text match would
+      // find Gamma-2 twice.
+      await expect(dialog.getByLabel("Create from template").locator("option", { hasText: PROJECT_NAMES.gamma2 })).toHaveCount(1);
     });
   });
 });

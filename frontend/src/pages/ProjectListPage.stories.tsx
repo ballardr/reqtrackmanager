@@ -72,6 +72,87 @@ export const ListView: Story = {
   },
 };
 
+// Hierarchical projects (docs/decisions.md).
+const hierarchyProjects = [
+  buildProjectListItem({
+    id: "parent1", name: "Platform", organization_id: "org-1", organization_name: "Acme Corp",
+    children: [{ id: "child1", name: "Authentication" }],
+  }),
+  buildProjectListItem({
+    id: "child1", name: "Authentication", organization_id: "org-1", organization_name: "Acme Corp",
+    parent_project_id: "parent1", parent_project_name: "Platform",
+  }),
+];
+
+function mockProjectListApisWithTree(opts: {
+  orgs: Organization[];
+  projects: ReturnType<typeof buildProjectListItem>[];
+  treeNodes?: unknown[];
+}) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/orgs?mine=true")) return opts.orgs;
+    if (path.startsWith("/api/v1/projects/tree")) return opts.treeNodes ?? [];
+    if (path.startsWith("/api/v1/projects?archived=false") && !path.includes("limit")) return opts.projects;
+    return opts.projects;
+  });
+  spyOn(api, "getPage").mockResolvedValue({ items: opts.projects, total: opts.projects.length });
+}
+
+export const HierarchyLabelsOnTileView: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: hierarchyProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // "Platform" appears twice — its own tile heading, and inside "Child
+    // of: Platform" on the child's tile — so assert on the unambiguous
+    // "Child of:"/"Parent of:" label text instead of the name itself.
+    await waitFor(() => expect(canvas.getByText("Child of:")).toBeInTheDocument());
+    await expect(canvas.getByText("Parent of:")).toBeInTheDocument();
+  },
+};
+
+export const HierarchyLabelsOnListView: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: hierarchyProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getAllByText("Platform").length).toBeGreaterThan(0));
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByText("Child of:")).toBeInTheDocument();
+  },
+};
+
+/** No hierarchy anywhere in the accessible project set: the tree toggle
+ * button must not render at all (`showTreeOption`), not just be disabled —
+ * a tree mode with nothing to show a hierarchy for doesn't mean anything. */
+export const TreeToggleHiddenWithoutHierarchy: Story = {
+  beforeEach: () => mockProjectListApisWithTree({ orgs: [org({})], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Tree view" })).not.toBeInTheDocument();
+  },
+};
+
+export const TreeViewRendersHierarchy: Story = {
+  beforeEach: () =>
+    mockProjectListApisWithTree({
+      orgs: [org({})],
+      projects: hierarchyProjects,
+      treeNodes: [
+        {
+          id: "parent1", name: "Platform", organization_id: "org-1", is_archived: false,
+          children: [{ id: "child1", name: "Authentication", organization_id: "org-1", is_archived: false, children: [] }],
+        },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Tree view" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Tree view" }));
+    await waitFor(() => expect(canvas.getAllByRole("link", { name: "Platform" }).length).toBeGreaterThan(0));
+    await expect(canvas.getByRole("link", { name: "Authentication" })).toBeInTheDocument();
+  },
+};
+
 /** Favourites-only filter (2026-08 UX audit roadmap row 511) — a new
  * `FilterCheckbox` in the existing `FilterPanel`, sending `favorite_only=true`
  * on the same `GET /projects` param `FavouritesPage.tsx` already used. */

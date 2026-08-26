@@ -20,7 +20,7 @@ from app.models.user import User
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
 from app.services.notifications import notify
-from app.services.rbac import get_project_managers, get_project_member_user_ids
+from app.services.rbac import get_effective_project_managers, get_project_member_user_ids
 
 
 def auto_approve_overdue_stage_reviews(db: Session) -> None:
@@ -52,7 +52,7 @@ def auto_approve_overdue_stage_reviews(db: Session) -> None:
             continue
 
         project = db.get(Project, stage.project_id)
-        manager_ids = get_project_managers(db, project.id)
+        manager_ids = get_effective_project_managers(db, project.id)
         if not manager_ids:
             continue
         actor = db.get(User, min(manager_ids))

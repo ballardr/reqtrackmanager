@@ -99,7 +99,7 @@ from app.services.bundle_common import (
 )
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
-from app.services.rbac import get_project_managers
+from app.services.rbac import get_effective_project_managers
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -663,7 +663,7 @@ def apply_project_data(
     # not a convenience worth the exposure. `member_emails` stays in the
     # export purely as a human-readable reference for whoever re-populates
     # membership by hand afterward. The importing user always ends up a
-    # project manager regardless (see the `get_project_managers` fallback
+    # project manager regardless (see the `get_effective_project_managers` fallback
     # below), matching the same guarantee `create_project` gives its caller.
     for g in data.get("groups", []):
         db.add(ProjectGroup(project_id=project.id, name=g["name"], role=ProjectRole(g["role"]), is_default=g.get("is_default", False)))
@@ -895,7 +895,7 @@ def apply_project_data(
             organization_id=organization_id, project_id=project.id, detail=ev.get("detail"),
         )
 
-    if not get_project_managers(db, project.id):
+    if not get_effective_project_managers(db, project.id):
         db.add(UserProjectRole(user_id=current_user.id, project_id=project.id, role=ProjectRole.PROJECT_MANAGER))
 
     log_event(

@@ -82,6 +82,9 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     visibility: "only_specified",
     terminology: {},
     status_id: "status-1",
+    parent_project_id: null,
+    role_inheritance_mode: "none",
+    role_inheritance_filter_role: null,
     ...overrides,
   };
 }
@@ -110,6 +113,7 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
     is_favorite: false,
     organization_name: "Acme Corp",
     requirement_count: 24,
+    children: [],
     ...overrides,
   };
 }

@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { ProjectListItem, StageStatus } from "../api/types";
+import type { ProjectListItem, ProjectTreeNode, StageStatus } from "../api/types";
 import { collapseProjectRoles, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
+import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -34,6 +36,22 @@ export function FavouritesPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useViewMode("favourites");
+  // Hierarchical projects (docs/decisions.md) — same gating/tree-fetch
+  // pattern as ProjectListPage, scoped to whichever org the favourited
+  // projects with a hierarchy relationship belong to.
+  const [treeNodes, setTreeNodes] = useState<ProjectTreeNode[] | null>(null);
+  const hasHierarchy = (projects ?? []).some((p) => p.parent_project_id || p.children.length > 0);
+  const treeOrgId = (projects ?? []).find((p) => p.parent_project_id || p.children.length > 0)?.organization_id ?? "";
+
+  useEffect(() => {
+    if (!hasHierarchy && viewMode === "tree") setViewMode("tiles");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHierarchy]);
+
+  useEffect(() => {
+    if (viewMode !== "tree" || !treeOrgId) return;
+    api.get<ProjectTreeNode[]>(`/api/v1/projects/tree?organization_id=${treeOrgId}`).then(setTreeNodes);
+  }, [viewMode, treeOrgId]);
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({
@@ -77,12 +95,19 @@ export function FavouritesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <ViewToggle mode={viewMode} onChange={setViewMode} />
+        <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
       </div>
 
-      {!projects && <Spinner />}
-      {projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
-      {projects && projects.length > 0 && viewMode === "tiles" && (
+      {viewMode === "tree" && hasHierarchy && (
+        <div className="card">
+          {!treeNodes && <Spinner />}
+          {treeNodes && <ProjectTree nodes={treeNodes} />}
+        </div>
+      )}
+
+      {viewMode !== "tree" && !projects && <Spinner />}
+      {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
+      {viewMode !== "tree" && projects && projects.length > 0 && viewMode === "tiles" && (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
           {projects.map((p) => (
             <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
@@ -108,6 +133,7 @@ export function FavouritesPage() {
                 </button>
               </div>
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>
+              <ProjectHierarchyLabels project={p} />
               {p.current_stage_name && (
                 <span className="badge" style={{ alignSelf: "flex-start" }}>
                   {stageBadgeText(p.current_stage_name, p.current_stage_status)}
@@ -126,7 +152,7 @@ export function FavouritesPage() {
           ))}
         </div>
       )}
-      {projects && projects.length > 0 && viewMode === "list" && (
+      {viewMode !== "tree" && projects && projects.length > 0 && viewMode === "list" && (
         <div className="card" style={{ overflowX: "auto" }}>
           <table>
             <thead>
@@ -157,6 +183,7 @@ export function FavouritesPage() {
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                       {p.summary || "—"}
                     </div>
+                    <ProjectHierarchyLabels project={p} />
                   </td>
                   <td className="text-muted">{p.organization_name}</td>
                   <td>
@@ -172,7 +199,9 @@ export function FavouritesPage() {
           </table>
         </div>
       )}
-      {projects && <LoadMoreButton loaded={projects.length} total={total} onClick={() => load(projects.length, true)} />}
+      {viewMode !== "tree" && projects && (
+        <LoadMoreButton loaded={projects.length} total={total} onClick={() => load(projects.length, true)} />
+      )}
     </div>
   );
 }

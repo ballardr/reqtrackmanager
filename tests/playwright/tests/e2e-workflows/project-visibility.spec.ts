@@ -33,6 +33,17 @@ test.describe("project visibility: org-wide vs only specified", () => {
       await expect(dialog.getByRole("combobox").first()).toContainText(ORG_NAMES.alpha);
       await dialog.getByRole("combobox").first().selectOption({ label: ORG_NAMES.alpha });
       await dialog.getByLabel("Name", { exact: true }).fill(projectName);
+      // The hierarchical-projects "Parent project" field now shares this
+      // modal — its computed accessible name includes every `<option>`
+      // (every non-archived project in the org), so if Alpha ever
+      // accumulates a leftover project whose name happens to contain
+      // "visibility" (e.g. debris from a prior interrupted run of this very
+      // spec, never cleaned up), `getByLabel("Visibility")` becomes
+      // ambiguous. Not worked around here — the real fix is a clean org,
+      // consistent with how this suite already treats cross-run debris
+      // elsewhere (see docs/e2e-workflows.md's "cross-spec state pollution"
+      // section); a reproduction of this ambiguity is a signal to reseed,
+      // not a reason to complicate this locator.
       await dialog.getByLabel("Visibility").selectOption("org_wide");
       await dialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByRole("heading", { name: projectName })).toBeVisible();

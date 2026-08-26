@@ -2,7 +2,8 @@
 Module: scripts.seed_demo_data
 
 Seeds a realistic, presentable demo dataset — a fictional engineering
-company ("Solstice Robotics") with two projects, requirements at varied
+company ("Solstice Robotics") with three projects (one a sub-project of
+another, demonstrating hierarchical projects), requirements at varied
 lifecycle stages, an in-review and an approved change request, discussion
 comments, custom fields, and a report branding template. Intended for
 screenshots, demos, and (eventually) a public demo instance.
@@ -75,13 +76,28 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
     return r.json()
 
 
-def create_project(headers: dict, org_id: str, name: str, summary: str) -> dict:
+def create_project(
+    headers: dict, org_id: str, name: str, summary: str,
+    *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None,
+) -> dict:
+    payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if parent_project_id is not None:
+        payload["parent_project_id"] = parent_project_id
+    if role_inheritance_mode is not None:
+        payload["role_inheritance_mode"] = role_inheritance_mode
+    r = httpx.post(f"{BASE}/projects", json=payload, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_member_source(headers: dict, project_id: str, source_project_id: str) -> None:
+    """See seed_e2e_dataset.py's identical helper — adds `source_project_id`
+    (a direct child of `project_id`) to `project_id`'s member-source list."""
     r = httpx.post(
-        f"{BASE}/projects", json={"organization_id": org_id, "name": name, "summary": summary},
+        f"{BASE}/projects/{project_id}/member-sources", json={"source_project_id": source_project_id},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
-    return r.json()
 
 
 def assign_project_role(headers: dict, project_id: str, user_id: str, role: str) -> None:
@@ -493,6 +509,21 @@ CLOUD_REQUIREMENTS = [
      "check whether an issue is on our side before opening a ticket.", "API", "REL", "draft", {}),
 ]
 
+AVIONICS_REQUIREMENTS = [
+    # (name, reasoning, component_key, category_key, status, extra)
+    ("Fuse GPS, IMU, and barometric altitude into a single position estimate at 50Hz",
+     "The flight controller consumes a single blended estimate rather than raw sensor feeds — fusing "
+     "at 50Hz keeps the control loop within the latency budget the airframe stability model assumes.",
+     "SN", "PERF", "approved", {}),
+    ("Detect and flag GPS spoofing via cross-check against IMU dead-reckoning",
+     "A diverging GPS/IMU solution beyond the expected drift envelope is the leading indicator of "
+     "spoofing seen in the fleet's incident reports to date; flagging it lets the flight controller "
+     "fall back to dead-reckoning rather than trusting a compromised fix.", "SN", "SAF", "reviewed", {}),
+    ("Report sensor self-test results to the ground station on every power-on",
+     "Field crews currently only discover a degraded sensor mid-flight; surfacing self-test results "
+     "at power-on lets them stand down before launch instead.", "SN", "FN", "draft", {}),
+]
+
 
 def seed_project(
     headers: dict, project: dict, components: dict[str, dict], categories: dict[str, dict[str, dict]],
@@ -704,6 +735,25 @@ def main() -> None:
     create_cr_task(h_pm, drone["id"], drone_cr["id"], "Update the customer-facing spec sheet once approved.",
                    assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=7)).isoformat())
 
+    print("Creating 'Falcon-3 Avionics Subsystem' as a sub-project of Falcon-3 (hierarchical projects)...")
+    # Demonstrates both RBAC-cascade directions from the same small fixture
+    # (see docs/decisions.md's "Hierarchical projects" entry): forward
+    # (MIRROR_ALL — everyone with a role on Falcon-3 gets that same role
+    # here too) and reverse (Falcon-3 consumes members from this sub-project,
+    # so demo_engineer's *direct* PROJECT_MANAGER grant here also gives them
+    # baseline read access on the parent, on top of their existing direct
+    # stakeholder role there).
+    avionics = create_project(
+        h_pm, org["id"], "Falcon-3 Avionics Subsystem",
+        "Sensor fusion, navigation, and onboard diagnostics for the Falcon-3 flight controller.",
+        parent_project_id=drone["id"], role_inheritance_mode="mirror_all",
+    )
+    add_member_source(h_pm, drone["id"], avionics["id"])
+    assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
+    avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
+    avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
+    seed_project(h_pm, avionics, avionics_components, avionics_categories, AVIONICS_REQUIREMENTS, demo_admin["user_id"])
+
     print("Creating 'Solstice Cloud Platform'...")
     cloud = create_project(
         h_pm, org["id"], "Solstice Cloud Platform",
@@ -783,14 +833,17 @@ def main() -> None:
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
-    print("  demo.admin@example.com       - org admin, project manager on both projects")
-    print("  demo.engineer@example.com    - stakeholder on both projects")
-    print("  demo.stakeholder@example.com - stakeholder on both projects")
+    print("  demo.admin@example.com       - org admin, project manager on all three projects")
+    print("  demo.engineer@example.com    - stakeholder on Falcon-3/Solstice Cloud; direct project manager"
+          " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption)")
+    print("  demo.stakeholder@example.com - stakeholder on Falcon-3/Solstice Cloud")
     print()
     print(f"Organisation: {ORG_NAME}")
     print(f"  Falcon-3 Inspection Drone  ({len(drone_reqs)} requirements, 1 change request pending, status: Active)")
     print("    - 3 requirement links (2 default 'Depends on', 1 custom 'Supersedes')")
     print("    - 2 requirement actions (1 completed review, 1 failed test, shared across 2 requirements)")
+    print("    - Falcon-3 Avionics Subsystem (sub-project, mirror-all inherits from Falcon-3;"
+          " Falcon-3 also consumes members from it — see docs/decisions.md's 'Hierarchical projects' entry)")
     print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request, status: Proposed)")
 
 

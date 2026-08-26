@@ -162,6 +162,63 @@ def test_org_role_grant_success_and_notification(client, admin_token, org_id):
     assert any(n["title"] == "Organisation permission granted" for n in notifications)
 
 
+def test_revoke_org_role_removes_it(client, admin_token, org_id):
+    """`revoke_org_role` (added alongside hierarchical projects — see
+    docs/decisions.md's "Hierarchical projects" entry — to close a
+    pre-existing gap: `assign_org_role` had no counterpart). Grants a second
+    role ("member") first so the user still has a `UserOrgRole` row after
+    the revoke and stays visible in the (role-join-backed) listing — a user
+    left with zero roles drops out of `list_org_users` entirely, by design,
+    which would make the listing the wrong way to observe a single-role
+    revoke."""
+    user_id = create_org_user(client, admin_token, org_id, "role_revoke_target@example.com", role="member")
+    granted = client.post(
+        f"/api/v1/orgs/{org_id}/users/{user_id}/roles", json={"user_id": user_id, "role": "project_creator"},
+        headers=auth_headers(admin_token),
+    )
+    assert granted.status_code == 204
+
+    revoked = client.delete(
+        f"/api/v1/orgs/{org_id}/users/{user_id}/roles/project_creator", headers=auth_headers(admin_token)
+    )
+    assert revoked.status_code == 204
+
+    listing = client.get(f"/api/v1/orgs/{org_id}/users", headers=auth_headers(admin_token)).json()
+    entry = next(u for u in listing if u["user_id"] == user_id)
+    assert entry["roles"] == ["member"]
+
+    # No-op, not an error, when the user doesn't currently hold the role.
+    again = client.delete(
+        f"/api/v1/orgs/{org_id}/users/{user_id}/roles/project_creator", headers=auth_headers(admin_token)
+    )
+    assert again.status_code == 204
+
+
+def test_revoke_org_role_blocks_self_targeting(client, admin_token, org_id):
+    """An org admin can never revoke their own org role through this
+    endpoint — the guard that keeps an organisation from ever reaching zero
+    admins via this path (see `revoke_org_role`'s own docstring)."""
+    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
+
+    resp = client.delete(
+        f"/api/v1/orgs/{org_id}/users/{me['id']}/roles/org_admin", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 400
+
+
+def test_revoke_org_role_requires_org_admin(client, admin_token, org_id):
+    """A caller without `ORG_ADMIN` (e.g. a plain member) gets 403, not a
+    silent no-op or a successful revoke."""
+    create_org_user(client, admin_token, org_id, "role_revoke_nonadmin@example.com", role="member")
+    member_token = login(client, "role_revoke_nonadmin@example.com", "Password123!")
+
+    target_id = create_org_user(client, admin_token, org_id, "role_revoke_victim@example.com", role="project_creator")
+    resp = client.delete(
+        f"/api/v1/orgs/{org_id}/users/{target_id}/roles/project_creator", headers=auth_headers(member_token)
+    )
+    assert resp.status_code == 403
+
+
 def test_deactivating_last_project_manager_falls_back_to_acting_admin(client, admin_token, org_id):
     """C-U-09: deactivating a user who is a project's only manager must
     never leave the project without one — the acting org admin is assigned

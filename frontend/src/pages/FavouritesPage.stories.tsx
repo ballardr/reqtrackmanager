@@ -131,5 +131,66 @@ export const ListView: Story = {
   },
 };
 
+// Hierarchical projects (docs/decisions.md) — same visibility-boundary-
+// filtered fields as ProjectListPage, easy to forget on this page too.
+export const HierarchyLabelsShown: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [
+        buildProjectListItem({
+          id: "p1", name: "Authentication", is_favorite: true,
+          parent_project_id: "parent1", parent_project_name: "Platform",
+        }),
+      ],
+      total: 1,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Child of:")).toBeInTheDocument());
+    await expect(canvas.getByRole("link", { name: "Platform" })).toBeInTheDocument();
+  },
+};
+
+export const TreeToggleHiddenWithoutHierarchy: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [buildProjectListItem({ id: "p1", name: "Atlas Platform", is_favorite: true })],
+      total: 1,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Tree view" })).not.toBeInTheDocument();
+  },
+};
+
+export const TreeViewRendersHierarchy: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [
+        buildProjectListItem({
+          id: "p1", name: "Authentication", is_favorite: true, organization_id: "org-1",
+          parent_project_id: "parent1", parent_project_name: "Platform",
+        }),
+      ],
+      total: 1,
+    });
+    spyOn(api, "get").mockResolvedValue([
+      {
+        id: "parent1", name: "Platform", organization_id: "org-1", is_archived: false,
+        children: [{ id: "p1", name: "Authentication", organization_id: "org-1", is_archived: false, children: [] }],
+      },
+    ]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Tree view" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Tree view" }));
+    await waitFor(() => expect(canvas.getAllByRole("link", { name: "Platform" }).length).toBeGreaterThan(0));
+  },
+};
+
 export const LightTheme: Story = { ...FavouritedProjects, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...FavouritedProjects, globals: { theme: "dark" } };

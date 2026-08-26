@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type {
@@ -11,18 +11,23 @@ import type {
   CustomFieldDefinition,
   CustomFieldEntityKind,
   CustomFieldType,
+  EffectiveMember,
+  MaterializeResult,
   OrgGroup,
   OrgUser,
   Project,
   ProjectGroup,
+  ProjectListItem,
+  ProjectMemberSource,
   ProjectReportConfig,
   ProjectRole,
+  ProjectRoleInheritanceMode,
   ProjectStage,
   ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
 } from "../api/types";
-import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
@@ -37,6 +42,11 @@ import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
+
+// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
+// MEMBER_ONLY, which caps at baseline MEMBER — parity with
+// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
+const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
@@ -53,6 +63,7 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
 export function ProjectAdminPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
@@ -108,6 +119,18 @@ export function ProjectAdminPage() {
   const [statusId, setStatusId] = useState("");
   const [orgProjectStatuses, setOrgProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
   const [terminology, setTerminology] = useState<Record<string, string>>({});
+  // Hierarchical projects (docs/decisions.md).
+  const [parentProjectId, setParentProjectId] = useState("");
+  const [roleInheritanceMode, setRoleInheritanceMode] = useState<ProjectRoleInheritanceMode>("none");
+  const [roleInheritanceFilterRole, setRoleInheritanceFilterRole] = useState<ProjectRole>("project_manager");
+  const [pendingInheritMode, setPendingInheritMode] = useState<ProjectRoleInheritanceMode | null>(null);
+  const [orgProjects, setOrgProjects] = useState<ProjectListItem[]>([]);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [memberSources, setMemberSources] = useState<ProjectMemberSource[]>([]);
+  const [childProjects, setChildProjects] = useState<ProjectListItem[]>([]);
+  const [addSourceId, setAddSourceId] = useState("");
+  const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
+  const [materializing, setMaterializing] = useState(false);
   // Guards the two field groups above against `reload()` — called after
   // every unrelated mutation on this page (adding/deleting a custom
   // field, stage/component/category CRUD, action-type CRUD, ...; 33 call
@@ -177,6 +200,9 @@ export function ProjectAdminPage() {
       setIsTemplate(p.is_template);
       setVisibility(p.visibility);
       setStatusId(p.status_id);
+      setParentProjectId(p.parent_project_id ?? "");
+      setRoleInheritanceMode(p.role_inheritance_mode);
+      if (p.role_inheritance_filter_role) setRoleInheritanceFilterRole(p.role_inheritance_filter_role);
     }
     if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
@@ -206,6 +232,19 @@ export function ProjectAdminPage() {
       chapters: rc.chapters_is_organisation_default,
       appendices: rc.appendices_is_organisation_default,
     });
+
+    // Hierarchical projects (docs/decisions.md). Parent selector options
+    // are restricted server-side to the caller's own accessible set
+    // already (list_projects); this is the same org-wide accessible list
+    // ProjectListPage's "New project" modal uses for its own parent field.
+    setOrgProjects(await api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${p.organization_id}`));
+    setMemberSources(await api.get<ProjectMemberSource[]>(`/api/v1/projects/${projectId}/member-sources`));
+    setChildProjects(await api.get<ProjectListItem[]>(`/api/v1/projects/${projectId}/children`));
+  }
+
+  async function reloadEffectiveMembers() {
+    if (!projectId) return;
+    setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
   }
 
   async function saveReportConfig() {
@@ -237,13 +276,63 @@ export function ProjectAdminPage() {
   }
 
   async function saveSettings() {
-    await api.patch(`/api/v1/projects/${projectId}`, {
-      name: settingsName, summary: settingsSummary,
-      allow_member_change_requests: allowMemberCr, is_template: isTemplate,
-      visibility, status_id: statusId || null,
-    });
-    settingsDirtyRef.current = false;
+    setSettingsError(null);
+    try {
+      await api.patch(`/api/v1/projects/${projectId}`, {
+        name: settingsName, summary: settingsSummary,
+        allow_member_change_requests: allowMemberCr, is_template: isTemplate,
+        visibility, status_id: statusId || null,
+        parent_project_id: parentProjectId || null,
+        role_inheritance_mode: roleInheritanceMode,
+        role_inheritance_filter_role: roleInheritanceMode === "mirror_role" ? roleInheritanceFilterRole : null,
+      });
+      settingsDirtyRef.current = false;
+      reload();
+    } catch (err) {
+      // Surfaces the C-U-08 ("only manager is inherited") and
+      // parent_required ("must remain nested under a parent") 400s from
+      // update_project inline, the same way other save-time validation in
+      // this form already is.
+      setSettingsError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  function requestInheritModeChange(mode: ProjectRoleInheritanceMode) {
+    settingsDirtyRef.current = true;
+    if (MODES_NEEDING_CONFIRMATION.includes(mode)) {
+      setPendingInheritMode(mode);
+    } else {
+      setRoleInheritanceMode(mode);
+    }
+  }
+
+  const parentOptions = orgProjects.filter((p) => !p.is_archived && p.id !== projectId);
+  const selectedParent = orgProjects.find((p) => p.id === parentProjectId);
+  const childCandidates = childProjects.filter((c) => !memberSources.some((ms) => ms.source_project_id === c.id));
+
+  async function addMemberSource() {
+    if (!addSourceId) return;
+    await api.post(`/api/v1/projects/${projectId}/member-sources`, { source_project_id: addSourceId });
+    setAddSourceId("");
     reload();
+  }
+
+  async function removeMemberSource(sourceProjectId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/member-sources/${sourceProjectId}`);
+    reload();
+  }
+
+  async function materializeInheritedAccess() {
+    setMaterializing(true);
+    try {
+      const result = await api.post<MaterializeResult>(`/api/v1/projects/${projectId}/materialize-inherited-access`);
+      showToast(strings.admin.materializedCount(result.created.length));
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    } finally {
+      setMaterializing(false);
+    }
   }
 
   async function saveTerminology() {
@@ -543,9 +632,21 @@ export function ProjectAdminPage() {
 
   return (
     <div className="stack">
-      <div className="stack" style={{ gap: "0.15rem" }}>
-        <h1 style={{ margin: 0 }}>{project.name}</h1>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div className="stack" style={{ gap: "0.15rem" }}>
+          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
+        </div>
+        {/* "Add sub-project" (decision 8, docs/decisions.md) — the
+            create-project flow itself lives on ProjectListPage, so this
+            navigates there with the parent pre-filled/locked rather than
+            duplicating that modal's logic here. */}
+        <button
+          className="btn"
+          onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
+        >
+          <Plus size={14} /> {strings.projects.addSubProject}
+        </button>
       </div>
 
       <Tabs idPrefix="project-admin-tabs" tabs={tabs} active={tab} onChange={setTab} />
@@ -631,6 +732,80 @@ export function ProjectAdminPage() {
           </select>
         </label>
 
+        {/* Hierarchical projects (docs/decisions.md). The current parent's
+            name is always shown plainly here (unlike ProjectListPage's
+            list/tile "Child of:" label, which redacts a parent the viewer
+            can't see) — a project's own manager needs to see and manage
+            this relationship to do their job, and already holds the
+            highest level of authority over it. Rely on the server-side
+            cycle check rather than excluding descendants client-side. */}
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          {strings.projects.parentProject}
+          <select
+            className="input"
+            value={parentProjectId}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setParentProjectId(e.target.value);
+            }}
+          >
+            <option value="">{strings.projects.noParent}</option>
+            {parentOptions.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        {parentProjectId && (
+          <>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              {strings.projects.inheritFromParent}
+              <select
+                className="input"
+                value={roleInheritanceMode}
+                onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+              >
+                {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
+                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                ))}
+              </select>
+            </label>
+            {roleInheritanceMode === "mirror_role" && (
+              <label className="stack" style={{ gap: "0.25rem" }}>
+                {strings.projects.inheritModeFilterRole}
+                <select
+                  className="input"
+                  value={roleInheritanceFilterRole}
+                  onChange={(e) => {
+                    settingsDirtyRef.current = true;
+                    setRoleInheritanceFilterRole(e.target.value as ProjectRole);
+                  }}
+                >
+                  <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                  <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                  <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                </select>
+              </label>
+            )}
+          </>
+        )}
+        {settingsError && <div style={{ color: "var(--color-danger)" }}>{settingsError}</div>}
+        {pendingInheritMode && selectedParent && (
+          <ConfirmDialog
+            title={strings.projects.inheritConfirmTitle}
+            message={
+              pendingInheritMode === "mirror_role"
+                ? strings.projects.inheritConfirmMirrorRole(selectedParent.name, PROJECT_ROLE_LABEL[roleInheritanceFilterRole])
+                : strings.projects.inheritConfirmMirrorAll(selectedParent.name)
+            }
+            confirmLabel={strings.projects.inheritConfirmButton}
+            onCancel={() => setPendingInheritMode(null)}
+            onConfirm={() => {
+              setRoleInheritanceMode(pendingInheritMode);
+              setPendingInheritMode(null);
+            }}
+          />
+        )}
+
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div className="row">
             <button className="btn btn-primary" onClick={saveSettings}>
@@ -672,6 +847,43 @@ export function ProjectAdminPage() {
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
+
+        {/* Member sources (docs/decisions.md) — the reverse (child ->
+            parent) RBAC mechanism, deliberately NOT a field on the child's
+            own form: authorized entirely by managing *this* project (the
+            parent), never the child. No confirmation needed on add — it
+            only ever grants baseline Member, the same risk profile as
+            visibility=org_wide. */}
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.memberSources}</h2>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.admin.memberSourcesHint}</p>
+        {memberSources.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+            {memberSources.map((ms) => (
+              <li key={ms.source_project_id} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
+                <Link to={`/projects/${ms.source_project_id}`}>{ms.source_project_name}</Link>
+                <button className="btn" onClick={() => removeMemberSource(ms.source_project_id)}>
+                  {strings.admin.removeMemberSource}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {childCandidates.length > 0 ? (
+          <div className="row">
+            <select className="input" style={{ maxWidth: 280 }} value={addSourceId} onChange={(e) => setAddSourceId(e.target.value)}>
+              <option value="">{strings.common.selectOption}</option>
+              {childCandidates.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <button className="btn" onClick={addMemberSource} disabled={!addSourceId}>
+              {strings.admin.addMemberSource}
+            </button>
+          </div>
+        ) : (
+          memberSources.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.admin.noChildrenToAdd}</p>
+        )}
       </div>
       )}
 
@@ -1086,6 +1298,56 @@ export function ProjectAdminPage() {
 
       {tab === "groups" && (
       <div {...tabPanelProps("project-admin-tabs", "groups")} className="card stack">
+        {/* Effective members with provenance (decision 10, docs/decisions.md)
+            — direct vs. inherited (and how), plus the "convert to direct
+            roles" safety net (decision 9) before disabling inheritance
+            elsewhere silently drops someone's access. Lazy-loaded (not
+            fetched in the main reload()) since it iterates every org
+            member server-side and is only needed once this section is
+            actually opened. */}
+        <CollapsibleSection
+          sectionKey="projectAdmin.effectiveMembers"
+          title={strings.admin.effectiveMembers}
+          defaultCollapsed
+        >
+          <p className="text-muted" style={{ margin: 0 }}>{strings.admin.effectiveMembersHint}</p>
+          {!effectiveMembers && (
+            <button className="btn" style={{ alignSelf: "flex-start" }} onClick={reloadEffectiveMembers}>
+              {strings.admin.loadEffectiveMembers}
+            </button>
+          )}
+          {effectiveMembers && (
+            <>
+              <button
+                className="btn"
+                style={{ alignSelf: "flex-start" }}
+                onClick={materializeInheritedAccess}
+                disabled={materializing}
+              >
+                {strings.admin.materializeAll}
+              </button>
+              <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                {effectiveMembers.map((m) => (
+                  <li key={m.user_id} style={{ listStyle: "disc" }}>
+                    <strong>{m.display_name}</strong> ({m.email}) — {PROJECT_ROLE_LABEL[m.effective_role]}
+                    <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                      {m.sources.map((s, i) => (
+                        <li key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
+                          {s.kind === "direct" && strings.admin.sourceDirect}
+                          {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
+                            strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
+                          {s.kind === "member_source_inherited" && strings.admin.sourceMemberSourceInherited}
+                          {" "}({PROJECT_ROLE_LABEL[s.role]})
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </CollapsibleSection>
+
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
         <button
           className="btn btn-primary"
