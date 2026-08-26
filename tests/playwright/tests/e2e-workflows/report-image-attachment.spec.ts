@@ -89,7 +89,15 @@ test("insert an image into a project's report intro and generate a PDF", async (
     await expect(introTextarea).toHaveValue(/!\[pixel\.png\]\(attachment:[0-9a-f-]+\)/);
   });
 
-  await page.getByRole("button", { name: "Save settings" }).click();
+  // As with the image upload above, the click only waits for the DOM
+  // event, not for saveReportConfig's async PUT — without waiting for the
+  // response here, the subsequent page.goto can outrace the save on a
+  // loaded runner, leaving the report intro (and its image reference)
+  // unpersisted when the PDF is generated below.
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/report-config") && r.request().method() === "PUT"),
+    page.getByRole("button", { name: "Save settings" }).click(),
+  ]);
 
   await test.step("generate a PDF report and confirm a real PDF downloads", async () => {
     await page.goto(`/projects/${project.id}/reports`);
