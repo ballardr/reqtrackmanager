@@ -306,6 +306,12 @@ def create_project(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_project_id must be a project in this organisation.")
         if not can_manage_project_settings(db, current_user, parent_project):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You must manage the parent project to create a child under it.")
+        if not parent_project.can_be_parent:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This project has not been made eligible to be a parent — enable "
+                "\"Allow this project to be a parent\" on it first.",
+            )
 
     parent_required = False
     if not has_org_level_create_rights:
@@ -386,6 +392,7 @@ def create_project(
     project.role_inheritance_mode = payload.role_inheritance_mode
     project.role_inheritance_filter_role = payload.role_inheritance_filter_role
     project.parent_required = parent_required
+    project.can_be_parent = payload.can_be_parent
 
     log_event(
         db, entity_type="project", entity_id=project.id, action="created", actor_id=current_user.id,
@@ -589,6 +596,7 @@ def list_projects(
                 parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
                 role_inheritance_mode=p.role_inheritance_mode,
                 role_inheritance_filter_role=p.role_inheritance_filter_role,
+                can_be_parent=p.can_be_parent,
                 children=children_by_parent.get(p.id, []),
             )
         )
@@ -672,7 +680,9 @@ def update_project(
     "Hierarchical projects" entry):
       1. Attaching to a new/different parent requires the caller to manage
          *both* this project and the target parent (decision 12) — same-org
-         too.
+         too — and the target parent must have `can_be_parent=True` (a
+         project isn't eligible to be a parent until its own manager opts
+         in; see `Project.can_be_parent`'s docstring).
       2. Detaching (clearing `parent_project_id` to null) is instead gated
          by `Project.parent_required` (decision 11): rejected unless it's
          `False` or the current actor holds `ORG_ADMIN`/`PROJECT_CREATOR`
@@ -694,6 +704,8 @@ def update_project(
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.is_template is not None:
         project.is_template = payload.is_template
+    if payload.can_be_parent is not None:
+        project.can_be_parent = payload.can_be_parent
     if payload.visibility is not None:
         project.visibility = payload.visibility
     if payload.status_id is not None:
@@ -731,6 +743,12 @@ def update_project(
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_project_id must be a project in this organisation.")
             if not can_manage_project_settings(db, current_user, target_parent):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "You must manage the parent project to attach this project to it.")
+            if not target_parent.can_be_parent:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "This project has not been made eligible to be a parent — enable "
+                    "\"Allow this project to be a parent\" on it first.",
+                )
             if would_create_project_cycle(db, project_id, new_parent_id):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "This would create a cycle in the project hierarchy.")
         else:
@@ -876,6 +894,7 @@ def get_project_children(
                 organization_name=org_names.get(c.organization_id, ""),
                 parent_project_id=project_id, parent_project_name=None,
                 role_inheritance_mode=c.role_inheritance_mode, role_inheritance_filter_role=c.role_inheritance_filter_role,
+                can_be_parent=c.can_be_parent,
             )
         )
     return out

@@ -54,8 +54,16 @@ test.describe("hierarchical (parent/child) projects", () => {
       await expect(page.getByRole("heading", { name: parentName })).toBeVisible();
     });
 
-    await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
+    await test.step("can_be_parent defaults off — opt in via the settings tab before this project can be used as a parent", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      const addSubProject = page.getByRole("button", { name: "Add sub-project" });
+      await expect(addSubProject).toBeDisabled();
+      await page.getByLabel(/Allow this .* to be a parent/).check();
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(addSubProject).toBeEnabled();
+    });
+
+    await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
       await page.getByRole("button", { name: "Add sub-project" }).click();
       const dialog = page.getByRole("dialog", { name: "New project" });
       // The parent select's current selection resolves to the parent

@@ -528,7 +528,7 @@ export const ParentFieldShowsCurrentParentPlainly: Story = {
 export const SelectingMirrorAllRequiresConfirmation: Story = {
   beforeEach: () =>
     mockProjectAdminApis({
-      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1" })],
+      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1", can_be_parent: true })],
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -546,7 +546,7 @@ export const SelectingMirrorAllRequiresConfirmation: Story = {
 export const SaveErrorShowsInline: Story = {
   beforeEach: () => {
     mockProjectAdminApis({
-      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1" })],
+      orgProjects: [buildProjectListItem({ id: "parent-1", name: "Platform", organization_id: "org-1", can_be_parent: true })],
     });
     spyOn(api, "patch").mockRejectedValue(new Error("This project's only manager is inherited from 'Platform'; assign a direct project manager before disabling inheritance or changing its parent."));
   },
@@ -631,15 +631,64 @@ export const MaterializeButtonConvertsInheritedAccess: Story = {
 };
 
 /** "Add sub-project" navigates to ProjectListPage with the parent
- * pre-filled, rather than duplicating the create-project modal here. */
+ * pre-filled, rather than duplicating the create-project modal here. Only
+ * reachable once this project has opted in to being a parent
+ * (can_be_parent) — see AddSubProjectDisabledUntilEligible below for the
+ * disabled case. */
 export const AddSubProjectNavigatesToProjectList: Story = {
-  beforeEach: () => mockProjectAdminApis({}),
+  beforeEach: () =>
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1", can_be_parent: true }),
+    }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeInTheDocument());
     // Navigation itself is exercised end-to-end in the Playwright suite —
     // this just confirms the entry point renders and is reachable.
     await expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeEnabled();
+  },
+};
+
+/** can_be_parent (docs/decisions.md) defaults to false — "Add sub-project"
+ * must not offer a path straight into a create flow the backend would
+ * reject. */
+export const AddSubProjectDisabledUntilEligible: Story = {
+  beforeEach: () => mockProjectAdminApis({}),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: /Add sub-/ })).toBeDisabled();
+  },
+};
+
+/** The checkbox itself: toggling it and saving sends can_be_parent through
+ * to the PATCH payload. */
+export const CanBeParentToggleSaves: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({});
+    spyOn(api, "patch").mockResolvedValue(buildProject({ id: PROJECT_ID, organization_id: "org-1", can_be_parent: true }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText(/Allow this .* to be a parent/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByLabelText(/Allow this .* to be a parent/));
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ can_be_parent: true })),
+    );
+  },
+};
+
+/** No eligible candidates and no parent currently set — the "Parent
+ * project" field (and its dependent inheritance-mode fields) render
+ * nothing rather than an empty picker with only "None" in it. */
+export const ParentFieldHiddenWithNoEligibleCandidates: Story = {
+  beforeEach: () => mockProjectAdminApis({ orgProjects: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText("Name")).toHaveValue("Atlas Platform"));
+    await expect(canvas.queryByText("Parent project")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Inherit access from parent")).not.toBeInTheDocument();
   },
 };
 

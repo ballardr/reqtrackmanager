@@ -78,13 +78,15 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
 
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
-    *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None,
+    *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None, can_be_parent: bool = False,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
     if parent_project_id is not None:
         payload["parent_project_id"] = parent_project_id
     if role_inheritance_mode is not None:
         payload["role_inheritance_mode"] = role_inheritance_mode
+    if can_be_parent:
+        payload["can_be_parent"] = True
     r = httpx.post(f"{BASE}/projects", json=payload, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -603,6 +605,10 @@ def main() -> None:
     drone = create_project(
         h_pm, org["id"], "Falcon-3 Inspection Drone",
         "Autonomous multirotor platform for utility and infrastructure visual inspection.",
+        # Eligible to be a parent (docs/decisions.md): 'Falcon-3 Avionics
+        # Subsystem' below is created as its child — a project must opt in
+        # to this before another project can be attached under it.
+        can_be_parent=True,
     )
     set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
     # Demonstrates C-C-03's terminology overrides with aerospace-engineering

@@ -151,7 +151,7 @@ def test_action_type_endpoints_require_project_membership(client, admin_token, o
 
 
 def test_child_project_falls_back_to_parent_action_types_when_empty(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "Fallback Parent")
+    parent = create_project(client, admin_token, org_id, "Fallback Parent", can_be_parent=True)
     child = create_project(
         client, admin_token, org_id, "Fallback Child", parent_project_id=parent["id"],
     )
@@ -163,7 +163,7 @@ def test_child_project_falls_back_to_parent_action_types_when_empty(client, admi
 
 
 def test_child_with_its_own_action_types_does_not_fall_back(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "No Fallback Parent")
+    parent = create_project(client, admin_token, org_id, "No Fallback Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "No Fallback Child", parent_project_id=parent["id"])
     client.post(f"/api/v1/projects/{child['id']}/action-types", json={"name": "Child Only"}, headers=auth_headers(admin_token))
     names = {t["name"] for t in _action_types(client, admin_token, child["id"])}
@@ -172,15 +172,17 @@ def test_child_with_its_own_action_types_does_not_fall_back(client, admin_token,
 
 
 def test_fallback_walks_multiple_ancestor_levels(client, admin_token, org_id):
-    grandparent = create_project(client, admin_token, org_id, "Fallback Grandparent")
-    parent = create_project(client, admin_token, org_id, "Fallback Mid Parent", parent_project_id=grandparent["id"])
+    grandparent = create_project(client, admin_token, org_id, "Fallback Grandparent", can_be_parent=True)
+    parent = create_project(
+        client, admin_token, org_id, "Fallback Mid Parent", parent_project_id=grandparent["id"], can_be_parent=True,
+    )
     child = create_project(client, admin_token, org_id, "Fallback Grandchild", parent_project_id=parent["id"])
     resp = client.get(f"/api/v1/projects/{child['id']}/action-types", headers=auth_headers(admin_token))
     assert [t["name"] for t in resp.json()] == ["Review", "Test"]
 
 
 def test_deleting_last_child_action_type_is_allowed_but_not_for_a_root(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "Delete Floor Parent")
+    parent = create_project(client, admin_token, org_id, "Delete Floor Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "Delete Floor Child", parent_project_id=parent["id"])
     child_type = client.post(
         f"/api/v1/projects/{child['id']}/action-types", json={"name": "Only Child Type"}, headers=auth_headers(admin_token)
@@ -204,7 +206,7 @@ def test_deleting_last_child_action_type_is_allowed_but_not_for_a_root(client, a
 
 
 def test_action_on_child_can_reference_an_inherited_parent_action_type(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "Inherited Action Parent")
+    parent = create_project(client, admin_token, org_id, "Inherited Action Parent", can_be_parent=True)
     child = create_project(client, admin_token, org_id, "Inherited Action Child", parent_project_id=parent["id"])
     parent_types = _action_types(client, admin_token, parent["id"])
     action = _create_action(client, admin_token, child["id"], parent_types[0]["id"])

@@ -85,6 +85,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     parent_project_id: null,
     role_inheritance_mode: "none",
     role_inheritance_filter_role: null,
+    can_be_parent: false,
     ...overrides,
   };
 }

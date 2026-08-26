@@ -85,6 +85,20 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
             unrestricted root project you were never allowed to create
             standalone" without restricting anything else about the
             project. See `docs/decisions.md`.
+        can_be_parent: Whether this project may be selected as a parent —
+            gates `parent_project_id` on *other* projects' create/update, not
+            this project's own. Defaults to `False`: a project is not
+            eligible to be a parent until its own manager deliberately opts
+            in, so the "Parent project" picker isn't cluttered with every
+            project in the org and a project's manager makes an explicit
+            choice before taking on the responsibility. Enforced server-side
+            (`routers.projects.create_project`/`update_project` 400 if the
+            target parent has this `False`), not just a UI-side filter — see
+            docs/decisions.md. Turning this back `False` on a project that
+            already has children does not retroactively detach them, the
+            same "changes apply going forward, not retroactively" principle
+            `role_inheritance_mode` already follows; it only blocks *new*
+            children from attaching.
     """
 
     __tablename__ = "projects"
@@ -102,6 +116,7 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     )
     role_inheritance_filter_role: Mapped[ProjectRole | None] = mapped_column(str_enum(ProjectRole), nullable=True)
     parent_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_be_parent: Mapped[bool] = mapped_column(Boolean, default=False)
     next_requirement_seq: Mapped[int] = mapped_column(Integer, default=1)
     next_action_seq: Mapped[int] = mapped_column(Integer, default=1)
     status_id: Mapped[uuid.UUID] = mapped_column(

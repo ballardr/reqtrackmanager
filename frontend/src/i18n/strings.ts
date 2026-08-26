@@ -349,6 +349,11 @@ const en = {
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
     isTemplate: "Usable as a {project} template",
+    // Hierarchical projects (docs/decisions.md): opt-in eligibility gate —
+    // other {projects}' managers can only select this one as a parent once
+    // this is enabled.
+    canBeParent: "Allow this {project} to be a parent",
+    canBeParentHint: "Other {projects} can only be nested under this one once this is enabled.",
     visibility: "Visibility",
     visibilityOnlySpecified: "Only specified",
     visibilityOrgWide: "Org-wide visibility",

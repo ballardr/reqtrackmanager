@@ -123,6 +123,10 @@ export function ProjectAdminPage() {
   const [parentProjectId, setParentProjectId] = useState("");
   const [roleInheritanceMode, setRoleInheritanceMode] = useState<ProjectRoleInheritanceMode>("none");
   const [roleInheritanceFilterRole, setRoleInheritanceFilterRole] = useState<ProjectRole>("project_manager");
+  // Whether *this* project may be selected as a parent for other projects —
+  // defaults off; a project's own manager opts in explicitly (see
+  // Project.can_be_parent's docstring, docs/decisions.md).
+  const [canBeParent, setCanBeParent] = useState(false);
   const [pendingInheritMode, setPendingInheritMode] = useState<ProjectRoleInheritanceMode | null>(null);
   const [orgProjects, setOrgProjects] = useState<ProjectListItem[]>([]);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -203,6 +207,7 @@ export function ProjectAdminPage() {
       setParentProjectId(p.parent_project_id ?? "");
       setRoleInheritanceMode(p.role_inheritance_mode);
       if (p.role_inheritance_filter_role) setRoleInheritanceFilterRole(p.role_inheritance_filter_role);
+      setCanBeParent(p.can_be_parent);
     }
     if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
@@ -285,6 +290,7 @@ export function ProjectAdminPage() {
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
         role_inheritance_filter_role: roleInheritanceMode === "mirror_role" ? roleInheritanceFilterRole : null,
+        can_be_parent: canBeParent,
       });
       settingsDirtyRef.current = false;
       reload();
@@ -306,8 +312,20 @@ export function ProjectAdminPage() {
     }
   }
 
-  const parentOptions = orgProjects.filter((p) => !p.is_archived && p.id !== projectId);
+  // can_be_parent-gated (docs/decisions.md) — but the project's *currently*
+  // attached parent always stays selectable even if its own eligibility was
+  // since turned off, so an already-established relationship never renders
+  // as an unselectable/blank value.
+  const parentOptions = orgProjects.filter(
+    (p) => !p.is_archived && p.id !== projectId && (p.can_be_parent || p.id === parentProjectId),
+  );
   const selectedParent = orgProjects.find((p) => p.id === parentProjectId);
+  // Nothing to show: no eligible candidate to pick, and no parent currently
+  // set to display/manage — matches this project's own "don't render a
+  // field with nothing meaningful in it" principle (see docs/decisions.md's
+  // visibility-boundary rule for the analogous "Child of:"/"Parent of:"
+  // labels).
+  const showParentField = parentOptions.length > 0 || parentProjectId !== "";
   const childCandidates = childProjects.filter((c) => !memberSources.some((ms) => ms.source_project_id === c.id));
 
   async function addMemberSource() {
@@ -640,9 +658,15 @@ export function ProjectAdminPage() {
         {/* "Add sub-project" (decision 8, docs/decisions.md) — the
             create-project flow itself lives on ProjectListPage, so this
             navigates there with the parent pre-filled/locked rather than
-            duplicating that modal's logic here. */}
+            duplicating that modal's logic here. Disabled until this
+            project has opted in to being a parent (can_be_parent) — the
+            saved server value, not the settings tab's own possibly-
+            unsaved checkbox edit, since a click here leads straight to a
+            create flow the backend would otherwise reject. */}
         <button
           className="btn"
+          disabled={!project.can_be_parent}
+          title={project.can_be_parent ? undefined : strings.admin.canBeParentHint}
           onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
         >
           <Plus size={14} /> {strings.projects.addSubProject}
@@ -732,69 +756,92 @@ export function ProjectAdminPage() {
           </select>
         </label>
 
-        {/* Hierarchical projects (docs/decisions.md). The current parent's
-            name is always shown plainly here (unlike ProjectListPage's
-            list/tile "Child of:" label, which redacts a parent the viewer
-            can't see) — a project's own manager needs to see and manage
-            this relationship to do their job, and already holds the
-            highest level of authority over it. Rely on the server-side
-            cycle check rather than excluding descendants client-side. */}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.projects.parentProject}
-          <select
-            className="input"
-            value={parentProjectId}
+        {/* Hierarchical projects (docs/decisions.md). Always visible
+            regardless of whether this project currently has (or could
+            have) a parent of its own — it's the opt-in mechanism other
+            projects' managers need before this project appears in *their*
+            "Parent project" picker at all. */}
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={canBeParent}
             onChange={(e) => {
               settingsDirtyRef.current = true;
-              setParentProjectId(e.target.value);
-              // Changing the parent while an elevated inheritance mode is
-              // set must not silently carry that mode's confirmation over
-              // to a *different* parent's role-holders — reset to "none"
-              // (the safe default) so re-selecting MIRROR_ALL/MIRROR_ROLE
-              // for the new parent goes back through
-              // requestInheritModeChange's own confirmation dialog, which
-              // will then correctly name the new parent.
-              if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                setRoleInheritanceMode("none");
-              }
+              setCanBeParent(e.target.checked);
             }}
-          >
-            <option value="">{strings.projects.noParent}</option>
-            {parentOptions.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          />
+          {strings.admin.canBeParent}
         </label>
-        {parentProjectId && (
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.canBeParentHint}</p>
+        {/* The current parent's name is always shown plainly here (unlike
+            ProjectListPage's list/tile "Child of:" label, which redacts a
+            parent the viewer can't see) — a project's own manager needs to
+            see and manage this relationship to do their job, and already
+            holds the highest level of authority over it. Rely on the
+            server-side cycle check rather than excluding descendants
+            client-side. Hidden entirely when there's nothing eligible to
+            pick and no parent currently set — an empty "Parent project"
+            picker with only "None" in it is confusing, not useful. */}
+        {showParentField && (
           <>
             <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.inheritFromParent}
+              {strings.projects.parentProject}
               <select
                 className="input"
-                value={roleInheritanceMode}
-                onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+                value={parentProjectId}
+                onChange={(e) => {
+                  settingsDirtyRef.current = true;
+                  setParentProjectId(e.target.value);
+                  // Changing the parent while an elevated inheritance mode is
+                  // set must not silently carry that mode's confirmation over
+                  // to a *different* parent's role-holders — reset to "none"
+                  // (the safe default) so re-selecting MIRROR_ALL/MIRROR_ROLE
+                  // for the new parent goes back through
+                  // requestInheritModeChange's own confirmation dialog, which
+                  // will then correctly name the new parent.
+                  if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                    setRoleInheritanceMode("none");
+                  }
+                }}
               >
-                {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
-                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                <option value="">{strings.projects.noParent}</option>
+                {parentOptions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </label>
-            {roleInheritanceMode === "mirror_role" && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.projects.inheritModeFilterRole}
-                <select
-                  className="input"
-                  value={roleInheritanceFilterRole}
-                  onChange={(e) => {
-                    settingsDirtyRef.current = true;
-                    setRoleInheritanceFilterRole(e.target.value as ProjectRole);
-                  }}
-                >
-                  <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                  <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                  <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                </select>
-              </label>
+            {parentProjectId && (
+              <>
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.projects.inheritFromParent}
+                  <select
+                    className="input"
+                    value={roleInheritanceMode}
+                    onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+                  >
+                    {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
+                      <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                    ))}
+                  </select>
+                </label>
+                {roleInheritanceMode === "mirror_role" && (
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.projects.inheritModeFilterRole}
+                    <select
+                      className="input"
+                      value={roleInheritanceFilterRole}
+                      onChange={(e) => {
+                        settingsDirtyRef.current = true;
+                        setRoleInheritanceFilterRole(e.target.value as ProjectRole);
+                      }}
+                    >
+                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                    </select>
+                  </label>
+                )}
+              </>
             )}
           </>
         )}

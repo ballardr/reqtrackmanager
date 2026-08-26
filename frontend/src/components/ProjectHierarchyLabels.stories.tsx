@@ -10,8 +10,8 @@ function project(overrides: Partial<ProjectListItem>): ProjectListItem {
     id: "p1", organization_id: "org-1", name: "Project", summary: "", created_at: "", updated_at: "",
     is_archived: false, is_template: false, allow_member_change_requests: true, visibility: "only_specified",
     terminology: {}, status_id: "s1", parent_project_id: null, role_inheritance_mode: "none",
-    role_inheritance_filter_role: null, current_stage_name: null, current_stage_status: null, my_roles: [],
-    is_favorite: false, organization_name: "Acme", requirement_count: 0, children: [],
+    role_inheritance_filter_role: null, can_be_parent: false, current_stage_name: null, current_stage_status: null,
+    my_roles: [], is_favorite: false, organization_name: "Acme", requirement_count: 0, children: [],
     ...overrides,
   };
 }

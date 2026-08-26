@@ -301,5 +301,44 @@ export const CreateProjectImportFileHidesTemplateWithNote: Story = {
   },
 };
 
+/** can_be_parent (docs/decisions.md) defaults to false — with nothing
+ * eligible in the org, the "Parent project" field doesn't render at all
+ * rather than showing a picker with only "None" in it. */
+export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+  },
+};
+
+/** Once at least one project in the org has opted in (can_be_parent), the
+ * field appears and offers it. */
+export const CreateProjectOffersEligibleParent: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({})],
+      projects: [...singleOrgProjects, buildProjectListItem({ id: "p3", name: "Eligible Parent", organization_id: "org-1", organization_name: "Acme Corp", can_be_parent: true })],
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).getByText("Parent project")).toBeInTheDocument();
+    // Not offered: opted-out sibling projects.
+    await expect(within(dialog).queryByRole("option", { name: "Beacon Mobile" })).not.toBeInTheDocument();
+    await expect(within(dialog).getByRole("option", { name: "Eligible Parent" })).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...SingleOrgTilesView, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...SingleOrgTilesView, globals: { theme: "dark" } };

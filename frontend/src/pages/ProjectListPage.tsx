@@ -266,8 +266,17 @@ export function ProjectListPage() {
   // adjusting for this different context) that made a pre-selected parent
   // (e.g. via "Add sub-project") permanently unable to render as selected,
   // since its own <option> never existed in the list at all.
-  const parentOptions = allProjects.filter((p) => p.organization_id === newOrgId && !p.is_archived);
+  // can_be_parent-gated (docs/decisions.md) — a project isn't eligible to
+  // be a parent until its own manager opts in; `p.id === parentProjectId`
+  // keeps a pre-filled selection (via "Add sub-project") selectable even
+  // in the edge case of a stale/manually-crafted URL.
+  const parentOptions = allProjects.filter(
+    (p) => p.organization_id === newOrgId && !p.is_archived && (p.can_be_parent || p.id === parentProjectId),
+  );
   const selectedParent = allProjects.find((p) => p.id === parentProjectId);
+  // Nothing eligible to pick — hide the field entirely rather than show a
+  // picker with only "None" in it (see ProjectAdminPage's identical rule).
+  const showParentField = parentOptions.length > 0 || parentProjectId !== "";
 
   return (
     <div className="stack">
@@ -347,54 +356,61 @@ export function ProjectListPage() {
               </select>
             </label>
             <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.parentProject}
-              <select
-                className="input"
-                value={parentProjectId}
-                onChange={(e) => {
-                  setParentProjectId(e.target.value);
-                  // Same reasoning as ProjectAdminPage.tsx's parent select:
-                  // don't let a mode confirmed for one candidate parent
-                  // silently carry over to a different one before submit.
-                  if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                    setRoleInheritanceMode("none");
-                  }
-                }}
-              >
-                <option value="">{strings.projects.noParent}</option>
-                {parentOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            {parentProjectId && (
+            {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
+                when there's nothing eligible to pick, rather than showing a
+                picker with only "None" in it. */}
+            {showParentField && (
               <>
                 <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.projects.inheritFromParent}
+                  {strings.projects.parentProject}
                   <select
                     className="input"
-                    value={roleInheritanceMode}
-                    onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+                    value={parentProjectId}
+                    onChange={(e) => {
+                      setParentProjectId(e.target.value);
+                      // Same reasoning as ProjectAdminPage.tsx's parent select:
+                      // don't let a mode confirmed for one candidate parent
+                      // silently carry over to a different one before submit.
+                      if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                        setRoleInheritanceMode("none");
+                      }
+                    }}
                   >
-                    {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
-                      <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                    <option value="">{strings.projects.noParent}</option>
+                    {parentOptions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </label>
-                {roleInheritanceMode === "mirror_role" && (
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.projects.inheritModeFilterRole}
-                    <select
-                      className="input"
-                      value={roleInheritanceFilterRole}
-                      onChange={(e) => setRoleInheritanceFilterRole(e.target.value as ProjectRole)}
-                    >
-                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                    </select>
-                  </label>
+                {parentProjectId && (
+                  <>
+                    <label className="stack" style={{ gap: "0.25rem" }}>
+                      {strings.projects.inheritFromParent}
+                      <select
+                        className="input"
+                        value={roleInheritanceMode}
+                        onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
+                      >
+                        {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
+                          <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {roleInheritanceMode === "mirror_role" && (
+                      <label className="stack" style={{ gap: "0.25rem" }}>
+                        {strings.projects.inheritModeFilterRole}
+                        <select
+                          className="input"
+                          value={roleInheritanceFilterRole}
+                          onChange={(e) => setRoleInheritanceFilterRole(e.target.value as ProjectRole)}
+                        >
+                          <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                          <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                          <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                        </select>
+                      </label>
+                    )}
+                  </>
                 )}
               </>
             )}

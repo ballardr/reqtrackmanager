@@ -89,7 +89,7 @@ def assign_org_role(org_admin_headers: dict, org_id: str, user_id: str, role: st
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None,
-    role_inheritance_filter_role: str | None = None,
+    role_inheritance_filter_role: str | None = None, can_be_parent: bool = False,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
     if parent_project_id is not None:
@@ -98,6 +98,8 @@ def create_project(
         payload["role_inheritance_mode"] = role_inheritance_mode
     if role_inheritance_filter_role is not None:
         payload["role_inheritance_filter_role"] = role_inheritance_filter_role
+    if can_be_parent:
+        payload["can_be_parent"] = True
     r = httpx.post(f"{BASE}/projects", json=payload, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
@@ -315,11 +317,18 @@ def main() -> None:
     alpha2 = create_project(h_ab, alpha["id"], "Alpha-2 Sensor Fusion Platform", "E2E seed project.")
     beta1 = create_project(h_ab, beta["id"], "Beta-1 Billing Engine", "E2E seed project.")
     beta2 = create_project(h_ab, beta["id"], "Beta-2 Customer Portal", "E2E seed project.")
-    gamma1 = create_project(h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.")
+    gamma1 = create_project(
+        h_g, gamma["id"], "Gamma-1 Lab Instrument Suite", "E2E seed project.",
+        # Eligible to be a parent (docs/decisions.md): project-hierarchy.spec.ts's
+        # relaxed-creation-path test creates a sub-project of Gamma-1 live.
+        can_be_parent=True,
+    )
     gamma2 = create_project(h_g, gamma["id"], "Gamma-2 Data Pipeline", "E2E seed project.")
 
     print(f"Creating {GAMMA3_NAME!r} / {GAMMA4_NAME!r} (fixed project-hierarchy fixture for project-hierarchy.spec.ts)...")
-    gamma3 = create_project(h_g, gamma["id"], GAMMA3_NAME, "E2E seed project — hierarchy parent fixture.")
+    gamma3 = create_project(
+        h_g, gamma["id"], GAMMA3_NAME, "E2E seed project — hierarchy parent fixture.", can_be_parent=True,
+    )
     gamma4 = create_project(
         h_g, gamma["id"], GAMMA4_NAME, "E2E seed project — hierarchy child fixture.",
         parent_project_id=gamma3["id"], role_inheritance_mode="mirror_all",

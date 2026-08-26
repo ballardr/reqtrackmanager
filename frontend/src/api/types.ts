@@ -412,6 +412,12 @@ export interface Project {
   parent_project_name?: string | null;
   role_inheritance_mode: ProjectRoleInheritanceMode;
   role_inheritance_filter_role: ProjectRole | null;
+  // Whether *this* project may be selected as a parent for other projects —
+  // defaults to false; a project's own manager must opt in before the
+  // "Parent project" picker elsewhere will offer it. Never redacted (unlike
+  // parent_project_id/parent_project_name above) — it's this project's own
+  // setting, not information about another project.
+  can_be_parent: boolean;
 }
 
 /** One entry in a project's ancestor chain or direct-children list — just

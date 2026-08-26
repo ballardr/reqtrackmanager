@@ -64,6 +64,12 @@ class ProjectCreate(BaseModel):
     parent_project_id: UUID | None = None
     role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
     role_inheritance_filter_role: ProjectRole | None = None
+    # Whether *this new* project should itself be eligible to be selected as
+    # a parent later — see Project.can_be_parent's docstring. Not surfaced
+    # in the standard "New project" form (a settings-tab decision, not a
+    # creation-time one); exists on this schema for API/scripted use, e.g.
+    # seeding a project that's immediately meant to gain children.
+    can_be_parent: bool = False
 
     @field_validator("terminology")
     @classmethod
@@ -105,6 +111,11 @@ class ProjectOut(BaseModel):
     parent_project_name: str | None = None
     role_inheritance_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.NONE
     role_inheritance_filter_role: ProjectRole | None = None
+    # Whether *this* project may be selected as a parent for other projects
+    # — see Project.can_be_parent's docstring. Unlike parent_project_id/
+    # parent_project_name above, never redacted: it says nothing about any
+    # other project's identity, just this one's own setting.
+    can_be_parent: bool = False
 
 
 class ProjectImportResult(BaseModel):
@@ -145,6 +156,7 @@ class ProjectUpdate(BaseModel):
     parent_project_id: UUID | None = None
     role_inheritance_mode: ProjectRoleInheritanceMode | None = None
     role_inheritance_filter_role: ProjectRole | None = None
+    can_be_parent: bool | None = None
 
 
 class TerminologyUpdate(BaseModel):
