@@ -43,7 +43,16 @@ test("Create & attach files/links advances to an attach-files-and-links step, th
   await softwareRow.getByPlaceholder("Name").fill("Performance");
   await softwareRow.getByPlaceholder("Prefix").fill("PERF");
   await softwareRow.getByRole("button", { name: "New category" }).click();
+  // Note: this locator also matches the still-open "New category" name
+  // input itself (it too has value="Performance" the instant it's filled,
+  // well before the create request resolves) — visible from the moment
+  // it's typed, so on its own this assertion proves nothing about the
+  // create having finished. The networkidle wait below is what actually
+  // closes that gap; without it, Requirements can navigate/reload before
+  // the category exists server-side and permanently render its
+  // no-components-or-categories fallback instead of the real create form.
   await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
+  await page.waitForLoadState("networkidle");
 
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByRole("button", { name: "New requirement" }).click();
@@ -94,7 +103,12 @@ test("plain Create closes the modal immediately, unchanged", async ({ page }) =>
   await softwareRow.getByPlaceholder("Name").fill("Performance");
   await softwareRow.getByPlaceholder("Prefix").fill("PERF");
   await softwareRow.getByRole("button", { name: "New category" }).click();
+  // See the sibling test above: this locator also matches the still-open
+  // "New category" name input (visible with this value the instant it's
+  // typed, before the create request resolves), so the networkidle wait
+  // is what actually guarantees the category exists before navigating away.
   await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
+  await page.waitForLoadState("networkidle");
 
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByRole("button", { name: "New requirement" }).click();
