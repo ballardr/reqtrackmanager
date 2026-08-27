@@ -1433,25 +1433,28 @@ export function OrgAdminPage() {
                   {outsideDomainUsers.length === 0 ? (
                     <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>
                   ) : (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>{strings.orgAdmin.email}</th>
-                          <th>{strings.orgAdmin.name}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {outsideDomainUsers.map((u) => (
-                          <tr key={u.user_id}>
-                            <td>{u.email}</td>
-                            <td>{u.display_name}</td>
+                    <div style={{ overflowX: "auto" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>{strings.orgAdmin.email}</th>
+                            <th>{strings.orgAdmin.name}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {outsideDomainUsers.map((u) => (
+                            <tr key={u.user_id}>
+                              <td>{u.email}</td>
+                              <td>{u.display_name}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               )}
+              <div style={{ overflowX: "auto" }}>
               <table>
                 <thead>
                   <tr>
@@ -1529,6 +1532,7 @@ export function OrgAdminPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
               <LoadMoreButton loaded={users.length} total={usersTotal} onClick={() => loadUsers(userFilter, userSearch, users.length, true)} />
             </CollapsibleSection>
 

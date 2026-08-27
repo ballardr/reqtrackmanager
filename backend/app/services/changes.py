@@ -50,12 +50,31 @@ def get_project_changes(
     """
     entries: list[ChangeEntryOut] = []
 
+    # Every one of these (entity_type, action) pairs is logged by a router
+    # handler that *also* calls `apply_new_version`/`create_requirement` (for
+    # "requirement") or inserts the version-1 `ChangeRequestVersion` row (for
+    # "change_request") in the same request — see requirements.py:196/632/
+    # 768/797/821 and change_requests.py:343-364. The version-history queries
+    # below already synthesize an equivalent, more informative entry for each
+    # of these (carrying `change_note`, e.g. "Approved directly."), so the
+    # generic `AuditEvent` row would otherwise show up a second time for the
+    # same transition (UX review: duplicate activity-feed entries).
+    # `archived`/`unarchived`/`review_recorded` (requirement) and
+    # `submitted`/`withdrawn`/approve-reject (change_request) don't bump a
+    # version and are unaffected.
+    VERSION_HISTORY_COVERED_ACTIONS: dict[str, set[str]] = {
+        "requirement": {"created", "updated", "approved", "completed", "uncompleted"},
+        "change_request": {"created"},
+    }
+
     audit_query = select(AuditEvent).where(AuditEvent.project_id == project_id)
     if since is not None:
         audit_query = audit_query.where(AuditEvent.created_at >= since)
     if until is not None:
         audit_query = audit_query.where(AuditEvent.created_at <= until)
     for event in db.scalars(audit_query).all():
+        if event.action in VERSION_HISTORY_COVERED_ACTIONS.get(event.entity_type, set()):
+            continue
         entries.append(
             ChangeEntryOut(
                 timestamp=event.created_at, entity_type=event.entity_type, entity_id=event.entity_id,

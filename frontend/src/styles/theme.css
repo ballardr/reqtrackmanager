@@ -467,7 +467,11 @@ textarea.input {
    right). Collapses to one column alongside the nav rail below. */
 .side-grid {
   display: grid;
-  grid-template-columns: 1fr 240px;
+  /* minmax(0, 1fr), not a bare 1fr — without the 0 floor, unbreakable wide
+     content in the main column can grow that track past its intended size
+     and push the 240px FilterPanel column off-screen (UX review). The
+     narrow-viewport override below already learned this the same way. */
+  grid-template-columns: minmax(0, 1fr) 240px;
   align-items: start;
   gap: 1rem;
 }

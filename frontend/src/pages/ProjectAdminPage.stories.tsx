@@ -604,6 +604,70 @@ export const EffectiveMembersShowsProvenance: Story = {
   },
 };
 
+/** UX review: the members table is now searchable, matching Org Admin's
+ * Users table's structural pattern (search box + sortable columns) instead
+ * of a bare unsearchable bullet list. */
+export const EffectiveMembersSearchFilters: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      effectiveMembers: [
+        {
+          user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
+          sources: [{ kind: "direct", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null }],
+        },
+        {
+          user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
+          sources: [{ kind: "direct", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+        },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
+    await waitFor(() => expect(canvas.getByText("Priya Shah")).toBeInTheDocument());
+    await expect(canvas.getByText("Sam Lee")).toBeInTheDocument();
+
+    await userEvent.type(canvas.getByPlaceholderText("Search members"), "sam");
+    await expect(canvas.getByText("Sam Lee")).toBeInTheDocument();
+    await expect(canvas.queryByText("Priya Shah")).not.toBeInTheDocument();
+  },
+};
+
+/** Clicking the Email column header sorts the table by email, ascending
+ * then descending — the same `SortableHeader`/`cycleSort` pattern used by
+ * every other sortable table in the app. */
+export const EffectiveMembersSortByEmail: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      effectiveMembers: [
+        {
+          user_id: "u1", display_name: "Priya Shah", email: "zoe@example.com", effective_role: "project_manager",
+          sources: [{ kind: "direct", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null }],
+        },
+        {
+          user_id: "u2", display_name: "Sam Lee", email: "amy@example.com", effective_role: "stakeholder",
+          sources: [{ kind: "direct", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+        },
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
+    await waitFor(() => expect(canvas.getByText("zoe@example.com")).toBeInTheDocument());
+
+    const rows = () => canvas.getAllByRole("row").slice(1); // drop header row
+    await expect(rows()[0]).toHaveTextContent("zoe@example.com");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() => expect(rows()[0]).toHaveTextContent("amy@example.com"));
+    await expect(canvas.getByRole("columnheader", { name: "Email" })).toHaveAttribute("aria-sort", "ascending");
+  },
+};
+
 export const MaterializeButtonConvertsInheritedAccess: Story = {
   beforeEach: () => {
     mockProjectAdminApis({

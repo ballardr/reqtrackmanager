@@ -1,20 +1,24 @@
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "../api/types";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
-import { DonutChart } from "../components/DonutChart";
 import { Spinner } from "../components/Spinner";
+import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
- * per-stage progress, and a recent activity feed at a glance. */
+ * per-stage progress, and a recent activity feed at a glance. Every
+ * tile/chart-segment/stage-bar navigates to the requirements or change
+ * requests list pre-filtered to match what was clicked (UX review) — see
+ * the `to` path built alongside each metric below. */
 export function ProjectOverviewPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const orgLabelCap = useOrgLabelCapitalized();
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
@@ -36,13 +40,23 @@ export function ProjectOverviewPage() {
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!project || !metrics) return <Spinner />;
 
-  const tiles: Array<[string, string | number]> = [
-    [strings.overview.requirementCount, metrics.requirement_count],
-    [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`],
-    [strings.overview.fileCount, metrics.file_count],
-    [strings.overview.crProposed, metrics.change_requests_proposed],
-    [strings.overview.crApproved, metrics.change_requests_approved],
-    [strings.overview.crRejected, metrics.change_requests_rejected],
+  const requirementsPath = (query?: string) => `/projects/${projectId}/requirements${query ? `?${query}` : ""}`;
+  const changeRequestsPath = (status: string) => `/projects/${projectId}/change-requests?status=${status}`;
+
+  const tiles: Array<[string, string | number, string]> = [
+    [strings.overview.requirementCount, metrics.requirement_count, requirementsPath()],
+    [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`, requirementsPath("status=completed")],
+    [strings.overview.fileCount, metrics.file_count, requirementsPath()],
+    [strings.overview.crProposed, metrics.change_requests_proposed, changeRequestsPath("active")],
+    [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
+    [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],
+  ];
+
+  const statusEntries = Object.entries(metrics.requirements_by_status) as Array<[RequirementStatus, number]>;
+  const crStatusEntries: Array<[string, number]> = [
+    ["active", metrics.change_requests_proposed],
+    ["approved", metrics.change_requests_approved],
+    ["rejected", metrics.change_requests_rejected],
   ];
 
   return (
@@ -57,33 +71,39 @@ export function ProjectOverviewPage() {
         </Link>
       </div>
       <div className="grid grid-metrics">
-        {tiles.map(([label, value]) => (
-          <div key={label} className="card stack" style={{ alignItems: "center", textAlign: "center" }}>
+        {tiles.map(([label, value, to]) => (
+          <Link
+            key={label} to={to} className="card stack"
+            style={{ alignItems: "center", textAlign: "center", textDecoration: "none", color: "inherit" }}
+          >
             <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</div>
             <div className="text-muted">{label}</div>
-          </div>
+          </Link>
         ))}
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-        <DonutChart
+        <StatusPieChart
           title={strings.overview.requirementsByStatus}
-          segments={Object.entries(metrics.requirements_by_status).map(
-            ([status, count]) => [REQUIREMENT_STATUS_LABEL[status as RequirementStatus] ?? status, count] as [string, number]
-          )}
+          segments={statusEntries.map(([status, count]) => [REQUIREMENT_STATUS_LABEL[status] ?? status, count])}
+          onSegmentClick={(_, idx) => navigate(requirementsPath(`status=${statusEntries[idx][0]}`))}
         />
-        <DonutChart
+        <StatusPieChart
           title={strings.overview.changeRequestsChart}
           segments={[
             [strings.overview.crProposed, metrics.change_requests_proposed],
             [strings.overview.crApproved, metrics.change_requests_approved],
             [strings.overview.crRejected, metrics.change_requests_rejected],
           ]}
+          onSegmentClick={(_, idx) => navigate(changeRequestsPath(crStatusEntries[idx][0]))}
         />
         <div className="card stack">
           <div className="text-muted">{strings.overview.stageProgress}</div>
           {metrics.stage_progress.map((s) => (
-            <div key={s.stage_id} className="stack" style={{ gap: "0.2rem" }}>
+            <Link
+              key={s.stage_id} to={requirementsPath(`stage=${s.stage_id}`)}
+              className="stack" style={{ gap: "0.2rem", textDecoration: "none", color: "inherit" }}
+            >
               <div className="row" style={{ justifyContent: "space-between", fontSize: "0.85rem" }}>
                 <span>
                   {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
@@ -99,7 +119,7 @@ export function ProjectOverviewPage() {
                   }}
                 />
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

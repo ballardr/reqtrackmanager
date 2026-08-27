@@ -258,6 +258,12 @@ const en = {
     level: "Level",
     attachmentsLockedNotice: "This {requirement} is approved — new attachments must be added via a {changeRequest}.",
     created: "{Requirement} created",
+    // Create-modal step 2 (UX review: attach files / add links during
+    // creation, not only afterwards from the detail page).
+    attachFilesAndLinks: "Attach files & links",
+    createAndAttach: "Create & attach files/links",
+    noEligibleLinkTargets: "No other {requirements} available to link to yet.",
+    finish: "Finish",
     // Bulk operations (list/table view only) — style guide "Pattern: bulk
     // operations on a list". `bulkSelectRow`/`bulkSelectAll` label the
     // checkbox column (accessible-name parity with the reorder buttons'
@@ -380,6 +386,14 @@ const en = {
     sourceMemberSourceInherited: "Inherited via a sub-{project}",
     materializeAll: "Convert all inherited access to direct roles",
     materializedCount: (n: number) => (n === 0 ? "Nothing to convert — no inherited access to make direct." : `Converted ${n} ${n === 1 ? "user" : "users"} to direct roles.`),
+    // Effective-members table columns (UX review: matches Org Admin's Users
+    // table's searchable/sortable pattern — Source replaces that table's
+    // status/2FA/last-login columns, which don't exist at project scope).
+    email: "Email",
+    role: "Role",
+    source: "Source",
+    searchMembers: "Search members",
+    noMembersFound: "No members match this search.",
     terminology: "Terminology",
     terminologyHint: "Override how these terms are labelled in this {project}'s UI. Leave blank to use the default.",
     // Distinct from `saveSettings` only because Terminology's Save button

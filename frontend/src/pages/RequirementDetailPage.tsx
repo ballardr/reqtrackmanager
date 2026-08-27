@@ -504,6 +504,13 @@ export function RequirementDetailPage() {
 
   if (!requirement) return <Spinner />;
 
+  // UX review: Add Link was always clickable even with nothing left to link
+  // to (every other requirement in the project already linked, or a
+  // single-requirement project) — greyed out below once this is empty.
+  const eligibleLinkTargets = projectRequirements.filter(
+    (r) => r.id !== requirementId && !links.some((l) => l.other_requirement_id === r.id)
+  );
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -804,6 +811,7 @@ export function RequirementDetailPage() {
           </div>
         </div>
         {historyView === "versions" ? (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
@@ -826,6 +834,7 @@ export function RequirementDetailPage() {
               ))}
             </tbody>
           </table>
+          </div>
         ) : (
           <ActivityPanel entries={activity} bare />
         )}
@@ -869,6 +878,8 @@ export function RequirementDetailPage() {
           <button
             ref={addLinkTriggerRef}
             className="btn btn-primary"
+            disabled={eligibleLinkTargets.length === 0}
+            title={eligibleLinkTargets.length === 0 ? strings.requirements.noEligibleLinkTargets : undefined}
             onClick={() => {
               setLinkError(null);
               setAddLinkPopoverOpen((o) => !o);
@@ -885,9 +896,7 @@ export function RequirementDetailPage() {
                   value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
                 >
                   <option value="">{strings.requirements.selectARequirementToLink}</option>
-                  {projectRequirements
-                    .filter((r) => r.id !== requirementId)
-                    .map((r) => (
+                  {eligibleLinkTargets.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.unique_code} — {r.name}
                       </option>

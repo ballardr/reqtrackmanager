@@ -1,15 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
-import { DonutChart } from "./DonutChart";
+import { StatusPieChart } from "./StatusPieChart";
 
-const meta: Meta<typeof DonutChart> = {
-  title: "Components/DonutChart",
-  component: DonutChart,
+const meta: Meta<typeof StatusPieChart> = {
+  title: "Components/StatusPieChart",
+  component: StatusPieChart,
 };
 export default meta;
 
-type Story = StoryObj<typeof DonutChart>;
+type Story = StoryObj<typeof StatusPieChart>;
 
 export const RequirementsByStatus: Story = {
   args: {
@@ -30,15 +30,31 @@ export const RequirementsByStatus: Story = {
   },
 };
 
-/** Every count zero: the component must not divide by zero and must still
- * render a legend (mirrors a brand-new project with no requirements yet). */
+/** Every count zero: must not divide by zero and must still render a
+ * legend (mirrors a brand-new project with no requirements yet). */
 export const Empty: Story = {
   args: { title: "Change requests", segments: [["Draft", 0]] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Both the centre total and the "Draft" row's own count render "0" —
-    // assert there are exactly the two expected instances.
     await expect(canvas.getAllByText("0")).toHaveLength(2);
+  },
+};
+
+/** Clicking a legend row (the dashboard's click-to-filter navigation,
+ * UX review) fires `onSegmentClick` with the clicked segment's label. */
+export const Clickable: Story = {
+  args: {
+    title: "Requirements by status",
+    segments: [
+      ["Draft", 8],
+      ["Approved", 12],
+    ],
+    onSegmentClick: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Approved/ }));
+    await expect(args.onSegmentClick).toHaveBeenCalledWith("Approved", 1);
   },
 };
 

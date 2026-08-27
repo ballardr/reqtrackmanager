@@ -35,6 +35,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { Tabs, tabPanelProps } from "../components/Tabs";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -135,6 +136,8 @@ export function ProjectAdminPage() {
   const [addSourceId, setAddSourceId] = useState("");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
   const [materializing, setMaterializing] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberSort, setMemberSort] = useState<SortState<"email" | "display_name"> | null>(null);
   // Guards the two field groups above against `reload()` — called after
   // every unrelated mutation on this page (adding/deleting a custom
   // field, stage/component/category CRUD, action-type CRUD, ...; 33 call
@@ -250,6 +253,10 @@ export function ProjectAdminPage() {
   async function reloadEffectiveMembers() {
     if (!projectId) return;
     setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
+  }
+
+  function applyMemberSort(key: "email" | "display_name") {
+    setMemberSort((current) => cycleSort(current, key));
   }
 
   async function saveReportConfig() {
@@ -639,6 +646,23 @@ export function ProjectAdminPage() {
   const [tab, setTab] = useState<"overview" | "structure" | "fieldsActions" | "groups" | "reportSetup">("overview");
 
   if (!stages || !project) return <Spinner />;
+
+  // UX review: the project members list is now a searchable, sortable table
+  // matching Org Admin's Users table's structural pattern — Source (direct
+  // vs. inherited, and via what) stands in for the org table's status/2FA/
+  // last-login columns, which aren't meaningful at project scope (see
+  // `EffectiveMember`'s fields — no account-level data, only role +
+  // provenance is fetched for a project's members).
+  const filteredSortedMembers = (effectiveMembers ?? [])
+    .filter((m) => {
+      const q = memberSearch.trim().toLowerCase();
+      return !q || m.display_name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (!memberSort) return 0;
+      const dir = memberSort.direction === "asc" ? 1 : -1;
+      return a[memberSort.key].localeCompare(b[memberSort.key]) * dir;
+    });
 
   const tabs: { key: typeof tab; label: string }[] = [
     { key: "overview", label: strings.admin.settings },
@@ -1375,32 +1399,60 @@ export function ProjectAdminPage() {
           )}
           {effectiveMembers && (
             <>
-              <button
-                className="btn"
-                style={{ alignSelf: "flex-start" }}
-                onClick={materializeInheritedAccess}
-                disabled={materializing}
-              >
-                {strings.admin.materializeAll}
-              </button>
-              <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                {effectiveMembers.map((m) => (
-                  <li key={m.user_id} style={{ listStyle: "disc" }}>
-                    <strong>{m.display_name}</strong> ({m.email}) — {PROJECT_ROLE_LABEL[m.effective_role]}
-                    <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                      {m.sources.map((s, i) => (
-                        <li key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
-                          {s.kind === "direct" && strings.admin.sourceDirect}
-                          {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
-                            strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
-                          {s.kind === "member_source_inherited" && strings.admin.sourceMemberSourceInherited}
-                          {" "}({PROJECT_ROLE_LABEL[s.role]})
-                        </li>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <input
+                  className="input"
+                  style={{ maxWidth: 320 }}
+                  placeholder={strings.admin.searchMembers}
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+                <button
+                  className="btn"
+                  onClick={materializeInheritedAccess}
+                  disabled={materializing}
+                >
+                  {strings.admin.materializeAll}
+                </button>
+              </div>
+              {filteredSortedMembers.length === 0 ? (
+                <p className="text-muted">{strings.admin.noMembersFound}</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <SortableHeader label={strings.admin.email} sortKey="email" sort={memberSort} onSort={applyMemberSort} />
+                        <SortableHeader label={strings.admin.name} sortKey="display_name" sort={memberSort} onSort={applyMemberSort} />
+                        <th>{strings.admin.role}</th>
+                        <th>{strings.admin.source}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSortedMembers.map((m) => (
+                        <tr key={m.user_id}>
+                          <td>{m.email}</td>
+                          <td>{m.display_name}</td>
+                          <td>{PROJECT_ROLE_LABEL[m.effective_role]}</td>
+                          <td>
+                            <div className="stack" style={{ gap: "0.15rem" }}>
+                              {m.sources.map((s, i) => (
+                                <span key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
+                                  {s.kind === "direct" && strings.admin.sourceDirect}
+                                  {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
+                                    strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
+                                  {s.kind === "member_source_inherited" && strings.admin.sourceMemberSourceInherited}
+                                  {" "}({PROJECT_ROLE_LABEL[s.role]})
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
                       ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </CollapsibleSection>

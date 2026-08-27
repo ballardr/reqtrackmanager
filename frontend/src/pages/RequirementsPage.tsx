@@ -7,12 +7,15 @@ import type {
   Category,
   Component,
   CustomFieldDefinition,
+  FileAsset,
+  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
   Requirement,
   RequirementImportResult,
   RequirementLevel,
+  RequirementLink,
   RequirementStatus,
 } from "../api/types";
 import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
@@ -20,6 +23,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { FileAttachmentList } from "../components/FileAttachmentList";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -105,6 +109,21 @@ export function RequirementsPage() {
   const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
   const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
+
+  // --- Create-modal step 2: attach files / add links to the just-created
+  // requirement (UX review — previously only possible after closing the
+  // modal and opening the detail page). Mirrors RequirementDetailPage's own
+  // files/links state and handlers, scoped to `createdRequirement`. -------
+  const [createdRequirement, setCreatedRequirement] = useState<Requirement | null>(null);
+  const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
+  const [createdLinks, setCreatedLinks] = useState<RequirementLink[]>([]);
+  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
+  const [allProjectRequirements, setAllProjectRequirements] = useState<Requirement[]>([]);
+  const [newLinkTargetId, setNewLinkTargetId] = useState("");
+  const [newLinkTypeId, setNewLinkTypeId] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
+  const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
@@ -201,6 +220,24 @@ export function RequirementsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Deep-linked from the Project Overview dashboard's glance tiles/pie-chart
+  // segments/stage-progress bars (UX review: clicking a widget should land
+  // here pre-filtered to match it) — seeded once, then stripped so a later
+  // reload of this page doesn't keep reapplying a stale filter.
+  useEffect(() => {
+    const status = searchParams.get("status");
+    const stage = searchParams.get("stage");
+    if (!status && !stage) return;
+    if (status) setStatusFilter(status as RequirementStatus);
+    if (stage) setTargetStageFilter(stage);
+    setSearchParams((params) => {
+      params.delete("status");
+      params.delete("stage");
+      return params;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     if (!projectId || !user) return;
     (async () => {
@@ -247,10 +284,22 @@ export function RequirementsPage() {
     }
   }
 
-  async function createRequirement() {
+  /**
+   * `andAttach`: when true (the "Create & attach files/links" action, UX
+   * review — attaching should be possible during creation, not only
+   * afterwards from the detail page), the modal advances to a second step
+   * against the just-created requirement's real id instead of closing —
+   * the backend's file/link endpoints require an existing id, so this
+   * reuses them rather than building a pre-create staging flow. The plain
+   * "Create" action keeps closing the modal immediately, unchanged — most
+   * creates don't need an attachment, and every existing workflow (the
+   * golden path included) depends on that one-click-and-back-to-the-list
+   * behaviour, so the extra step is opt-in rather than forced on every create.
+   */
+  async function createRequirement(andAttach: boolean) {
     if (!projectId || !newComponentId || !newCategoryId || !newTargetStageId) return;
     try {
-      await api.post(`/api/v1/projects/${projectId}/requirements`, {
+      const created = await api.post<Requirement>(`/api/v1/projects/${projectId}/requirements`, {
         name: newName,
         reasoning: newReasoning,
         description: newDescription,
@@ -266,12 +315,59 @@ export function RequirementsPage() {
       setNewDescription("");
       setNewLevel("requirement");
       setCustomFieldValues({});
-      setShowNewForm(false);
       reload();
       showToast(strings.requirements.created);
+      if (!andAttach) {
+        setShowNewForm(false);
+        return;
+      }
+      setCreatedRequirement(created);
+      setCreatedFiles([]);
+      setCreatedLinks([]);
+      const [reqs, defs] = await Promise.all([
+        api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
+        project ? api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`) : Promise.resolve([]),
+      ]);
+      setAllProjectRequirements(reqs);
+      setLinkTypes(defs);
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
+  }
+
+  async function uploadCreatedRequirementFile(file: File) {
+    if (!projectId || !createdRequirement) return;
+    await api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file);
+    setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
+  }
+
+  async function removeCreatedRequirementFile(fileId: string) {
+    if (!projectId || !createdRequirement) return;
+    await api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`);
+    setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
+  }
+
+  async function addLinkToCreatedRequirement() {
+    if (!projectId || !createdRequirement || !newLinkTargetId || !newLinkTypeId) return;
+    setLinkError(null);
+    try {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`, {
+        target_requirement_id: newLinkTargetId,
+        link_type_id: newLinkTypeId,
+      });
+      setNewLinkTargetId("");
+      setNewLinkTypeId("");
+      setAddLinkPopoverOpen(false);
+      setCreatedLinks(await api.get<RequirementLink[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`));
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : strings.common.error);
+    }
+  }
+
+  function finishCreateRequirement() {
+    setShowNewForm(false);
+    setCreatedRequirement(null);
+    reload();
   }
 
   async function importCsv(file: File) {
@@ -477,8 +573,104 @@ export function RequirementsPage() {
         // Style guide "Pattern: modal dialog for entity create/rename" —
         // a brand-new entity opens in a Modal, not a layer that still
         // occupies the side panel's "detail about the current view" slot.
-        <Modal title={strings.requirements.newRequirement} onClose={() => setShowNewForm(false)} size="lg">
-          {components.length === 0 || categories.length === 0 ? (
+        <Modal
+          title={createdRequirement
+            ? `${createdRequirement.unique_code} — ${strings.requirements.attachFilesAndLinks}`
+            : strings.requirements.newRequirement}
+          onClose={finishCreateRequirement}
+          size="lg"
+        >
+          {createdRequirement ? (
+            <>
+              <div className="stack">
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.attachments}</h3>
+                <FileAttachmentList
+                  files={createdFiles}
+                  onUpload={uploadCreatedRequirementFile}
+                  onRemove={removeCreatedRequirementFile}
+                />
+              </div>
+              <div className="stack">
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.links}</h3>
+                  {(() => {
+                    const eligibleLinkTargets = allProjectRequirements.filter(
+                      (r) => r.id !== createdRequirement.id && !createdLinks.some((l) => l.other_requirement_id === r.id)
+                    );
+                    const noEligibleTargets = eligibleLinkTargets.length === 0;
+                    return (
+                      <>
+                        <button
+                          ref={addLinkTriggerRef}
+                          className="btn btn-primary"
+                          disabled={noEligibleTargets}
+                          title={noEligibleTargets ? strings.requirements.noEligibleLinkTargets : undefined}
+                          onClick={() => {
+                            setLinkError(null);
+                            setAddLinkPopoverOpen((o) => !o);
+                          }}
+                        >
+                          <Plus size={14} /> {strings.requirements.addLink}
+                        </button>
+                        {addLinkPopoverOpen && (
+                          <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
+                            <label className="stack" style={{ gap: "0.25rem" }}>
+                              {strings.requirements.targetRequirement}
+                              <select
+                                className="input" aria-label={strings.requirements.targetRequirement}
+                                value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
+                              >
+                                <option value="">{strings.requirements.selectARequirementToLink}</option>
+                                {eligibleLinkTargets.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.unique_code} — {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="stack" style={{ gap: "0.25rem" }}>
+                              {strings.requirements.linkType}
+                              <select
+                                className="input" aria-label={strings.requirements.linkType}
+                                value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
+                              >
+                                <option value="">{strings.requirements.linkType}</option>
+                                {linkTypes.map((lt) => (
+                                  <option key={lt.id} value={lt.id}>
+                                    {lt.forward_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
+                            <div className="row" style={{ justifyContent: "flex-end" }}>
+                              <button className="btn" onClick={() => setAddLinkPopoverOpen(false)}>
+                                {strings.common.cancel}
+                              </button>
+                              <button className="btn btn-primary" onClick={addLinkToCreatedRequirement} disabled={!newLinkTargetId || !newLinkTypeId}>
+                                {strings.requirements.addLink}
+                              </button>
+                            </div>
+                          </Popover>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+                {createdLinks.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
+                {createdLinks.map((l) => (
+                  <div key={l.id} className="row" style={{ justifyContent: "space-between" }}>
+                    <span>{l.display_name}: {l.other_requirement_unique_code} — {l.other_requirement_name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button className="btn btn-primary" onClick={finishCreateRequirement}>
+                  {strings.requirements.finish}
+                </button>
+              </div>
+            </>
+          ) : components.length === 0 || categories.length === 0 ? (
             <>
               <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
               {canManageProject ? (
@@ -633,13 +825,22 @@ export function RequirementsPage() {
                 values={customFieldValues}
                 onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
               />
-              <button
-                className="btn btn-primary"
-                onClick={createRequirement}
-                disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
-              >
-                {strings.common.create}
-              </button>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button
+                  className="btn"
+                  onClick={() => createRequirement(true)}
+                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
+                >
+                  {strings.requirements.createAndAttach}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => createRequirement(false)}
+                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
+                >
+                  {strings.common.create}
+                </button>
+              </div>
             </>
           )}
         </Modal>
