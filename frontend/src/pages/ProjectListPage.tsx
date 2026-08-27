@@ -527,7 +527,13 @@ export function ProjectListPage() {
                       {stageBadgeText(p.current_stage_name, p.current_stage_status)}
                     </FilterBadge>
                   )}
-                  <p className="text-muted" style={{ margin: 0, flex: 1 }}>
+                  <p
+                    className="text-muted"
+                    style={{
+                      margin: 0, marginTop: "0.15rem", flex: 1,
+                      display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                    }}
+                  >
                     {p.summary || "—"}
                   </p>
                   <div className="text-muted" style={{ fontSize: "0.85rem" }}>
@@ -572,7 +578,13 @@ export function ProjectListPage() {
                       </td>
                       <td>
                         <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                        <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                        <div
+                          className="text-muted"
+                          style={{
+                            fontSize: "0.85rem", marginTop: "0.15rem",
+                            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                          }}
+                        >
                           {p.summary || "—"}
                         </div>
                         <ProjectHierarchyLabels project={p} />

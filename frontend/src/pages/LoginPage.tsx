@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
+import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 
@@ -43,9 +44,19 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loginBackgroundFileId, setLoginBackgroundFileId] = useState<string | null>(null);
   const [signupAvailable, setSignupAvailable] = useState(false);
+  // Platform-default branding (U-C-02) — this page is pre-auth/outside
+  // BrandingProvider (no org/project context to resolve an org's own
+  // branding against), so it falls back straight to the deployment-wide
+  // default, same fields `BrandingContext`'s own serverDefault uses.
+  const [brandLogoFileId, setBrandLogoFileId] = useState<string | null>(null);
+  const [brandTitle, setBrandTitle] = useState(strings.appName);
 
   useEffect(() => {
-    api.get<ServerSettings>("/api/v1/system/branding").then((s) => setLoginBackgroundFileId(s.default_login_background_file_id));
+    api.get<ServerSettings>("/api/v1/system/branding").then((s) => {
+      setLoginBackgroundFileId(s.default_login_background_file_id);
+      setBrandLogoFileId(s.default_logo_file_id);
+      setBrandTitle(s.default_header_title || strings.appName);
+    });
     api.get<SignupConfig>("/api/v1/system/signup-config").then((c) => setSignupAvailable(c.signup_mode !== "disabled"));
   }, []);
 
@@ -96,7 +107,8 @@ export function LoginPage() {
       <div style={backgroundStyle}>
       <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
         <form className="card stack" onSubmit={handleVerify2fa}>
-          <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.login.twoFactorTitle}</h1>
+          <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.twoFactorTitle}</h2>
           <p className="text-muted">{strings.login.twoFactorPrompt}</p>
           <label className="stack" style={{ gap: "0.25rem" }}>
             {strings.login.twoFactorCode}
@@ -123,7 +135,8 @@ export function LoginPage() {
     <div style={backgroundStyle}>
     <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
       <form className="card stack" onSubmit={handleSubmit}>
-        <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.login.title}</h1>
+        <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.title}</h2>
         {reauthMessage && <div className="text-muted">{reauthMessage}</div>}
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.login.email}

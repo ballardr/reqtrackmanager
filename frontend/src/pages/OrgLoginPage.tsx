@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, apiUrl, fileUrl } from "../api/client";
 import type { OrgLoginInfo } from "../api/types";
+import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
@@ -107,10 +108,7 @@ export function OrgLoginPage() {
     <div style={backgroundStyle}>
       <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
         <div className="card stack">
-          {info.logo_file_id && (
-            <img src={fileUrl(info.logo_file_id)} alt="" style={{ height: 40, alignSelf: "center" }} />
-          )}
-          <h1 style={{ margin: 0, fontSize: "1.4rem", textAlign: "center" }}>{info.name}</h1>
+          <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} />
 
           {info.sso_enabled && (
             <a

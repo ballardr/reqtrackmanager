@@ -120,6 +120,76 @@ def test_change_request_activity_entries_always_carry_current_title(client, admi
     assert submitted_entry["detail"]["proposed_name"] == "The Proposal"
 
 
+def test_project_changes_has_no_duplicate_entries_for_version_bumping_actions(client, admin_token, org_id):
+    """Regression (UX review): create/approve/complete/uncomplete/edit each
+    used to produce two feed entries for the same transition — one from the
+    generic AuditEvent and one from the requirement/CR version history.
+    `get_project_changes` now suppresses the redundant AuditEvent row for
+    each of these, keeping exactly one entry per transition."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
+    requirement = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "Req", "component_id": component_id, "category_id": category_id},
+        headers=auth_headers(admin_token),
+    ).json()
+
+    edit_resp = client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}",
+        json={
+            "name": "Req edited", "component_id": component_id, "category_id": category_id, "owner_id": me["id"],
+        },
+        headers=auth_headers(admin_token),
+    )
+    assert edit_resp.status_code == 200, edit_resp.text
+    approve_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
+    complete_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/complete", headers=auth_headers(admin_token)
+    )
+    assert complete_resp.status_code == 200, complete_resp.text
+    uncomplete_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/uncomplete", headers=auth_headers(admin_token)
+    )
+    assert uncomplete_resp.status_code == 200, uncomplete_resp.text
+
+    cr_requirement = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "CR target", "component_id": component_id, "category_id": category_id},
+        headers=auth_headers(admin_token),
+    ).json()
+    approve_cr_target = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{cr_requirement['id']}/approve", headers=auth_headers(admin_token)
+    )
+    assert approve_cr_target.status_code == 200, approve_cr_target.text
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": cr_requirement["id"],
+            "changed_fields": ["name"], "proposed_name": "CR target renamed", "reason": "test",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+
+    changes = client.get(f"/api/v1/projects/{project['id']}/changes", headers=auth_headers(admin_token)).json()
+    req_changes = [c for c in changes if c["entity_type"] == "requirement" and c["entity_id"] == requirement["id"]]
+    cr_changes = [c for c in changes if c["entity_type"] == "change_request" and c["entity_id"] == cr["id"]]
+
+    # Exactly one entry per transition, not two (created, then one "updated"
+    # per edit/approve/complete/uncomplete — apply_new_version synthesizes
+    # "updated" for every non-initial version regardless of the specific
+    # action, so all four post-create transitions collapse to "updated").
+    assert [c["action"] for c in req_changes].count("created") == 1
+    assert [c["action"] for c in req_changes].count("updated") == 4
+    assert len(req_changes) == 5
+
+    assert [c["action"] for c in cr_changes].count("created") == 1
+    assert len(cr_changes) == 1
+
+
 def test_report_filters_by_status_and_component(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])

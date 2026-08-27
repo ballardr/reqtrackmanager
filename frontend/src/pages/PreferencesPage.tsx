@@ -675,6 +675,7 @@ export function PreferencesPage() {
         {pats.filter((p) => !p.revoked_at).length === 0 ? (
           <p className="text-muted">{strings.preferences.patNone}</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
@@ -708,6 +709,7 @@ export function PreferencesPage() {
                 ))}
             </tbody>
           </table>
+          </div>
         )}
         {pats.filter((p) => !p.revoked_at).length > 0 && (
           <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
@@ -815,6 +817,7 @@ export function PreferencesPage() {
       {tab === "notifications" && (
       <div {...tabPanelProps("preferences-tabs", "notifications")} className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.notifications.preferencesTitle}</h2>
+        <div style={{ overflowX: "auto" }}>
         <table>
           <thead>
             <tr>
@@ -859,6 +862,7 @@ export function PreferencesPage() {
             ))}
           </tbody>
         </table>
+        </div>
         <button
           className="btn btn-primary"
           onClick={saveNotificationPrefs}

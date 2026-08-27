@@ -224,6 +224,19 @@ export function ChangeRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Deep-linked from the Project Overview dashboard's CR glance tiles/pie
+  // chart segments (UX review) — seeded once, then stripped.
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (!status) return;
+    setStatusFilter(status as CrStatusFilterValue);
+    setSearchParams((params) => {
+      params.delete("status");
+      return params;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const selectedRequirement = requirements.find((r) => r.id === requirementId) ?? null;
   // A modify-CR can only target an already-locked (approved/completed)
   // requirement (2026-08 UX audit roadmap, same reasoning as the default-

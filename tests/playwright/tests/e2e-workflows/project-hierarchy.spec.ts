@@ -146,7 +146,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       await page.getByRole("tab", { name: "Project groups" }).click();
       await ensureExpanded(page, "Effective members");
       await page.getByRole("button", { name: "Show members" }).click();
-      const memberRow = page.locator("li", { hasText: PERSONAS.projectMgrGamma.name });
+      const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
       await expect(
         memberRow.getByText(/Inherited from '.*Gamma-3 Hierarchy Parent.*' \(mirror all roles\) \(Stakeholder\)/)
@@ -156,7 +156,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("materializing converts that inherited access into a direct role, without dropping the inherited grant", async () => {
       await page.getByRole("button", { name: "Convert all inherited access to direct roles" }).click();
       await expect(page.getByText(/Converted \d+ users? to direct roles\./)).toBeVisible();
-      const memberRow = page.locator("li", { hasText: PERSONAS.projectMgrGamma.name });
+      const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       // A user with both a direct grant and an inherited one shows both
       // sources (docs/decisions.md) — merged text nodes mean an exact
       // "Direct" match can be unreliable, hence the substring regex.
