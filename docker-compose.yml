@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Production-oriented stack: db + minio + backend + frontend, plus an
 # optional observability profile. This is what a real deployment runs (see
 # docs/deployment.md) — it intentionally does NOT include MailHog (a

@@ -268,7 +268,10 @@ def add_requirement_comment(headers: dict, project_id: str, requirement_id: str,
     return r.json()
 
 
-def upload_requirement_attachment(headers: dict, project_id: str, requirement_id: str, filename: str, content: bytes, content_type: str = "text/plain") -> dict:
+def upload_requirement_attachment(
+    headers: dict, project_id: str, requirement_id: str, filename: str, content: bytes,
+    content_type: str = "text/plain",
+) -> dict:
     """Direct requirement attachment (C-M-02) — one of the three sources
     `GET /projects/{id}/files` (ProjectFilesPage) combines into a
     project-wide file list."""
@@ -280,7 +283,10 @@ def upload_requirement_attachment(headers: dict, project_id: str, requirement_id
     return r.json()
 
 
-def upload_action_attachment(headers: dict, project_id: str, action_id: str, filename: str, content: bytes, content_type: str = "application/pdf") -> dict:
+def upload_action_attachment(
+    headers: dict, project_id: str, action_id: str, filename: str, content: bytes,
+    content_type: str = "application/pdf",
+) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/actions/{action_id}/files",
         files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
@@ -289,7 +295,10 @@ def upload_action_attachment(headers: dict, project_id: str, action_id: str, fil
     return r.json()
 
 
-def upload_comment_attachment(headers: dict, project_id: str, requirement_id: str, comment_id: str, filename: str, content: bytes, content_type: str = "text/plain") -> dict:
+def upload_comment_attachment(
+    headers: dict, project_id: str, requirement_id: str, comment_id: str, filename: str,
+    content: bytes, content_type: str = "text/plain",
+) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
         files={"file": (filename, content, content_type)}, headers=headers, timeout=30,

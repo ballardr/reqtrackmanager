@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Local development / test stack: db + minio + mailhog + backend + frontend.
 # This is the stack used to develop locally, to run the backend pytest suite,
 # and to run the Playwright end-to-end suite — it is NOT the production
