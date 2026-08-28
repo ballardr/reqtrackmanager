@@ -18,6 +18,7 @@ import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
+import { ProjectFilesPage } from "./pages/ProjectFilesPage";
 import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
@@ -49,7 +50,7 @@ function ProtectedRoutes() {
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
         <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
-        <Route path="/server/management" element={<ServerManagementPage />} />
+        <Route path="/server/management/:group?" element={<ServerManagementPage />} />
         <Route path="/my-reviews" element={<MyReviewsDuePage />} />
         <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
         <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
@@ -58,11 +59,12 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/change-requests/:crId" element={<ChangeRequestDetailPage />} />
         <Route path="/projects/:projectId/actions" element={<ProjectActionsPage />} />
         <Route path="/projects/:projectId/actions/:actionId" element={<ActionDetailPage />} />
-        <Route path="/projects/:projectId/admin" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
+        <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
-        <Route path="/preferences" element={<PreferencesPage />} />
+        <Route path="/preferences/:group?" element={<PreferencesPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/projects" replace />} />
       </Routes>

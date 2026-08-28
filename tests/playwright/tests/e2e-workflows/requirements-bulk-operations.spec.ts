@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: `RequirementsPage`'s list/table view supports selecting
@@ -43,7 +43,7 @@ test.describe("requirements list: bulk operations", () => {
 
     await test.step("add a second stage to move requirements into later", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Structure" }).click();
+      await selectProjectAdminGroup(page, "Structure");
       await page.getByPlaceholder("Name", { exact: true }).first().fill(stageName);
       // The new stage's name renders into an editable rename `<input>`'s
       // current *value* once created, not as plain text — no DOM text
@@ -130,7 +130,7 @@ test.describe("requirements list: bulk operations", () => {
       // stage was left behind uncleaned. Deleting with `reassign_to` moves
       // both fixture requirements currently on it back to Scoping first.
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Structure" }).click();
+      await selectProjectAdminGroup(page, "Structure");
       const deleteButtons = page.getByRole("button", { name: "Delete this stage" });
       const targetDeleteButton = deleteButtons.last();
       const stageRow = targetDeleteButton.locator(

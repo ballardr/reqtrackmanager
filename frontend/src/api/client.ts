@@ -92,17 +92,29 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.blob()) as unknown as T;
 }
 
-/** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06). */
+/** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06).
+ * `totalUnfiltered` (2026-08 UX audit roadmap: persistent "showing X of Y"
+ * result count) is optional — only the requirements/change-requests/projects
+ * list endpoints send the `X-Total-Unfiltered-Count` header it comes from;
+ * every other paginated endpoint (and every existing test/story mock built
+ * before this field existed) simply omits it, and callers that care fall
+ * back to `total` themselves (see `ResultCount`'s callers). */
 export interface Page<T> {
   items: T[];
   total: number;
+  totalUnfiltered?: number;
 }
 
 async function requestPage<T>(path: string): Promise<Page<T>> {
   const response = await rawRequest(path);
   const items = (await response.json()) as T[];
   const totalHeader = response.headers.get("x-total-count");
-  return { items, total: totalHeader ? Number(totalHeader) : items.length };
+  const totalUnfilteredHeader = response.headers.get("x-total-unfiltered-count");
+  return {
+    items,
+    total: totalHeader ? Number(totalHeader) : items.length,
+    totalUnfiltered: totalUnfilteredHeader ? Number(totalUnfilteredHeader) : undefined,
+  };
 }
 
 export const api = {

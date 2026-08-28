@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: C-C-03's per-project terminology overrides actually reach
@@ -49,7 +49,7 @@ test.describe("terminology overrides reach their own surfaces", () => {
 
     await test.step("Project Admin's custom-fields entity-kind dropdown — the audit's single most visible example", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Fields & actions" }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
       const entityKindSelect = page.getByRole("combobox").first();
       // Default selection is "requirement" -> now renders as the override.
       await expect(entityKindSelect).toContainText("Spec");

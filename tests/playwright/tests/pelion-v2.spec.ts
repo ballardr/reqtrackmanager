@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+
 /**
  * End-to-end coverage for the Pelion (v2) feature set, on top of the Ossa
  * (v1) golden path already covered by golden-path.spec.ts: a project
@@ -114,7 +116,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // audit roadmap: Project Admin's 8 tabs -> 5), alongside a "Project
     // stages" section that also has its own "Name"-placeholder "add stage"
     // field — scope to "Components & categories" specifically.
-    await page.getByRole("tab", { name: "Structure" }).click();
+    await selectProjectAdminGroup(page, "Structure");
     const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     await componentsSection.getByPlaceholder("Name").first().fill("Software");
     await componentsSection.getByPlaceholder("Prefix").first().fill("SW");
@@ -168,13 +170,13 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await softwareRow.getByRole("button", { name: "New category" }).click();
     await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
 
-    // Custom fields now lives inside the merged "Fields & actions" tab.
-    await page.getByRole("tab", { name: "Fields & actions" }).click();
+    // Custom fields now lives inside the merged "Fields & actions" group.
+    await selectProjectAdminGroup(page, "Fields & actions");
     await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Project settings" }).click();
+    await selectProjectAdminGroup(page, "Project settings");
     await page.getByRole("checkbox", { name: "Usable as a project template" }).check();
     await page.getByRole("button", { name: "Save settings" }).click();
   });
@@ -223,7 +225,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // waitForURL, missing exactly that window.
     try {
       await page.getByTitle("Preferences").click();
-      await page.getByRole("tab", { name: "Security", exact: true }).click();
+      await selectPreferencesGroup(page, "Security");
       await page.getByPlaceholder("Current password").fill(orgAdminPassword);
       await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
       const changeResponsePromise = page.waitForResponse(
@@ -249,7 +251,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       // original password afterwards to leave this persona usable for the
       // rest of this spec.
       await page.getByTitle("Preferences").click();
-      await page.getByRole("tab", { name: "Security", exact: true }).click();
+      await selectPreferencesGroup(page, "Security");
       await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
       await page.getByPlaceholder("New password").fill(orgAdminPassword);
       const revertResponsePromise = page.waitForResponse(
@@ -324,9 +326,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 
     await page.getByText("Project Admin").click();
-    await page.getByRole("tab", { name: "Structure" }).click();
+    await selectProjectAdminGroup(page, "Structure");
     await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    await page.getByRole("tab", { name: "Fields & actions" }).click();
+    await selectProjectAdminGroup(page, "Fields & actions");
     await expect(page.getByText("Priority").first()).toBeVisible();
   });
 });

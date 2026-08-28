@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -404,8 +404,20 @@ def list_change_requests(
     name for display, see `crTitle()` in `ChangeRequestsPage.tsx`) sort as
     if empty, since sorting by the raw column can't resolve that per-row
     fallback without an extra join.
+
+    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
+    2026-08 UX audit roadmap) is a second response header reporting the
+    count within only the mandatory project scope (change requests have no
+    archived-visibility concept), before `cr_status`/`active_only`/
+    `target_stage_id` narrow it further — unlike `X-Total-Count`, it does
+    not change when the caller applies a status/target-version filter.
     """
-    query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
+    base_query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
+    response.headers["X-Total-Unfiltered-Count"] = str(
+        db.scalar(select(func.count()).select_from(base_query.subquery()))
+    )
+
+    query = base_query
     if cr_status:
         query = query.where(ChangeRequest.status == cr_status)
     elif active_only:

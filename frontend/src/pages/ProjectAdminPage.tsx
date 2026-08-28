@@ -34,10 +34,11 @@ import { DefinitionList } from "../components/DefinitionList";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
+import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
+import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
-import { Tabs, tabPanelProps } from "../components/Tabs";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -52,6 +53,32 @@ const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
 /**
+ * The 5 resource-menu groups Project Admin's previous 5-tab bar (itself
+ * consolidated down from 8 — see the removed tab-count-ceiling comment
+ * this replaced) was converted into. Each key is also the route segment
+ * under `/projects/:projectId/admin/:group?` (App.tsx), so a group
+ * selection is a real navigation, not client-only state. An unrecognised
+ * or absent `:group` (including the bare `/projects/:projectId/admin`
+ * used by every existing link into this page) falls back to "overview".
+ *
+ * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
+ * the other admin-tier pages (Org Admin, Server Admin, Preferences) —
+ * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
+ * ResourceMenu call recorded in the 2026-08 UX audit, since this page
+ * never exceeded 5 tabs on its own. See `docs/ux-style-guide.md`
+ * Principle 1 and `docs/decisions.md`.
+ */
+type ProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "groups" | "reportSetup";
+
+const PROJECT_ADMIN_GROUP_KEYS: ProjectAdminGroupKey[] = [
+  "overview",
+  "structure",
+  "fieldsActions",
+  "groups",
+  "reportSetup",
+];
+
+/**
  * Project administration: settings (C-U-13, C-C-03, C-P-01) — including the
  * project's status, picked from the owning organisation's definable status
  * list (see OrgAdminPage's Project Statuses section) — stages/approval
@@ -63,7 +90,7 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
  */
 export function ProjectAdminPage() {
   const strings = useStrings();
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
@@ -77,6 +104,7 @@ export function ProjectAdminPage() {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [orgGroupSelections, setOrgGroupSelections] = useState<Record<string, string>>({});
+  const [sourceProjectSelections, setSourceProjectSelections] = useState<Record<string, string>>({});
   // "New group" create Modal (style guide "Pattern: modal dialog for
   // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
   // just pointed at the project-scoped endpoint). Unlike the org-scoped
@@ -132,8 +160,14 @@ export function ProjectAdminPage() {
   const [orgProjects, setOrgProjects] = useState<ProjectListItem[]>([]);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [memberSources, setMemberSources] = useState<ProjectMemberSource[]>([]);
-  const [childProjects, setChildProjects] = useState<ProjectListItem[]>([]);
   const [addSourceId, setAddSourceId] = useState("");
+  // Generalized (docs/decisions.md): member sources are no longer
+  // restricted to a direct child, and can mirror more than baseline
+  // MEMBER — same mode/filter-role vocabulary as the forward
+  // (`roleInheritanceMode`/`roleInheritanceFilterRole`) mechanism above,
+  // just for the reverse direction.
+  const [addMirrorMode, setAddMirrorMode] = useState<ProjectRoleInheritanceMode>("member_only");
+  const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
   const [materializing, setMaterializing] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
@@ -247,7 +281,6 @@ export function ProjectAdminPage() {
     // ProjectListPage's "New project" modal uses for its own parent field.
     setOrgProjects(await api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${p.organization_id}`));
     setMemberSources(await api.get<ProjectMemberSource[]>(`/api/v1/projects/${projectId}/member-sources`));
-    setChildProjects(await api.get<ProjectListItem[]>(`/api/v1/projects/${projectId}/children`));
   }
 
   async function reloadEffectiveMembers() {
@@ -333,12 +366,21 @@ export function ProjectAdminPage() {
   // visibility-boundary rule for the analogous "Child of:"/"Parent of:"
   // labels).
   const showParentField = parentOptions.length > 0 || parentProjectId !== "";
-  const childCandidates = childProjects.filter((c) => !memberSources.some((ms) => ms.source_project_id === c.id));
+  // Generalized: any other project in the organisation is a valid source,
+  // not just a direct child — see docs/decisions.md. `orgProjects` is
+  // already the full org project list (used above for the parent picker).
+  const sourceCandidates = orgProjects.filter(
+    (p) => !p.is_archived && p.id !== projectId && !memberSources.some((ms) => ms.source_project_id === p.id),
+  );
 
   async function addMemberSource() {
     if (!addSourceId) return;
-    await api.post(`/api/v1/projects/${projectId}/member-sources`, { source_project_id: addSourceId });
+    await api.post(`/api/v1/projects/${projectId}/member-sources`, {
+      source_project_id: addSourceId, mirror_mode: addMirrorMode,
+      mirror_filter_role: addMirrorMode === "mirror_role" ? addMirrorFilterRole : null,
+    });
     setAddSourceId("");
+    setAddMirrorMode("member_only");
     reload();
   }
 
@@ -636,14 +678,33 @@ export function ProjectAdminPage() {
     reload();
   }
 
+  // "This group's members = that project's own direct members" (see
+  // models.project.ProjectGroupMember.source_project_id's docstring).
+  // Authorized purely by managing *this* project, same as every other
+  // group-membership mutation on this page — no consent needed from the
+  // referenced project, mirroring the member-source mechanism above.
+  async function addProjectRefMember(groupId: string, sourceProjectId: string) {
+    await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { source_project_id: sourceProjectId });
+    setSourceProjectSelections((prev) => ({ ...prev, [groupId]: "" }));
+    reload();
+  }
+
+  async function removeProjectRefMember(groupId: string, sourceProjectId: string) {
+    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${sourceProjectId}`);
+    reload();
+  }
+
   // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
-  // Project Admin's 8-tab bar against the 5-tab ceiling"), per the style
-  // guide's own 5-tab ceiling for the Tabs pattern. Terminology's content
-  // moved into Overview (a sub-block, not its own tab); Stages +
+  // Project Admin's 8-tab bar against the 5-tab ceiling"). Terminology's
+  // content moved into Overview (a sub-block, not its own group); Stages +
   // Components/Categories merged into Structure; Custom Fields + Action
   // Types merged into Fields & Actions; Groups and Report Setup keep their
-  // own tabs unchanged. See `docs/decisions.md` for the full rationale.
-  const [tab, setTab] = useState<"overview" | "structure" | "fieldsActions" | "groups" | "reportSetup">("overview");
+  // own groups unchanged. See `docs/decisions.md` for the full rationale —
+  // including the later reversal from `Tabs` to `ResourceMenu` recorded
+  // above `ProjectAdminGroupKey`.
+  const activeGroup: ProjectAdminGroupKey = PROJECT_ADMIN_GROUP_KEYS.includes(groupParam as ProjectAdminGroupKey)
+    ? (groupParam as ProjectAdminGroupKey)
+    : "overview";
 
   if (!stages || !project) return <Spinner />;
 
@@ -664,12 +725,17 @@ export function ProjectAdminPage() {
       return a[memberSort.key].localeCompare(b[memberSort.key]) * dir;
     });
 
-  const tabs: { key: typeof tab; label: string }[] = [
-    { key: "overview", label: strings.admin.settings },
-    { key: "structure", label: strings.admin.structure },
-    { key: "fieldsActions", label: strings.admin.fieldsAndActions },
-    { key: "groups", label: strings.admin.groups },
-    { key: "reportSetup", label: strings.admin.reportSetup },
+  // Title is rendered by the header row below, not `ResourceMenu`'s own
+  // `title` prop — this page already has other page chrome (the "Add
+  // sub-project" button alongside the h1), unlike Org Admin's plain
+  // title-only header, so passing `project.name` into `ResourceMenu` too
+  // would duplicate it.
+  const projectAdminGroups: ResourceMenuGroupDef<ProjectAdminGroupKey>[] = [
+    { key: "overview", label: strings.admin.settings, href: `/projects/${projectId}/admin/overview` },
+    { key: "structure", label: strings.admin.structure, href: `/projects/${projectId}/admin/structure` },
+    { key: "fieldsActions", label: strings.admin.fieldsAndActions, href: `/projects/${projectId}/admin/fieldsActions` },
+    { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
+    { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
   ];
 
   return (
@@ -697,10 +763,10 @@ export function ProjectAdminPage() {
         </button>
       </div>
 
-      <Tabs idPrefix="project-admin-tabs" tabs={tabs} active={tab} onChange={setTab} />
+      <ResourceMenu ariaLabel={strings.admin.sectionsNav} groups={projectAdminGroups} active={activeGroup}>
 
-      {tab === "overview" && (
-      <div {...tabPanelProps("project-admin-tabs", "overview")} className="card stack">
+      {activeGroup === "overview" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
         <label className="stack" style={{ gap: "0.25rem" }}>
           {strings.admin.name}
@@ -929,12 +995,17 @@ export function ProjectAdminPage() {
           {strings.admin.saveTerminology}
         </button>
 
-        {/* Member sources (docs/decisions.md) — the reverse (child ->
-            parent) RBAC mechanism, deliberately NOT a field on the child's
-            own form: authorized entirely by managing *this* project (the
-            parent), never the child. No confirmation needed on add — it
-            only ever grants baseline Member, the same risk profile as
-            visibility=org_wide. */}
+        {/* Member sources (docs/decisions.md) — the reverse (source ->
+            receiving) RBAC mechanism, deliberately NOT a field on the
+            source's own form: authorized entirely by managing *this*
+            project (the receiving side), never the source. Generalized
+            beyond direct children to any same-organisation project, and
+            beyond baseline Member to mirror_mode/mirror_filter_role — same
+            mode vocabulary and confirmation posture as the forward
+            (Inherit from parent) controls above: no confirmation needed on
+            "Member only" (same risk profile as visibility=org_wide), but
+            "Mirror all roles"/"Mirror one role" can convey a real elevated
+            role, same as the forward mechanism's own modes. */}
         <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.memberSources}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.memberSourcesHint}</p>
@@ -942,7 +1013,14 @@ export function ProjectAdminPage() {
           <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
             {memberSources.map((ms) => (
               <li key={ms.source_project_id} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
-                <Link to={`/projects/${ms.source_project_id}`}>{ms.source_project_name}</Link>
+                <span className="row" style={{ gap: "0.5rem" }}>
+                  <Link to={`/projects/${ms.source_project_id}`}>{ms.source_project_name}</Link>
+                  <span className="badge">
+                    {ms.mirror_mode === "mirror_role" && ms.mirror_filter_role
+                      ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[ms.mirror_filter_role])
+                      : PROJECT_ROLE_INHERITANCE_MODE_LABEL[ms.mirror_mode]}
+                  </span>
+                </span>
                 <button className="btn" onClick={() => removeMemberSource(ms.source_project_id)}>
                   {strings.admin.removeMemberSource}
                 </button>
@@ -950,14 +1028,40 @@ export function ProjectAdminPage() {
             ))}
           </ul>
         )}
-        {childCandidates.length > 0 ? (
-          <div className="row">
-            <select className="input" style={{ maxWidth: 280 }} value={addSourceId} onChange={(e) => setAddSourceId(e.target.value)}>
+        {sourceCandidates.length > 0 ? (
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <select
+              className="input" style={{ maxWidth: 280 }} value={addSourceId}
+              aria-label={strings.admin.memberSourceProjectSelect}
+              onChange={(e) => setAddSourceId(e.target.value)}
+            >
               <option value="">{strings.common.selectOption}</option>
-              {childCandidates.map((c) => (
+              {sourceCandidates.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
+            <select
+              className="input" style={{ maxWidth: 200 }} value={addMirrorMode}
+              aria-label={strings.admin.memberSourceModeSelect}
+              onChange={(e) => setAddMirrorMode(e.target.value as ProjectRoleInheritanceMode)}
+            >
+              {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[])
+                .filter((m) => m !== "none")
+                .map((m) => (
+                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                ))}
+            </select>
+            {addMirrorMode === "mirror_role" && (
+              <select
+                className="input" style={{ maxWidth: 200 }} value={addMirrorFilterRole}
+                aria-label={strings.admin.memberSourceFilterRoleSelect}
+                onChange={(e) => setAddMirrorFilterRole(e.target.value as ProjectRole)}
+              >
+                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+              </select>
+            )}
             <button className="btn" onClick={addMemberSource} disabled={!addSourceId}>
               {strings.admin.addMemberSource}
             </button>
@@ -968,8 +1072,8 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {tab === "structure" && (
-      <div {...tabPanelProps("project-admin-tabs", "structure")} className="stack">
+      {activeGroup === "structure" && (
+      <div className="stack">
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         <CollapsibleSection sectionKey="projectAdmin.structure.stages" title={strings.admin.stages} defaultCollapsed={false}>
         {stages.map((s) => {
@@ -1303,8 +1407,8 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {tab === "fieldsActions" && (
-      <div {...tabPanelProps("project-admin-tabs", "fieldsActions")} className="stack">
+      {activeGroup === "fieldsActions" && (
+      <div className="stack">
         <CollapsibleSection sectionKey="projectAdmin.fieldsActions.customFields" title={strings.admin.customFields} defaultCollapsed={false}>
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
@@ -1377,8 +1481,8 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {tab === "groups" && (
-      <div {...tabPanelProps("project-admin-tabs", "groups")} className="card stack">
+      {activeGroup === "groups" && (
+      <div className="card stack">
         {/* Effective members with provenance (decision 10, docs/decisions.md)
             — direct vs. inherited (and how), plus the "convert to direct
             roles" safety net (decision 9) before disabling inheritance
@@ -1441,7 +1545,8 @@ export function ProjectAdminPage() {
                                   {s.kind === "direct" && strings.admin.sourceDirect}
                                   {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
                                     strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
-                                  {s.kind === "member_source_inherited" && strings.admin.sourceMemberSourceInherited}
+                                  {s.kind === "member_source_inherited" && s.via_project_name && s.via_mode &&
+                                    strings.admin.sourceMemberSourceInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
                                   {" "}({PROJECT_ROLE_LABEL[s.role]})
                                 </span>
                               ))}
@@ -1520,6 +1625,10 @@ export function ProjectAdminPage() {
           const availableUsers = orgUsers.filter((u) => !g.member_user_ids.includes(u.user_id));
           const nestedOrgGroups = orgGroups.filter((og) => g.member_org_group_ids.includes(og.id));
           const nestableOrgGroups = orgGroups.filter((og) => !g.member_org_group_ids.includes(og.id));
+          const referencedProjects = orgProjects.filter((p) => g.member_source_project_ids.includes(p.id));
+          const referenceableProjects = orgProjects.filter(
+            (p) => p.id !== projectId && !g.member_source_project_ids.includes(p.id),
+          );
           return (
             <CollapsibleSection
               key={g.id}
@@ -1598,6 +1707,49 @@ export function ProjectAdminPage() {
                   </button>
                 </div>
               )}
+              {referencedProjects.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                  {referencedProjects.map((p) => (
+                    <li key={p.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
+                      <span>{strings.admin.viaProjectMembers(p.name)}</span>
+                      <button
+                        className="btn btn-danger"
+                        title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                        aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                        onClick={() => removeProjectRefMember(g.id, p.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {referenceableProjects.length > 0 && (
+                <div className="row">
+                  <select
+                    className="input"
+                    value={sourceProjectSelections[g.id] ?? ""}
+                    aria-label={strings.admin.projectReferenceSelect}
+                    onChange={(e) => setSourceProjectSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                  >
+                    <option value="">{strings.admin.addProjectReferenceToProjectGroup}</option>
+                    {referenceableProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn"
+                    disabled={!sourceProjectSelections[g.id]}
+                    title={strings.admin.addProjectReferenceToProjectGroup}
+                    aria-label={strings.admin.addProjectReferenceToProjectGroup}
+                    onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              )}
             </CollapsibleSection>
           );
         })}
@@ -1605,8 +1757,8 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {tab === "reportSetup" && (
-      <div {...tabPanelProps("project-admin-tabs", "reportSetup")} className="stack">
+      {activeGroup === "reportSetup" && (
+      <div className="stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportSetup}</h2>
         <p className="text-muted" style={{ margin: 0 }}>
           This intro, these chapters, and these appendices are used as the default content when a report is
@@ -1682,6 +1834,7 @@ export function ProjectAdminPage() {
         </button>
       </div>
       )}
+      </ResourceMenu>
     </div>
   );
 }

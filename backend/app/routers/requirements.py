@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -239,10 +239,23 @@ def list_requirements(
     Omitting `sort` leaves the existing default ordering completely
     unchanged, so this is additive, not a breaking change to callers that
     don't ask for it.
+
+    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
+    2026-08 UX audit roadmap) is a second response header reporting the
+    count within only the mandatory project + default archived-visibility
+    scope, before component/category/search/status/stage/comments/watched
+    filters below narrow it further — unlike `X-Total-Count`, it does not
+    change when the caller adds a filter or search term, so the frontend
+    can show "12 matching · 57 total" instead of just a bare filtered count.
     """
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not include_archived:
         query = query.where(Requirement.is_archived.is_(False))
+
+    response.headers["X-Total-Unfiltered-Count"] = str(
+        db.scalar(select(func.count()).select_from(query.subquery()))
+    )
+
     if component_id:
         query = query.where(Requirement.component_id == component_id)
     if category_id:

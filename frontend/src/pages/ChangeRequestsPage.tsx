@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -98,6 +98,11 @@ export function ChangeRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
   const [total, setTotal] = useState(0);
+  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
+  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
+  // is the filtered count.
+  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -119,7 +124,14 @@ export function ChangeRequestsPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const changeRequestTerm = useTerm("change_request");
   const [viewMode, setViewMode] = useViewMode("change-requests");
-  const [statusFilter, setStatusFilter] = useState<CrStatusFilterValue>("active");
+  // Seeded directly from the URL on initial render, not set in a separate
+  // effect after mount (bug fix, 2026-08: dashboard glance navigation race
+  // — same fix and reasoning as `RequirementsPage.tsx`'s identical
+  // two-effect shape) — only one filter state, and therefore only one
+  // fetch, ever exists per mount.
+  const [statusFilter, setStatusFilter] = useState<CrStatusFilterValue>(
+    () => (searchParams.get("status") as CrStatusFilterValue) || "active"
+  );
   const [targetStageFilter, setTargetStageFilter] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
@@ -141,13 +153,23 @@ export function ChangeRequestsPage() {
     return params;
   }
 
+  // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
+  // navigation race), same reasoning as `RequirementsPage.tsx`'s identical
+  // guard — discards a response if a newer request has since been kicked
+  // off, covering any overlapping-fetch path beyond the mount-time race the
+  // searchParams-seeding fix above eliminates (e.g. rapid filter changes).
+  const loadChangeRequestsRequestIdRef = useRef(0);
+
   async function loadChangeRequests(offset: number, append: boolean) {
     if (!projectId) return;
+    const requestId = ++loadChangeRequestsRequestIdRef.current;
     const page = await api.getPage<ChangeRequest>(
       `/api/v1/projects/${projectId}/change-requests?${listParams(offset).toString()}`
     );
+    if (requestId !== loadChangeRequestsRequestIdRef.current) return;
     setCrs((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
+    setTotalUnfiltered(page.totalUnfiltered ?? page.total);
   }
 
   async function reload() {
@@ -225,11 +247,14 @@ export function ChangeRequestsPage() {
   }, [searchParams]);
 
   // Deep-linked from the Project Overview dashboard's CR glance tiles/pie
-  // chart segments (UX review) — seeded once, then stripped.
+  // chart segments (UX review) — `statusFilter` above is already seeded
+  // straight from this same param on initial render (bug fix, 2026-08:
+  // dashboard glance navigation race), so this effect only strips it from
+  // the URL once; it must not call `setStatusFilter` itself, or the race
+  // it was fixed to eliminate comes back.
   useEffect(() => {
     const status = searchParams.get("status");
     if (!status) return;
-    setStatusFilter(status as CrStatusFilterValue);
     setSearchParams((params) => {
       params.delete("status");
       return params;
@@ -771,8 +796,7 @@ export function ChangeRequestsPage() {
           {crs && <LoadMoreButton loaded={crs.length} total={total} onClick={() => loadChangeRequests(crs.length, true)} />}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel sectionKey="changeRequestsFilters" matching={total} total={totalUnfiltered}>
           <FilterField label="Status">
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CrStatusFilterValue)}>
               <option value="active">Active</option>

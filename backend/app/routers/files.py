@@ -14,10 +14,10 @@ file id, so it is unified here with context-sensitive authorization:
 - Avatars are viewable by any authenticated user (shown in shared UI chrome
   regardless of org membership), but not anonymously.
 - Organisation shared resources require membership in that organisation.
-- Direct requirement attachments, and comment attachments (on either a
-  requirement or a change request's discussion thread), require project
-  view access to whichever project the attachment's requirement/change
-  request belongs to.
+- Direct requirement attachments, requirement action attachments, and
+  comment attachments (on either a requirement or a change request's
+  discussion thread), require project view access to whichever project the
+  attachment's requirement/action/change request belongs to.
 """
 
 from __future__ import annotations
@@ -32,9 +32,10 @@ from app.database import get_db
 from app.deps import get_current_user_header_or_query_optional
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.enums import ReviewTargetType
-from app.models.file import CommentFile, FileAsset, RequirementFile
+from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.organization import Organization, ServerSettings
 from app.models.requirement import Requirement
+from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.services.files import read_file
 from app.services.rbac import (
@@ -125,18 +126,38 @@ def download_file(
                     project_id = requirement.project_id if requirement is not None else None
                 else:
                     # Not a requirement attachment — check whether it's a
-                    # comment attachment instead (routers/requirements.py and
-                    # routers/change_requests.py's upload_comment_attachment),
-                    # which resolves to a project via whichever entity the
-                    # comment itself is on.
-                    comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
-                    comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
-                    if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
-                        requirement = db.get(Requirement, comment.target_id)
-                        project_id = requirement.project_id if requirement is not None else None
-                    elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
-                        cr = db.get(ChangeRequest, comment.target_id)
-                        project_id = cr.project_id if cr is not None else None
+                    # requirement action attachment instead
+                    # (routers/actions.py::upload_action_attachment).
+                    # Regression fix: this branch didn't exist before, so an
+                    # action-attached file's project_id always stayed None
+                    # here and fell through to the unconditional 403 below —
+                    # action attachments could never actually be downloaded
+                    # by anyone, including the uploader, even though
+                    # upload/list/delete all worked. `RequirementAction` has
+                    # its own direct `project_id` (unlike a requirement
+                    # attachment, an action isn't owned by exactly one
+                    # requirement — RequirementActionLink is many-to-many —
+                    # so there's no single requirement to resolve through).
+                    action_link = db.scalar(select(RequirementActionFile).where(RequirementActionFile.file_id == file_id))
+                    if action_link is not None:
+                        action = db.get(RequirementAction, action_link.action_id)
+                        project_id = action.project_id if action is not None else None
+                    else:
+                        # Not an action attachment either — check whether
+                        # it's a comment attachment instead
+                        # (routers/requirements.py and
+                        # routers/change_requests.py's
+                        # upload_comment_attachment), which resolves to a
+                        # project via whichever entity the comment itself is
+                        # on.
+                        comment_link = db.scalar(select(CommentFile).where(CommentFile.file_id == file_id))
+                        comment = db.get(ReviewComment, comment_link.comment_id) if comment_link else None
+                        if comment is not None and comment.target_type == ReviewTargetType.REQUIREMENT:
+                            requirement = db.get(Requirement, comment.target_id)
+                            project_id = requirement.project_id if requirement is not None else None
+                        elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
+                            cr = db.get(ChangeRequest, comment.target_id)
+                            project_id = cr.project_id if cr is not None else None
                 if project_id is not None:
                     check_pat_scope_for_project(request, db, project_id)
                     organization_id = _project_organization_id(db, project_id)

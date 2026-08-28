@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin defines a reusable report template (accent
@@ -79,7 +79,7 @@ test.describe("org report templates and project report setup", () => {
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Report Setup" }).click();
+      await selectProjectAdminGroup(page, "Report Setup");
       await page.getByLabel("Default report template").selectOption({ label: revisedName });
       // Wait for the save's own PUT to actually land before reloading — a
       // bare click() races the async `saveReportConfig()` against the
@@ -93,7 +93,7 @@ test.describe("org report templates and project report setup", () => {
         page.getByRole("button", { name: "Save settings" }).click(),
       ]);
       await page.reload();
-      await page.getByRole("tab", { name: "Report Setup" }).click();
+      await selectProjectAdminGroup(page, "Report Setup");
       await expect(page.getByLabel("Default report template")).toHaveValue(/.+/);
     });
 

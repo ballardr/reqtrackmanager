@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openGroupCard, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: per-project custom fields of all four types (C-C-01,
@@ -33,7 +33,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     await test.step("create a custom field of each type", async () => {
       // Custom fields now lives inside the merged "Fields & actions" tab
       // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
-      await page.getByRole("tab", { name: "Fields & actions" }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
 
       const fieldNameInput = page.getByPlaceholder("Field name");
 
@@ -76,7 +76,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("delete a custom field", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Fields & actions" }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
       const row = page.locator(".row", { hasText: safetyCriticalField });
       await row.getByRole("button").click();
       await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
@@ -94,7 +94,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
 
     await test.step("add and remove a project group member", async () => {
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       // Groups now render collapsed by default (2026-08 UX audit
       // "Directories at scale") — expand "Members" specifically before its
       // own add-member input is reachable at all.
@@ -127,7 +127,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // created via a direct API call isn't in that state until reloaded.
       await page.reload();
 
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       // Groups render collapsed by default — "Members" was expanded in the
       // step above, but that expand state is per-user/per-group and the
       // page was just reloaded, so re-assert it idempotently rather than
@@ -159,7 +159,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     // group in DOM order (`.last()` selectors) — the group created here
     // would otherwise become the new last one and break those.
     await test.step("create a new project group via the New group popover", async () => {
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       const newGroupName = `E2E New Project Group ${Date.now()}`;
 
       await page.getByRole("button", { name: "New group" }).click();
@@ -185,7 +185,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // here). Its own Save button is labelled "Save terminology",
       // distinct from Overview's own "Save settings" button now that both
       // sit on the same screen.
-      await page.getByRole("tab", { name: "Project settings" }).click();
+      await selectProjectAdminGroup(page, "Project settings");
       await page.getByPlaceholder("requirement").fill("Spec");
       await page.getByRole("button", { name: "Save terminology" }).click();
       await page.reload();

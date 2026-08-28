@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  Default static favicon (Task: "Login page shows no logo" follow-up gap —
+  no favicon existed anywhere in the repo). Derived from
+  frontend/src/assets/logo.svg (the same mark used in Layout.tsx's header
+  and, as of this change, LoginBrandHeader's fallback) rather than inventing
+  a new mark, so the browser tab matches the in-app branding. The logo's
+  strokes/fills are white-on-transparent (designed to sit on the app
+  header's dark background, --color-header-bg #14161c in theme.css), so a
+  matching dark rounded-square background is added here — an SVG favicon
+  rendered directly on a light browser toolbar would otherwise be
+  invisible. Not admin-configurable (out of scope per the task); see
+  frontend/index.html for the <link rel="icon"> tags and favicon.ico for
+  the non-SVG fallback.
+-->
+<svg width="64" height="64" viewBox="0 0 64 64" version="1.1" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;">
+    <rect width="64" height="64" rx="12" ry="12" fill="#14161c"/>
+    <g transform="translate(8,20) scale(1.33333)" style="fill:white;">
+        <path d="M10.5,5.5C10.5,4.672 9.828,4 9,4L3,4C2.172,4 1.5,4.672 1.5,5.5L1.5,14.5C1.5,15.328 2.172,16 3,16L9,16C9.828,16 10.5,15.328 10.5,14.5L10.5,5.5Z" style="fill:none;stroke:white;stroke-width:1.2px;"/>
+        <g transform="matrix(1,0,0,1,-0.0536149,0.402192)">
+            <path d="M8.5,3C8.5,2.448 8.052,2 7.5,2L4.5,2C3.948,2 3.5,2.448 3.5,3L3.5,4C3.5,4.552 3.948,5 4.5,5L7.5,5C8.052,5 8.5,4.552 8.5,4L8.5,3Z" style="fill:none;stroke:white;stroke-width:1.2px;"/>
+        </g>
+        <path d="M4,8.5L7.6,8.5" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <path d="M4,12L7,12" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <path d="M10.5,10L13,10" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <path d="M13,10L23,10" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <path d="M18,5.2L23,10" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <path d="M23,10L26,10" style="fill:none;fill-rule:nonzero;stroke:white;stroke-width:1.2px;"/>
+        <circle cx="13" cy="10" r="2.2" style="fill:none;"/>
+        <g transform="matrix(1.14286,0,0,1.14286,-1.39649,-1.60038)">
+            <circle cx="13" cy="10" r="1.4"/>
+        </g>
+        <circle cx="18" cy="5.2" r="2.2" style="fill:none;"/>
+        <g transform="matrix(1.14286,0,0,1.14286,-2.99489,-0.872724)">
+            <circle cx="18" cy="5.2" r="1.4"/>
+        </g>
+        <circle cx="23" cy="10" r="2.2" style="fill:none;"/>
+        <g transform="matrix(1.14286,0,0,1.14286,-3.82435,-1.65971)">
+            <circle cx="23" cy="10" r="1.4"/>
+        </g>
+        <g transform="matrix(1.26049,0,0,1.26049,-5.92671,-2.72604)">
+            <path d="M29,6.4C30.987,6.4 32.6,8.013 32.6,10C32.6,11.987 30.987,13.6 29,13.6C27.013,13.6 25.4,11.987 25.4,10C25.4,8.013 27.013,6.4 29,6.4ZM26.656,10.424L27.976,11.744C28.093,11.862 28.255,11.925 28.421,11.92C28.587,11.914 28.744,11.839 28.853,11.714L31.253,8.954C31.47,8.704 31.444,8.325 31.194,8.107C30.944,7.89 30.565,7.916 30.347,8.166L28.369,10.441C28.369,10.441 27.504,9.576 27.504,9.576C27.27,9.342 26.89,9.342 26.656,9.576C26.422,9.81 26.422,10.19 26.656,10.424Z"/>
+        </g>
+    </g>
+</svg>

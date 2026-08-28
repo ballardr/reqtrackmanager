@@ -46,7 +46,11 @@ export function ProjectOverviewPage() {
   const tiles: Array<[string, string | number, string]> = [
     [strings.overview.requirementCount, metrics.requirement_count, requirementsPath()],
     [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`, requirementsPath("status=completed")],
-    [strings.overview.fileCount, metrics.file_count, requirementsPath()],
+    // Links to the project-wide file browser (ProjectFilesPage), not the
+    // unfiltered requirements list — a bug flagged separately from this
+    // page's other tiles, which correctly link to a requirements/change-
+    // requests view that actually reflects what was clicked.
+    [strings.overview.fileCount, metrics.file_count, `/projects/${projectId}/files`],
     [strings.overview.crProposed, metrics.change_requests_proposed, changeRequestsPath("active")],
     [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
     [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],

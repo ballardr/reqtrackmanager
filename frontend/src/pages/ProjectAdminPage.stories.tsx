@@ -35,7 +35,10 @@ const stages: ProjectStage[] = [
 const components: Component[] = [{ id: "c1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }];
 const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_id: "c1", name: "Login", prefix: "LOG", sort_order: 0 }];
 const groups: ProjectGroup[] = [
-  { id: "g1", name: "Stakeholders", role: "stakeholder", is_default: true, member_user_ids: [], member_org_group_ids: [] },
+  {
+    id: "g1", name: "Stakeholders", role: "stakeholder", is_default: true,
+    member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [],
+  },
 ];
 const orgGroups: OrgGroup[] = [
   { id: "og1", name: "Engineering", member_user_ids: [], member_org_group_ids: [], idp_synced_group_name: null, granted_org_role: null },
@@ -54,8 +57,10 @@ function mockProjectAdminApis(
     memberSources?: ProjectMemberSource[];
     children?: ReturnType<typeof buildProjectListItem>[];
     effectiveMembers?: EffectiveMember[];
+    groups?: ProjectGroup[];
   } = {}
 ) {
+  const groupsForThisStory = overrides.groups ?? groups;
   const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
   const customFields = overrides.customFields ?? [];
   const project = overrides.project ?? buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
@@ -70,7 +75,7 @@ function mockProjectAdminApis(
     // also contains that substring, and returns a differently-shaped
     // OrgGroup[] (project groups vs. org groups).
     if (path.includes("/orgs/") && path.includes("/groups")) return orgGroups;
-    if (path.includes("/groups")) return groups;
+    if (path.includes("/groups")) return groupsForThisStory;
     if (path.includes("/custom-fields")) return customFields;
     if (path.includes("/report-config")) return {
       intro: "", chapters: [], appendices: [],
@@ -91,7 +96,7 @@ function mockProjectAdminApis(
   // "Directories at scale") — org-group nesting still reads from the
   // plain `api.get` mock above, unchanged.
   spyOn(api, "getPage").mockImplementation(async (path: string) => {
-    if (path.includes("/groups")) return { items: groups, total: groups.length };
+    if (path.includes("/groups")) return { items: groupsForThisStory, total: groupsForThisStory.length };
     throw new Error(`unmocked getPage path: ${path}`);
   });
 }
@@ -101,7 +106,7 @@ const meta: Meta<typeof ProjectAdminPage> = {
   component: ProjectAdminPage,
   decorators: [
     withStatefulAuth(buildUser()),
-    withRouter(`/projects/${PROJECT_ID}/admin`, "/projects/:projectId/admin"),
+    withRouter(`/projects/${PROJECT_ID}/admin`, "/projects/:projectId/admin/:group?"),
     withToast(),
   ],
 };
@@ -192,7 +197,7 @@ export const StagesTabAddAndTransition: Story = {
     // Stages now lives inside the merged "Structure" tab, as a
     // `CollapsibleSection` that's expanded by default — no separate expand
     // step needed.
-    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Start review" })).toBeInTheDocument());
     // Scoped to the "Project stages" section specifically: the sibling
     // "Components & categories" section (now mounted alongside it on the
@@ -215,7 +220,7 @@ export const CategoriesTabDeleteBlockedWhileHasCategories: Story = {
     const canvas = within(canvasElement);
     // Categories now lives inside the merged "Structure" tab, alongside
     // Stages, as a "Components & categories" `CollapsibleSection`.
-    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
     // Component/category names are editable <input>s here, not static text.
     await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
     await expect(canvas.getByTitle("Delete or reassign this component's categories first.")).toBeDisabled();
@@ -229,7 +234,7 @@ export const CategoriesTabAddCategory: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: /New category/ })).toBeInTheDocument());
     // Scoped to the "Components & categories" section specifically: Stages
     // (now a sibling section on the same merged "Structure" tab) has its
@@ -263,7 +268,7 @@ export const CustomFieldsTabAddField: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // Custom fields now lives inside the merged "Fields & actions" tab.
-    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByPlaceholderText("Field name")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Field name"), "Priority");
     await userEvent.click(canvas.getByRole("button", { name: /New field/ }));
@@ -289,7 +294,7 @@ export const CustomFieldsTabDeleteRequiresConfirmation: Story = {
     const canvas = within(canvasElement);
     const body = within(document.body);
     // Custom fields now lives inside the merged "Fields & actions" tab.
-    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Delete Safety critical" }));
@@ -320,7 +325,7 @@ export const GroupsTabCreateGroupViaModal: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "New group" })).toBeInTheDocument());
 
     const body = within(document.body);
@@ -353,7 +358,7 @@ export const GroupsTabAddMember: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     // Group name/role/member-count are now one combined title on a
     // `CollapsibleSection`, collapsed by default (2026-08 UX audit
     // "Directories at scale") — the title text alone proves both are
@@ -369,7 +374,7 @@ export const GroupsTabAddOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByText(/Stakeholders/)).toBeInTheDocument());
     // Groups render collapsed by default — expand Stakeholders' own
     // section before its org-group nesting picker becomes visible.
@@ -397,7 +402,7 @@ export const ReportSetupTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Report Setup" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
     await waitFor(() => expect(canvas.getByText("Project intro")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, expect.any(Object)));
@@ -431,7 +436,7 @@ export const ActionTypesTabAddAndReorder: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // Action types now lives inside the merged "Fields & actions" tab.
-    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText("Name"), "Inspection");
     await userEvent.click(canvas.getByRole("button", { name: /New action type/ }));
@@ -452,7 +457,7 @@ export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // Action types now lives inside the merged "Fields & actions" tab.
-    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
   },
@@ -468,7 +473,7 @@ export const StructureTabPluralisesCategoryCorrectly: Story = {
   beforeEach: () => mockProjectAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
     await expect(canvas.getByText("Components & categories")).toBeInTheDocument();
     await expect(canvas.queryByText(/categorys/i)).not.toBeInTheDocument();
   },
@@ -494,7 +499,7 @@ export const CustomFieldsTabEntityKindDropdownReflectsTerminology: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Fields & actions" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
     // The existing field's own entity-kind badge.
     await expect(canvas.getByText("Spec", { selector: "span.badge" })).toBeInTheDocument();
@@ -558,21 +563,80 @@ export const SaveErrorShowsInline: Story = {
   },
 };
 
+/** Generalized (docs/decisions.md): member sources are no longer restricted
+ * to a direct child — any same-organisation project is a valid source, and
+ * each one shows its own mirror mode as a badge next to its name. */
 export const MemberSourcesListAndAdd: Story = {
   beforeEach: () =>
     mockProjectAdminApis({
-      memberSources: [{ source_project_id: "child-1", source_project_name: "Authentication" }],
-      children: [
-        buildProjectListItem({ id: "child-1", name: "Authentication", organization_id: "org-1" }),
-        buildProjectListItem({ id: "child-2", name: "Billing", organization_id: "org-1" }),
+      memberSources: [
+        { source_project_id: "sibling-1", source_project_name: "Authentication", mirror_mode: "mirror_role", mirror_filter_role: "project_manager" },
+      ],
+      orgProjects: [
+        buildProjectListItem({ id: "sibling-1", name: "Authentication", organization_id: "org-1" }),
+        buildProjectListItem({ id: "sibling-2", name: "Billing", organization_id: "org-1" }),
       ],
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Authentication" })).toBeInTheDocument());
-    // Already-listed child isn't offered again in the add dropdown.
+    // Its mirror mode/filter role renders as a badge, not just a bare name.
+    await expect(canvas.getByText("Mirrors Project manager")).toBeInTheDocument();
+    // Already-listed source isn't offered again in the add dropdown — not
+    // restricted to structural children, "Billing" (an unrelated
+    // same-org project) is a valid candidate.
     await expect(canvas.queryByRole("option", { name: "Authentication" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("option", { name: "Billing" })).toBeInTheDocument();
+
+    const postSpy = spyOn(api, "post").mockResolvedValue(undefined);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Source project" }), "sibling-2");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Mirror mode" }), "mirror_all");
+    await userEvent.click(canvas.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(postSpy).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/member-sources`,
+        { source_project_id: "sibling-2", mirror_mode: "mirror_all", mirror_filter_role: null },
+      )
+    );
+  },
+};
+
+/** A project group's members can be defined as "the direct members of that
+ * other project" (`ProjectGroupMember.source_project_id`, docs/decisions.md)
+ * — a third option alongside individual users and nested {@link OrgGroup}s. */
+export const ProjectGroupCanReferenceAnotherProjectsMembers: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      groups: [
+        {
+          id: "g1", name: "Stakeholders", role: "stakeholder", is_default: true,
+          member_user_ids: [], member_org_group_ids: [], member_source_project_ids: ["sibling-1"],
+        },
+      ],
+      orgProjects: [
+        buildProjectListItem({ id: "sibling-1", name: "Authentication", organization_id: "org-1" }),
+        buildProjectListItem({ id: "sibling-2", name: "Billing", organization_id: "org-1" }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
+    await waitFor(() => expect(canvas.getByText("Authentication's members")).toBeInTheDocument());
+    // Already-referenced project isn't offered again; an unrelated
+    // same-org project ("Billing") is a valid candidate.
+    await expect(canvas.queryByRole("option", { name: "Authentication" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("option", { name: "Billing" })).toBeInTheDocument();
+
+    const postSpy = spyOn(api, "post").mockResolvedValue(undefined);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Referenced project" }), "sibling-2");
+    await userEvent.click(canvas.getByRole("button", { name: "Reference another project's members…" }));
+    await waitFor(() =>
+      expect(postSpy).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/groups/g1/members`,
+        { source_project_id: "sibling-2" },
+      )
+    );
   },
 };
 
@@ -594,7 +658,7 @@ export const EffectiveMembersShowsProvenance: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
     await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
     await waitFor(() => expect(canvas.getByText("Priya Shah", { exact: false })).toBeInTheDocument());
@@ -623,7 +687,7 @@ export const EffectiveMembersSearchFilters: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
     await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
     await waitFor(() => expect(canvas.getByText("Priya Shah")).toBeInTheDocument());
@@ -654,7 +718,7 @@ export const EffectiveMembersSortByEmail: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
     await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
     await waitFor(() => expect(canvas.getByText("zoe@example.com")).toBeInTheDocument());
@@ -684,7 +748,7 @@ export const MaterializeButtonConvertsInheritedAccess: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Project groups" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await userEvent.click(canvas.getByRole("button", { name: "Effective members section" }));
     await userEvent.click(canvas.getByRole("button", { name: "Show members" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Convert all inherited access to direct roles" })).toBeInTheDocument());

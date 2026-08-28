@@ -1,5 +1,5 @@
 import { Plus, Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -58,6 +58,11 @@ export function ProjectListPage() {
   const orgLabelCap = useOrgLabelCapitalized();
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [total, setTotal] = useState(0);
+  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
+  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
+  // is the filtered/searched count.
+  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<ProjectRole | "">("");
@@ -144,10 +149,19 @@ export function ProjectListPage() {
     return params;
   }
 
+  // Belt-and-suspenders request-sequencing guard, same reasoning/shape as
+  // `RequirementsPage.tsx`/`ChangeRequestsPage.tsx`'s identical guards
+  // (2026-08 UX audit roadmap) — discards a response if a newer request
+  // has since been kicked off (e.g. rapid filter changes).
+  const loadProjectsRequestIdRef = useRef(0);
+
   async function loadProjects(offset: number, append: boolean) {
+    const requestId = ++loadProjectsRequestIdRef.current;
     const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParams(offset).toString()}`);
+    if (requestId !== loadProjectsRequestIdRef.current) return;
     setProjects((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
+    setTotalUnfiltered(page.totalUnfiltered ?? page.total);
   }
 
   async function reload() {
@@ -460,14 +474,7 @@ export function ProjectListPage() {
 
       <div className="side-grid">
         <div className="stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <input
-              className="input"
-              style={{ maxWidth: 280 }}
-              placeholder={strings.projects.search}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="row" style={{ justifyContent: "flex-end" }}>
             <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
           </div>
 
@@ -614,8 +621,14 @@ export function ProjectListPage() {
           )}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel
+          sectionKey="projectListFilters"
+          matching={total}
+          total={totalUnfiltered}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={strings.projects.search}
+        >
           <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
           <FilterField label="Status">
             <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>

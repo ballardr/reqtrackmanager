@@ -24,13 +24,18 @@ export const WithLogo: Story = {
 };
 
 /** No logo set (platform default with no override, or an org that never
- * uploaded one) — falls back to title-only, no broken image. */
+ * uploaded one) — falls back to the built-in logo mark rather than
+ * rendering no image at all. */
 export const NoLogo: Story = {
   args: { logoFileId: null, title: "ReqTrack" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("ReqTrack")).toBeInTheDocument();
-    await expect(canvasElement.querySelector("img")).not.toBeInTheDocument();
+    const img = canvasElement.querySelector("img");
+    await expect(img).toBeInTheDocument();
+    // Falls back to the bundled asset (a `builtInLogo` import, hashed by
+    // Vite at build time), not a `fileUrl(...)` API path.
+    await expect(img?.getAttribute("src")).not.toMatch(/\/api\//);
   },
 };
 

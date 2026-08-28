@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's requirement-action types (Review, Test, ...)
@@ -38,7 +38,7 @@ test.describe("project admin: action types", () => {
     // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5), alongside
     // Custom Fields — the two-select ("Name"-exact) locators below stay
     // unambiguous since Custom Fields has no "Name"-exact field itself.
-    await page.getByRole("tab", { name: "Fields & actions" }).click();
+    await selectProjectAdminGroup(page, "Fields & actions");
 
     await test.step("Review and Test are seeded by default", async () => {
       await expect(inputWithValue(page, "Review")).toBeVisible();
@@ -75,7 +75,7 @@ test.describe("project admin: action types", () => {
 
     await test.step("deleting Review now 409s and opens the reassignment picker", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Fields & actions" }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
       const reviewRow = inputWithValue(page, "Review").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
       await reviewRow.getByTitle("Delete this action type").click();
       await expect(page.getByText(/used by 1 action\(s\)/)).toBeVisible();
@@ -92,7 +92,7 @@ test.describe("project admin: action types", () => {
 
     await test.step("with only Test remaining, its delete control is disabled", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Fields & actions" }).click();
+      await selectProjectAdminGroup(page, "Fields & actions");
       await expect(inputWithValue(page, "Test")).toBeVisible();
       await expect(page.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
     });

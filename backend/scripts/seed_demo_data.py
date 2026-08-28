@@ -92,11 +92,39 @@ def create_project(
     return r.json()
 
 
-def add_member_source(headers: dict, project_id: str, source_project_id: str) -> None:
+def add_member_source(
+    headers: dict, project_id: str, source_project_id: str,
+    mirror_mode: str | None = None, mirror_filter_role: str | None = None,
+) -> None:
     """See seed_e2e_dataset.py's identical helper — adds `source_project_id`
-    (a direct child of `project_id`) to `project_id`'s member-source list."""
+    to `project_id`'s member-source list. Generalized (docs/decisions.md):
+    `source_project_id` no longer needs to be a direct child, just any
+    project in the same organisation; `mirror_mode`/`mirror_filter_role`
+    default to the original member_only/None behavior when omitted."""
+    payload: dict = {"source_project_id": source_project_id}
+    if mirror_mode is not None:
+        payload["mirror_mode"] = mirror_mode
+    if mirror_filter_role is not None:
+        payload["mirror_filter_role"] = mirror_filter_role
+    r = httpx.post(f"{BASE}/projects/{project_id}/member-sources", json=payload, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def get_project_group_id(headers: dict, project_id: str, group_name: str) -> str:
+    """Looks up a project group's id by its exact name — used to reach one
+    of the four default groups every project seeds (`DEFAULT_GROUPS` in
+    `routers/projects.py`) without hardcoding an id."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/groups", headers=headers, timeout=30)
+    r.raise_for_status()
+    return next(g["id"] for g in r.json() if g["name"] == group_name)
+
+
+def add_project_group_source_reference(headers: dict, project_id: str, group_id: str, source_project_id: str) -> None:
+    """Adds "this group's members = source_project_id's own direct members"
+    to a project group — the second, structurally simpler cross-project
+    RBAC mechanism alongside `add_member_source` above (docs/decisions.md)."""
     r = httpx.post(
-        f"{BASE}/projects/{project_id}/member-sources", json={"source_project_id": source_project_id},
+        f"{BASE}/projects/{project_id}/groups/{group_id}/members", json={"source_project_id": source_project_id},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -236,6 +264,36 @@ def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> 
 
 def add_requirement_comment(headers: dict, project_id: str, requirement_id: str, body: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments", json={"body": body}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_requirement_attachment(headers: dict, project_id: str, requirement_id: str, filename: str, content: bytes, content_type: str = "text/plain") -> dict:
+    """Direct requirement attachment (C-M-02) — one of the three sources
+    `GET /projects/{id}/files` (ProjectFilesPage) combines into a
+    project-wide file list."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/files",
+        files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_action_attachment(headers: dict, project_id: str, action_id: str, filename: str, content: bytes, content_type: str = "application/pdf") -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/actions/{action_id}/files",
+        files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_comment_attachment(headers: dict, project_id: str, requirement_id: str, comment_id: str, filename: str, content: bytes, content_type: str = "text/plain") -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
+        files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
+    )
     r.raise_for_status()
     return r.json()
 
@@ -687,6 +745,26 @@ def main() -> None:
     # Completed and signed off — archived to demonstrate the 'Include
     # archived' filter and Restore button on ActionDetailPage.
     archive_action(h_pm, drone["id"], firmware_review["id"])
+
+    print("Attaching files across Falcon-3 (direct requirement attachment + action attachment)...")
+    # `preflight_req`, not `remote_id_req` — `remote_id_req` is seeded
+    # directly into "complete" status (DRONE_REQUIREMENTS, above) and is
+    # therefore locked from the moment it's created, so a *direct*
+    # requirement-file upload against it always 409s ("must be added via a
+    # change request", `routers/requirements.py`) — the same lock the
+    # action-creation block immediately above this one already correctly
+    # routes around via an ADD_ACTION change request. `preflight_req`
+    # ("Complete pre-flight diagnostic checks...") is still `draft` at this
+    # point in the script, so it accepts a direct attachment.
+    upload_requirement_attachment(
+        h_pm, drone["id"], preflight_req["id"], "preflight-diagnostic-checklist.txt",
+        b"Standard pre-flight diagnostic checklist referenced by the 20-second timing requirement.",
+    )
+    upload_action_attachment(
+        h_pm, drone["id"], firmware_review["id"], "firmware-2.3.1-compliance-signoff.pdf",
+        b"%PDF-fake Compliance sign-off for firmware rev 2.3.1.",
+    )
+
     wind_test = create_and_link_action(
         h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],
         title="Wind tunnel stability test at 45 km/h sustained gust",
@@ -712,10 +790,17 @@ def main() -> None:
 
     print("Discussing a requirement on Falcon-3...")
     flight_time_req = drone_reqs["Provide a minimum flight time of 42 minutes at an 800g payload"]
-    add_requirement_comment(
+    flight_time_comment = add_requirement_comment(
         h(login("demo.engineer@example.com", PASSWORD)), drone["id"], flight_time_req["id"],
         "Bench tests with the new obstacle-avoidance sensor payload are showing ~38 minutes, not 42 — "
         "filing a change request to true this up rather than let the two drift apart silently.",
+    )
+    # Third of the three project-files origins (GET /projects/{id}/files,
+    # ProjectFilesPage): a comment attachment, alongside the direct
+    # requirement attachment and action attachment seeded above.
+    upload_comment_attachment(
+        h(login("demo.engineer@example.com", PASSWORD)), drone["id"], flight_time_req["id"], flight_time_comment["id"],
+        "bench-test-telemetry.txt", b"Raw bench-test flight-time telemetry backing the ~38 minute reading.",
     )
     add_requirement_comment(
         h_pm, drone["id"], flight_time_req["id"],
@@ -767,6 +852,21 @@ def main() -> None:
     )
     assign_project_role(h_pm, cloud["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, cloud["id"], demo_stakeholder["user_id"], "stakeholder")
+
+    print("Demonstrating the generalized cross-project RBAC mechanisms (docs/decisions.md) — Falcon-3 and Solstice"
+          " Cloud Platform are unrelated projects (no parent/child relationship), unlike Falcon-3/Avionics above...")
+    # Generalized member-source: Falcon-3 additionally consumes stakeholders
+    # (only — mirror_role, not every role) from the unrelated Solstice Cloud
+    # Platform project, so demo_stakeholder's real stakeholder role on Cloud
+    # also reaches Falcon-3 without a second, duplicate direct grant there.
+    add_member_source(h_pm, drone["id"], cloud["id"], mirror_mode="mirror_role", mirror_filter_role="stakeholder")
+    # Project-referencing group: Solstice Cloud Platform's own default
+    # "Stakeholders" group is defined as "Falcon-3's own direct members" —
+    # the second mechanism, reached from the group side rather than the
+    # project side.
+    cloud_stakeholders_group_id = get_project_group_id(h_pm, cloud["id"], "Stakeholders")
+    add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group_id, drone["id"])
+
     cloud_components = {
         "API": create_component(h_pm, cloud["id"], "API", "API"),
         "DP": create_component(h_pm, cloud["id"], "Data Pipeline", "DP"),
@@ -850,7 +950,11 @@ def main() -> None:
     print("    - 2 requirement actions (1 completed review, 1 failed test, shared across 2 requirements)")
     print("    - Falcon-3 Avionics Subsystem (sub-project, mirror-all inherits from Falcon-3;"
           " Falcon-3 also consumes members from it — see docs/decisions.md's 'Hierarchical projects' entry)")
+    print("    - Also consumes stakeholders (mirror_role) from the unrelated Solstice Cloud Platform"
+          " project — the generalized (non-parent/child) member-source, see docs/decisions.md")
     print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request, status: Proposed)")
+    print("    - Its own 'Stakeholders' group is defined as Falcon-3's direct members"
+          " (the project-referencing group mechanism, see docs/decisions.md)")
 
 
 if __name__ == "__main__":

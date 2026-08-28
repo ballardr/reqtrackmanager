@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES } from "./e2e-workflows/helpers";
+import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 /**
  * UX review: the project members list ("Effective members" under Project
- * Admin's Project groups tab) was a bare, unsearchable bullet list — it now
+ * Admin's Project groups group) was a bare, unsearchable bullet list — it now
  * matches Org Admin's Users table's structural pattern: a search box and a
  * sortable table (Email/Name/Role/Source), Source standing in for the org
  * table's account-level status/2FA/last-login columns, which don't exist at
@@ -14,7 +14,7 @@ test("project members table is searchable and sortable", async ({ page }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
   await page.getByText(PROJECT_NAMES.beta2).click();
   await page.getByRole("link", { name: "Project admin", exact: true }).click();
-  await page.getByRole("tab", { name: "Project groups" }).click();
+  await selectProjectAdminGroup(page, "Project groups");
 
   const section = page.getByRole("button", { name: /Effective members/ });
   if ((await section.getAttribute("aria-expanded")) !== "true") await section.click();

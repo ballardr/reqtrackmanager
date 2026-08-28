@@ -60,6 +60,11 @@ export function RequirementsPage() {
     myRoles.includes("project_manager") || myRoles.includes("project_administrator") || isOrgAdminOfProject;
   const [requirements, setRequirements] = useState<Requirement[] | null>(null);
   const [total, setTotal] = useState(0);
+  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
+  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
+  // is the filtered/searched count.
+  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   // Both start empty before the first fetch resolves, which is
@@ -75,8 +80,20 @@ export function RequirementsPage() {
   const [newInlineCategoryName, setNewInlineCategoryName] = useState("");
   const [newInlineCategoryPrefix, setNewInlineCategoryPrefix] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">("");
-  const [targetStageFilter, setTargetStageFilter] = useState("");
+  // Seeded directly from the URL on initial render, not set in a separate
+  // effect after mount (bug fix, 2026-08: dashboard glance navigation
+  // race) — a `?status=`/`?stage=` deep link from `ProjectOverviewPage`'s
+  // dashboard tiles used to be applied by a *second* effect that ran after
+  // the reload effect below had already kicked off one fetch with the
+  // still-empty default filter, so whichever of the two in-flight
+  // responses resolved last "won", sometimes leaving the rendered list out
+  // of sync with the (correctly-set) filter dropdown until the user
+  // toggled it and back. Seeding here means only one filter state, and
+  // therefore only one fetch, ever exists per mount.
+  const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">(
+    () => (searchParams.get("status") as RequirementStatus | "") || ""
+  );
+  const [targetStageFilter, setTargetStageFilter] = useState(() => searchParams.get("stage") || "");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
@@ -158,13 +175,26 @@ export function RequirementsPage() {
     return params;
   }
 
+  // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
+  // navigation race) alongside the searchParams-seeding fix above — neither
+  // `loadRequirements` nor `reload()` previously sequenced requests at all,
+  // so *any* path that can fire two overlapping fetches (e.g. rapid filter
+  // changes, not just the mount-time race the seeding fix eliminates) could
+  // still let a slower, stale response overwrite a faster, newer one. Each
+  // call claims the next id; a response is applied only if no newer call
+  // has started since.
+  const loadRequirementsRequestIdRef = useRef(0);
+
   async function loadRequirements(offset: number, append: boolean) {
     if (!projectId) return;
+    const requestId = ++loadRequirementsRequestIdRef.current;
     const page = await api.getPage<Requirement>(
       `/api/v1/projects/${projectId}/requirements?${listParams(offset).toString()}`
     );
+    if (requestId !== loadRequirementsRequestIdRef.current) return;
     setRequirements((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
+    setTotalUnfiltered(page.totalUnfiltered ?? page.total);
   }
 
   async function reload() {
@@ -222,14 +252,17 @@ export function RequirementsPage() {
 
   // Deep-linked from the Project Overview dashboard's glance tiles/pie-chart
   // segments/stage-progress bars (UX review: clicking a widget should land
-  // here pre-filtered to match it) — seeded once, then stripped so a later
-  // reload of this page doesn't keep reapplying a stale filter.
+  // here pre-filtered to match it) — `statusFilter`/`targetStageFilter`
+  // above are already seeded straight from these same params on initial
+  // render (bug fix, 2026-08: dashboard glance navigation race), so this
+  // effect only has to strip them from the URL once, so a later reload of
+  // this page doesn't keep reapplying a stale filter; it must not call
+  // `setStatusFilter`/`setTargetStageFilter` itself, or the race it was
+  // fixed to eliminate comes back.
   useEffect(() => {
     const status = searchParams.get("status");
     const stage = searchParams.get("stage");
     if (!status && !stage) return;
-    if (status) setStatusFilter(status as RequirementStatus);
-    if (stage) setTargetStageFilter(stage);
     setSearchParams((params) => {
       params.delete("status");
       params.delete("stage");
@@ -848,14 +881,7 @@ export function RequirementsPage() {
 
       <div className="side-grid">
         <div className="stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <input
-              className="input"
-              style={{ maxWidth: 320 }}
-              placeholder={strings.requirements.search}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="row" style={{ justifyContent: "flex-end" }}>
             <ViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
 
@@ -1081,8 +1107,14 @@ export function RequirementsPage() {
           )}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel
+          sectionKey="requirementsFilters"
+          matching={total}
+          total={totalUnfiltered}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={strings.requirements.search}
+        >
           <FilterField label="Status">
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
               <option value="">All statuses</option>

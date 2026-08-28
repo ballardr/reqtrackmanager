@@ -387,34 +387,259 @@ def test_parent_manager_can_add_a_child_with_zero_access_to_it(client, admin_tok
     assert resp.status_code == 201, resp.text
 
 
-def test_member_source_must_be_an_actual_direct_child(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "MS Not A Child Parent")
-    unrelated = create_project(client, admin_token, org_id, "MS Unrelated Project")
+def test_member_source_can_be_any_same_org_project_not_just_a_child(client, admin_token, org_id):
+    """Generalization (docs/decisions.md): member-source is no longer
+    restricted to a direct child — any project in the same organisation is
+    a valid source, since the original parent/child-only restriction was
+    the actual limitation this generalization exists to remove."""
+    receiving = create_project(client, admin_token, org_id, "MS Any-Project Receiving")
+    unrelated = create_project(client, admin_token, org_id, "MS Any-Project Unrelated")
     resp = client.post(
-        f"/api/v1/projects/{parent['id']}/member-sources",
+        f"/api/v1/projects/{receiving['id']}/member-sources",
         json={"source_project_id": unrelated["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    unrelated_user = create_org_user(client, admin_token, org_id, "ms_any_project_user@example.com", role="member")
+    assert _assign_role(client, admin_token, unrelated["id"], unrelated_user, "stakeholder").status_code == 204
+    token = login(client, "ms_any_project_user@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(token)).status_code == 200
+
+
+def test_member_source_rejects_cross_org_source(client, admin_token, org_id):
+    """The generalized constraint is same-organisation, not "any project
+    at all" — this is the actual security boundary that replaces the
+    removed strict-parent/child requirement."""
+    receiving = create_project(client, admin_token, org_id, "MS Cross-Org Receiving")
+    _other_org_admin, other_admin_token = create_org_admin_in(client, admin_token, "MS Cross-Org Other Org")
+    other_org_project = create_project(client, other_admin_token, _other_org_admin["id"], "MS Cross-Org Source")
+    resp = client.post(
+        f"/api/v1/projects/{receiving['id']}/member-sources",
+        json={"source_project_id": other_org_project["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400
 
 
-def test_stale_member_source_grants_nothing_after_child_reparented(client, admin_token, org_id):
-    parent = create_project(client, admin_token, org_id, "MS Stale Parent", can_be_parent=True)
-    other_parent = create_project(client, admin_token, org_id, "MS Stale Other Parent", can_be_parent=True)
-    child = create_project(client, admin_token, org_id, "MS Stale Child", parent_project_id=parent["id"])
-    child_user = create_org_user(client, admin_token, org_id, "ms_stale_user@example.com", role="member")
+def test_member_source_rejects_self_reference(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "MS Self Reference")
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/member-sources",
+        json={"source_project_id": project["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_member_source_survives_reparenting_within_same_org(client, admin_token, org_id):
+    """Reparenting no longer invalidates a member-source grant — the
+    generalized constraint (same organisation) is unaffected by structural
+    reparenting, unlike the original parent/child-only design. This is a
+    deliberate behavior change: see docs/decisions.md."""
+    parent = create_project(client, admin_token, org_id, "MS Reparent Survives Parent", can_be_parent=True)
+    other_parent = create_project(client, admin_token, org_id, "MS Reparent Survives Other Parent", can_be_parent=True)
+    child = create_project(client, admin_token, org_id, "MS Reparent Survives Child", parent_project_id=parent["id"])
+    child_user = create_org_user(client, admin_token, org_id, "ms_reparent_survives_user@example.com", role="member")
     assert _assign_role(client, admin_token, child["id"], child_user, "stakeholder").status_code == 204
     assert client.post(
         f"/api/v1/projects/{parent['id']}/member-sources",
         json={"source_project_id": child["id"]}, headers=auth_headers(admin_token),
     ).status_code == 201
 
-    token = login(client, "ms_stale_user@example.com", "Password123!")
+    token = login(client, "ms_reparent_survives_user@example.com", "Password123!")
     assert client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token)).status_code == 200
 
-    # Reparent child away — the parent's stale member-source row must
-    # become inert (live-revalidated, not cleaned up).
+    # Reparent within the same org: no longer breaks the grant, since the
+    # live-revalidated constraint is same-org, not structural parent/child.
     assert _set_parent(client, admin_token, child["id"], parent_project_id=other_parent["id"]).status_code == 200
-    assert client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token)).status_code == 403
+    assert client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token)).status_code == 200
+
+
+def test_member_source_stale_after_cross_org_move(client, admin_token, org_id):
+    """The live-revalidation this mechanism relies on (`models.project.
+    ProjectMemberSource`'s docstring) is exercised directly, since there is
+    no product feature to move a project between organisations today — the
+    check exists defensively for if one is ever added."""
+    other_org_admin, _other_admin_token = create_org_admin_in(client, admin_token, "MS Stale Cross-Org Dest")
+    receiving = create_project(client, admin_token, org_id, "MS Stale Cross-Org Receiving")
+    source = create_project(client, admin_token, org_id, "MS Stale Cross-Org Source")
+    source_user = create_org_user(client, admin_token, org_id, "ms_stale_cross_org_user@example.com", role="member")
+    assert _assign_role(client, admin_token, source["id"], source_user, "stakeholder").status_code == 204
+    assert client.post(
+        f"/api/v1/projects/{receiving['id']}/member-sources",
+        json={"source_project_id": source["id"]}, headers=auth_headers(admin_token),
+    ).status_code == 201
+
+    token = login(client, "ms_stale_cross_org_user@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(token)).status_code == 200
+
+    # Simulate the source project moving to a different organisation
+    # (no API for this today; write directly, matching how this test
+    # documents a defensive check with no product path to trigger it yet).
+    db = SessionLocal()
+    try:
+        from app.models.project import Project as ProjectModel
+        row = db.get(ProjectModel, UUID(source["id"]))
+        row.organization_id = UUID(other_org_admin["id"])
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(token)).status_code == 403
+
+
+def test_member_source_mirror_all_mirrors_actual_roles(client, admin_token, org_id):
+    receiving = create_project(client, admin_token, org_id, "MS MirrorAll Receiving")
+    source = create_project(client, admin_token, org_id, "MS MirrorAll Source")
+    user_id = create_org_user(client, admin_token, org_id, "ms_mirror_all_user@example.com", role="member")
+    assert _assign_role(client, admin_token, source["id"], user_id, "project_manager").status_code == 204
+    assert client.post(
+        f"/api/v1/projects/{receiving['id']}/member-sources",
+        json={"source_project_id": source["id"], "mirror_mode": "mirror_all"}, headers=auth_headers(admin_token),
+    ).status_code == 201
+
+    token = login(client, "ms_mirror_all_user@example.com", "Password123!")
+    # A real PROJECT_MANAGER on the source mirrors as PROJECT_MANAGER on
+    # the receiving project — not just baseline MEMBER.
+    resp = client.patch(f"/api/v1/projects/{receiving['id']}", json={"summary": "mirrored manager"}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_member_source_mirror_role_only_mirrors_the_filtered_role(client, admin_token, org_id):
+    receiving = create_project(client, admin_token, org_id, "MS MirrorRole Receiving")
+    source = create_project(client, admin_token, org_id, "MS MirrorRole Source")
+    manager_id = create_org_user(client, admin_token, org_id, "ms_mirror_role_manager@example.com", role="member")
+    stakeholder_id = create_org_user(client, admin_token, org_id, "ms_mirror_role_stakeholder@example.com", role="member")
+    assert _assign_role(client, admin_token, source["id"], manager_id, "project_manager").status_code == 204
+    assert _assign_role(client, admin_token, source["id"], stakeholder_id, "stakeholder").status_code == 204
+    assert client.post(
+        f"/api/v1/projects/{receiving['id']}/member-sources",
+        json={"source_project_id": source["id"], "mirror_mode": "mirror_role", "mirror_filter_role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).status_code == 201
+
+    manager_token = login(client, "ms_mirror_role_manager@example.com", "Password123!")
+    stakeholder_token = login(client, "ms_mirror_role_stakeholder@example.com", "Password123!")
+    # The manager (holds the filtered role directly) reaches the receiving project...
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(manager_token)).status_code == 200
+    # ...but the stakeholder (holds a real role, just not the filtered one) does not.
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(stakeholder_token)).status_code == 403
+
+
+def test_member_source_default_mode_matches_original_member_only_behavior(client, admin_token, org_id):
+    """Backward-compatibility pin: omitting `mirror_mode` (as every row
+    created before this generalization did) must grant exactly the
+    original behavior — baseline MEMBER regardless of the source's actual
+    role, never more."""
+    receiving = create_project(client, admin_token, org_id, "MS Default Mode Receiving")
+    source = create_project(client, admin_token, org_id, "MS Default Mode Source")
+    manager_id = create_org_user(client, admin_token, org_id, "ms_default_mode_manager@example.com", role="member")
+    assert _assign_role(client, admin_token, source["id"], manager_id, "project_manager").status_code == 204
+    add = client.post(
+        f"/api/v1/projects/{receiving['id']}/member-sources",
+        json={"source_project_id": source["id"]}, headers=auth_headers(admin_token),
+    )
+    assert add.status_code == 201
+    assert add.json()["mirror_mode"] == "member_only"
+
+    token = login(client, "ms_default_mode_manager@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(token)).status_code == 200
+    # Baseline only, even though this user is a real PROJECT_MANAGER on
+    # the source — member_only never elevates.
+    manage_resp = client.patch(f"/api/v1/projects/{receiving['id']}", json={"summary": "nope"}, headers=auth_headers(token))
+    assert manage_resp.status_code == 403
+
+
+# --- Project-referencing group members (ProjectGroupMember.source_project_id) -----
+
+
+def test_project_group_can_reference_another_projects_members(client, admin_token, org_id):
+    source = create_project(client, admin_token, org_id, "PG Ref Source")
+    receiving = create_project(client, admin_token, org_id, "PG Ref Receiving")
+    user_id = create_org_user(client, admin_token, org_id, "pg_ref_user@example.com", role="member")
+    assert _assign_role(client, admin_token, source["id"], user_id, "stakeholder").status_code == 204
+
+    group = client.post(
+        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "Ref Group", "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    assert group.status_code == 201, group.text
+    group_id = group.json()["id"]
+    add_member = client.post(
+        f"/api/v1/projects/{receiving['id']}/groups/{group_id}/members",
+        json={"source_project_id": source["id"]}, headers=auth_headers(admin_token),
+    )
+    assert add_member.status_code == 204, add_member.text
+
+    token = login(client, "pg_ref_user@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{receiving['id']}", headers=auth_headers(token)).status_code == 200
+
+
+def test_project_group_source_reference_rejects_cross_org(client, admin_token, org_id):
+    receiving = create_project(client, admin_token, org_id, "PG Ref CrossOrg Receiving")
+    other_org_admin, other_admin_token = create_org_admin_in(client, admin_token, "PG Ref CrossOrg Other Org")
+    other_org_project = create_project(client, other_admin_token, other_org_admin["id"], "PG Ref CrossOrg Source")
+    group = client.post(
+        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "CrossOrg Ref Group", "role": "member"},
+        headers=auth_headers(admin_token),
+    )
+    group_id = group.json()["id"]
+    resp = client.post(
+        f"/api/v1/projects/{receiving['id']}/groups/{group_id}/members",
+        json={"source_project_id": other_org_project["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_project_group_source_reference_rejects_self_reference(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "PG Ref Self")
+    group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Self Ref Group", "role": "member"},
+        headers=auth_headers(admin_token),
+    )
+    group_id = group.json()["id"]
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{group_id}/members",
+        json={"source_project_id": project["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 400
+
+
+def test_project_group_source_reference_is_one_hop_only(client, admin_token, org_id):
+    """Non-recursion pin (docs/decisions.md security review): a chained
+    X -> Y -> Z reference must not transitively leak Z's members into a
+    group referencing Y — "members of Y" means Y's own direct members
+    only, never Y's own project-referenced members."""
+    z = create_project(client, admin_token, org_id, "PG Ref Chain Z")
+    y = create_project(client, admin_token, org_id, "PG Ref Chain Y")
+    x = create_project(client, admin_token, org_id, "PG Ref Chain X")
+    z_user = create_org_user(client, admin_token, org_id, "pg_ref_chain_z_user@example.com", role="member")
+    assert _assign_role(client, admin_token, z["id"], z_user, "stakeholder").status_code == 204
+
+    # Y's group references Z's members.
+    y_group = client.post(
+        f"/api/v1/projects/{y['id']}/groups", json={"name": "Y refs Z", "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).json()
+    assert client.post(
+        f"/api/v1/projects/{y['id']}/groups/{y_group['id']}/members",
+        json={"source_project_id": z["id"]}, headers=auth_headers(admin_token),
+    ).status_code == 204
+
+    # X's group references Y's members (not Z directly).
+    x_group = client.post(
+        f"/api/v1/projects/{x['id']}/groups", json={"name": "X refs Y", "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).json()
+    assert client.post(
+        f"/api/v1/projects/{x['id']}/groups/{x_group['id']}/members",
+        json={"source_project_id": y["id"]}, headers=auth_headers(admin_token),
+    ).status_code == 204
+
+    token = login(client, "pg_ref_chain_z_user@example.com", "Password123!")
+    # z_user reaches Y (Y directly references Z)...
+    assert client.get(f"/api/v1/projects/{y['id']}", headers=auth_headers(token)).status_code == 200
+    # ...but must NOT reach X (X references Y's *direct* members only,
+    # and z_user is not one of Y's direct members, only Z's).
+    assert client.get(f"/api/v1/projects/{x['id']}", headers=auth_headers(token)).status_code == 403
 
 
 # --- parent_required bypass guard --------------------------------------------

@@ -351,6 +351,10 @@ const en = {
   },
   admin: {
     settings: "{Project} settings",
+    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
+    // — Project Admin converted from Tabs to ResourceMenu for cross-page
+    // consistency with the other admin-tier pages (docs/decisions.md).
+    sectionsNav: "{Project} admin sections",
     name: "Name",
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
@@ -369,10 +373,15 @@ const en = {
     saveSettings: "Save settings",
     // Hierarchical projects (docs/decisions.md).
     memberSources: "Member sources",
-    memberSourcesHint: "Direct children this {project} consumes members from — anyone with a role on a listed child gets baseline Member access here.",
+    memberSourcesHint: "Other {projects} in this organisation this {project} consumes members from — anyone with a role there gets access here, per the mode chosen for each source.",
     addMemberSource: "Add",
     removeMemberSource: "Remove",
-    noChildrenToAdd: "No direct sub-{projects} available to add.",
+    noChildrenToAdd: "No other {projects} available to add.",
+    memberSourceModeRole: (role: string) => `Mirrors ${role}`,
+    memberSourceProjectSelect: "Source {project}",
+    memberSourceModeSelect: "Mirror mode",
+    memberSourceFilterRoleSelect: "Mirrored role",
+    projectReferenceSelect: "Referenced {project}",
     // Deliberately not just "Members" — every project seeds a default
     // group of that exact name (`DEFAULT_GROUPS` in `routers/projects.py`),
     // which renders as its own "Members (...) section" card lower on this
@@ -383,7 +392,7 @@ const en = {
     loadEffectiveMembers: "Show members",
     sourceDirect: "Direct",
     sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
-    sourceMemberSourceInherited: "Inherited via a sub-{project}",
+    sourceMemberSourceInherited: (sourceName: string, mode: string) => `Via member source '${sourceName}' (${mode.toLowerCase()})`,
     materializeAll: "Convert all inherited access to direct roles",
     materializedCount: (n: number) => (n === 0 ? "Nothing to convert — no inherited access to make direct." : `Converted ${n} ${n === 1 ? "user" : "users"} to direct roles.`),
     // Effective-members table columns (UX review: matches Org Admin's Users
@@ -470,6 +479,8 @@ const en = {
     memberCount: (n: number) => `${n} member(s)`,
     viaOrgGroup: (name: string, org: string) => `${name} (${org} group)`,
     addOrgGroupToProjectGroup: (org: string) => `Nest an ${org} group…`,
+    viaProjectMembers: (name: string) => `${name}'s members`,
+    addProjectReferenceToProjectGroup: "Reference another {project}'s members…",
     newComponent: "New {component}",
     newCategory: "New {category}",
     newStage: "New {stage}",
@@ -854,6 +865,10 @@ const en = {
     testEmailRecipientPlaceholder: "Recipient email (defaults to your own account)",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
+    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
+    // — Server Admin converted from Tabs to ResourceMenu for cross-page
+    // consistency with the other admin-tier pages (docs/decisions.md).
+    sectionsNav: "Server management sections",
   },
   reports: {
     title: "Reports",
@@ -877,6 +892,18 @@ const en = {
     appendices: "Appendices",
     resourceSections: "Resource sections",
   },
+  files: {
+    title: "Files",
+    empty: "No files in this {project} yet.",
+    columnFilename: "Filename",
+    columnOrigin: "Origin",
+    columnUploadedBy: "Uploaded by",
+    columnUploadedAt: "Uploaded",
+    columnSize: "Size",
+    sourceRequirementAttachment: "{Requirement} attachment",
+    sourceActionAttachment: "Action attachment",
+    sourceCommentAttachment: "Comment attachment",
+  },
   history: {
     title: "{Project} history",
     since: "Since",
@@ -888,6 +915,10 @@ const en = {
   },
   preferences: {
     title: "Preferences",
+    // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
+    // — Preferences converted from Tabs to ResourceMenu for cross-page
+    // consistency with the other admin-tier pages (docs/decisions.md).
+    sectionsNav: "Preferences sections",
     theme: "Theme",
     light: "Light",
     dark: "Dark",
@@ -1039,6 +1070,14 @@ const en = {
     // per-instance, since the chevron's own job ("reveal the alternatives")
     // doesn't change with what those alternatives are.
     moreOptions: "More options",
+    // `ResultCount` (2026-08 UX audit roadmap: persistent "showing X of Y"
+    // result count in `FilterPanel`'s header) — generic across every list
+    // page that uses it, same reasoning as `moreOptions` above.
+    resultCountTotal: (total: number) => `${total} total`,
+    resultCountMatching: (matching: number, total: number) => `Showing ${matching} matching · ${total} total`,
+    // `FilterPanel`'s collapsible filter body (2026-08 UX audit roadmap) —
+    // below the mobile breakpoint it's a `CollapsibleSection` titled this.
+    filters: "Filters",
   },
 };
 

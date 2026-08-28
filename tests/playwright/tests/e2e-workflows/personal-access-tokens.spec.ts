@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { PERSONAS, loginAs } from "./helpers";
+import { PERSONAS, loginAs, selectPreferencesGroup } from "./helpers";
 
 /**
  * End-to-end proof that a Personal Access Token created through the real
@@ -20,7 +20,7 @@ test("a Personal Access Token created via Preferences authenticates a real API c
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
   await page.goto("/preferences");
-  await page.getByRole("tab", { name: "Personal Access Tokens", exact: true }).click();
+  await selectPreferencesGroup(page, "Personal Access Tokens");
   // The create form opens in a `Modal` (2026-08 UX audit roadmap item
   // 526), not a permanently-visible nested accordion.
   await page.getByRole("button", { name: "New personal access token" }).click();

@@ -1,13 +1,15 @@
 import { Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
+import { ResourceMenu } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
-import { Tabs, tabPanelProps } from "../components/Tabs";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
@@ -596,50 +598,61 @@ function SignupModeTab() {
 }
 
 /**
- * Server-admin console, tabbed like Project admin: access review (C-A-13),
- * platform-wide branding defaults, and the public sign-up mode — previously
- * two separate nav entries, now three tabs consolidated here since all are
- * the same kind of "deployment-wide, not any one organisation's" setting.
+ * The 4 resource-menu groups Server Admin's previous 4-tab bar was
+ * converted into. Each key is also the route segment under
+ * `/server/management/:group?` (App.tsx), so a group selection is a real
+ * navigation, not client-only state. An unrecognised or absent `:group`
+ * (including the bare `/server/management` used by every existing link
+ * into this page) falls back to "accessReview".
+ *
+ * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
+ * the other admin-tier pages (Org Admin, Project Admin, Preferences) —
+ * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
+ * ResourceMenu call, since this page never exceeded 5 tabs on its own.
+ * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
+ */
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email";
+
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email"];
+
+/**
+ * Server-admin console: access review (C-A-13), platform-wide branding
+ * defaults, and the public sign-up mode — previously two separate nav
+ * entries, now consolidated here since all are the same kind of
+ * "deployment-wide, not any one organisation's" setting.
  * `/server/organisations` (every org on the deployment, with create/
  * disable/delete) stays a separate page — its own row-per-org table
- * doesn't fit a tab alongside these.
+ * doesn't fit alongside these groups.
  */
 export function ServerManagementPage() {
-  const [tab, setTab] = useState<"accessReview" | "branding" | "signup" | "email">("accessReview");
+  const { group: groupParam } = useParams<{ group?: string }>();
 
-  const tabs: { key: typeof tab; label: string }[] = [
-    { key: "accessReview", label: strings.orgAdmin.accessReview },
-    { key: "branding", label: strings.serverSettings.title },
-    { key: "signup", label: strings.signupSettings.title },
-    { key: "email", label: strings.system.emailTab },
+  const activeGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
+    groupParam as ServerManagementGroupKey
+  )
+    ? (groupParam as ServerManagementGroupKey)
+    : "accessReview";
+
+  const groups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
+    { key: "accessReview", label: strings.orgAdmin.accessReview, href: "/server/management/accessReview" },
+    { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
+    { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
+    { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
   ];
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.nav.serverManagement}</h1>
-
-      <Tabs idPrefix="server-management-tabs" tabs={tabs} active={tab} onChange={setTab} />
-
-      {tab === "accessReview" && (
-        <div {...tabPanelProps("server-management-tabs", "accessReview")}>
-          <AccessReviewTab />
-        </div>
-      )}
-      {tab === "branding" && (
-        <div {...tabPanelProps("server-management-tabs", "branding")}>
-          <PlatformBrandingTab />
-        </div>
-      )}
-      {tab === "signup" && (
-        <div {...tabPanelProps("server-management-tabs", "signup")}>
-          <SignupModeTab />
-        </div>
-      )}
-      {tab === "email" && (
-        <div {...tabPanelProps("server-management-tabs", "email")}>
-          <TestEmailTab />
-        </div>
-      )}
+      <ResourceMenu
+        title={strings.nav.serverManagement}
+        ariaLabel={strings.system.sectionsNav}
+        groups={groups}
+        active={activeGroup}
+      >
+        {activeGroup === "accessReview" && <AccessReviewTab />}
+        {activeGroup === "branding" && <PlatformBrandingTab />}
+        {activeGroup === "signup" && <SignupModeTab />}
+        {activeGroup === "email" && <TestEmailTab />}
+      </ResourceMenu>
     </div>
   );
 }
