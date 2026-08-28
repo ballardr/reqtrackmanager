@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can require 2FA org-wide (blocking every
@@ -103,7 +103,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     let recoverySecret = "";
     await test.step("the blocked admin's self-service way out: /auth/2fa isn't org-scoped, so they can still enrol themselves", async () => {
       await page.goto("/preferences");
-      await page.getByRole("tab", { name: "Security", exact: true }).click();
+      await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
       const [enrollResponse] = await Promise.all([
         page.waitForResponse((r) => r.url().includes("/auth/2fa/enroll") && r.request().method() === "POST"),
@@ -134,7 +134,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // path above — leaving it on would break this persona's plain
       // loginAs() in any spec that runs after this one.
       await page.goto("/preferences");
-      await page.getByRole("tab", { name: "Security", exact: true }).click();
+      await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
       await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(recoverySecret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
@@ -161,7 +161,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       // Groups now render collapsed by default (2026-08 UX audit
       // "Directories at scale") — expand "Members" specifically before its
       // own add-member input is reachable at all.

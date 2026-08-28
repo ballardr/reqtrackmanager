@@ -41,6 +41,48 @@ def test_requirements_list_paginates_and_reports_total(client, admin_token, org_
     assert len(page3.json()) == 1
 
 
+def test_requirements_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
+    """`X-Total-Unfiltered-Count` (2026-08 UX audit roadmap, persistent
+    "showing X of Y" result count on `RequirementsPage`/`ResultCount`) must
+    stay fixed at the mandatory project + default archived-visibility scope
+    regardless of `search`/`status` filters, while the existing
+    `X-Total-Count` continues to reflect them — this is what lets the
+    frontend show "Showing N matching · M total" instead of a single
+    ambiguous number."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    for name in ["Alpha widget", "Beta widget", "Gamma widget"]:
+        client.post(
+            f"/api/v1/projects/{project['id']}/requirements",
+            json={"name": name, "component_id": component_id, "category_id": category_id},
+            headers=auth_headers(admin_token),
+        )
+
+    unfiltered = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token))
+    assert unfiltered.headers["x-total-count"] == "3"
+    assert unfiltered.headers["x-total-unfiltered-count"] == "3"
+
+    searched = client.get(
+        f"/api/v1/projects/{project['id']}/requirements?search=Alpha", headers=auth_headers(admin_token)
+    )
+    assert searched.headers["x-total-count"] == "1"
+    # The unfiltered count is unchanged by the search term — it's still the
+    # whole project's mandatory-scope total, not the search-narrowed one.
+    assert searched.headers["x-total-unfiltered-count"] == "3"
+
+    by_status = client.get(
+        f"/api/v1/projects/{project['id']}/requirements?status=draft", headers=auth_headers(admin_token)
+    )
+    assert by_status.headers["x-total-count"] == "3"
+    assert by_status.headers["x-total-unfiltered-count"] == "3"
+
+    by_category = client.get(
+        f"/api/v1/projects/{project['id']}/requirements?category_id={category_id}", headers=auth_headers(admin_token)
+    )
+    assert by_category.headers["x-total-count"] == "3"
+    assert by_category.headers["x-total-unfiltered-count"] == "3"
+
+
 def test_projects_list_paginates_and_reports_total(client, admin_token, org_id):
     for i in range(3):
         create_project(client, admin_token, org_id, f"Paged Project {i}")
@@ -48,6 +90,71 @@ def test_projects_list_paginates_and_reports_total(client, admin_token, org_id):
     page = client.get("/api/v1/projects?archived=false&limit=1&offset=0", headers=auth_headers(admin_token))
     assert len(page.json()) == 1
     assert int(page.headers["x-total-count"]) >= 3
+
+
+def test_projects_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
+    """Same contract as the requirements-list test above, but for
+    `ProjectListPage` — `organization_id`/`search`/`role`/`stage_status`/
+    `favorite_only` all narrow `X-Total-Count` without moving
+    `X-Total-Unfiltered-Count`, which stays at the caller's full
+    accessible/`archived`-scope count."""
+    for i in range(3):
+        create_project(client, admin_token, org_id, f"Unfiltered Count Project {i}")
+
+    baseline = client.get("/api/v1/projects?archived=false", headers=auth_headers(admin_token))
+    baseline_total = int(baseline.headers["x-total-count"])
+    assert baseline.headers["x-total-unfiltered-count"] == str(baseline_total)
+
+    searched = client.get(
+        "/api/v1/projects?archived=false&search=Unfiltered+Count+Project+0", headers=auth_headers(admin_token)
+    )
+    assert searched.headers["x-total-count"] == "1"
+    # Same mandatory scope as the unfiltered baseline above — the search
+    # term must not move this header.
+    assert searched.headers["x-total-unfiltered-count"] == str(baseline_total)
+
+    # Archived scope is part of the *mandatory* scope (parenthetically
+    # named in the router docstring), so it's expected to differ from the
+    # active-scope baseline above, unlike a plain filter.
+    archived = client.get("/api/v1/projects?archived=true", headers=auth_headers(admin_token))
+    assert archived.headers["x-total-unfiltered-count"] == archived.headers["x-total-count"]
+
+
+def test_change_requests_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
+    """Same contract, for `ChangeRequestsPage` — `cr_status`/`active_only`/
+    `target_stage_id` narrow `X-Total-Count` without moving
+    `X-Total-Unfiltered-Count`, which stays at the project's full count
+    (change requests have no archived-visibility concept)."""
+    project = create_project(client, admin_token, org_id)
+    for i in range(3):
+        client.post(
+            f"/api/v1/projects/{project['id']}/change-requests",
+            json={"kind": "new_requirement", "proposed_name": f"Unfiltered CR {i}", "reason": "because"},
+            headers=auth_headers(admin_token),
+        )
+
+    unfiltered = client.get(f"/api/v1/projects/{project['id']}/change-requests", headers=auth_headers(admin_token))
+    assert unfiltered.headers["x-total-count"] == "3"
+    assert unfiltered.headers["x-total-unfiltered-count"] == "3"
+
+    active_only = client.get(
+        f"/api/v1/projects/{project['id']}/change-requests?active_only=true", headers=auth_headers(admin_token)
+    )
+    # Every CR created above is DRAFT (a non-terminal status), so
+    # `active_only` doesn't narrow `X-Total-Count` here — submit one so the
+    # two counts can actually diverge and pin the real behaviour.
+    assert active_only.headers["x-total-count"] == "3"
+    assert active_only.headers["x-total-unfiltered-count"] == "3"
+
+    crs = client.get(f"/api/v1/projects/{project['id']}/change-requests", headers=auth_headers(admin_token)).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{crs[0]['id']}/submit", headers=auth_headers(admin_token)
+    )
+    by_status = client.get(
+        f"/api/v1/projects/{project['id']}/change-requests?cr_status=draft", headers=auth_headers(admin_token)
+    )
+    assert by_status.headers["x-total-count"] == "2"
+    assert by_status.headers["x-total-unfiltered-count"] == "3"
 
 
 def test_change_requests_list_paginates_and_reports_total(client, admin_token, org_id):

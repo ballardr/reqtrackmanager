@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { loginAs, PERSONAS, selectOrgAdminGroup, selectServerManagementGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can rename their own organisation, and can
@@ -193,7 +193,7 @@ test.describe("organisation rename and test-email actions", () => {
 
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.goto("/server/management");
-    await page.getByRole("tab", { name: "Email", exact: true }).click();
+    await selectServerManagementGroup(page, "Email");
 
     await page.getByPlaceholder("Recipient email (defaults to your own account)").fill(recipient);
     await Promise.all([

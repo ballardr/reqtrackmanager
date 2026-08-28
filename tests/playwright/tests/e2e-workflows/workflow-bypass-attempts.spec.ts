@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: the requirement lifecycle's guarantees (edit-after-lock
@@ -38,7 +38,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       // Project stages now lives inside the merged "Structure" tab
       // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
-      await page.getByRole("tab", { name: "Structure" }).click();
+      await selectProjectAdminGroup(page, "Structure");
       // A stage must be in review before it can be approved — start review
       // first if the stage is still in scoping (idempotent against a
       // re-run: only clicked when the button is actually present).

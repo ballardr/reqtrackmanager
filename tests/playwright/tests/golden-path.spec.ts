@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+
 /**
  * End-to-end golden path against the running tests/container/docker-compose.yml stack:
  * login -> create project -> add component/category -> add requirement ->
@@ -58,7 +60,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // stages" section that also has its own "Name"-placeholder "add stage"
     // field — scope to "Components & categories" specifically rather than
     // relying on page-wide Name/Prefix queries.
-    await page.getByRole("tab", { name: "Structure" }).click();
+    await selectProjectAdminGroup(page, "Structure");
     const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     // Component/category tree (C-G-07): with no components yet, the only
     // Name/Prefix inputs in this section are the "add component" form's own.
@@ -114,7 +116,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
     // Project stages now lives inside the merged "Structure" tab.
-    await page.getByRole("tab", { name: "Structure" }).click();
+    await selectProjectAdminGroup(page, "Structure");
     // A stage must enter review before it can be approved (C-R-05's
     // review-deadline/response workflow lives in that state) — approving
     // straight from scoping is no longer a valid transition.

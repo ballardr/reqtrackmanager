@@ -299,11 +299,40 @@ def test_action_direct_file_attachment(client, admin_token, org_id):
     listed = client.get(f"/api/v1/projects/{project['id']}/actions/{action['id']}/files", headers=auth_headers(admin_token)).json()
     assert len(listed) == 1
 
+    # Regression test: GET /api/v1/files/{id} (routers/files.py::download_file)
+    # used to have no resolution path for a file attached only via
+    # RequirementActionFile — project_id stayed None and the request always
+    # 403'd, even for the uploader, even though upload/list/delete all
+    # worked. An action-attached file must actually be downloadable.
+    download = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token))
+    assert download.status_code == 200
+    assert download.content == b"%PDF-fake"
+
     removed = client.delete(
         f"/api/v1/projects/{project['id']}/actions/{action['id']}/files/{file_id}", headers=auth_headers(admin_token)
     )
     assert removed.status_code == 204
     assert client.get(f"/api/v1/projects/{project['id']}/actions/{action['id']}/files", headers=auth_headers(admin_token)).json() == []
+    assert client.get(f"/api/v1/files/{file_id}", headers=auth_headers(admin_token)).status_code == 404
+
+
+def test_non_member_cannot_download_action_attachment(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    action_type_id = _action_types(client, admin_token, project["id"])[0]["id"]
+    action = client.post(
+        f"/api/v1/projects/{project['id']}/actions", json={"title": "T", "action_type_id": action_type_id},
+        headers=auth_headers(admin_token),
+    ).json()
+    file_id = client.post(
+        f"/api/v1/projects/{project['id']}/actions/{action['id']}/files",
+        files={"file": ("report.pdf", b"%PDF-fake", "application/pdf")}, headers=auth_headers(admin_token),
+    ).json()["id"]
+
+    create_org_user(client, admin_token, org_id, "action-outsider@example.com", role="member")
+    outsider_token = login(client, "action-outsider@example.com", "Password123!")
+
+    resp = client.get(f"/api/v1/files/{file_id}", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
 
 
 def test_action_type_id_must_belong_to_project(client, admin_token, org_id):

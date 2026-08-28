@@ -269,15 +269,32 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):
-    """A member of a project group: either a user or a nested org group.
+    """A member of a project group: a user, a nested org group, or a
+    reference to another project's own membership roster.
 
-    Exactly one of user_id / org_group_id must be set.
+    Exactly one of user_id / org_group_id / source_project_id must be set.
+
+    `source_project_id` ("members of project X") is resolved as that
+    project's *direct* members only — one hop, deliberately non-recursive
+    (never a source project's own forward-inherited, member-source-derived,
+    or project-referenced members) — see `services.rbac.
+    _direct_project_member_ids_base`'s docstring for why: two projects
+    referencing each other's rosters must never be able to cause unbounded
+    recursion, and this is the structural guarantee that prevents it, not
+    just an optimisation. Same-organisation only (enforced at write time in
+    `routers.projects.add_project_group_member`, and re-checked live at
+    read time, mirroring `org_group_id`'s existing cross-tenant defense in
+    depth). Authorized purely by `require_project_manage` on this group's
+    *own* project — no consent required from the source project, matching
+    `ProjectMemberSource`'s own documented rationale (source 6 is
+    authorized entirely by the receiving side, not the source's). See
+    docs/decisions.md for the security review performed when this was added.
     """
 
     __tablename__ = "project_group_members"
     __table_args__ = (
         CheckConstraint(
-            "(user_id IS NOT NULL)::int + (org_group_id IS NOT NULL)::int = 1",
+            "(user_id IS NOT NULL)::int + (org_group_id IS NOT NULL)::int + (source_project_id IS NOT NULL)::int = 1",
             name="ck_project_group_member_exactly_one_target",
         ),
     )
@@ -288,6 +305,9 @@ class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     org_group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), nullable=True
+    )
+    source_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
 
 
@@ -303,10 +323,10 @@ class UserProjectRole(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectMemberSource(UUIDPKMixin, TimestampMixin, Base):
-    """One entry in a project's own "consume members from this child" list —
-    the reverse (child -> parent) RBAC mechanism, deliberately shaped as an
-    explicit list owned and authorized by the parent, not a flag on the
-    child.
+    """One entry in a project's own "consume members from this other
+    project" list — the reverse (source -> receiving project) RBAC
+    mechanism, deliberately shaped as an explicit list owned and authorized
+    by the receiving project, not a flag on the source.
 
     An earlier draft of this mechanism was a boolean on the child
     (`share_members_with_parent`), gated by the child's own manage rights —
@@ -314,20 +334,56 @@ class ProjectMemberSource(UUIDPKMixin, TimestampMixin, Base):
     (with zero access to the parent) grant that child's entire membership
     read access into a potentially confidential parent, entirely without
     the parent's knowledge or consent. This table closes that off
-    structurally: a child has no code path that can add itself here — only
-    someone who already holds `require_project_manage` on `project_id` (the
-    parent) can create or delete a row, mirroring how `Project.visibility`
-    is already the project's own unilateral choice. See `docs/decisions.md`.
+    structurally: a source project has no code path that can add itself
+    here — only someone who already holds `require_project_manage` on
+    `project_id` (the receiving side) can create or delete a row, mirroring
+    how `Project.visibility` is already the project's own unilateral
+    choice. See `docs/decisions.md`.
+
+    Originally restricted to `source_project_id` being a direct child of
+    `project_id` (strict parent/child only) and always granting bare
+    `MEMBER`. Generalized (see `docs/decisions.md`'s entry on this) to any
+    project in the same organisation, with `mirror_mode`/
+    `mirror_filter_role` controlling what gets mirrored — same shape and
+    same validation as `Project.role_inheritance_mode`/
+    `role_inheritance_filter_role`'s forward mechanism, just applied in the
+    reverse direction. The authorization direction is unchanged by the
+    generalization: still the receiving project's own manage rights only,
+    never the source's — a source project's manager is never consulted or
+    notified, matching the original parent/child design's rationale exactly
+    (an actor who already manages "many settings, one direction" doesn't
+    need the other side's permission to reference its public-within-the-
+    org roster, the same way they wouldn't need permission to invite a
+    known user by email).
 
     A row's existence alone is not sufficient to grant anything: resolution
-    (`services.rbac`) additionally re-validates
-    `source_project.parent_project_id == project_id` live, at read time, so
-    a row that becomes stale (its `source_project_id` was reparented
-    elsewhere) is automatically inert without needing cleanup on reparent —
-    a deliberate simplification, not an oversight.
+    (`services.rbac`) additionally re-validates, live at read time, that
+    `source_project.organization_id == project.organization_id` (same
+    organisation only) and that `source_project_id != project_id` — so a
+    row that becomes stale (e.g. the source project moved to a different
+    organisation via some future cross-org transfer feature — not possible
+    today, but the check costs nothing) is automatically inert without
+    needing cleanup, the same deliberate-simplification rationale the
+    original parent/child revalidation had.
 
     Both FKs `ondelete="CASCADE"`: this is pure join-table configuration
     with no independent meaning once either side is gone.
+
+    Attributes:
+        mirror_mode: What to mirror from `source_project_id`'s own direct
+            roles — `MEMBER_ONLY` (default, preserves the original
+            behavior exactly for any row created before this field
+            existed), `MIRROR_ALL`, or `MIRROR_ROLE` (paired with
+            `mirror_filter_role`). Resolved per-hop by
+            `services.rbac._member_source_derived_roles`, reading only the
+            source's *direct* roles (never its own inherited or
+            member-sourced roles) — preserves the existing decoupling
+            property between this mechanism and forward inheritance.
+        mirror_filter_role: Required iff `mirror_mode == MIRROR_ROLE`,
+            forbidden otherwise — same validation as `Project.
+            role_inheritance_filter_role` (`STAKEHOLDER`/
+            `PROJECT_ADMINISTRATOR`/`PROJECT_MANAGER` only, never `MEMBER`,
+            already covered more broadly by `MEMBER_ONLY`).
     """
 
     __tablename__ = "project_member_sources"
@@ -339,6 +395,10 @@ class ProjectMemberSource(UUIDPKMixin, TimestampMixin, Base):
     source_project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
+    mirror_mode: Mapped[ProjectRoleInheritanceMode] = mapped_column(
+        str_enum(ProjectRoleInheritanceMode, 20), default=ProjectRoleInheritanceMode.MEMBER_ONLY
+    )
+    mirror_filter_role: Mapped[ProjectRole | None] = mapped_column(str_enum(ProjectRole), nullable=True)
 
 
 class FavoriteProject(UUIDPKMixin, Base):

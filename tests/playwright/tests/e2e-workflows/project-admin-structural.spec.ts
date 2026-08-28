@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -104,7 +104,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     // afterward (a created category renders as a plain rename `<input>`
     // with no placeholder, not an additional "Name"-placeholder match).
     await test.step("build a two-component tree", async () => {
-      await page.getByRole("tab", { name: "Structure" }).click();
+      await selectProjectAdminGroup(page, "Structure");
 
       await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Firmware");
       await componentsSection.getByPlaceholder("Prefix").last().fill("FW");
@@ -206,10 +206,14 @@ test.describe("project admin: structural rename/delete and archiving", () => {
         `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=approved`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // ProjectAdminPage's tab state resets to the default (Overview) on a
-      // full page reload — re-select Structure afterwards.
+      // ProjectAdminPage's group is now a real route segment
+      // (`ResourceMenu`, converted from `Tabs`), so a full page reload no
+      // longer resets it to the default (Overview) the way client-only tab
+      // state used to — the reselect below is now a harmless no-op
+      // (`selectProjectAdminGroup` only clicks if not already active),
+      // kept for robustness against a future reversion.
       await page.reload();
-      await page.getByRole("tab", { name: "Structure" }).click();
+      await selectProjectAdminGroup(page, "Structure");
 
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await stagesSection.getByTitle("Delete this stage").nth(0).click();
@@ -225,7 +229,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     });
 
     await test.step("the project can be archived then unarchived", async () => {
-      await page.getByRole("tab", { name: "Project settings" }).click();
+      await selectProjectAdminGroup(page, "Project settings");
       await page.getByRole("button", { name: "Archive project" }).click();
       await expect(page.getByRole("button", { name: "Unarchive project" })).toBeVisible();
       await page.goto("/projects");

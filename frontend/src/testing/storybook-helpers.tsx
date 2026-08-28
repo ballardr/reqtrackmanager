@@ -34,6 +34,7 @@ import type {
   LinkTypeDefinition,
   Notification,
   Project,
+  ProjectFile,
   ProjectListItem,
   ProjectStage,
   ProjectStatusDefinition,
@@ -229,6 +230,27 @@ export function buildFileAsset(overrides: Partial<FileAsset> = {}): FileAsset {
   return {
     id: nextId("file"), organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf",
     size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-01-10T09:00:00Z",
+    ...overrides,
+  };
+}
+
+/** `GET /projects/{id}/files` row (ProjectFilesPage) — defaults to a
+ * requirement-attachment row; pass `source: "action_attachment"` (with
+ * `action_id`/`action_unique_code`/`action_title`) or `"comment_attachment"`
+ * (with `comment_id`, alongside the requirement fields) to build the other
+ * two origin shapes. */
+export function buildProjectFile(overrides: Partial<ProjectFile> = {}): ProjectFile {
+  return {
+    file: buildFileAsset(),
+    uploaded_by_display_name: "Alex Morgan",
+    source: "requirement_attachment",
+    requirement_id: "requirement-1",
+    requirement_unique_code: "SW-PERF-001",
+    requirement_name: "Ship the widget",
+    action_id: null,
+    action_unique_code: null,
+    action_title: null,
+    comment_id: null,
     ...overrides,
   };
 }

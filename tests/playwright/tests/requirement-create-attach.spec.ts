@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+
 /**
  * UX review: files and links could previously only be attached to a
  * requirement after closing the create form and opening the detail page.
@@ -32,7 +34,7 @@ test("Create & attach files/links advances to an attach-files-and-links step, th
   // golden-path.spec.ts's own established pattern — a fresh project has
   // neither yet.
   await page.getByText("Project Admin").click();
-  await page.getByRole("tab", { name: "Structure" }).click();
+  await selectProjectAdminGroup(page, "Structure");
   const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
   await componentsSection.getByPlaceholder("Name").fill("Software");
   await componentsSection.getByPlaceholder("Prefix").fill("SW");
@@ -92,7 +94,7 @@ test("plain Create closes the modal immediately, unchanged", async ({ page }) =>
   await page.waitForURL(/\/projects\/[^/]+$/);
 
   await page.getByText("Project Admin").click();
-  await page.getByRole("tab", { name: "Structure" }).click();
+  await selectProjectAdminGroup(page, "Structure");
   const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
   await componentsSection.getByPlaceholder("Name").fill("Software");
   await componentsSection.getByPlaceholder("Prefix").fill("SW");

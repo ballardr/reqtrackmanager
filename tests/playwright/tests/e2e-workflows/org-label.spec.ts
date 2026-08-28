@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS } from "./helpers";
+import { loginAs, PERSONAS, selectServerManagementGroup } from "./helpers";
 
 /**
  * Job to be done: a server admin can relabel the word "organisation"
@@ -71,7 +71,7 @@ test.describe("deployment-wide organisation label override", () => {
     await test.step("set a custom label via the platform branding admin form", async () => {
       await loginAs(page, PERSONAS.serverAdmin.email);
       await page.goto("/server/management");
-      await page.getByRole("tab", { name: "Platform branding" }).click();
+      await selectServerManagementGroup(page, "Platform branding");
       await page.getByLabel(/^Organisation label \(singular\)/).fill("tenant");
       await page.getByLabel(/^Organisation label \(plural\)/).fill("Tenants");
       await Promise.all([
@@ -98,7 +98,7 @@ test.describe("deployment-wide organisation label override", () => {
 
     await test.step("restoring the default (blank) label reverts the nav to \"Organisations\"", async () => {
       await page.goto("/server/management");
-      await page.getByRole("tab", { name: "Platform branding" }).click();
+      await selectServerManagementGroup(page, "Platform branding");
       await page.getByLabel(/^Organisation label \(singular\)/).fill("");
       await page.getByLabel(/^Organisation label \(plural\)/).fill("");
       await Promise.all([

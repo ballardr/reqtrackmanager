@@ -54,7 +54,7 @@ const withThemeProvider: Decorator = (Story) => <ThemeProvider>{Story()}</ThemeP
 const meta: Meta<typeof PreferencesPage> = {
   title: "Pages/PreferencesPage",
   component: PreferencesPage,
-  decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })), withThemeProvider, withRouter("/preferences"), withToast()],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })), withThemeProvider, withRouter("/preferences", "/preferences/:group?"), withToast()],
 };
 export default meta;
 
@@ -88,7 +88,7 @@ export const SecurityTabChangePassword: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     // "Change password" is a `variant="plain"` CollapsibleSection with no
     // `defaultCollapsed`, so it's already expanded — no click needed.
     await userEvent.type(canvas.getByPlaceholderText("Current password"), "old-password");
@@ -110,7 +110,7 @@ export const SecurityTabStart2FAEnrollment: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Security" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     await expect(canvas.getByText("Not enabled")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("switch", { name: "Enable 2FA" }));
     await waitFor(() => expect(canvas.getByText(/Scan this QR code/)).toBeInTheDocument());
@@ -122,7 +122,7 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   beforeEach: () => mockPreferencesApis("user-1"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Your access" }));
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Manage organisation" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Atlas Platform" })).toBeInTheDocument();
@@ -144,7 +144,7 @@ export const AccessTabLeaveOrganisationConfirms: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Your access" }));
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Leave Acme Corp" }));
@@ -165,7 +165,7 @@ export const AccessTabLeaveOrganisationCancel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Your access" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Your access" }));
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Leave Acme Corp" }));
@@ -182,7 +182,7 @@ export const PatsTabNoneYet: Story = {
   beforeEach: () => mockPreferencesApis("user-1", { pats: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     await waitFor(() => expect(canvas.getByText("You haven't created any Personal Access Tokens yet.")).toBeInTheDocument());
   },
 };
@@ -198,7 +198,7 @@ export const PatsTabCreateToken: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     // The create form opens in a `Modal` (2026-08 UX audit roadmap item
     // 526 — a brand-new PAT has no "what came before it" to be contextual
     // detail about, per the revised Principle 3), portalled to
@@ -234,7 +234,7 @@ export const PatsTabRevokeConfirms: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
@@ -254,7 +254,7 @@ export const PatsTabRevokeCancelled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     await waitFor(() => expect(canvas.getByText("MCP server")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
@@ -270,7 +270,7 @@ export const PatsTabCreateRequiresOrg: Story = {
   beforeEach: () => mockPreferencesApis("user-1", { pats: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create token" })).toBeInTheDocument());
@@ -287,7 +287,7 @@ export const PatsTabCreateModalCancel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Personal Access Tokens" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
     await userEvent.type(within(dialog).getByPlaceholderText('e.g. "MCP server"'), "Discarded token");
@@ -305,7 +305,7 @@ export const NotificationsTabToggleAndSave: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Notification preferences" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Notification preferences" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save preferences" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Save preferences" })).toBeDisabled();
     const [firstCheckbox] = canvas.getAllByRole("checkbox");

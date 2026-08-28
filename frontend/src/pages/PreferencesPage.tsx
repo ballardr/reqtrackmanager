@@ -1,13 +1,14 @@
 import { Plus, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { Modal } from "../components/Modal";
-import { Tabs, tabPanelProps } from "../components/Tabs";
+import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
+import { ResourceMenu } from "../components/ResourceMenu";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
@@ -38,12 +39,31 @@ function landingModeFor(preference: string | undefined): LandingMode {
 }
 
 /**
+ * The 5 resource-menu groups Preferences' previous 5-tab bar was converted
+ * into. Each key is also the route segment under `/preferences/:group?`
+ * (App.tsx), so a group selection is a real navigation, not client-only
+ * state. An unrecognised or absent `:group` (including the bare
+ * `/preferences` used by every existing link into this page) falls back
+ * to "profile".
+ *
+ * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
+ * the other admin-tier pages (Org Admin, Project Admin, Server Admin) —
+ * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
+ * ResourceMenu call, since this page never exceeded 5 tabs on its own.
+ * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
+ */
+type PreferencesGroupKey = "profile" | "security" | "access" | "pats" | "notifications";
+
+const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "security", "access", "pats", "notifications"];
+
+/**
  * User preferences: theme (U-U-01), post-login landing page (U-U-03),
  * pronouns (C-U-18), email digest mode (C-N-05), password change, and
  * TOTP two-factor enrollment (C-U-14).
  */
 export function PreferencesPage() {
   const strings = useStrings();
+  const { group: groupParam } = useParams<{ group?: string }>();
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
@@ -382,24 +402,28 @@ export function PreferencesPage() {
     }
   }
 
-  const [tab, setTab] = useState<"profile" | "security" | "access" | "pats" | "notifications">("profile");
+  const activeGroup: PreferencesGroupKey = PREFERENCES_GROUP_KEYS.includes(groupParam as PreferencesGroupKey)
+    ? (groupParam as PreferencesGroupKey)
+    : "profile";
 
-  const tabs: { key: typeof tab; label: string }[] = [
-    { key: "profile", label: strings.preferences.profile },
-    { key: "security", label: strings.preferences.security },
-    { key: "access", label: strings.preferences.access },
-    { key: "pats", label: strings.preferences.pats },
-    { key: "notifications", label: strings.notifications.preferencesTitle },
+  const groups: ResourceMenuGroupDef<PreferencesGroupKey>[] = [
+    { key: "profile", label: strings.preferences.profile, href: "/preferences/profile" },
+    { key: "security", label: strings.preferences.security, href: "/preferences/security" },
+    { key: "access", label: strings.preferences.access, href: "/preferences/access" },
+    { key: "pats", label: strings.preferences.pats, href: "/preferences/pats" },
+    { key: "notifications", label: strings.notifications.preferencesTitle, href: "/preferences/notifications" },
   ];
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.preferences.title}</h1>
-
-      <Tabs idPrefix="preferences-tabs" tabs={tabs} active={tab} onChange={setTab} />
-
-      {tab === "profile" && (
-      <div {...tabPanelProps("preferences-tabs", "profile")} className="card stack">
+      <ResourceMenu
+        title={strings.preferences.title}
+        ariaLabel={strings.preferences.sectionsNav}
+        groups={groups}
+        active={activeGroup}
+      >
+      {activeGroup === "profile" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.profile}</h2>
         <div className="stack" style={{ gap: "0.25rem" }}>
           <span>{strings.preferences.avatar}</span>
@@ -501,8 +525,8 @@ export function PreferencesPage() {
       </div>
       )}
 
-      {tab === "security" && (
-      <div {...tabPanelProps("preferences-tabs", "security")} className="card stack">
+      {activeGroup === "security" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
         <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
           <input
@@ -590,8 +614,8 @@ export function PreferencesPage() {
       </div>
       )}
 
-      {tab === "access" && (
-      <div {...tabPanelProps("preferences-tabs", "access")} className="card stack">
+      {activeGroup === "access" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.access}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.accessHint(orgLabel)}</p>
         {myOrgs.length === 0 && <p className="text-muted">{strings.orgAdmin.noOrganizations(orgLabelPlural)}</p>}
@@ -660,8 +684,8 @@ export function PreferencesPage() {
       </div>
       )}
 
-      {tab === "pats" && (
-      <div {...tabPanelProps("preferences-tabs", "pats")} className="card stack">
+      {activeGroup === "pats" && (
+      <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <div className="stack" style={{ gap: "0.25rem" }}>
             <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
@@ -814,8 +838,8 @@ export function PreferencesPage() {
       </div>
       )}
 
-      {tab === "notifications" && (
-      <div {...tabPanelProps("preferences-tabs", "notifications")} className="card stack">
+      {activeGroup === "notifications" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.notifications.preferencesTitle}</h2>
         <div style={{ overflowX: "auto" }}>
         <table>
@@ -874,6 +898,7 @@ export function PreferencesPage() {
         {notificationPrefsSaved && <div style={{ color: "var(--color-accent)" }}>{strings.preferences.saved}</div>}
       </div>
       )}
+      </ResourceMenu>
 
       {orgToLeave && (
         <ConfirmDialog

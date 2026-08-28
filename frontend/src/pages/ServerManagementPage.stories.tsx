@@ -41,7 +41,7 @@ function mockServerManagementApis(users: SystemUser[]) {
 const meta: Meta<typeof ServerManagementPage> = {
   title: "Pages/ServerManagementPage",
   component: ServerManagementPage,
-  decorators: [withRouter("/server/management"), withToast()],
+  decorators: [withRouter("/server/management", "/server/management/:group?"), withToast()],
 };
 export default meta;
 
@@ -160,7 +160,7 @@ export const PlatformBrandingTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByText(/default accent colour, logo/)).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Save platform branding" })).toBeInTheDocument();
   },
@@ -173,7 +173,7 @@ export const PlatformBrandingSave: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save platform branding" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Save platform branding" }));
     await waitFor(() => expect(canvas.getByText("Saved.")).toBeInTheDocument());
@@ -187,7 +187,7 @@ export const PlatformBrandingEmailFooter: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Platform branding" }));
     // "Company name" also wraps a trailing hint <span>, so its accessible
     // name is longer than "Company name" alone — match by prefix.
     await waitFor(() => expect(canvas.getByLabelText(/^Company name/)).toHaveValue("ReqTrackManager"));
@@ -212,7 +212,7 @@ export const PlatformBrandingOrgLabel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Platform branding" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Platform branding" }));
     await waitFor(() => expect(canvas.getByLabelText(/^Organisation label \(singular\)/)).toHaveValue(""));
     await userEvent.type(canvas.getByLabelText(/^Organisation label \(singular\)/), "tenant");
     await userEvent.type(canvas.getByLabelText(/^Organisation label \(plural\)/), "Tenants");
@@ -230,7 +230,7 @@ export const SignupModeTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Public sign-up" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Public sign-up" }));
     await waitFor(() => expect(canvas.getByLabelText("Sign-up mode")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Sign-up mode"), "org_specified");
     await expect(canvas.getByText(/Organisations opt in/)).toBeInTheDocument();
@@ -241,7 +241,7 @@ export const TestEmailTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await waitFor(() => expect(canvas.getByText(/deployment's configured SMTP settings/)).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Send test email" })).toBeInTheDocument();
   },
@@ -254,7 +254,7 @@ export const TestEmailSendSuccess: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/system/test-email", {}));
     await expect(canvas.getByText(/Test email sent/)).toBeInTheDocument();
@@ -268,7 +268,7 @@ export const TestEmailSendFailure: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Email" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
     await userEvent.click(canvas.getByRole("button", { name: "Send test email" }));
     await waitFor(() => expect(canvas.getByText(/connection refused/)).toBeInTheDocument());
   },

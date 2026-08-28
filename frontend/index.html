@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ReqTrackManager</title>
+    <!-- Static default favicon (derived from src/assets/logo.svg — see
+         public/favicon.svg for provenance). Not admin-configurable; this is
+         a from-scratch gap fix, not a ServerSettings-backed feature. SVG is
+         listed first so browsers that support it prefer it; the .ico is the
+         fallback for browsers/contexts that don't (e.g. older Safari, some
+         OS taskbar/shortcut icon paths). -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" href="/favicon.ico" sizes="any">
     <script src="/env-config.js"></script>
   </head>
   <body>

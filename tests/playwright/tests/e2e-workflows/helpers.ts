@@ -99,23 +99,52 @@ export async function openGroupCard(page: Page, groupName: string): Promise<void
 }
 
 /**
- * Selects a group in `OrgAdminPage`'s resource menu (`ResourceMenu.tsx`,
- * 2026-08 UX audit "Org Admin resource-menu restructure"). Each group is a
- * real route segment under `/orgs/:orgId/admin/:group?`, not client-only
- * state — the link's own `aria-current="page"` says whether it's already
- * selected, so this is idempotent the same way `ensureExpanded` is:
- * clicking an already-active group would be a harmless no-op navigation,
- * but the guard keeps this a true no-op instead of an extra history entry.
- * A section within the selected group is otherwise unreachable — unlike
- * `CollapsibleSection`'s own per-user collapse preference, group selection
- * isn't persisted, so this must run before every interaction with a
- * section that isn't in Org Admin's default "Overview" group.
+ * Selects a group in any page built on the shared `ResourceMenu`
+ * (`ResourceMenu.tsx`, 2026-08 UX audit "Org Admin resource-menu
+ * restructure", later extended to Server Admin/Preferences/Project Admin
+ * — see `docs/decisions.md`'s "Admin-tier ResourceMenu consistency"
+ * entry). Each group is a real route segment (e.g.
+ * `/orgs/:orgId/admin/:group?`), not client-only state — the link's own
+ * `aria-current="page"` says whether it's already selected, so this is
+ * idempotent the same way `ensureExpanded` is: clicking an already-active
+ * group would be a harmless no-op navigation, but the guard keeps this a
+ * true no-op instead of an extra history entry. A section within the
+ * selected group is otherwise unreachable — unlike `CollapsibleSection`'s
+ * own per-user collapse preference, group selection isn't persisted, so
+ * this must run before every interaction with a section that isn't in the
+ * page's default group.
  */
-export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
-  const link = page.getByRole("link", { name: groupLabel });
+export async function selectResourceMenuGroup(page: Page, groupLabel: string): Promise<void> {
+  const link = page.getByRole("link", { name: groupLabel, exact: true });
   if ((await link.getAttribute("aria-current")) !== "page") {
     await link.click();
   }
+}
+
+/** `selectResourceMenuGroup` for `OrgAdminPage` — kept as its own name
+ * since most call sites predate the generic helper above. */
+export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel);
+}
+
+/** `selectResourceMenuGroup` for `ServerManagementPage`
+ * (`/server/management/:group?`, converted from `Tabs` — see
+ * `docs/decisions.md`). */
+export async function selectServerManagementGroup(page: Page, groupLabel: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel);
+}
+
+/** `selectResourceMenuGroup` for `PreferencesPage` (`/preferences/:group?`,
+ * converted from `Tabs` — see `docs/decisions.md`). */
+export async function selectPreferencesGroup(page: Page, groupLabel: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel);
+}
+
+/** `selectResourceMenuGroup` for `ProjectAdminPage`
+ * (`/projects/:projectId/admin/:group?`, converted from `Tabs` — see
+ * `docs/decisions.md`). */
+export async function selectProjectAdminGroup(page: Page, groupLabel: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel);
 }
 
 /**

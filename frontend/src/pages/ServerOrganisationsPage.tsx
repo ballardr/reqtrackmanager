@@ -260,8 +260,7 @@ export function ServerOrganisationsPage() {
           </div>
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel sectionKey="serverOrganisationsFilters">
           <FilterField label="Status">
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
               <option value="active">{strings.serverOrgs.active}</option>

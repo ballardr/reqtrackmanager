@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { selectProjectAdminGroup } from "./helpers";
+
 /**
  * End-to-end proof that a report's Markdown content can include an image
  * (`RichTextEditor`'s "Insert image" panel, `utils/markdown.ts`'s
@@ -63,7 +65,7 @@ test("insert an image into a project's report intro and generate a PDF", async (
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await page.getByRole("tab", { name: "Report Setup", exact: true }).click();
+  await selectProjectAdminGroup(page, "Report Setup");
 
   await test.step("upload and insert an image into the report intro", async () => {
     await page.getByRole("button", { name: "Insert image" }).first().click();

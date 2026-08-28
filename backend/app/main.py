@@ -95,11 +95,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # X-Total-Count (U-P-06 pagination) is a custom response header, so it
-    # needs to be explicitly exposed — browsers hide non-safelisted response
-    # headers from JS by default even with allow_headers="*" (that setting
-    # only governs allowed *request* headers).
-    expose_headers=["X-Total-Count"],
+    # X-Total-Count (U-P-06 pagination) and X-Total-Unfiltered-Count
+    # (2026-08 UX audit roadmap: persistent "showing X of Y" result count,
+    # `ResultCount`) are custom response headers, so they need to be
+    # explicitly exposed — browsers hide non-safelisted response headers
+    # from JS by default even with allow_headers="*" (that setting only
+    # governs allowed *request* headers). Missing this for the new header
+    # was caught only by a live Playwright run against a real browser
+    # (`fetch().headers.get()` silently returning null) — curl and pytest's
+    # TestClient both bypass CORS entirely, so neither could have caught it.
+    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count"],
 )
 
 

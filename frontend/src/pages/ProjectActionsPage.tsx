@@ -257,8 +257,7 @@ export function ProjectActionsPage() {
           )}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel sectionKey="projectActionsFilters">
           <FilterField label={strings.actions.actionType}>
             <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
               <option value="">{strings.actions.allTypes}</option>

@@ -308,6 +308,27 @@ export interface FileAsset {
   created_at: string;
 }
 
+/** One row of `GET /projects/{id}/files` (ProjectFilesPage) — a file
+ * reachable from a project's requirements, with the context needed to say
+ * where it came from. `requirement_id`/`requirement_unique_code`/
+ * `requirement_name` are set for "requirement_attachment"/
+ * "comment_attachment" rows; `action_id`/`action_unique_code`/
+ * `action_title` are set for "action_attachment" rows (an action may be
+ * linked to zero, one, or several requirements, so it has no single owning
+ * requirement to attribute the file to). See backend `ProjectFileOut`. */
+export interface ProjectFile {
+  file: FileAsset;
+  uploaded_by_display_name: string;
+  source: "requirement_attachment" | "action_attachment" | "comment_attachment";
+  requirement_id: string | null;
+  requirement_unique_code: string | null;
+  requirement_name: string | null;
+  action_id: string | null;
+  action_unique_code: string | null;
+  action_title: string | null;
+  comment_id: string | null;
+}
+
 export interface OrgUser {
   user_id: string;
   email: string;
@@ -439,12 +460,19 @@ export interface ProjectTreeNode {
   children: ProjectTreeNode[];
 }
 
-/** One entry in a project's member-source list (the child -> parent RBAC
- * mechanism) — the child this project consumes members from. Managed
- * entirely from the *parent's* side; see docs/decisions.md for why. */
+/** One entry in a project's member-source list (the source -> receiving
+ * RBAC mechanism) — the other project this project consumes members from.
+ * Managed entirely from the receiving side; see docs/decisions.md for why.
+ * Originally restricted to a direct child and always MEMBER-only;
+ * generalized to any same-organisation project, with `mirror_mode`/
+ * `mirror_filter_role` controlling what's mirrored (same vocabulary as
+ * `role_inheritance_mode`/`role_inheritance_filter_role`'s forward
+ * mechanism, applied in reverse). */
 export interface ProjectMemberSource {
   source_project_id: string;
   source_project_name: string;
+  mirror_mode: ProjectRoleInheritanceMode;
+  mirror_filter_role: ProjectRole | null;
 }
 
 export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceMode, string> = {
@@ -601,6 +629,9 @@ export interface ProjectGroup {
   is_default: boolean;
   member_user_ids: string[];
   member_org_group_ids: string[];
+  /** Members defined as "the direct members of that other project" — see
+   * `models.project.ProjectGroupMember.source_project_id`'s docstring. */
+  member_source_project_ids: string[];
 }
 
 export interface StageProgress {

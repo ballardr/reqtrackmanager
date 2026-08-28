@@ -16,11 +16,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.change_request import ChangeRequest, ChangeRequestVersion
+from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
 from app.models.enums import (
     ChangeRequestStatus,
     ExternalUserPolicy,
@@ -29,9 +29,10 @@ from app.models.enums import (
     ProjectRoleInheritanceMode,
     ProjectVisibility,
     RequirementStatus,
+    ReviewTargetType,
     StageStatus,
 )
-from app.models.file import RequirementFile
+from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, ReportTemplate, UserOrgRole
 from app.models.project import (
@@ -48,8 +49,10 @@ from app.models.project import (
 )
 from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
+from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
+from app.schemas.file import FileAssetOut, ProjectFileOut
 from app.schemas.project import (
     AssignByEmailOut,
     CategoryCreate,
@@ -138,14 +141,19 @@ def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     their own on the child) would never see it in `list_projects`/the tree/
     ancestors/children endpoints at all — the whole point of the feature
     would be invisible to exactly the users it's for. The expansion walks
-    structural neighbours (children of, and member-source parents of,
-    already-accessible projects) iteratively, since a multi-hop chain can
-    make a project only reachable after an earlier hop's own expansion —
-    but verifies each candidate's *actual* effective role
-    (`get_effective_project_roles`) before including it, rather than
-    trusting structural adjacency alone: a `MIRROR_ROLE`-filtered child, for
-    instance, is only actually reachable by users holding the filtered
-    role on the parent, not every accessible-parent user.
+    structural neighbours of already-accessible projects iteratively, since
+    a multi-hop chain can make a project only reachable after an earlier
+    hop's own expansion — three kinds of neighbour: children (source 5),
+    projects whose member-source list names an accessible project as a
+    source (source 6, same-organisation only since the mechanism was
+    generalized beyond strict parent/child), and projects with a group
+    whose members are defined as an accessible project's roster (source 7,
+    same-organisation only) — but verifies each candidate's *actual*
+    effective role (`get_effective_project_roles`) before including it,
+    rather than trusting structural adjacency alone: a `MIRROR_ROLE`-
+    filtered child, for instance, is only actually reachable by users
+    holding the filtered role on the parent, not every accessible-parent
+    user.
     """
     project_ids_via_role = set(
         db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == user_id)).all()
@@ -183,18 +191,35 @@ def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
                 )
             ).all()
         )
+        OwnerProject = aliased(Project)
         candidate_via_member_source = set(
             db.scalars(
                 select(ProjectMemberSource.project_id)
                 .join(Project, Project.id == ProjectMemberSource.source_project_id)
+                .join(OwnerProject, OwnerProject.id == ProjectMemberSource.project_id)
                 .where(
                     ProjectMemberSource.source_project_id.in_(frontier),
-                    Project.parent_project_id == ProjectMemberSource.project_id,
+                    Project.organization_id == OwnerProject.organization_id,
+                )
+            ).all()
+        )
+        GroupOwnerProject = aliased(Project)
+        candidate_via_project_ref_group = set(
+            db.scalars(
+                select(ProjectGroup.project_id)
+                .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+                .join(GroupOwnerProject, GroupOwnerProject.id == ProjectGroup.project_id)
+                .join(Project, Project.id == ProjectGroupMember.source_project_id)
+                .where(
+                    ProjectGroupMember.source_project_id.in_(frontier),
+                    Project.organization_id == GroupOwnerProject.organization_id,
                 )
             ).all()
         )
         new_frontier: set[UUID] = set()
-        for candidate_id in (candidate_children | candidate_via_member_source) - accessible_ids:
+        for candidate_id in (
+            candidate_children | candidate_via_member_source | candidate_via_project_ref_group
+        ) - accessible_ids:
             if get_effective_project_roles(db, user_id, candidate_id):
                 accessible_ids.add(candidate_id)
                 new_frontier.add(candidate_id)
@@ -497,6 +522,14 @@ def list_projects(
     with the caller's favourited projects (U-U-03) first, then by name.
     `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
+
+    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
+    2026-08 UX audit roadmap) is a second response header reporting the
+    count within only the mandatory accessible-projects + default
+    archived-visibility scope, before `organization_id`/`search`/`role`/
+    `stage_status`/`favorite_only` narrow it further — unlike
+    `X-Total-Count`, it does not change when the caller applies one of
+    those filters.
     """
     # No server-admin bypass here (I-M-05): project listings are "data within
     # organisations", so even server admins only see projects they hold a
@@ -504,6 +537,7 @@ def list_projects(
     accessible_ids = _accessible_project_ids(db, current_user.id)
     if not accessible_ids:
         projects = []
+        response.headers["X-Total-Unfiltered-Count"] = "0"
     else:
         # Joins to Organization to exclude projects belonging to a disabled
         # org (`Organization.is_active`) — a disabled org locks out its own
@@ -511,11 +545,29 @@ def list_projects(
         # aggregate cross-org listing had been the one place that check
         # didn't reach, since it filters by project accessible-ids rather
         # than going through a per-org `require_org_role` dependency.
-        conditions = [
+        #
+        # `base_conditions` (no `organization_id`) is the mandatory scope
+        # for the unfiltered count above — `organization_id` is itself a
+        # FilterPanel filter (the "Organisation" dropdown), the same
+        # relationship `category_id` has to `RequirementsPage`'s unfiltered
+        # count, so it's added only to `conditions` below, after the count
+        # is taken.
+        base_conditions = [
             Project.id.in_(accessible_ids),
             Project.is_archived == archived,
             Organization.is_active.is_(True),
         ]
+        response.headers["X-Total-Unfiltered-Count"] = str(
+            db.scalar(
+                select(func.count()).select_from(
+                    select(Project.id)
+                    .join(Organization, Organization.id == Project.organization_id)
+                    .where(*base_conditions)
+                    .subquery()
+                )
+            )
+        )
+        conditions = list(base_conditions)
         if organization_id is not None:
             conditions.append(Project.organization_id == organization_id)
         projects = db.scalars(
@@ -646,6 +698,125 @@ def get_project(project_id: UUID, current_user: User = Depends(require_project_v
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     return _project_out_with_redacted_parent(db, current_user, project)
+
+
+@router.get("/{project_id}/files", response_model=list[ProjectFileOut])
+def list_project_files(
+    project_id: UUID,
+    response: Response,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """Lists every file reachable from this project: direct requirement
+    attachments (C-M-02, including linked organisation shared resources —
+    `RequirementFile` covers both), requirement action attachments, and
+    files attached to a comment on one of the project's own requirements.
+    Fills the gap `ProjectMetricsOut.file_count` only anticipated as a
+    metric (U-P-05's "number of files in project, if files are
+    implemented") without ever listing them — `FileAsset` has no
+    `project_id` of its own, so this joins through each of the three
+    context-specific link tables that connect a file back to a project.
+
+    Each row carries the context needed to make sense of a flat,
+    project-wide list (which requirement/action/comment it came from,
+    uploader, upload time) rather than a bare array of file metadata with
+    no way to tell where any of them came from — see `ProjectFileOut`.
+
+    Same-target-scoped resolution, not "has access somewhere": every join
+    below filters directly on `project_id` (via `Requirement.project_id`
+    for attachment/comment rows, `RequirementAction.project_id` for action
+    rows), so a file belonging to a different project — even one the
+    caller can also view — can never appear here. Comments on a *change
+    request's* discussion thread are deliberately excluded, matching
+    `ProjectMetricsOut.file_count`'s existing scope (requirement-attached
+    content only).
+
+    `limit`/`offset` (U-P-06) — same optional pagination and
+    `X-Total-Count` header convention as `list_requirements`/
+    `list_projects`.
+    """
+    entries: list[dict] = []
+
+    for asset, linked_at, req_id, req_code, req_name in db.execute(
+        select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+        .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
+        .join(Requirement, Requirement.id == RequirementFile.requirement_id)
+        .join(
+            RequirementVersion,
+            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+        )
+        .where(Requirement.project_id == project_id)
+    ).all():
+        entries.append({
+            "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
+            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+        })
+
+    # Joined directly on RequirementAction.project_id rather than via a
+    # linked requirement: an action may be linked to zero, one, or several
+    # requirements (RequirementActionLink), so it has no single owning
+    # requirement to attribute the file to.
+    for asset, linked_at, action_id, action_code, action_title in db.execute(
+        select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
+        .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
+        .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
+        .where(RequirementAction.project_id == project_id)
+    ).all():
+        entries.append({
+            "file": asset, "linked_at": linked_at, "source": "action_attachment",
+            "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
+        })
+
+    for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
+        select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+        .join(CommentFile, CommentFile.file_id == FileAsset.id)
+        .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
+        .join(
+            Requirement,
+            (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
+        )
+        .join(
+            RequirementVersion,
+            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+        )
+        .where(Requirement.project_id == project_id)
+    ).all():
+        entries.append({
+            "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
+            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+            "comment_id": comment_id,
+        })
+
+    entries.sort(key=lambda e: e["linked_at"], reverse=True)
+
+    uploader_ids = {e["file"].uploaded_by for e in entries}
+    uploader_names = (
+        dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
+        if uploader_ids else {}
+    )
+
+    out = [
+        ProjectFileOut(
+            file=FileAssetOut.model_validate(e["file"]),
+            uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
+            source=e["source"],
+            requirement_id=e.get("requirement_id"),
+            requirement_unique_code=e.get("requirement_unique_code"),
+            requirement_name=e.get("requirement_name"),
+            action_id=e.get("action_id"),
+            action_unique_code=e.get("action_unique_code"),
+            action_title=e.get("action_title"),
+            comment_id=e.get("comment_id"),
+        )
+        for e in entries
+    ]
+
+    response.headers["X-Total-Count"] = str(len(out))
+    if limit is not None:
+        out = out[offset:offset + limit]
+    return out
 
 
 @router.get("/{project_id}/export")
@@ -904,15 +1075,21 @@ def get_project_children(
 def list_member_sources(
     project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists the children `project_id` currently consumes members from (the
-    reverse/child->parent RBAC mechanism — see
-    `models.project.ProjectMemberSource`'s docstring)."""
+    """Lists the other same-organisation projects `project_id` currently
+    consumes members from (the reverse/source->receiving RBAC mechanism —
+    see `models.project.ProjectMemberSource`'s docstring)."""
     rows = db.execute(
-        select(ProjectMemberSource.source_project_id, Project.name)
+        select(
+            ProjectMemberSource.source_project_id, Project.name,
+            ProjectMemberSource.mirror_mode, ProjectMemberSource.mirror_filter_role,
+        )
         .join(Project, Project.id == ProjectMemberSource.source_project_id)
         .where(ProjectMemberSource.project_id == project_id)
     ).all()
-    return [ProjectMemberSourceOut(source_project_id=sid, source_project_name=name) for sid, name in rows]
+    return [
+        ProjectMemberSourceOut(source_project_id=sid, source_project_name=name, mirror_mode=mode, mirror_filter_role=filter_role)
+        for sid, name, mode, filter_role in rows
+    ]
 
 
 @router.post("/{project_id}/member-sources", response_model=ProjectMemberSourceOut, status_code=status.HTTP_201_CREATED)
@@ -920,42 +1097,57 @@ def add_member_source(
     project_id: UUID, payload: ProjectMemberSourceAdd, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Adds a child to `project_id`'s member-source list — gated by managing
-    `project_id` (the *parent*) only, never the child, per the
-    authorization-asymmetry correction described in `models.project.
+    """Adds another project to `project_id`'s member-source list — gated by
+    managing `project_id` (the *receiving* side) only, never the source,
+    per the authorization-asymmetry design described in `models.project.
     ProjectMemberSource`'s docstring and docs/decisions.md.
 
-    `source_project_id` (the child) must currently be a direct child of
-    `project_id` — no separate accessible-set check on top of that: unlike
-    the parent-selector on create/update (whose value space is "any
-    project," where an accessible-set restriction genuinely prevents an
-    existence-oracle), this field's value space is already constrained to
-    `project_id`'s own real, structural children, and the caller already
-    manages `project_id` itself. Requiring the caller to *also*
-    independently hold some role on the specific child would defeat the
-    feature's own purpose — a parent's manager must be able to consume
-    members from any of their real children, including one with no
-    existing role structure of its own yet.
+    `source_project_id` must belong to `project_id`'s own organisation —
+    originally restricted further, to a direct child only; generalized
+    (docs/decisions.md) to any project in the same organisation, since the
+    original parent/child-only restriction was the actual limitation this
+    generalization exists to remove. No separate accessible-set check on
+    top of the same-org requirement: the caller already manages
+    `project_id` itself, and requiring them to *also* independently hold a
+    role on the specific source would defeat the feature's own purpose —
+    a manager must be able to consume members from any project they know
+    about in their organisation, including one with no existing role
+    structure of its own yet. Project names are not confidential within an
+    organisation (a manager can already see every project in their org via
+    the ordinary project list), so this doesn't create an existence-oracle
+    concern the way an accessible-set restriction on `parent_project_id`
+    selection does elsewhere.
     """
     source_project_id = payload.source_project_id
+    if source_project_id == project_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must not be this project itself.")
     source_project = db.get(Project, source_project_id)
-    if source_project is None or source_project.parent_project_id != project_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must be a direct child of this project.")
+    if source_project is None or source_project.organization_id != project.organization_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must belong to this project's organisation.")
     existing = db.scalar(
         select(ProjectMemberSource).where(
             ProjectMemberSource.project_id == project_id, ProjectMemberSource.source_project_id == source_project_id
         )
     )
     if existing is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This child is already a member source.")
-    db.add(ProjectMemberSource(project_id=project_id, source_project_id=source_project_id))
+        raise HTTPException(status.HTTP_409_CONFLICT, "This project is already a member source.")
+    db.add(ProjectMemberSource(
+        project_id=project_id, source_project_id=source_project_id,
+        mirror_mode=payload.mirror_mode, mirror_filter_role=payload.mirror_filter_role,
+    ))
     log_event(
         db, entity_type="project_member_source", entity_id=project_id, action="added", actor_id=current_user.id,
         project_id=project_id, organization_id=project.organization_id,
-        detail={"source_project_id": str(source_project_id)},
+        detail={
+            "source_project_id": str(source_project_id), "mirror_mode": payload.mirror_mode.value,
+            "mirror_filter_role": payload.mirror_filter_role.value if payload.mirror_filter_role else None,
+        },
     )
     db.commit()
-    return ProjectMemberSourceOut(source_project_id=source_project_id, source_project_name=source_project.name)
+    return ProjectMemberSourceOut(
+        source_project_id=source_project_id, source_project_name=source_project.name,
+        mirror_mode=payload.mirror_mode, mirror_filter_role=payload.mirror_filter_role,
+    )
 
 
 @router.delete("/{project_id}/member-sources/{source_project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1942,7 +2134,7 @@ def create_project_group(
     db.commit()
     db.refresh(group)
     return ProjectGroupOut(id=group.id, name=group.name, role=group.role, is_default=group.is_default,
-                            member_user_ids=[], member_org_group_ids=[])
+                            member_user_ids=[], member_org_group_ids=[], member_source_project_ids=[])
 
 
 @router.get("/{project_id}/groups", response_model=list[ProjectGroupOut])
@@ -1980,6 +2172,7 @@ def list_project_groups(
             id=g.id, name=g.name, role=g.role, is_default=g.is_default,
             member_user_ids=[m.user_id for m in members if m.user_id],
             member_org_group_ids=[m.org_group_id for m in members if m.org_group_id],
+            member_source_project_ids=[m.source_project_id for m in members if m.source_project_id],
         ))
     return out
 
@@ -2006,8 +2199,9 @@ def add_project_group_member(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not payload.user_id and not payload.org_group_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or org_group_id.")
+    target_count = sum(x is not None for x in (payload.user_id, payload.org_group_id, payload.source_project_id))
+    if target_count != 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide exactly one of user_id, org_group_id, source_project_id.")
     _get_group_in_project(db, project.id, group_id)
     if payload.user_id is not None:
         # C-U-02: "All Project users, must be an organisation user."
@@ -2019,12 +2213,29 @@ def add_project_group_member(
         org_group = db.get(OrgGroup, payload.org_group_id)
         if org_group is None or org_group.organization_id != project.organization_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_group_id must belong to the project's organisation.")
-    db.add(ProjectGroupMember(project_group_id=group_id, user_id=payload.user_id, org_group_id=payload.org_group_id))
+    if payload.source_project_id is not None:
+        # Same cross-tenant boundary as org_group_id above, plus a
+        # self-reference guard (a project referencing its own roster is
+        # meaningless and would recurse straight into itself if the
+        # non-recursive one-hop guarantee ever changed) — see
+        # `models.project.ProjectGroupMember.source_project_id`'s docstring.
+        if payload.source_project_id == project.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_project_id must not be this project itself.")
+        source_project = db.get(Project, payload.source_project_id)
+        if source_project is None or source_project.organization_id != project.organization_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "source_project_id must belong to the project's organisation."
+            )
+    db.add(ProjectGroupMember(
+        project_group_id=group_id, user_id=payload.user_id, org_group_id=payload.org_group_id,
+        source_project_id=payload.source_project_id,
+    ))
     log_event(
         db, entity_type="project_group", entity_id=group_id, action="member_added", actor_id=current_user.id,
         project_id=project.id,
         detail={"user_id": str(payload.user_id) if payload.user_id else None,
-                "org_group_id": str(payload.org_group_id) if payload.org_group_id else None},
+                "org_group_id": str(payload.org_group_id) if payload.org_group_id else None,
+                "source_project_id": str(payload.source_project_id) if payload.source_project_id else None},
     )
     if payload.user_id is not None:
         added_user = db.get(User, payload.user_id)
@@ -2054,9 +2265,10 @@ def remove_project_group_member(
     a project must always retain at least one manager. Same
     `is_inherited_manager` exception as that guard: removing this
     membership is safe if `member_id` would remain a manager via forward
-    inheritance alone (member_id may be a user id or an org-group id here —
-    `is_inherited_manager` only applies to a real user, so a group removal
-    always falls through to the block, unchanged from before).
+    inheritance alone (member_id may be a user id, an org-group id, or a
+    source-project id here — `is_inherited_manager` only applies to a real
+    user, so a group/project-reference removal always falls through to the
+    block, unchanged from before).
     """
     group = _get_group_in_project(db, project.id, group_id)
     if group.role == ProjectRole.PROJECT_MANAGER:
@@ -2067,7 +2279,9 @@ def remove_project_group_member(
     db.execute(
         ProjectGroupMember.__table__.delete().where(
             ProjectGroupMember.project_group_id == group_id,
-            (ProjectGroupMember.user_id == member_id) | (ProjectGroupMember.org_group_id == member_id),
+            (ProjectGroupMember.user_id == member_id)
+            | (ProjectGroupMember.org_group_id == member_id)
+            | (ProjectGroupMember.source_project_id == member_id),
         )
     )
     log_event(

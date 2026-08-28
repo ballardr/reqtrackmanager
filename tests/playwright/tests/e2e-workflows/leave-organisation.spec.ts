@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { selectPreferencesGroup } from "./helpers";
+
 /**
  * Job to be done: a user can leave an organisation themselves, from
  * Preferences' "Your access" tab (2026-08 UX audit roadmap item 520) —
@@ -52,7 +54,7 @@ test.describe("leave organisation from Preferences", () => {
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
     await page.goto("/preferences");
-    await page.getByRole("tab", { name: "Your access" }).click();
+    await selectPreferencesGroup(page, "Your access");
     await expect(page.getByText(orgName)).toBeVisible();
 
     await test.step("cancelling the confirm dialog leaves membership untouched", async () => {

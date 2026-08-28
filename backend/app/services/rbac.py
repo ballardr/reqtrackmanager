@@ -4,7 +4,7 @@ Module: services.rbac
 Computes a user's effective organisation and project roles and exposes
 FastAPI dependencies that enforce them (C-U-01, C-U-03).
 
-Effective project role resolution combines six sources:
+Effective project role resolution combines seven sources:
     1. Direct per-user role assignments (UserProjectRole).
     2. Membership in a project group (ProjectGroupMember with user_id set).
     3. Membership in an org group that is itself nested inside a project
@@ -18,9 +18,9 @@ Effective project role resolution combines six sources:
        nesting relationships resolve differently).
     4. ProjectVisibility.ORG_WIDE: baseline MEMBER access for any user who
        holds any role in the project's own organisation, with no explicit
-       assignment needed. Deliberately narrower than the other five
-       sources — never implies PROJECT_MANAGER/ADMINISTRATOR/STAKEHOLDER,
-       and deliberately not folded into `get_project_member_user_ids`
+       assignment needed. Deliberately narrower than the other sources —
+       never implies PROJECT_MANAGER/ADMINISTRATOR/STAKEHOLDER, and
+       deliberately not folded into `get_project_member_user_ids`
        (broadcast notification targeting, C-N-01) or
        `can_manage_project_settings` — org-wide visibility is a read grant,
        not a "this is now like being a real project member" shortcut.
@@ -33,23 +33,48 @@ Effective project role resolution combines six sources:
        elevated grant (MIRROR_ALL/MIRROR_ROLE can convey PROJECT_MANAGER)
        and *is* folded into `get_project_member_user_ids` — see decision 5
        in docs/decisions.md's "Hierarchical projects" entry.
-    6. Member-source (child -> parent) inheritance: `ProjectMemberSource`,
-       an explicit list a project maintains of which of its own direct
-       children it consumes members from, authorized entirely by the
-       *parent's* own manage rights (not the child's) — see
-       `models.project.ProjectMemberSource`'s docstring for why. Always
-       grants baseline MEMBER only, walking down through a chain of
-       explicit lists (each hop requires that hop's own list to name the
-       next one down). Also folded into `get_project_member_user_ids`.
+    6. Member-source (source -> receiving project) inheritance:
+       `ProjectMemberSource`, an explicit list a project maintains of which
+       other same-organisation projects it consumes members from,
+       authorized entirely by the *receiving* project's own manage rights
+       (not the source's) — see `models.project.ProjectMemberSource`'s
+       docstring for why. Originally restricted to a direct child and
+       always MEMBER-only; generalized (docs/decisions.md) to any
+       same-organisation project, with each row's own `mirror_mode`/
+       `mirror_filter_role` controlling what's mirrored — MIRROR_ALL/
+       MIRROR_ROLE/MEMBER_ONLY, same vocabulary as source 5's forward
+       mechanism, applied to the source's *direct* roles only (never the
+       source's own inherited or member-sourced roles). Walks down through
+       a chain of explicit lists (each hop requires that hop's own list to
+       name the next one down, regardless of which mode granted access at
+       an earlier hop). Also folded into `get_project_member_user_ids`.
+    7. Project-referencing group membership: `ProjectGroupMember` with
+       `source_project_id` set — "this group's members = that other
+       project's direct members," resolved as one hop only (never that
+       project's own inherited/member-sourced/project-referenced members)
+       via `_direct_project_member_ids_base`, so two projects referencing
+       each other can never cause unbounded recursion — a structural
+       guarantee, not just an optimisation. Same-organisation only.
+       Authorized purely by `require_project_manage` on the group's own
+       project, mirroring source 6's receiving-side-only authorization.
+       Treated as a "direct" source for provenance purposes (folded into
+       `_direct_effective_project_roles`/`_direct_project_member_ids`/
+       `_direct_project_role_holder_ids` alongside sources 1-4, the same
+       way nested org groups already are) rather than a separate inherited
+       kind, since it resolves at the project's own level via its own
+       group configuration.
 
-Sources 5 and 6 are kept fully decoupled from each other: the forward walk
-only ever reads an ancestor's *direct* roles, and the member-source walk
-only ever reads a descendant's *direct* roles (plus, recursively, whatever
-that descendant has itself separately consumed via its own list) — neither
-ever reads the other mechanism's result. This prevents a sibling-project
-leak (a member-source-listed child's users ending up visible to an
-unrelated sibling via the parent's own forward mirroring) and avoids any
-mutual-recursion hazard between the two. See docs/decisions.md.
+Sources 5, 6, and 7 are kept decoupled from each other and from themselves:
+the forward walk (5) only ever reads an ancestor's *direct* roles; the
+member-source walk (6) only ever reads a source's *direct* roles (plus,
+recursively, whatever that source has itself separately consumed via its
+own member-source list — a deliberate, bounded chain); and the
+project-reference arm (7) only ever reads a source's *base* direct roles
+(`_direct_project_member_ids_base` — explicitly excluding even its own
+project-reference arm, unlike 6's chaining). None of the three ever reads
+another mechanism's already-resolved result. This prevents a sibling-project
+leak (an unrelated project's users ending up visible via someone else's
+mirroring) and avoids any mutual-recursion hazard. See docs/decisions.md.
 
 A project manager role implies project administrator and stakeholder
 capabilities (C-U-03 clarification: "Project Managers can also perform all
@@ -74,7 +99,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -385,6 +410,30 @@ def _direct_effective_project_roles(db: Session, user_id: UUID, project_id: UUID
         ).all()
         roles.update(ProjectRole(r) for r in nested_group_roles)
 
+    # Source 7: project-referencing group members ("this group = that other
+    # project's direct members") — one hop only, via `_direct_project_
+    # member_ids_base` so this can never recurse (see that function's
+    # docstring and the module docstring's source-7 entry).
+    SourceProject = aliased(Project)
+    project_ref_rows = db.execute(
+        select(ProjectGroup.role, ProjectGroupMember.source_project_id)
+        .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+        .join(Project, Project.id == ProjectGroup.project_id)
+        .join(SourceProject, SourceProject.id == ProjectGroupMember.source_project_id)
+        .where(
+            ProjectGroup.project_id == project_id,
+            ProjectGroupMember.source_project_id.is_not(None),
+            SourceProject.organization_id == Project.organization_id,
+        )
+    ).all()
+    if project_ref_rows:
+        member_cache: dict[UUID, set[UUID]] = {}
+        for role, source_id in project_ref_rows:
+            if source_id not in member_cache:
+                member_cache[source_id] = _direct_project_member_ids_base(db, source_id)
+            if user_id in member_cache[source_id]:
+                roles.add(ProjectRole(role))
+
     project_row = db.execute(
         select(Project.visibility, Project.organization_id).where(Project.id == project_id)
     ).first()
@@ -407,25 +456,18 @@ def _normalize(roles: set[ProjectRole]) -> set[ProjectRole]:
     return roles
 
 
-def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
-    """Set-returning sibling of `_direct_effective_project_roles`, minus its
-    `ProjectVisibility.ORG_WIDE` source: every user with a direct, group, or
-    nested-org-group role on `project_id` itself, no inheritance.
+def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
+    """The user_id/org_group_id `ProjectGroupMember` arms plus direct
+    `UserProjectRole` assignments — i.e. `_direct_project_member_ids`
+    *without* its `source_project_id` "members of another project" arm.
 
-    Deliberately excludes `ORG_WIDE`'s implicit baseline grant — the same
-    exclusion `get_project_member_user_ids` already applies today (see
-    module docstring), preserved here rather than reintroduced through a
-    side channel: if this included `ORG_WIDE`, an org-wide-visible ancestor
-    would flow its *entire organisation's* membership through forward
-    inheritance or the member-source mechanism into every notification and
-    every "does this descendant have a real member" check, exactly the mass
-    side effect the existing exclusion exists to prevent. `_forward_
-    inherited_roles` (the per-user, `get_effective_project_roles` path)
-    correctly keeps using `_direct_effective_project_roles`, which *does*
-    include `ORG_WIDE` — access resolution and notification-membership
-    resolution are different questions with different existing answers, and
-    this helper is only for the latter (used by `get_project_member_user_ids`
-    and both member-source helpers).
+    Used as the source-side resolution inside that third arm (see
+    `_direct_project_member_ids`) precisely so a project-referencing group
+    only ever reads a source project's own non-project-referenced direct
+    members. This is what makes two projects referencing each other's
+    rosters structurally incapable of unbounded recursion — `_direct_
+    project_member_ids` and this function never call each other in a cycle,
+    only ever this one, non-recursive direction.
     """
     user_ids: set[UUID] = set(
         db.scalars(select(UserProjectRole.user_id).where(UserProjectRole.project_id == project_id)).all()
@@ -453,6 +495,51 @@ def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
                 )
             ).all()
         )
+    return user_ids
+
+
+def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
+    """Set-returning sibling of `_direct_effective_project_roles`, minus its
+    `ProjectVisibility.ORG_WIDE` source: every user with a direct, group,
+    nested-org-group, or project-referenced role on `project_id` itself, no
+    forward/member-source inheritance.
+
+    Deliberately excludes `ORG_WIDE`'s implicit baseline grant — the same
+    exclusion `get_project_member_user_ids` already applies today (see
+    module docstring), preserved here rather than reintroduced through a
+    side channel: if this included `ORG_WIDE`, an org-wide-visible ancestor
+    would flow its *entire organisation's* membership through forward
+    inheritance or the member-source mechanism into every notification and
+    every "does this descendant have a real member" check, exactly the mass
+    side effect the existing exclusion exists to prevent. `_forward_
+    inherited_roles` (the per-user, `get_effective_project_roles` path)
+    correctly keeps using `_direct_effective_project_roles`, which *does*
+    include `ORG_WIDE` — access resolution and notification-membership
+    resolution are different questions with different existing answers, and
+    this helper is only for the latter (used by `get_project_member_user_ids`
+    and both member-source helpers).
+
+    The project-reference arm resolves each referenced source via
+    `_direct_project_member_ids_base` (not this function) — see that
+    function's docstring for why that's the one non-recursive direction.
+    """
+    user_ids = _direct_project_member_ids_base(db, project_id)
+    SourceProject = aliased(Project)
+    source_ids = set(
+        db.scalars(
+            select(ProjectGroupMember.source_project_id)
+            .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+            .join(Project, Project.id == ProjectGroup.project_id)
+            .join(SourceProject, SourceProject.id == ProjectGroupMember.source_project_id)
+            .where(
+                ProjectGroup.project_id == project_id,
+                ProjectGroupMember.source_project_id.is_not(None),
+                SourceProject.organization_id == Project.organization_id,
+            )
+        ).all()
+    )
+    for source_id in source_ids:
+        user_ids |= _direct_project_member_ids_base(db, source_id)
     return user_ids
 
 
@@ -505,6 +592,27 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
                 )
             ).all()
         )
+
+    # Source 7: project-referencing group members granted exactly `role` —
+    # resolved via `_direct_project_member_ids_base`, same non-recursive
+    # direction as `_direct_project_member_ids`'s own third arm.
+    SourceProject = aliased(Project)
+    project_ref_source_ids = set(
+        db.scalars(
+            select(ProjectGroupMember.source_project_id)
+            .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+            .join(Project, Project.id == ProjectGroup.project_id)
+            .join(SourceProject, SourceProject.id == ProjectGroupMember.source_project_id)
+            .where(
+                ProjectGroup.project_id == project_id, ProjectGroup.role == role,
+                ProjectGroupMember.source_project_id.is_not(None),
+                SourceProject.organization_id == Project.organization_id,
+            )
+        ).all()
+    )
+    for source_id in project_ref_source_ids:
+        user_ids |= _direct_project_member_ids_base(db, source_id)
+
     return user_ids
 
 
@@ -582,107 +690,204 @@ def _forward_inherited_roles(db: Session, user_id: UUID, project_id: UUID) -> se
     return inherited
 
 
-def _member_source_frontier(db: Session, frontier: set[UUID]) -> set[UUID]:
+def _member_source_rows(
+    db: Session, frontier: set[UUID]
+) -> list[tuple[UUID, UUID, ProjectRoleInheritanceMode, ProjectRole | None]]:
     """One BFS layer for the member-source (reverse) walk: every
-    `source_project_id` listed by any project in `frontier`, live-
-    revalidated against `Project.parent_project_id` (per
-    `ProjectMemberSource`'s docstring — a row whose `source_project_id` was
-    reparented elsewhere is inert). Shared by `_has_member_source_access`/
-    `_member_source_contributed_user_ids` below.
+    `(project_id, source_project_id, mirror_mode, mirror_filter_role)` row
+    owned by any project in `frontier`, live-revalidated to require
+    `source_project.organization_id == project.organization_id` (same
+    organisation only — generalized from the original strict-parent/child
+    requirement, see `models.project.ProjectMemberSource`'s docstring) and
+    `source_project_id != project_id` (no self-reference). Shared by
+    `_member_source_derived_roles`/`_member_source_contributed_user_ids`/
+    `_member_source_role_holder_ids`/`get_effective_project_members_with_
+    provenance` below.
     """
     if not frontier:
-        return set()
-    return set(
+        return []
+    OwnerProject = aliased(Project)
+    return list(
         db.execute(
-            select(ProjectMemberSource.source_project_id)
+            select(
+                ProjectMemberSource.project_id,
+                ProjectMemberSource.source_project_id,
+                ProjectMemberSource.mirror_mode,
+                ProjectMemberSource.mirror_filter_role,
+            )
             .join(Project, Project.id == ProjectMemberSource.source_project_id)
+            .join(OwnerProject, OwnerProject.id == ProjectMemberSource.project_id)
             .where(
                 ProjectMemberSource.project_id.in_(frontier),
-                Project.parent_project_id == ProjectMemberSource.project_id,
+                Project.organization_id == OwnerProject.organization_id,
+                ProjectMemberSource.source_project_id != ProjectMemberSource.project_id,
             )
-        ).scalars().all()
+        ).all()
     )
 
 
-def _has_member_source_access(db: Session, user_id: UUID, project_id: UUID) -> bool:
-    """True if `user_id` should get member-source-derived `MEMBER` access on
-    `project_id` — source 6 of the module docstring. Walks *down* through
-    `project_id`'s own `ProjectMemberSource` list, breadth-first: true if
-    the user has any *direct* role on a listed child, else continues into
-    that child's own member-source list (so a grandchild's members reach
-    the grandparent only if both the grandchild and the intermediate child
-    have opted in via their own lists). Never reads a descendant's
-    forward-inherited roles — only its direct ones — per the module
-    docstring's decoupling note.
+def _direct_project_roles_excluding_org_wide(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
+    """Like `_direct_effective_project_roles` but omitting the
+    `ProjectVisibility.ORG_WIDE` baseline grant — the full-role-granularity
+    counterpart to `_direct_project_member_ids`'s boolean membership
+    exclusion of the same source, needed by `_member_source_derived_roles`'s
+    `MIRROR_ALL` case (which must mirror a source's *actual* direct roles,
+    not just "are they a member"). Excluding `ORG_WIDE` here for the same
+    reason `_direct_project_member_ids`'s docstring gives: an ORG_WIDE-
+    visible source project must never flow its entire organisation's
+    implicit membership through the member-source mechanism into a
+    receiving project as if it were a real, explicit grant.
+    """
+    roles: set[ProjectRole] = set(
+        db.scalars(
+            select(UserProjectRole.role).where(
+                UserProjectRole.user_id == user_id, UserProjectRole.project_id == project_id
+            )
+        ).all()
+    )
+    roles.update(
+        ProjectRole(r)
+        for r in db.scalars(
+            select(ProjectGroup.role)
+            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+            .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id == user_id)
+        ).all()
+    )
+    direct_org_group_ids = set(
+        db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.user_id == user_id)).all()
+    )
+    user_org_group_ids = direct_org_group_ids | _ancestor_org_group_ids(db, direct_org_group_ids)
+    if user_org_group_ids:
+        roles.update(
+            ProjectRole(r)
+            for r in db.scalars(
+                select(ProjectGroup.role)
+                .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
+                .join(Project, Project.id == ProjectGroup.project_id)
+                .join(OrgGroup, OrgGroup.id == ProjectGroupMember.org_group_id)
+                .where(
+                    ProjectGroup.project_id == project_id,
+                    ProjectGroupMember.org_group_id.in_(user_org_group_ids),
+                    OrgGroup.organization_id == Project.organization_id,
+                )
+            ).all()
+        )
+    return roles
 
-    Uses `_direct_project_member_ids` (not `_direct_effective_project_roles`)
-    for the same reason that helper's own docstring gives:
-    `ProjectVisibility.ORG_WIDE`'s baseline grant must stay excluded here too.
-    An earlier version of this function checked
-    `_direct_effective_project_roles(db, user_id, source_id)` directly, which
-    *does* include the ORG_WIDE baseline — so listing an ORG_WIDE-visible
-    child as a member source silently granted every user in the
-    organisation real `MEMBER` access to the parent (a genuine RBAC escalation:
-    `get_effective_project_roles` is the live authorization gate behind
-    `require_project_view`, not just a notification-targeting helper), exactly
-    the mass side effect `_direct_project_member_ids`'s own docstring already
-    warned against reintroducing "through a side channel". Fixed to match
-    `_member_source_contributed_user_ids`'s sibling (bulk) resolution, which
-    already excluded ORG_WIDE correctly.
+
+def _member_source_derived_roles(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
+    """The roles `user_id` gains on `project_id` via the member-source
+    mechanism — source 6 of the module docstring. Walks *down* through
+    `project_id`'s own `ProjectMemberSource` list, breadth-first, applying
+    each row's own `mirror_mode`/`mirror_filter_role` to that row's source
+    project: `MIRROR_ALL` mirrors the user's actual direct roles there
+    (`_direct_project_roles_excluding_org_wide`), `MIRROR_ROLE` mirrors
+    exactly `mirror_filter_role` if the user directly holds it there, and
+    `MEMBER_ONLY` (the default, and the only behavior any row created
+    before this generalization can have) grants bare `MEMBER` if the user
+    has any direct role there — byte-identical to the original behavior.
+    Then continues into that source's own member-source list in turn,
+    regardless of which mode granted access at this hop, so a grandchild's
+    members reach the grandparent only if both the grandchild and the
+    intermediate hop have opted in via their own lists. Never reads a
+    source's forward-inherited roles — only its direct ones — per the
+    module docstring's decoupling note.
 
     Iterative (not recursive) and capped at
     `_PROJECT_INHERITANCE_ITERATION_CAP` layers, matching every other
-    unlimited-depth tree walk in this module — a project tree several
-    hundred levels deep would otherwise risk a Python `RecursionError`
-    here, since this runs on essentially every RBAC check.
+    unlimited-depth tree walk in this module — this runs on essentially
+    every RBAC check.
     """
+    granted: set[ProjectRole] = set()
     visited: set[UUID] = {project_id}
     frontier: set[UUID] = {project_id}
     iterations = 0
     while frontier and iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
         iterations += 1
-        new = _member_source_frontier(db, frontier) - visited
-        if not new:
-            break
-        for source_id in new:
-            if user_id in _direct_project_member_ids(db, source_id):
-                return True
-        visited |= new
-        frontier = new
-    return False
+        rows = _member_source_rows(db, frontier)
+        next_frontier: set[UUID] = set()
+        for _owner_id, source_id, mode, filter_role in rows:
+            if mode == ProjectRoleInheritanceMode.MIRROR_ALL:
+                granted |= _direct_project_roles_excluding_org_wide(db, user_id, source_id)
+            elif mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
+                if filter_role is not None and user_id in _direct_project_role_holder_ids(db, source_id, filter_role):
+                    granted.add(filter_role)
+            else:  # MEMBER_ONLY — also the default/backward-compatible behavior
+                if user_id in _direct_project_member_ids(db, source_id):
+                    granted.add(ProjectRole.MEMBER)
+            if source_id not in visited:
+                next_frontier.add(source_id)
+        visited |= next_frontier
+        frontier = next_frontier
+    return granted
 
 
 def _member_source_contributed_user_ids(db: Session, project_id: UUID) -> set[UUID]:
-    """Set-returning sibling of `_has_member_source_access`, for
-    `get_project_member_user_ids`/`get_project_users_by_role` — see that
-    function's docstring for the iteration cap rationale."""
+    """Set-returning sibling of `_member_source_derived_roles`, for
+    `get_project_member_user_ids` — any user who gains *any* role via the
+    member-source mechanism counts as contributed, regardless of which
+    specific role each hop's `mirror_mode` grants."""
     contributed: set[UUID] = set()
     visited: set[UUID] = {project_id}
     frontier: set[UUID] = {project_id}
     iterations = 0
     while frontier and iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
         iterations += 1
-        new = _member_source_frontier(db, frontier) - visited
-        if not new:
-            break
-        for source_id in new:
-            contributed |= _direct_project_member_ids(db, source_id)
-        visited |= new
-        frontier = new
+        rows = _member_source_rows(db, frontier)
+        next_frontier: set[UUID] = set()
+        for _owner_id, source_id, mode, filter_role in rows:
+            if mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
+                if filter_role is not None:
+                    contributed |= _direct_project_role_holder_ids(db, source_id, filter_role)
+            else:
+                contributed |= _direct_project_member_ids(db, source_id)
+            if source_id not in visited:
+                next_frontier.add(source_id)
+        visited |= next_frontier
+        frontier = next_frontier
     return contributed
+
+
+def _member_source_role_holder_ids(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:
+    """Role-scoped sibling of `_member_source_contributed_user_ids`, for
+    `get_project_users_by_role` — same BFS, but only accumulates users who
+    gain exactly `role` via the mechanism (so e.g. a `MIRROR_ALL` row can
+    contribute a `PROJECT_MANAGER` notification target, not just `MEMBER`,
+    matching what `_member_source_derived_roles` would actually grant that
+    user)."""
+    holder_ids: set[UUID] = set()
+    visited: set[UUID] = {project_id}
+    frontier: set[UUID] = {project_id}
+    iterations = 0
+    while frontier and iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
+        iterations += 1
+        rows = _member_source_rows(db, frontier)
+        next_frontier: set[UUID] = set()
+        for _owner_id, source_id, mode, filter_role in rows:
+            if mode == ProjectRoleInheritanceMode.MIRROR_ALL:
+                holder_ids |= _direct_project_role_holder_ids(db, source_id, role)
+            elif mode == ProjectRoleInheritanceMode.MIRROR_ROLE:
+                if filter_role == role:
+                    holder_ids |= _direct_project_role_holder_ids(db, source_id, role)
+            elif role == ProjectRole.MEMBER:  # MEMBER_ONLY
+                holder_ids |= _direct_project_member_ids(db, source_id)
+            if source_id not in visited:
+                next_frontier.add(source_id)
+        visited |= next_frontier
+        frontier = next_frontier
+    return holder_ids
 
 
 def get_effective_project_roles(db: Session, user_id: UUID, project_id: UUID) -> set[ProjectRole]:
     """Returns the set of project roles a user effectively holds.
 
-    See module docstring for the resolution algorithm (six sources: direct,
-    direct group, nested-org-group, org-wide visibility, forward
-    inheritance, member-source inheritance).
+    See module docstring for the resolution algorithm (seven sources:
+    direct, direct group, nested-org-group, project-referencing group,
+    org-wide visibility, forward inheritance, member-source inheritance).
     """
     roles = _direct_effective_project_roles(db, user_id, project_id)
     roles |= _forward_inherited_roles(db, user_id, project_id)
-    if _has_member_source_access(db, user_id, project_id):
-        roles.add(ProjectRole.MEMBER)
+    roles |= _member_source_derived_roles(db, user_id, project_id)
     return _normalize(roles)
 
 
@@ -851,10 +1056,12 @@ def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) 
     `role_inheritance_mode=MIRROR_ALL`/`MIRROR_ROLE` has real approval
     authority and must not silently miss change-request notifications
     (`routers.change_requests.py`) just because their role came from a
-    parent). Member-source contribution is included too when `role ==
-    MEMBER` (the only role that mechanism can ever grant) for the same
-    reason, though today's callers only ever pass `PROJECT_MANAGER`/
-    `STAKEHOLDER`.
+    parent). Member-source contribution is included too, for the same
+    reason — originally only ever `MEMBER` (the only role that mechanism
+    could grant), now scoped to whatever `role` each `ProjectMemberSource`
+    row's own `mirror_mode` actually grants (`_member_source_role_holder_
+    ids`), though today's callers only ever pass `PROJECT_MANAGER`/
+    `STAKEHOLDER`/`MEMBER`.
 
     An earlier version of this function excluded nested-org-group holders,
     matching `_direct_project_managers`'s deliberately narrower "concrete,
@@ -891,8 +1098,7 @@ def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) 
             user_ids |= _direct_project_member_ids(db, parent_id)
         current_id = parent_id
 
-    if role == ProjectRole.MEMBER:
-        user_ids |= _member_source_contributed_user_ids(db, project_id)
+    user_ids |= _member_source_role_holder_ids(db, project_id, role)
 
     return user_ids
 
@@ -925,21 +1131,20 @@ def get_effective_project_members_with_provenance(db: Session, project_id: UUID)
     `PROJECT_MANAGER`) — both entries are returned, not collapsed.
 
     `kind` is one of:
-      - `"direct"`: any of the four direct sources on `project_id` itself
-        (`UserProjectRole`, `ProjectGroup`, nested-org-group, or org-wide
-        visibility) — not further subdivided, since the distinction that
-        matters for this admin-facing view is direct vs. inherited, not
-        which of the four direct sources specifically.
+      - `"direct"`: any of the direct sources on `project_id` itself
+        (`UserProjectRole`, `ProjectGroup`, nested-org-group, project-
+        referencing group, or org-wide visibility) — not further
+        subdivided, since the distinction that matters for this
+        admin-facing view is direct vs. inherited, not which direct source
+        specifically.
       - `"forward_inherited"`: via `role_inheritance_mode`, with
         `via_project_id` naming the ancestor hop that contributed it and
         `via_mode` naming that hop's mode.
       - `"member_source_inherited"`: via the `ProjectMemberSource`
-        mechanism — always `MEMBER`. `via_project_id` is left `None` here
-        (not attempting to pin down which specific hop in a multi-level
-        chain contributed it, unlike the forward case, since a user can be
-        reachable through more than one branch of the chain simultaneously
-        — a deliberate simplification for this admin-visibility view, not
-        used for any access-control decision).
+        mechanism — `role`/`via_mode` reflect the contributing hop's own
+        `mirror_mode` (`mirror_all`/`mirror_role`/`member_only`, no longer
+        always `MEMBER`) and `via_project_id` names that hop's source
+        project.
 
     Not optimised for the request-hot-path RBAC checks the rest of this
     module is (it iterates every user in the organisation) — acceptable
@@ -999,10 +1204,43 @@ def get_effective_project_members_with_provenance(db: Session, project_id: UUID)
                 )
         current_id = parent_id
 
-    for user_id in _member_source_contributed_user_ids(db, project_id):
-        result.setdefault(user_id, []).append(
-            {"kind": "member_source_inherited", "role": ProjectRole.MEMBER, "via_project_id": None, "via_mode": None}
-        )
+    ms_visited: set[UUID] = {project_id}
+    ms_frontier: set[UUID] = {project_id}
+    ms_iterations = 0
+    while ms_frontier and ms_iterations < _PROJECT_INHERITANCE_ITERATION_CAP:
+        ms_iterations += 1
+        rows = _member_source_rows(db, ms_frontier)
+        next_frontier: set[UUID] = set()
+        for _owner_id, source_id, mode, filter_role in rows:
+            if mode == ProjectRoleInheritanceMode.MIRROR_ALL:
+                for user_id in candidate_user_ids:
+                    for role in _direct_project_roles_excluding_org_wide(db, user_id, source_id):
+                        result.setdefault(user_id, []).append(
+                            {
+                                "kind": "member_source_inherited", "role": role,
+                                "via_project_id": source_id, "via_mode": "mirror_all",
+                            }
+                        )
+            elif mode == ProjectRoleInheritanceMode.MIRROR_ROLE and filter_role is not None:
+                for user_id in _direct_project_role_holder_ids(db, source_id, filter_role):
+                    result.setdefault(user_id, []).append(
+                        {
+                            "kind": "member_source_inherited", "role": filter_role,
+                            "via_project_id": source_id, "via_mode": "mirror_role",
+                        }
+                    )
+            else:  # MEMBER_ONLY
+                for user_id in _direct_project_member_ids(db, source_id):
+                    result.setdefault(user_id, []).append(
+                        {
+                            "kind": "member_source_inherited", "role": ProjectRole.MEMBER,
+                            "via_project_id": source_id, "via_mode": "member_only",
+                        }
+                    )
+            if source_id not in ms_visited:
+                next_frontier.add(source_id)
+        ms_visited |= next_frontier
+        ms_frontier = next_frontier
 
     return result
 

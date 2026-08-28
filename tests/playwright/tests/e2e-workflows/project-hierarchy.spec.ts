@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Opens a project by name from the project list, forced to tile view. A
@@ -136,14 +136,26 @@ test.describe("hierarchical (parent/child) projects", () => {
       // "Parent project" field always shows the current parent plainly to
       // the child's own manager, per docs/decisions.md) — what must NOT
       // exist is any control letting Gamma-4 manage *being consumed by*
-      // Gamma-3. Gamma-4 has no children of its own, so the member-sources
-      // section renders its empty state — proof there is nothing to add or
-      // remove there, which is the actual property under test.
-      await expect(page.getByText("No direct sub-projects available to add.")).toBeVisible();
+      // Gamma-3: there simply is no such control anywhere, on either
+      // project's page — `ProjectMemberSource` rows only ever live on the
+      // receiving side's own list. Generalized member-source (docs/
+      // decisions.md) means Gamma-4's own "consume from" picker is no
+      // longer restricted to direct children and does offer other
+      // same-organisation projects (Gamma-3 included) as candidates —
+      // proof of the generalization working end to end, not evidence of
+      // the authorization asymmetry being any weaker.
+      const sourceProjectSelect = page.getByRole("combobox", { name: "Source project" });
+      await expect(sourceProjectSelect).toBeVisible();
+      // A native <select>'s own <option>s report as Playwright-"hidden"
+      // even when selectable (the dropdown isn't open) — assert presence
+      // via count, not visibility, matching this file's own established
+      // `option:checked` CSS-selector workaround for the same native-select
+      // limitation (see the "New project" dialog test above).
+      await expect(sourceProjectSelect.getByRole("option", { name: PROJECT_NAMES.gamma1 })).toHaveCount(1);
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       await ensureExpanded(page, "Effective members");
       await page.getByRole("button", { name: "Show members" }).click();
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
@@ -182,6 +194,68 @@ test.describe("hierarchical (parent/child) projects", () => {
     });
   });
 
+  test("generalized member-source (any same-org project, mirror modes) and project-referencing group members work end to end", async ({
+    page,
+  }) => {
+    // Uses Gamma-1/Gamma-2 — unrelated (no parent/child relationship)
+    // same-org projects, proving the generalization beyond strict
+    // parent/child (docs/decisions.md). Both mutations this test makes are
+    // undone in a `finally` block so a mid-test failure can't leave this
+    // shared fixture mutated for the next run — self-healing against its
+    // own prior partial runs too, via the same cleanup helper called once
+    // defensively up front, per this project's test-independence rule.
+    await loginAs(page, PERSONAS.orgAdminGamma.email);
+    const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+    const authHeaders = { Authorization: `Bearer ${token}` };
+    const projectIdByName = async (name: string): Promise<string> => {
+      await openProjectByName(page, name);
+      return page.url().match(/\/projects\/([0-9a-f-]+)/)![1];
+    };
+    const gamma1Id = await projectIdByName(PROJECT_NAMES.gamma1);
+    const gamma2Id = await projectIdByName(PROJECT_NAMES.gamma2);
+
+    async function cleanup(): Promise<void> {
+      await page.request.delete(
+        `http://localhost:8000/api/v1/projects/${gamma1Id}/member-sources/${gamma2Id}`, { headers: authHeaders },
+      );
+      const groups: { id: string; name: string; member_source_project_ids: string[] }[] = await page
+        .request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers: authHeaders })
+        .then((r) => r.json());
+      const membersGroup = groups.find((g) => g.name === "Members");
+      if (membersGroup?.member_source_project_ids.includes(gamma2Id)) {
+        await page.request.delete(
+          `http://localhost:8000/api/v1/projects/${gamma1Id}/groups/${membersGroup.id}/members/${gamma2Id}`,
+          { headers: authHeaders },
+        );
+      }
+    }
+
+    await cleanup();
+    try {
+      await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
+        await openProjectByName(page, PROJECT_NAMES.gamma1);
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
+        await page.getByRole("combobox", { name: "Source project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+        await page.getByRole("combobox", { name: "Mirror mode" }).selectOption({ label: "Mirror all roles" });
+        await page.getByRole("button", { name: "Add", exact: true }).click();
+        const gamma2SourceRow = page.locator("li", { hasText: PROJECT_NAMES.gamma2 });
+        await expect(gamma2SourceRow.getByRole("link", { name: PROJECT_NAMES.gamma2, exact: true })).toBeVisible();
+        await expect(gamma2SourceRow.locator(".badge")).toHaveText("Mirror all roles");
+      });
+
+      await test.step("Gamma-1's own default 'Members' group can also define a member as 'Gamma-2's members' directly (no new group created — there is no group-delete endpoint, so this reuses an existing default group to stay cleanly reversible)", async () => {
+        await selectProjectAdminGroup(page, "Project groups");
+        await openGroupCard(page, "Members");
+        await page.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+        await page.getByRole("button", { name: "Reference another project's members…" }).click();
+        await expect(page.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+      });
+    } finally {
+      await test.step("clean up: remove both additions so this shared fixture is left as found", cleanup);
+    }
+  });
+
   test("a project manager with no org-level role can create a sub-project under a project they manage, but cannot detach it until granted org rights", async ({
     page,
   }) => {
@@ -202,7 +276,7 @@ test.describe("hierarchical (parent/child) projects", () => {
 
     await test.step("that same user cannot detach it — the parent_required guard closes the create-then-detach bypass", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project settings" }).click();
+      await selectProjectAdminGroup(page, "Project settings");
       await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
       await page.getByRole("button", { name: "Save settings" }).click();
       await expect(page.getByText(/must remain nested under a parent/)).toBeVisible();
@@ -220,7 +294,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       await loginAs(page, PERSONAS.projectMgrGamma.email);
       await openProjectByName(page, childName);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project settings" }).click();
+      await selectProjectAdminGroup(page, "Project settings");
       await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
       await page.getByRole("button", { name: "Save settings" }).click();
       await expect(page.getByText(/must remain nested under a parent/)).toHaveCount(0);

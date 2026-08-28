@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: `Pattern: role display` (2026-08 UX audit roadmap row
@@ -51,7 +51,7 @@ test.describe("role display collapses to the effective highest tier", () => {
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
 
       for (const [groupName, roleLabel] of [
         [adminGroupName, "Project administrator"],
@@ -103,7 +103,7 @@ test.describe("role display collapses to the effective highest tier", () => {
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("tab", { name: "Project groups" }).click();
+      await selectProjectAdminGroup(page, "Project groups");
 
       const managerGroupName = `E2E Role Collapse Manager ${suffix}`;
       await page.getByRole("button", { name: "New group" }).click();

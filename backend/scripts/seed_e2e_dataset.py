@@ -208,6 +208,42 @@ def create_and_link_action(headers: dict, project_id: str, requirement_id: str, 
     return r.json()
 
 
+def upload_requirement_attachment(headers: dict, project_id: str, requirement_id: str, filename: str, content: bytes) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/files",
+        files={"file": (filename, content, "text/plain")}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_action_attachment(headers: dict, project_id: str, action_id: str, filename: str, content: bytes) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/actions/{action_id}/files",
+        files={"file": (filename, content, "application/pdf")}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def add_comment(headers: dict, project_id: str, requirement_id: str, body: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments",
+        json={"body": body}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_comment_attachment(headers: dict, project_id: str, requirement_id: str, comment_id: str, filename: str, content: bytes) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
+        files={"file": (filename, content, "text/plain")}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_status: str) -> dict:
     r = httpx.patch(
         f"{BASE}/projects/{project_id}/actions/{action['id']}",
@@ -419,6 +455,18 @@ def main() -> None:
         h_ab, alpha1["id"], alpha1_reqs[3]["id"], title="E2E Test Action", action_type_id=alpha1_action_types["Test"]["id"],
     )
 
+    print("Seeding files on Alpha-1 across all three project-files origins (project-files.spec.ts)...")
+    upload_requirement_attachment(
+        h_ab, alpha1["id"], alpha1_reqs[4]["id"], "e2e-direct-attachment.txt", b"E2E direct requirement attachment.",
+    )
+    upload_action_attachment(
+        h_ab, alpha1["id"], e2e_review_action["id"], "e2e-action-attachment.pdf", b"%PDF-fake E2E action attachment.",
+    )
+    files_comment = add_comment(h_ab, alpha1["id"], alpha1_reqs[5]["id"], "E2E: comment with an attachment.")
+    upload_comment_attachment(
+        h_ab, alpha1["id"], alpha1_reqs[5]["id"], files_comment["id"], "e2e-comment-attachment.txt", b"E2E comment attachment.",
+    )
+
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
     print("  e2e-orgadmin-ab@example.com   - org_admin of Alpha + Beta; PM on all 4 of those projects")
@@ -434,6 +482,8 @@ def main() -> None:
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")
+    print(f"Files on Alpha-1 ({alpha1['id']}): direct attachment on {alpha1_reqs[4]['unique_code']}, action attachment on "
+          f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
 
 
 if __name__ == "__main__":

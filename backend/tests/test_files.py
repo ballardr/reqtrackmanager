@@ -308,6 +308,122 @@ def test_system_branding_is_readable_with_no_authentication(client):
     assert resp.status_code == 200
 
 
+def test_project_files_endpoint_combines_sources_and_scopes_by_project(client, admin_token, org_id):
+    """GET /projects/{id}/files (gap docs/requirements.md U-P-05 anticipated
+    but left unspec'd — file_count was a metric only) must combine files
+    reachable via all three join tables — a direct requirement attachment
+    (RequirementFile), a requirement action attachment
+    (RequirementActionFile), and a comment attachment (CommentFile) — into
+    one project-scoped list, each row carrying its originating context.
+
+    Critically also asserts same-target-scoped resolution (a hard
+    access-control-policy requirement, not "has access somewhere"): a file
+    belonging to a *different* project, uploaded by the same caller who has
+    full access to both projects, must never appear in this project's file
+    list.
+    """
+    project = create_project(client, admin_token, org_id, name="Files Project")
+    other_project = create_project(client, admin_token, org_id, name="Other Files Project")
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    other_component_id, other_category_id = create_component_and_category(client, admin_token, other_project["id"])
+
+    req1 = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    req2 = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    other_req = _create_requirement(client, admin_token, other_project["id"], other_component_id, other_category_id)
+
+    # 1. Direct requirement attachment.
+    direct_upload = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req1['id']}/files",
+        files={"file": ("direct.txt", b"direct", "text/plain")}, headers=auth_headers(admin_token),
+    )
+    assert direct_upload.status_code == 201, direct_upload.text
+    direct_file_id = direct_upload.json()["id"]
+
+    # 2. Requirement action attachment.
+    action_type_id = client.get(
+        f"/api/v1/projects/{project['id']}/action-types", headers=auth_headers(admin_token)
+    ).json()[0]["id"]
+    action = client.post(
+        f"/api/v1/projects/{project['id']}/actions",
+        json={"title": "Review the spec", "action_type_id": action_type_id}, headers=auth_headers(admin_token),
+    ).json()
+    action_upload = client.post(
+        f"/api/v1/projects/{project['id']}/actions/{action['id']}/files",
+        files={"file": ("action.pdf", b"action", "application/pdf")}, headers=auth_headers(admin_token),
+    )
+    assert action_upload.status_code == 201, action_upload.text
+    action_file_id = action_upload.json()["id"]
+
+    # 3. Comment attachment on a different requirement in the same project.
+    comment = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req2['id']}/comments",
+        json={"body": "See attached"}, headers=auth_headers(admin_token),
+    ).json()
+    comment_upload = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req2['id']}/comments/{comment['id']}/files",
+        files={"file": ("comment.txt", b"comment", "text/plain")}, headers=auth_headers(admin_token),
+    )
+    assert comment_upload.status_code == 201, comment_upload.text
+    comment_file_id = comment_upload.json()["id"]
+
+    # A file in the *other* project — must never leak into `project`'s list.
+    other_upload = client.post(
+        f"/api/v1/projects/{other_project['id']}/requirements/{other_req['id']}/files",
+        files={"file": ("other.txt", b"other", "text/plain")}, headers=auth_headers(admin_token),
+    )
+    assert other_upload.status_code == 201, other_upload.text
+    other_file_id = other_upload.json()["id"]
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/files", headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert resp.headers["x-total-count"] == "3"
+    assert len(body) == 3
+
+    by_id = {row["file"]["id"]: row for row in body}
+    assert set(by_id.keys()) == {direct_file_id, action_file_id, comment_file_id}
+    assert other_file_id not in by_id
+
+    direct_row = by_id[direct_file_id]
+    assert direct_row["source"] == "requirement_attachment"
+    assert direct_row["requirement_id"] == req1["id"]
+    assert direct_row["requirement_unique_code"] == req1["unique_code"]
+    assert direct_row["action_id"] is None
+    assert direct_row["uploaded_by_display_name"]
+
+    action_row = by_id[action_file_id]
+    assert action_row["source"] == "action_attachment"
+    assert action_row["action_id"] == action["id"]
+    assert action_row["action_unique_code"] == action["unique_code"]
+    assert action_row["requirement_id"] is None
+
+    comment_row = by_id[comment_file_id]
+    assert comment_row["source"] == "comment_attachment"
+    assert comment_row["requirement_id"] == req2["id"]
+    assert comment_row["comment_id"] == comment["id"]
+
+
+def test_project_files_endpoint_requires_project_membership(client, admin_token, org_id):
+    """Matches every other project-content endpoint's `require_project_view`
+    behaviour: a user with no role on the project at all is denied (not
+    just filtered to an empty list)."""
+    from tests.conftest import create_org_user, login
+
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("spec.txt", b"secret", "text/plain")}, headers=auth_headers(admin_token),
+    )
+
+    create_org_user(client, admin_token, org_id, "files-outsider@example.com", role="member")
+    outsider_token = login(client, "files-outsider@example.com", "Password123!")
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/files", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
+
+
 def test_avatar_and_org_resources_still_require_authentication_when_anonymous(client, admin_token, org_id):
     """Unlike logos/login backgrounds, avatars and org shared resources must
     stay behind authentication — the anonymous carve-out above is narrowly

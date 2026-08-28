@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+import { selectProjectAdminGroup } from "./e2e-workflows/helpers";
+
 /**
  * Coverage for the mockup-driven engagement features added on top of the
  * Ossa (v1) golden path: comment reactions, per-entity subscriptions, the
- * tabbed Project Admin page, and the Project Overview dashboard charts.
+ * resource-menu Project Admin page (converted from tabs — see
+ * `docs/decisions.md`), and the Project Overview dashboard charts.
  */
 
 const ADMIN_EMAIL = "admin@example.com";
@@ -54,7 +57,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // stages" section that also has its own "Name"-placeholder "add stage"
     // field (which would otherwise be `.first()` and silently win) — scope
     // to "Components & categories" specifically.
-    await page.getByRole("tab", { name: "Structure" }).click();
+    await selectProjectAdminGroup(page, "Structure");
     const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
     await componentsSection.getByPlaceholder("Name").first().fill("Web");
     await componentsSection.getByPlaceholder("Prefix").first().fill("WEB");

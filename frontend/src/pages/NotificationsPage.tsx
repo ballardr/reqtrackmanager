@@ -116,8 +116,7 @@ export function NotificationsPage() {
           )}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel sectionKey="notificationsFilters">
           <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
         </FilterPanel>
       </div>

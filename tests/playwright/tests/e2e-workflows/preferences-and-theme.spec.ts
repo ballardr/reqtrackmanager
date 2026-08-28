@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectPreferencesGroup } from "./helpers";
 
 /**
  * Job to be done: profile preferences persist server-side (not just
@@ -121,7 +121,7 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       });
 
       await page.goto("/preferences");
-      await page.getByRole("tab", { name: "Your access" }).click();
+      await selectPreferencesGroup(page, "Your access");
       await expect(page.getByText(childName)).toBeVisible();
       // Scoped to this run's own uniquely-suffixed parent group row, not a
       // bare page-wide match on "(via a nested group)" — this persona

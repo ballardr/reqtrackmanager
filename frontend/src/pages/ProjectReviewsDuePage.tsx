@@ -77,8 +77,7 @@ export function ProjectReviewsDuePage() {
           )}
         </div>
 
-        <FilterPanel>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Filters</h2>
+        <FilterPanel sectionKey="projectReviewsDueFilters">
           <FilterField label={strings.requirements.component}>
             <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
               <option value="">{strings.reviews.allComponents}</option>

@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, CheckSquare, Clock, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -163,6 +163,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
               <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}/files`} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railCollapsed} />

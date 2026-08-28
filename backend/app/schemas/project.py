@@ -200,16 +200,33 @@ class ProjectTreeNodeOut(BaseModel):
 
 class ProjectMemberSourceAdd(BaseModel):
     source_project_id: UUID
+    mirror_mode: ProjectRoleInheritanceMode = ProjectRoleInheritanceMode.MEMBER_ONLY
+    mirror_filter_role: ProjectRole | None = None
+
+    @model_validator(mode="after")
+    def _validate_mirror_filter(self) -> ProjectMemberSourceAdd:
+        # Unlike Project.role_inheritance_mode (where NONE means "don't
+        # inherit," a meaningful choice for an ordinary project), NONE
+        # makes no sense here — a member-source *row's own existence*
+        # already means "grant something from this source"; a no-op grant
+        # is just "don't create the row."
+        if self.mirror_mode == ProjectRoleInheritanceMode.NONE:
+            raise ValueError("mirror_mode must not be 'none' — remove the member source entirely instead.")
+        _validate_role_inheritance_filter(self.mirror_mode, self.mirror_filter_role)
+        return self
 
 
 class ProjectMemberSourceOut(BaseModel):
     """One entry in a project's member-source list (`GET/POST/DELETE
-    /{id}/member-sources`) — the child this project consumes members from.
-    See `models.project.ProjectMemberSource`'s docstring for why this is a
-    parent-owned list rather than a flag on the child."""
+    /{id}/member-sources`) — the other project this project consumes
+    members from. See `models.project.ProjectMemberSource`'s docstring for
+    why this is a receiving-side-owned list rather than a flag on the
+    source, and for what `mirror_mode`/`mirror_filter_role` control."""
 
     source_project_id: UUID
     source_project_name: str
+    mirror_mode: ProjectRoleInheritanceMode
+    mirror_filter_role: ProjectRole | None = None
 
 
 class MemberSourceProvenanceOut(BaseModel):
@@ -363,6 +380,12 @@ class ProjectGroupCreate(BaseModel):
 class ProjectGroupMemberAdd(BaseModel):
     user_id: UUID | None = None
     org_group_id: UUID | None = None
+    # "This group's members = that project's own direct members" — see
+    # `models.project.ProjectGroupMember.source_project_id`'s docstring.
+    # Exactly one of the three fields must be set; enforced by the DB check
+    # constraint and re-validated at the router (matching how the existing
+    # user_id/org_group_id pair is already validated there).
+    source_project_id: UUID | None = None
 
 
 class ProjectGroupOut(BaseModel):
@@ -372,6 +395,7 @@ class ProjectGroupOut(BaseModel):
     is_default: bool
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID]
+    member_source_project_ids: list[UUID]
 
 
 class UserProjectRoleAssign(BaseModel):
