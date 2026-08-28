@@ -8,6 +8,7 @@ nested directories are created automatically.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -33,12 +34,18 @@ class LocalFileStorageBackend:
         # missed this and allowed a crafted filename to escape the
         # uploading organisation's own key prefix while still passing the
         # check below (see docs/decisions.md's hardening review). The
-        # resolve() + is_relative_to() check here remains as defense in
-        # depth, not the only guard.
-        path = (self._base_dir / key).resolve()
-        if not path.is_relative_to(self._base_dir.resolve()):
+        # check here remains as defense in depth, not the only guard.
+        #
+        # Resolve both sides with os.path.realpath (following symlinks) and
+        # compare with a plain startswith — the exact confinement idiom
+        # CodeQL's own py/path-injection guidance documents as safe — rather
+        # than pathlib's resolve()/is_relative_to(), which CodeQL's taint
+        # tracker doesn't recognise as a sanitizing barrier for this query.
+        base = os.path.realpath(self._base_dir)
+        candidate = os.path.realpath(os.path.join(base, key))
+        if candidate != base and not candidate.startswith(base + os.sep):
             raise ValueError("Invalid storage key.")
-        return path
+        return Path(candidate)
 
     def save(self, key: str, data: bytes) -> None:
         path = self._path_for(key)

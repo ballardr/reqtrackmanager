@@ -60,10 +60,30 @@ test("SSO login: real Keycloak authorization-code flow provisions the user and s
     // realm-export.json) maps to this app's org_admin role via a new
     // `OrgGroup` with both `idp_synced_group_name` and `granted_org_role`
     // set.
-    const groupResp = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups`, {
-      headers: authHeaders,
-      data: { name: "reqtrack-org-admins", idp_synced_group_name: "reqtrack-org-admins", granted_org_role: "org_admin" },
-    });
+    //
+    // "Default Organization" is a shared fixture other specs (and prior
+    // runs of this very test) also use, and there's no delete-group
+    // endpoint — a bare POST here is not idempotent and 400s ("idp sync
+    // target already in use") on a second run against the same org. Reuse
+    // an already-synced group with this name if a prior run left one,
+    // rather than assuming a clean slate (this project's standing "make
+    // the spec tolerant of already-mutated state" rule for shared
+    // fixtures).
+    const existingGroups = await (
+      await page.request.get(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups`, { headers: authHeaders })
+    ).json();
+    const existingGroup = existingGroups.find(
+      (g: { idp_synced_group_name?: string | null }) => g.idp_synced_group_name === "reqtrack-org-admins"
+    );
+    const groupResp = existingGroup
+      ? await page.request.patch(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups/${existingGroup.id}`, {
+          headers: authHeaders,
+          data: { idp_synced_group_name: "reqtrack-org-admins", granted_org_role: "org_admin" },
+        })
+      : await page.request.post(`${apiBaseUrl}/api/v1/orgs/${orgId}/groups`, {
+          headers: authHeaders,
+          data: { name: "reqtrack-org-admins", idp_synced_group_name: "reqtrack-org-admins", granted_org_role: "org_admin" },
+        });
     expect(groupResp.ok()).toBe(true);
 
     await page.getByRole("button", { name: "Sign out" }).click();

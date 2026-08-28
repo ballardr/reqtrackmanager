@@ -6,6 +6,8 @@ redeemed at native signup for a regular org, and immediate provisioning
 `services/invites.py` and docs/decisions.md's "Self-signup, invites, and
 SSO" entry."""
 
+import time
+
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -13,6 +15,7 @@ from app.models.enums import OrgRole
 from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
+from app.routers.orgs import _looks_like_email
 from app.services.definitions import get_default_project_status_id, seed_project_statuses
 from app.services.invites import consume_pending_invites, create_pending_invite, provision_sso_invite
 from app.services.oidc_provisioning import find_or_provision_user
@@ -461,3 +464,39 @@ def test_outside_domain_users_lists_matching_non_members_only(client, admin_toke
     assert resp.status_code == 200
     emails = {u["email"] for u in resp.json()}
     assert emails == {"match@listdomain.example.com"}
+
+
+# --- _looks_like_email: unit coverage for the ReDoS fix ---------------------
+#
+# The endpoint-level tests above already exercise this indirectly through
+# `/users/search?q=...`; these pin the specific security property fixed
+# here (CodeQL py/polynomial-redos): the same match/no-match semantics as
+# the original `^[^@\s]+@[^@\s]+\.[^@\s]+$` regex, and that a long
+# adversarial `q` (this endpoint has no length limit of its own) is
+# rejected in time genuinely independent of input length.
+
+def test_looks_like_email_matches_the_original_regexs_semantics():
+    assert _looks_like_email("user@example.com") is True
+    assert _looks_like_email("user.name+tag@sub.example.com") is True
+    assert _looks_like_email("a@b.c.d") is True
+    assert _looks_like_email("") is False
+    assert _looks_like_email("no-at-sign.example.com") is False
+    assert _looks_like_email("two@@signs.com") is False
+    assert _looks_like_email("has a@space.com") is False
+    assert _looks_like_email("a@space in-domain.com") is False
+    assert _looks_like_email("a@.startswithdot") is False
+    assert _looks_like_email("a@endswithdot.") is False
+    assert _looks_like_email("a@nodothere") is False
+
+
+def test_looks_like_email_is_not_vulnerable_to_polynomial_redos():
+    # `!@!.` followed by many `!.` repetitions is the exact shape CodeQL
+    # flagged as slow against the original regex (many candidate positions
+    # for the required `.` before the final segment). Not a valid email
+    # either way — the property under test is how fast it's rejected.
+    attack = "!@!." + "!." * 500_000
+    start = time.monotonic()
+    result = _looks_like_email(attack)
+    elapsed = time.monotonic() - start
+    assert result is False
+    assert elapsed < 1.0, f"took {elapsed:.2f}s on a {len(attack)}-char adversarial value — possible ReDoS regression"

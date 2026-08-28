@@ -10,7 +10,6 @@ C-U-12).
 from __future__ import annotations
 
 import json
-import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -685,7 +684,26 @@ def get_user_access(
     return UserAccessOut(org_groups=org_groups, projects=projects)
 
 
-_EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+def _looks_like_email(value: str) -> bool:
+    """Cheap "looks like an email" heuristic for the external-user-match
+    check below — not full RFC 5322 validation (see `email-validator`,
+    used for real signup/invite validation elsewhere).
+
+    Deliberately plain string operations rather than a single
+    `^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$`-style regex: that shape is
+    polynomial-time on crafted input (many `.`s after the `@`), and `value`
+    here is `q` — an unauthenticated-adjacent, attacker-controlled search
+    query (CodeQL py/polynomial-redos). This reproduces the same
+    match/no-match semantics — nonempty local part, exactly one `@`, no
+    whitespace, and a domain `.` with at least one character on each
+    side — in linear time.
+    """
+    if not value or len(value) > 320 or any(ch.isspace() for ch in value):
+        return False
+    local, sep, domain = value.partition("@")
+    if not sep or not local or "@" in domain:
+        return False
+    return any(0 < i < len(domain) - 1 for i, ch in enumerate(domain) if ch == ".")
 
 
 @router.get("/{organization_id}/users/search", response_model=OrgUserSearchResult)
@@ -736,7 +754,7 @@ def search_org_users(
     members = list(by_user.values())[:8]
 
     external: ExternalUserMatch | None = None
-    if _EMAIL_LIKE.match(needle) and not any(m.email.lower() == needle for m in members):
+    if _looks_like_email(needle) and not any(m.email.lower() == needle for m in members):
         org = db.get(Organization, organization_id)
         policy = org.external_user_policy if org else ExternalUserPolicy.DISABLED
         if policy != ExternalUserPolicy.DISABLED:

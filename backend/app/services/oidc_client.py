@@ -22,13 +22,24 @@ import socket
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from authlib.jose import JsonWebKey
-from authlib.jose import jwt as jose_jwt
-from authlib.jose.errors import JoseError
+from joserfc import jwt as jose_jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySet
+from joserfc.jwt import JWTClaimsRegistry
 
 from app.config import get_settings
 
 _HTTP_TIMEOUT = 10.0
+
+# RSA/ECDSA/RSA-PSS only — deliberately excludes "none" and the HMAC (HS*)
+# family. `key_set` below is the IdP's own *public* JWKS; if HS* were
+# accepted, a token signed with that public material used as an HMAC
+# secret would verify successfully (the classic JWT "algorithm confusion"
+# attack — the same vulnerability class as this project's own
+# python-jose/CVE-2024-33663 and Authlib/GHSA-wvwj-cvrp-7pv5 findings,
+# both patched by dependency upgrade elsewhere; here it's closed by never
+# trusting the token's own `alg` header to pick a symmetric algorithm).
+_ALLOWED_ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512")
 
 
 def _assert_safe_external_url(url: str) -> None:
@@ -137,12 +148,21 @@ def verify_id_token(discovery: dict, id_token: str, *, client_id: str, issuer_ur
     _assert_safe_external_url(discovery["jwks_uri"])
     jwks_resp = httpx.get(_internal_url(discovery["jwks_uri"]), timeout=_HTTP_TIMEOUT)
     jwks_resp.raise_for_status()
-    key_set = JsonWebKey.import_key_set(jwks_resp.json())
+    key_set = KeySet.import_key_set(jwks_resp.json())
     try:
-        claims = jose_jwt.decode(id_token, key_set)
-        claims.validate()
+        token = jose_jwt.decode(id_token, key_set, algorithms=_ALLOWED_ID_TOKEN_ALGORITHMS)
+        # OIDC Core 1.0 §2 requires iss/aud/exp on every ID token; this app
+        # re-checks iss/aud itself just below (against the specific
+        # per-organisation issuer/client_id, which this generic registry
+        # has no way to know), but still asks the registry to enforce their
+        # *presence* plus exp's value, rather than silently accepting a
+        # token missing them.
+        JWTClaimsRegistry(iss={"essential": True}, aud={"essential": True}, exp={"essential": True}).validate(
+            token.claims
+        )
     except JoseError as exc:
         raise ValueError(f"Invalid OIDC id_token: {exc}") from exc
+    claims = token.claims
 
     if claims.get("iss") != issuer_url and claims.get("iss") != discovery.get("issuer"):
         raise ValueError("id_token issuer does not match the configured issuer.")

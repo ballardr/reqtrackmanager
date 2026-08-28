@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import {
   Bold, Heading1, Heading2, Heading3, Image as ImageIcon, Italic, Link as LinkIcon, List, Upload,
 } from "lucide-react";
@@ -9,6 +10,24 @@ import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdo
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
+
+// The exact tag/attribute set `renderMarkdown` (and this component's own
+// insert-image action, below) ever produce — matches the "match the
+// supported subset, nothing more" posture `utils/markdown.ts`'s module
+// docstring already documents. `renderMarkdown`'s own escaping is trusted
+// for the plain-text content it renders, but every string assigned to
+// `innerHTML`/passed to `execCommand("insertHTML", ...)` below is still run
+// through this allowlist as defense in depth (CodeQL js/xss-through-dom):
+// content here isn't necessarily developer-authored the way the help-page
+// Markdown `renderMarkdown` was originally written for — `value` is a
+// requirement/report field or comes from an uploaded file's own filename
+// (see `insertImage` below), both attacker-influenceable in a multi-tenant
+// app — so a future escaping bug in either producer can't become a stored
+// XSS against every other user who later views the same field.
+const RICH_TEXT_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "li", "strong", "em", "code", "pre", "a", "img", "div", "br"],
+  ALLOWED_ATTR: ["href", "target", "rel", "src", "alt", "style", "class"],
+};
 
 type Mode = "markdown" | "rich";
 
@@ -68,7 +87,7 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (mode === "rich" && editableRef.current) {
-      editableRef.current.innerHTML = renderMarkdown(value);
+      editableRef.current.innerHTML = DOMPurify.sanitize(renderMarkdown(value), RICH_TEXT_SANITIZE_CONFIG);
     }
     // Deliberately only re-run when `mode` changes, not `value` — see the
     // docstring above on why the contentEditable content isn't re-synced
@@ -141,7 +160,15 @@ export function RichTextEditor({
     } else {
       const url = resolveImageRef(ref);
       editableRef.current?.focus();
-      document.execCommand("insertHTML", false, `<img src="${url}" alt="${asset.filename}" style="max-width:100%">`);
+      // `asset.filename` is an uploaded file's own name — attacker-chosen,
+      // not escaped here before interpolation, so it's sanitized (along
+      // with the rest of this fragment) via the shared allowlist above
+      // rather than trusted as safe attribute content.
+      const imgHtml = DOMPurify.sanitize(
+        `<img src="${url}" alt="${asset.filename}" style="max-width:100%">`,
+        RICH_TEXT_SANITIZE_CONFIG
+      );
+      document.execCommand("insertHTML", false, imgHtml);
       handleRichInput();
     }
     setImagePickerOpen(false);
