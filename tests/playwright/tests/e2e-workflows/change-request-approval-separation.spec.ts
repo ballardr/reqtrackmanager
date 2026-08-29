@@ -85,6 +85,18 @@ test("change request submitter cannot approve their own request; the project man
     await page.getByText(PROJECT_NAMES.alpha1).click();
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await page.getByText(proposedName).click();
+    // React Router 7 wraps navigation in React's startTransition by
+    // default (a behavior change from 6): the URL updates immediately,
+    // but the previous page's own content can stay mounted for a beat
+    // longer. Right after this click, that's the change requests *list*
+    // — whose filter sidebar has a "Submitted" status option in its
+    // (closed) Status <select> — coexisting with this CR's own detail
+    // view, which is ambiguous for `crStatusAfterSubmit`'s exact text
+    // match. Waiting for this CR's own heading first (unambiguous: the
+    // list has no such heading) proves the transition has actually
+    // landed before checking the — otherwise possibly-transient —
+    // status text.
+    await expect(page.getByRole("heading", { name: proposedName, level: 1 })).toBeVisible();
     await expect(page.getByText(crStatusAfterSubmit, { exact: true })).toBeVisible();
     await page.getByPlaceholder("Decision note").fill("Approved — matches the new latency budget.");
     // Exact match: the PM also sees the advisory "Vote to approve" button
@@ -96,6 +108,12 @@ test("change request submitter cannot approve their own request; the project man
 
   await test.step("the requirement now reflects the approved change", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await expect(page.getByText(proposedName)).toBeVisible();
+    // Role-scoped, not a page-wide getByText: same React Router 7
+    // startTransition timing as above — the just-left change request
+    // detail view's own "Name: {proposedName}" changed-field summary can
+    // transiently coexist with the requirements list underneath as it
+    // settles in. The requirement card's link has no such ambiguity (see
+    // the identical fix in golden-path.spec.ts).
+    await expect(page.getByRole("link", { name: proposedName })).toBeVisible();
   });
 });
