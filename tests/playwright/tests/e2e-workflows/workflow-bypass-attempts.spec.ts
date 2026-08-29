@@ -57,6 +57,16 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
         await approveButton.click();
       }
       await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
+      // ProjectAdminPage's reload() after a mutation fires several
+      // requests, not just one (same pattern documented in golden-path.
+      // spec.ts) — the "Approve stage" button disappearing only proves
+      // *this tab's* own status re-render landed, not that every
+      // requirement targeting this stage has finished being re-fetched
+      // as locked. Without this, the very next step can navigate to a
+      // specific requirement and find it still showing its pre-lock,
+      // editable state — a genuine intermittent race, not a false
+      // positive, reproduced by running this spec repeatedly.
+      await page.waitForLoadState("networkidle");
     });
 
     let lockedRequirementUrl = "";
@@ -64,6 +74,20 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: "Must support configuration via file" }).click();
       lockedRequirementUrl = page.url();
+      // React Router 7 wraps navigation in React's startTransition by
+      // default (a behavior change from 6): the URL updates immediately,
+      // but the requirements list this just navigated from — now showing
+      // every one of Alpha-1's requirements locked by the stage approval
+      // above, each with its own "Locked (approved)" badge — can stay
+      // mounted for a beat longer, making a bare `getByText` match more
+      // than one badge. Waiting for this requirement's own heading first
+      // (unique to its detail page) proves the transition has actually
+      // landed before checking the — otherwise possibly-transient —
+      // lock status.
+      // Not exact: the requirement detail page's h1 is "{unique_code} —
+      // {name}" (e.g. "SW-PERF-002 — Must support configuration via
+      // file"), not the bare name.
+      await expect(page.getByRole("heading", { name: "Must support configuration via file" })).toBeVisible();
       await expect(page.getByText("Locked (approved)")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });

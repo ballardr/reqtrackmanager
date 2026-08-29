@@ -118,6 +118,18 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string): P
   const link = page.getByRole("link", { name: groupLabel, exact: true });
   if ((await link.getAttribute("aria-current")) !== "page") {
     await link.click();
+    // The group switch itself is a synchronous route-param change, but the
+    // newly-selected group's own content typically fetches its data on
+    // mount — a caller that immediately checks for group-specific content
+    // right after this call (e.g. `.count()` on a conditional button,
+    // which doesn't wait/retry the way `expect(...)` does) can otherwise
+    // race the fetch and silently read "not present yet" as "not present
+    // at all". Found via workflow-bypass-attempts.spec.ts: without this,
+    // its "Start review"/"Approve stage" `.count()` checks right after
+    // selecting the Structure group both intermittently read 0 before the
+    // stages list had loaded, silently skipping the whole approval and
+    // leaving the stage stuck in scoping.
+    await page.waitForLoadState("networkidle");
   }
 }
 

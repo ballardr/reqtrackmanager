@@ -69,6 +69,10 @@ test.describe("organisation bundle export/import", () => {
       // Style guide "Pattern: action menu" — rename + export now live
       // behind the Overview group's kebab trigger, not a standalone button.
       await page.getByRole("button", { name: "Organisation actions" }).click();
+      // See the identical fix (and its full explanation) in
+      // org-merge-import.spec.ts: clicking the menuitem before the
+      // `Popover`-based menu finishes positioning can silently miss it.
+      await expect(page.getByRole("menu", { name: "Organisation actions" })).toBeVisible();
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("menuitem", { name: "Export organisation bundle" }).click();
       const download = await downloadPromise;

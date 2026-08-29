@@ -3,6 +3,6 @@ fastmcp==3.4.5
 # 0.27.2 — this is a separate service/container, so the two don't need to
 # match).
 httpx==0.28.1
-pytest==8.3.3
-pytest-asyncio==0.24.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
 ruff==0.7.4

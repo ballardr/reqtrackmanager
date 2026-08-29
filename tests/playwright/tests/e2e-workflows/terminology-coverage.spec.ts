@@ -40,9 +40,15 @@ test.describe("terminology overrides reach their own surfaces", () => {
       // "Reasoning" field restates its name in lowercase prose ("Reasoning:
       // must respond to input within 50ms."), and `getByText`'s default
       // substring match is case-insensitive, so it resolves to both that
-      // paragraph and the actual requirement link. Scoped to the link role,
-      // which is the only one of the two that's actually clickable/correct.
-      await page.getByRole("link", { name: "Must respond to input within 50ms" }).click();
+      // paragraph and the actual requirement link. Scoped to the link role
+      // disambiguates that, but React Router 7's default startTransition-
+      // wrapped navigation (a behavior change from 6 — the URL updates
+      // immediately, but the previous page's own content can stay mounted
+      // for a beat longer) can still transiently double-render *this same
+      // link* while the "Specs" list settles in — `.first()` is safe here
+      // since both matches share the same href/text, unlike the badge-vs-
+      // filter-option ambiguity fixed elsewhere in this branch.
+      await page.getByRole("link", { name: "Must respond to input within 50ms" }).first().click();
       await expect(page.url()).toContain("/requirements/");
       await expect(page.getByRole("link", { name: "Make ECR" })).toBeVisible();
     });

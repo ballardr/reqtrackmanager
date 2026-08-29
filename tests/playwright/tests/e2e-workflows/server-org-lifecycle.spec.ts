@@ -19,6 +19,20 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     await loginAs(page, PERSONAS.serverAdmin.email);
     await page.getByRole("link", { name: "Organisations", exact: true }).last().click();
     await expect(page).toHaveURL(/\/server\/organisations$/);
+    // Wait for this page's own heading before touching its Status filter:
+    // `FilterField` nests the `<select>` inside the same `<label>` as its
+    // caption (components/FilterPanel.tsx), so the accessible "label" text
+    // `getByLabel` matches against is the caption *plus every option's own
+    // text* (confirmed directly: this control's is "StatusActiveDisabled
+    // All") — a substring match on "Status" is normally fine (only this
+    // one control on the page contains it), but React Router 7's default
+    // startTransition-wrapped navigation (the URL updates immediately, but
+    // a just-left page's content can stay mounted for a beat — see the
+    // identical fix in golden-path.spec.ts) can transiently leave a
+    // *different* page's own "status"-containing filter mounted alongside
+    // this one, and unlike a plain label that ambiguity can't be resolved
+    // with `{ exact: true }` given the option-text quirk above.
+    await expect(page.getByRole("heading", { name: "Organisations", exact: true })).toBeVisible();
     // Disabled orgs are hidden by default (UI/UX pass) — this test watches
     // one org through its whole lifecycle including a disabled state, so
     // it needs the "All" filter rather than the default "Active" one.

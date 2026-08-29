@@ -2,11 +2,15 @@
 auth, Users/Groups CRUD, group-membership PATCH, cross-org isolation, and
 that it never touches nested-group edges or a banned account."""
 
+import time
+
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.organization import OrgGroup, OrgGroupMember
+from app.routers import scim as scim_module
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 from tests.test_access_review import _make_orphaned_user
 
@@ -270,3 +274,57 @@ def test_scim_banned_user_cannot_be_reprovisioned(client, admin_token, org_id):
     token = _generate_scim_token(client, admin_token, org_id)
     resp = client.post("/scim/v2/Users", json={"userName": banned_email}, headers=auth_headers(token))
     assert resp.status_code == 403
+
+
+# --- _parse_simple_eq_filter: unit coverage for the ReDoS fix ---------------
+#
+# The endpoint-level tests above exercise this indirectly through real
+# filter queries; these pin the specific security property fixed here
+# (CodeQL py/polynomial-redos): correctness on the bracket-filter shape
+# (`emails[type eq "work"].value`, whose own embedded `eq "..."` is exactly
+# what made the original single regex ambiguous/slow) and that adversarial
+# input — arbitrarily long, with no valid filter anywhere in it — is
+# rejected in time genuinely independent of input length, not just fast for
+# the sizes a hand-written test happens to try.
+
+def test_parse_simple_eq_filter_handles_the_bracket_filter_shape():
+    assert scim_module._parse_simple_eq_filter('userName eq "scim.new@example.com"') == (
+        "username",
+        "scim.new@example.com",
+    )
+    assert scim_module._parse_simple_eq_filter('emails[type eq "work"].value eq "a@b.com"') == (
+        'emails[type eq "work"].value',
+        "a@b.com",
+    )
+    assert scim_module._parse_simple_eq_filter('displayName eq "Team A"') == ("displayname", "Team A")
+    # Multiple spaces around "eq", and an optional trailing "]" — both
+    # legal per the grammar, both previously handled by `\s+`/`\]?`.
+    assert scim_module._parse_simple_eq_filter('  userName   eq   "x"  ') == ("username", "x")
+    assert scim_module._parse_simple_eq_filter('userName eq "x"]') == ("username", "x")
+
+
+def test_parse_simple_eq_filter_rejects_malformed_expressions():
+    for bad in ["bogus", ' eq "x"', 'fooeq "x"', '""', '"', "eq", "no-quotes-at-all"]:
+        try:
+            scim_module._parse_simple_eq_filter(bad)
+            raised = False
+        except HTTPException as exc:
+            raised = exc.status_code == 400
+        assert raised, f"expected a 400 for filter={bad!r}"
+
+
+def test_parse_simple_eq_filter_is_not_vulnerable_to_polynomial_redos():
+    # Neither attack pattern contains a valid filter expression, so both
+    # are expected to raise — the property under test is *how fast* they
+    # raise, not the outcome. Before the fix, a long run of whitespace with
+    # no "eq" at all (no quotes needed) took several seconds at this size;
+    # a correctly linear implementation finishes in a small fraction of a
+    # second regardless.
+    for attack in [" " * 200_000, ("eq " * 50_000), (" " * 100_000 + '"unterminated')]:
+        start = time.monotonic()
+        try:
+            scim_module._parse_simple_eq_filter(attack)
+        except HTTPException:
+            pass
+        elapsed = time.monotonic() - start
+        assert elapsed < 1.0, f"took {elapsed:.2f}s on a {len(attack)}-char adversarial filter — possible ReDoS regression"

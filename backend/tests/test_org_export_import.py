@@ -46,9 +46,19 @@ def test_export_never_includes_smtp_password_or_oidc_client_secret(client, admin
     assert oidc_secret not in org_json_text
     assert "smtp_password" not in org_json_text
     assert "oidc_client_secret" not in org_json_text
-    # Non-secret config is still present for reference.
-    assert "smtp.example.com" in org_json_text
-    assert "reqtrack-client" in org_json_text
+    # Non-secret config is still present for reference. Asserted against the
+    # parsed field, not a raw substring check against the whole document
+    # (CodeQL py/incomplete-url-substring-sanitization: a bare `"host" in
+    # text` reads as a host/URL-allowlist check that a crafted value could
+    # spoof, e.g. "smtp.example.com.attacker.test" — which isn't what this
+    # assertion means to test at all, but the exact-equality-on-the-parsed-
+    # field form below both says what it means and can't be misread that
+    # way).
+    import json
+
+    org_data = json.loads(org_json_text)
+    assert org_data["smtp_host"] == "smtp.example.com"
+    assert org_data["oidc_client_id"] == "reqtrack-client"
 
 
 def test_export_contains_manifest_and_nested_projects(client, admin_token, org_id):

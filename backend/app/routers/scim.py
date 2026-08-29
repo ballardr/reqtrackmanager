@@ -59,7 +59,7 @@ SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group"
 SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
 
-_SIMPLE_EQ_FILTER = re.compile(r'^\s*([\w.\[\] "=]+?)\s+eq\s+"([^"]*)"\s*\]?\s*$', re.IGNORECASE)
+_ATTR_CHARSET = re.compile(r'^[\w.\[\] "=]+$')
 
 
 def require_scim_org(request: Request, db: Session = Depends(get_db)) -> Organization:
@@ -91,13 +91,49 @@ def require_scim_org(request: Request, db: Session = Depends(get_db)) -> Organiz
 def _parse_simple_eq_filter(filter_param: str | None) -> tuple[str, str] | None:
     """Parses the single `attr eq "value"` filter shape real SCIM clients
     send for user/group lookups — see module docstring for the scope
-    limitation."""
+    limitation.
+
+    Deliberately not a `(attr)\\s+eq\\s+"(value)"`-shaped regex over the
+    whole `filter_param`, in either a single combined pattern or a
+    `search()` for just the trailing `eq "value"` half: `attr` itself can
+    legitimately contain its own `eq "..."` (the bracket-filter shape this
+    module accepts, `emails[type eq "work"].value`), and `filter_param` is
+    attacker-controlled (any bearer-token holder can send it) — a combined
+    pattern has to backtrack over every candidate split between attr's
+    embedded `eq` and the real trailing one, and even a `search()` for only
+    `\\s+eq\\s+"..."` is *itself* polynomial-time on a long run of
+    whitespace containing no "eq" at all (every starting position
+    backtracks its own `\\s+` before failing — the same CodeQL
+    py/polynomial-redos shape, just moved rather than removed). Finding the
+    same attr/value split with plain string operations (`rfind`/slicing)
+    instead avoids backtracking entirely, in genuinely linear time.
+    """
     if not filter_param:
         return None
-    match = _SIMPLE_EQ_FILTER.match(filter_param)
-    if not match:
+    s = filter_param.strip()
+    if s.endswith("]"):
+        s = s[:-1].rstrip()
+    # The value is whatever's between the last two quotes — the grammar
+    # (`"([^"]*)"`, no escaping) never lets the value itself contain a `"`.
+    if len(s) < 2 or s[-1] != '"':
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
-    return match.group(1).strip().lower(), match.group(2)
+    end_quote = len(s) - 1
+    start_quote = s.rfind('"', 0, end_quote)
+    before = s[:start_quote].rstrip() if start_quote != -1 else ""
+    # "eq" must be its own token: at least one char of attr, then
+    # whitespace, then "eq", immediately before the opening quote.
+    if (
+        start_quote == -1
+        or len(before) < 3
+        or before[-2:].lower() != "eq"
+        or not before[-3].isspace()
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
+    value = s[start_quote + 1 : end_quote]
+    attr = before[:-3].rstrip()
+    if not attr or not _ATTR_CHARSET.match(attr):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
+    return attr.lower(), value
 
 
 def _user_to_scim(user: User) -> dict[str, Any]:

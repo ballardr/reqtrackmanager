@@ -166,7 +166,15 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await expect(page.getByText("Boot in under 3 seconds")).toBeVisible();
+    // Role-scoped, not a page-wide getByText: React Router 7 wraps
+    // navigation state updates in React's startTransition by default (a
+    // behavior change from 6, where this app previously pinned an older
+    // 6.x), which can keep the change request detail view's own "Name:
+    // Boot in under 3 seconds" changed-field summary painted for one frame
+    // alongside the requirements list underneath as it settles in — a
+    // transient strict-mode double-match a bare getByText can catch mid
+    // transition. The requirement card's link has no such ambiguity.
+    await expect(page.getByRole("link", { name: "Boot in under 3 seconds" })).toBeVisible();
     requirementCode = "SW-PERF-001";
   });
 

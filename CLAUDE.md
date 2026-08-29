@@ -9,10 +9,6 @@
 
 - Prefer diagrams in documentation wherever they will improve clarity
 - User Mermaid diagrams by default where possible
-- Every diagram must include explanitory context immediately before or after it, including:
-    - what the diagram represents
-    - how to read the diagram (key actors, flows, boundaries), and
-    - why it matters in the surrounding context
 - Validate Mermaid diagrams before finalising to ensure they render correctly (no broken fences, no malformed syntax, no dangling nodes)
 - Exception: screenshots/images in README.md do not need explanatory text immediately before or after them. The diagram rule above is about Mermaid diagrams conveying structure/flow that needs a reading key; README screenshots are illustrative product shots and a short caption (e.g. a table cell above each image) is sufficient — they must not be padded with "what this shows / why it matters" prose to satisfy the diagram rule.
 

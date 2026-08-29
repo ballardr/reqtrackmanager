@@ -124,6 +124,10 @@ test.describe("organisation rename and test-email actions", () => {
       // behind one kebab trigger instead of an always-visible inline
       // input; selecting "Rename" opens a Modal with the field.
       await page.getByRole("button", { name: "Organisation actions" }).click();
+      // See the identical fix (and its full explanation) in
+      // org-merge-import.spec.ts: clicking the menuitem before the
+      // `Popover`-based menu finishes positioning can silently miss it.
+      await expect(page.getByRole("menu", { name: "Organisation actions" })).toBeVisible();
       await page.getByRole("menuitem", { name: "Rename" }).click();
       const dialog = page.getByRole("dialog", { name: "Rename" });
       const nameInput = dialog.getByLabel("Rename", { exact: true });
