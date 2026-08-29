@@ -91,6 +91,15 @@ test.describe("organisation bundle merge-import", () => {
       // Style guide "Pattern: action menu" — rename + export now live
       // behind the Overview group's kebab trigger, not a standalone button.
       await page.getByRole("button", { name: "Organisation actions" }).click();
+      // `ActionMenu`'s items live in a `Popover` that positions itself
+      // relative to the trigger after mount (components/Popover.tsx) —
+      // clicking the menuitem before that settles can land the click at a
+      // stale coordinate the popover has since moved away from, silently
+      // missing the button (Playwright still reports the click as
+      // succeeded, since it targets the element's last-known bounding
+      // box). Waiting for the menu itself first proves the popover has
+      // finished positioning.
+      await expect(page.getByRole("menu", { name: "Organisation actions" })).toBeVisible();
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("menuitem", { name: "Export organisation bundle" }).click();
       const download = await downloadPromise;
