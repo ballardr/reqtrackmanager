@@ -8,6 +8,8 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
+  AssignByEmailOutcome,
+  DirectProjectMember,
   ExternalUserPolicy,
   FileAsset,
   LinkTypeDefinition,
@@ -26,6 +28,7 @@ import type {
   OutsideDomainUser,
   ProjectGroup,
   ProjectListItem,
+  ProjectRole,
   ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
@@ -33,7 +36,7 @@ import type {
   ScimTokenStatus,
   UserAccess,
 } from "../api/types";
-import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -41,6 +44,8 @@ import { DefinitionList } from "../components/DefinitionList";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import type { MemberRoleRow } from "../components/MemberRoleTable";
+import { MemberRoleTable } from "../components/MemberRoleTable";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
@@ -148,6 +153,13 @@ export function OrgAdminPage() {
   const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
+  // "View access" panel (2026-08 UX audit reversal — see docs/decisions.md
+  // and docs/ux-style-guide.md's "Pattern: role display" section): each
+  // project row shows `collapseProjectRoles()`'s summary by default, with
+  // this per-project-id set tracking which rows the viewer has explicitly
+  // expanded to the full, uncollapsed role list. Reset whenever a new
+  // user's access is opened so expansion never leaks between users.
+  const [expandedAccessProjectIds, setExpandedAccessProjectIds] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
@@ -228,8 +240,20 @@ export function OrgAdminPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-  const [expandedProjectGroups, setExpandedProjectGroups] = useState<ProjectGroup[]>([]);
+  // "Manage users" (Phase 5, docs/decisions.md): the old inline expand-in-
+  // place (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
+  // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
+  // now a `Modal` wrapping the same `MemberRoleTable` `ProjectAdminPage.tsx`'s
+  // own Members section uses — literally the same component, not a
+  // duplicate, worse reimplementation (the concrete complaint this phase
+  // fixes). `manageUsersProjectId` is which project's modal is open (`null`
+  // = closed); its groups/direct-members are fetched fresh on open, the
+  // same two endpoints `ProjectAdminPage.tsx` merges into `MemberRoleRow[]`.
+  const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
+  const [manageUsersProjectName, setManageUsersProjectName] = useState("");
+  const [manageUsersGroups, setManageUsersGroups] = useState<ProjectGroup[]>([]);
+  const [manageUsersDirectMembers, setManageUsersDirectMembers] = useState<DirectProjectMember[]>([]);
+  const [manageUsersAddRole, setManageUsersAddRole] = useState<ProjectRole>("member");
 
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
@@ -473,11 +497,28 @@ export function OrgAdminPage() {
     setViewingUser(user);
     setUserAccess(null);
     setUserAccessError(null);
+    setExpandedAccessProjectIds(new Set());
     try {
       setUserAccess(await api.get<UserAccess>(`/api/v1/orgs/${orgId}/users/${user.user_id}/access`));
     } catch (err) {
       setUserAccessError(err instanceof ApiError ? err.message : strings.common.error);
     }
+  }
+
+  /** Toggles one project row's roles between `collapseProjectRoles()`'s
+   * default summary and the full, uncollapsed set on the "View access"
+   * panel. See `expandedAccessProjectIds` above for why this is per-row,
+   * local, and reset on each new user rather than persisted. */
+  function toggleAccessProjectExpanded(projectId: string) {
+    setExpandedAccessProjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
   }
 
   async function toggleOutsideDomainUsers() {
@@ -578,25 +619,92 @@ export function OrgAdminPage() {
     reload();
   }
 
-  async function toggleExpandedProject(projectId: string) {
-    if (expandedProjectId === projectId) {
-      setExpandedProjectId(null);
-      return;
+  /** Opens the "Manage users" `Modal` for one project (Phase 5,
+   * docs/decisions.md) — fetches its groups + direct members fresh every
+   * open, the same two calls `ProjectAdminPage.tsx`'s Members section
+   * merges into `MemberRoleRow[]`. */
+  async function openManageUsers(project: OrgProjectSummary) {
+    setManageUsersProjectId(project.id);
+    setManageUsersProjectName(project.name);
+    const [groups, members] = await Promise.all([
+      api.get<ProjectGroup[]>(`/api/v1/projects/${project.id}/groups`),
+      api.get<DirectProjectMember[]>(`/api/v1/projects/${project.id}/direct-members`),
+    ]);
+    setManageUsersGroups(groups);
+    setManageUsersDirectMembers(members);
+  }
+
+  function closeManageUsers() {
+    setManageUsersProjectId(null);
+    setManageUsersProjectName("");
+    setManageUsersGroups([]);
+    setManageUsersDirectMembers([]);
+  }
+
+  /** Same local-state-update-on-success treatment (not a full `reload()`)
+   * as `ProjectAdminPage.tsx`'s own `toggleDirectMemberRole` — see that
+   * function's own comment for why. */
+  async function toggleManageUsersRole(userId: string, role: ProjectRole, checked: boolean) {
+    if (!manageUsersProjectId) return;
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`);
+      }
+      setManageUsersDirectMembers((prev) =>
+        prev
+          .map((m) =>
+            m.user_id === userId
+              ? { ...m, roles: checked ? [...m.roles, role] : m.roles.filter((r) => r !== role) }
+              : m
+          )
+          .filter((m) => m.roles.length > 0)
+      );
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
-    setExpandedProjectId(projectId);
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
   }
 
-  async function addExpandedProjectGroupMember(groupId: string, userId: string) {
-    if (!expandedProjectId) return;
-    await api.post(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members`, { user_id: userId });
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  async function changeManageUsersGroupRole(groupId: string, role: ProjectRole) {
+    if (!manageUsersProjectId) return;
+    try {
+      const updated = await api.patch<ProjectGroup>(`/api/v1/projects/${manageUsersProjectId}/groups/${groupId}`, { role });
+      setManageUsersGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)));
+      showToast(strings.admin.groupUpdated);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
-  async function removeExpandedProjectGroupMember(groupId: string, userId: string) {
-    if (!expandedProjectId) return;
-    await api.delete(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members/${userId}`);
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  async function addManageUsersDirectMember(userId: string) {
+    if (!manageUsersProjectId) return;
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role: manageUsersAddRole });
+    setManageUsersDirectMembers(await api.get<DirectProjectMember[]>(`/api/v1/projects/${manageUsersProjectId}/direct-members`));
+  }
+
+  /** The by-email counterpart, for a user outside this org entirely — same
+   * endpoint and outcome messaging `ProjectAdminPage.tsx`'s own
+   * `addExternalMember` uses, reused here via a `Toast` instead of that
+   * page's inline result banner (this Modal has no equivalent persistent
+   * banner slot). */
+  async function addManageUsersExternalMember(email: string) {
+    if (!manageUsersProjectId) return;
+    try {
+      const result = await api.post<{ outcome: AssignByEmailOutcome }>(
+        `/api/v1/projects/${manageUsersProjectId}/roles/by-email`,
+        { email, role: manageUsersAddRole },
+      );
+      const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
+        added: strings.admin.externalAddedDirectly,
+        invited: strings.admin.externalInvited,
+        sso_provisioned: strings.admin.externalSsoProvisioned,
+      };
+      showToast(messages[result.outcome](email, manageUsersAddRole, orgLabel));
+      setManageUsersDirectMembers(await api.get<DirectProjectMember[]>(`/api/v1/projects/${manageUsersProjectId}/direct-members`));
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : strings.admin.externalAddError, "error");
+    }
   }
 
   async function addProjectStatus(name: string) {
@@ -1605,21 +1713,39 @@ export function OrgAdminPage() {
                       {userAccess.projects.length === 0 ? (
                         <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoProjects}</p>
                       ) : (
-                        userAccess.projects.map((p) => (
-                          <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
-                            <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
-                            <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap" }}>
-                              {p.roles.map((r) => (
-                                <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
-                              ))}
-                            </div>
-                            {p.project_groups.length > 0 && (
-                              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                                {strings.orgAdmin.userAccessProjectGroups}: {p.project_groups.map((g) => g.name).join(", ")}
+                        userAccess.projects.map((p) => {
+                          const isExpanded = expandedAccessProjectIds.has(p.project_id);
+                          const collapsedRoles = collapseProjectRoles(p.roles);
+                          const canExpand = collapsedRoles.length < p.roles.length;
+                          const shownRoles = isExpanded ? p.roles : collapsedRoles;
+                          return (
+                            <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
+                              <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
+                              <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                                {shownRoles.map((r) => (
+                                  <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
+                                ))}
+                                {canExpand && (
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                                    onClick={() => toggleAccessProjectExpanded(p.project_id)}
+                                  >
+                                    {isExpanded
+                                      ? strings.orgAdmin.userAccessShowFewerRoles
+                                      : strings.orgAdmin.userAccessShowAllRoles(p.roles.length)}
+                                  </button>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        ))
+                              {p.project_groups.length > 0 && (
+                                <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                                  {strings.orgAdmin.userAccessProjectGroups}: {p.project_groups.map((g) => g.name).join(", ")}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -1833,53 +1959,65 @@ export function OrgAdminPage() {
                         {p.name}
                         {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
                       </span>
-                      <button className="btn" onClick={() => toggleExpandedProject(p.id)}>
-                        {expandedProjectId === p.id ? strings.common.cancel : strings.orgAdmin.manageUsers}
+                      <button className="btn" onClick={() => openManageUsers(p)}>
+                        {strings.orgAdmin.manageUsers}
                       </button>
                     </div>
-                    {expandedProjectId === p.id && (
-                      <div className="stack" style={{ paddingLeft: "1rem" }}>
-                        {expandedProjectGroups.map((g) => {
-                          const memberIds = new Set(g.member_user_ids);
-                          const members = users.filter((u) => memberIds.has(u.user_id));
-                          const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
-                          return (
-                            <div key={g.id} className="stack">
-                              <span>
-                                {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
-                              </span>
-                              {members.length > 0 && (
-                                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                                  {members.map((u) => (
-                                    <li key={u.user_id} style={{ listStyle: "disc" }}>
-                                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
-                                        <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
-                                        <button
-                                          className="btn"
-                                          title={strings.admin.removeMember(u.display_name)}
-                                          aria-label={strings.admin.removeMember(u.display_name)}
-                                          onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              <UserAutocomplete
-                                users={nonMembers}
-                                placeholder={strings.admin.addMemberPlaceholder}
-                                onSelect={(userId) => addExpandedProjectGroupMember(g.id, userId)}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 ))}
               </CollapsibleSection>
+            )}
+
+            {manageUsersProjectId && (
+              // Phase 5 (docs/decisions.md): the same `MemberRoleTable`
+              // `ProjectAdminPage.tsx`'s own Members section renders — this
+              // is the direct fix for "should show up in a similar way to
+              // the project admin page," not a parallel reimplementation.
+              <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
+                <MemberRoleTable
+                  rows={[
+                    ...manageUsersGroups.map((g): MemberRoleRow => ({
+                      kind: "group",
+                      id: g.id,
+                      name: g.name,
+                      email: null,
+                      role: g.role,
+                      memberCount: g.member_user_ids.length + g.member_org_group_ids.length + g.member_source_project_ids.length,
+                      isDefault: g.is_default,
+                    })),
+                    ...manageUsersDirectMembers.map((m): MemberRoleRow => ({
+                      kind: "user", id: m.user_id, name: m.display_name, email: m.email, roles: m.roles,
+                    })),
+                  ]}
+                  onToggleUserRole={toggleManageUsersRole}
+                  onChangeGroupRole={changeManageUsersGroupRole}
+                  groupHref={(groupId) => `/projects/${manageUsersProjectId}/admin/groups?openGroup=${groupId}`}
+                  ariaLabel={strings.orgAdmin.manageUsers}
+                  addControl={
+                    <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                      <UserAutocomplete
+                        users={users}
+                        placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                        onSelect={(userId) => addManageUsersDirectMember(userId)}
+                        organizationId={orgId}
+                        projectId={manageUsersProjectId}
+                        onSelectExternal={(email) => addManageUsersExternalMember(email)}
+                      />
+                      <select
+                        className="input"
+                        aria-label={strings.memberRoleTable.addRoleSelectLabel}
+                        value={manageUsersAddRole}
+                        onChange={(e) => setManageUsersAddRole(e.target.value as ProjectRole)}
+                      >
+                        <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                        <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                        <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                        <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+                      </select>
+                    </div>
+                  }
+                />
+              </Modal>
             )}
 
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>

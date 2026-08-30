@@ -121,11 +121,19 @@ def test_change_request_activity_entries_always_carry_current_title(client, admi
 
 
 def test_project_changes_has_no_duplicate_entries_for_version_bumping_actions(client, admin_token, org_id):
-    """Regression (UX review): create/approve/complete/uncomplete/edit each
-    used to produce two feed entries for the same transition — one from the
-    generic AuditEvent and one from the requirement/CR version history.
-    `get_project_changes` now suppresses the redundant AuditEvent row for
-    each of these, keeping exactly one entry per transition."""
+    """Regression (UX review): create/approve/edit each used to produce two
+    feed entries for the same transition — one from the generic AuditEvent
+    and one from the requirement/CR version history. `get_project_changes`
+    now suppresses the redundant AuditEvent row for each of these, keeping
+    exactly one entry per transition.
+
+    `complete`/`uncomplete` are deliberately *not* deduped this way (C-G-11
+    rework): since they no longer bump the version at all
+    (`routers.requirements.complete_requirement`/`uncomplete_requirement`
+    set the `is_completed` overlay directly), their own `AuditEvent` is the
+    *only* record of the transition — see `services.changes`'s
+    `VERSION_HISTORY_COVERED_ACTIONS` docstring for why they were removed
+    from that covered-actions set."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
@@ -178,12 +186,18 @@ def test_project_changes_has_no_duplicate_entries_for_version_bumping_actions(cl
     req_changes = [c for c in changes if c["entity_type"] == "requirement" and c["entity_id"] == requirement["id"]]
     cr_changes = [c for c in changes if c["entity_type"] == "change_request" and c["entity_id"] == cr["id"]]
 
-    # Exactly one entry per transition, not two (created, then one "updated"
-    # per edit/approve/complete/uncomplete — apply_new_version synthesizes
-    # "updated" for every non-initial version regardless of the specific
-    # action, so all four post-create transitions collapse to "updated").
-    assert [c["action"] for c in req_changes].count("created") == 1
-    assert [c["action"] for c in req_changes].count("updated") == 4
+    # Exactly one entry per transition, not two. `edit` and `approve` both
+    # bump the version, so both collapse to the version-history-synthesized
+    # "updated" entry (apply_new_version labels every non-initial version
+    # "updated" regardless of the specific action) — 2 of those. `complete`
+    # and `uncomplete` don't bump the version at all (C-G-11 overlay), so
+    # their own AuditEvent passes through untouched as "completed"/
+    # "uncompleted" — 1 each. Total is still exactly 5, one per transition.
+    actions = [c["action"] for c in req_changes]
+    assert actions.count("created") == 1
+    assert actions.count("updated") == 2
+    assert actions.count("completed") == 1
+    assert actions.count("uncompleted") == 1
     assert len(req_changes) == 5
 
     assert [c["action"] for c in cr_changes].count("created") == 1

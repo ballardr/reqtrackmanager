@@ -200,12 +200,11 @@ def create_change_request(
         # Requirement-status guard (2026-08 UX audit roadmap, "No requirement
         # approval action; change requests can target draft requirements"):
         # a change request exists to gate edits once direct editing is
-        # locked (`LOCKED_STATUSES = {APPROVED, COMPLETED}`,
-        # services/requirements.py:25) — a draft or reviewed requirement
-        # isn't locked, so it should be edited directly
-        # (routers/requirements.py::update_requirement), not through a
-        # change request. Extends that existing precedent rather than
-        # inventing a new one.
+        # locked (`LOCKED_STATUSES = {APPROVED}`, services/requirements.py)
+        # — a draft or reviewed requirement isn't locked, so it should be
+        # edited directly (routers/requirements.py::update_requirement), not
+        # through a change request. Extends that existing precedent rather
+        # than inventing a new one.
         if not is_locked(get_current_version(db, requirement.id)):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -580,15 +579,20 @@ def decide_change_request(
                 description=version.proposed_description if "description" in changed else None,
                 # Was unconditionally `RequirementStatus.APPROVED` (2026-08
                 # UX audit roadmap, found alongside "No requirement approval
-                # action") — silently reverted an already-`COMPLETED`
-                # requirement back to `APPROVED` as a side effect of any
+                # action") — silently reverted an already-completed
+                # requirement's *lifecycle status* as a side effect of any
                 # modify-CR approval. `create_change_request`'s own guard
-                # (above) now only allows a MODIFY_REQUIREMENT change
-                # request against an already-locked (`APPROVED`/`COMPLETED`)
-                # requirement, so the current status is always one of those
-                # two by the time it's decided — `None` carries it forward
-                # unchanged (`apply_new_version`'s own convention) instead
-                # of forcing it back down to `APPROVED`.
+                # (above) only allows a MODIFY_REQUIREMENT change request
+                # against an already-locked (`APPROVED`) requirement, so the
+                # current status is always `APPROVED` by the time it's
+                # decided — `None` carries it forward unchanged
+                # (`apply_new_version`'s own convention) instead of forcing
+                # it back down. Since C-G-11's completion overlay
+                # (`Requirement.is_completed`) is a separate field from
+                # `status` entirely, this line was never responsible for
+                # preserving/clearing it either way — see `clear_completion`
+                # below for the explicit, opt-in way an approver can clear
+                # it as a deliberate part of this same decision.
                 status_value=None,
                 target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set="target_stage_id" in changed,
                 level=version.proposed_level if "level" in changed else None,
@@ -626,6 +630,25 @@ def decide_change_request(
                             actor_id=current_user.id, project_id=project_id,
                             detail={"file_id": str(file_id), "via": "change_request", "change_request_id": str(cr.id)},
                         )
+            # C-G-11: an explicit, opt-in approver choice, applied as a
+            # separate step from the version-apply above (which never
+            # touches `is_completed` either way — see the `status_value`
+            # comment). A no-op, not an error, unless every precondition
+            # holds — `clear_completion=True` on a requirement that isn't
+            # currently completed (or wasn't otherwise applicable) simply
+            # does nothing extra, matching this field's own docstring.
+            # Logged as a distinct audit event from `approved` below, so
+            # it's traceable that the approver made this call deliberately
+            # rather than it being a side effect of approving the CR.
+            if payload.clear_completion and requirement.is_completed:
+                requirement.is_completed = False
+                requirement.completed_at = None
+                requirement.completed_by = None
+                log_event(
+                    db, entity_type="requirement", entity_id=requirement.id, action="completion_cleared_via_change_request",
+                    actor_id=current_user.id, project_id=project_id,
+                    detail={"change_request_id": str(cr.id)},
+                )
         elif cr.kind == ChangeRequestKind.ADD_ACTION:
             # Item 514 — mirrors the "attachments" re-check just above:
             # the referenced action/action-type could have changed or been

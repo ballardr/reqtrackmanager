@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: per-project custom fields of all four types (C-C-01,
@@ -95,17 +95,19 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("add and remove a project group member", async () => {
       await selectProjectAdminGroup(page, "Project groups");
-      // Groups now render collapsed by default (2026-08 UX audit
-      // "Directories at scale") — expand "Members" specifically before its
-      // own add-member input is reachable at all.
-      await openGroupCard(page, "Members");
-      await page.getByPlaceholder("Type a name to add, or an email to invite…").last().fill(PERSONAS.memberAlphaBeta.name);
+      // Each group row now opens a `SidePanel` (Phase 5, docs/decisions.md)
+      // instead of an always-expanded `CollapsibleSection` accordion — the
+      // panel's own accessible name ("<group> details") scopes every
+      // interaction below to it.
+      const panel = await openProjectGroupPanel(page, "Members");
+      await panel.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
       await page.getByText(PERSONAS.memberAlphaBeta.email).click();
-      await expect(page.getByText(PERSONAS.memberAlphaBeta.name)).toBeVisible();
+      await expect(panel.getByText(PERSONAS.memberAlphaBeta.name)).toBeVisible();
 
-      const removeButton = page.locator("li", { hasText: PERSONAS.memberAlphaBeta.email }).getByRole("button");
+      const removeButton = panel.locator("li", { hasText: PERSONAS.memberAlphaBeta.email }).getByRole("button");
       await removeButton.click();
-      await expect(page.getByText(PERSONAS.memberAlphaBeta.email)).toHaveCount(0);
+      await expect(panel.getByText(PERSONAS.memberAlphaBeta.email)).toHaveCount(0);
+      await page.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("nest an org group into a project group directly from Project Admin", async () => {
@@ -128,36 +130,24 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.reload();
 
       await selectProjectAdminGroup(page, "Project groups");
-      // Groups render collapsed by default — "Members" was expanded in the
-      // step above, but that expand state is per-user/per-group and the
-      // page was just reloaded, so re-assert it idempotently rather than
-      // assume it survived (`openGroupCard` only clicks if collapsed).
-      await openGroupCard(page, "Members");
-      // Default project groups are created in a fixed order — Project
-      // Managers, Project Administrators, Stakeholders, Members — so the
-      // "Members" group's own org-group picker is reliably the last one
-      // (same assumption the add-member step above already makes). Scoped
-      // to `select` specifically — each group's own "add member"
-      // `UserAutocomplete` input is `role="combobox"` too (WAI-ARIA
-      // combobox pattern), so a bare role query is ambiguous here.
-      const membersGroupSelect = page.locator("select").last();
-      await membersGroupSelect.selectOption({ label: groupName });
-      await membersGroupSelect.locator("xpath=../button").click();
-      await expect(page.getByText(`${groupName} (`)).toBeVisible();
+      const panel = await openProjectGroupPanel(page, "Members");
+      const nestSelect = panel.getByRole("combobox", { name: /Nest an? .*group…/ });
+      await nestSelect.selectOption({ label: groupName });
+      await nestSelect.locator("xpath=../button").click();
+      await expect(panel.getByText(new RegExp(`^${groupName} \\(`))).toBeVisible();
 
-      const orgGroupRow = page.locator("li", { hasText: groupName });
+      const orgGroupRow = panel.locator("li", { hasText: groupName });
       await orgGroupRow.getByRole("button").click();
-      await expect(page.getByText(`${groupName} (`)).toHaveCount(0);
+      await expect(panel.getByText(new RegExp(`^${groupName} \\(`))).toHaveCount(0);
+      await page.getByRole("button", { name: "Close" }).click();
     });
 
     // Style guide "Pattern: create panels, popovers, and one door for
     // bulk" — closes the 2026-08 UX audit's "Groups tab manages membership
     // only, no create form at all" finding. Mirrors Org Admin's own "New
     // group" popover coverage, against the project-scoped endpoint (which
-    // also requires a role up front, unlike the org-scoped one). Runs
-    // *after* the steps above that rely on "Members" being the last
-    // group in DOM order (`.last()` selectors) — the group created here
-    // would otherwise become the new last one and break those.
+    // also requires a role up front — `PATCH .../groups/{id}`, Phase 5,
+    // makes it correctable afterward, but creation stays role-required).
     await test.step("create a new project group via the New group popover", async () => {
       await selectProjectAdminGroup(page, "Project groups");
       const newGroupName = `E2E New Project Group ${Date.now()}`;
@@ -172,8 +162,8 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // Principle 7 — every mutation ends with feedback.
       await expect(page.getByText("Group created")).toBeVisible();
       await expect(dialog).not.toBeVisible();
-      await expect(page.getByText(newGroupName)).toBeVisible();
-      await expect(page.getByText(newGroupName).locator("xpath=..").getByText("Stakeholder")).toBeVisible();
+      const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) });
+      await expect(row).toContainText("Stakeholder");
     });
 
     await test.step("override and then revert a terminology term", async () => {

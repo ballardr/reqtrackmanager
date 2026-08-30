@@ -85,6 +85,11 @@ class RequirementOut(BaseModel):
     creator_id: UUID
     is_archived: bool
     is_locked: bool
+    # C-G-11 overlay marker, independent of `status` — see
+    # `models.requirement.Requirement.is_completed`'s docstring.
+    is_completed: bool = False
+    completed_at: datetime | None = None
+    completed_by: UUID | None = None
     keywords: list[str]
     custom_fields: dict[str, Any]
     created_at: datetime

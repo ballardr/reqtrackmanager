@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type {
@@ -11,6 +11,7 @@ import type {
   CustomFieldDefinition,
   CustomFieldEntityKind,
   CustomFieldType,
+  DirectProjectMember,
   EffectiveMember,
   MaterializeResult,
   OrgGroup,
@@ -32,11 +33,15 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import type { MemberRoleRow } from "../components/MemberRoleTable";
+import { MemberRoleTable } from "../components/MemberRoleTable";
 import { Modal } from "../components/Modal";
+import { PendingInvitesSection } from "../components/PendingInvitesSection";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { SidePanel } from "../components/SidePanel";
 import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -67,13 +72,25 @@ const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirem
  * ResourceMenu call recorded in the 2026-08 UX audit, since this page
  * never exceeded 5 tabs on its own. See `docs/ux-style-guide.md`
  * Principle 1 and `docs/decisions.md`.
+ *
+ * "groups" (the combined "Project groups" tab: effective-members audit
+ * table, pending invites, and the groups list all on one screen) was later
+ * split into "members" and "groups" (Phase 5, docs/decisions.md) — a group's
+ * role being fixed at creation, with no way to add-then-assign, and an
+ * org-admin membership UI duplicating a worse version of this one, were
+ * both flagged directly; "members" (inserted before "groups" below) is the
+ * new editable `MemberRoleTable` plus the pre-existing effective-members/
+ * pending-invites sections (both relocated here unchanged), and "groups"
+ * keeps the groups list itself, now opening a `SidePanel` per group instead
+ * of an always-expanded accordion.
  */
-type ProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "groups" | "reportSetup";
+type ProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup";
 
 const PROJECT_ADMIN_GROUP_KEYS: ProjectAdminGroupKey[] = [
   "overview",
   "structure",
   "fieldsActions",
+  "members",
   "groups",
   "reportSetup",
 ];
@@ -108,10 +125,13 @@ export function ProjectAdminPage() {
   // "New group" create Modal (style guide "Pattern: modal dialog for
   // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
   // just pointed at the project-scoped endpoint). Unlike the org-scoped
-  // equivalent, `ProjectGroupCreate` also requires a role up front (a
-  // project group's role can't be changed after creation — there's no
-  // update endpoint for it), so this modal has a role select the
-  // org-scoped one doesn't need.
+  // equivalent, `ProjectGroupCreate` also requires a role up front — this
+  // stays true even though `PATCH .../groups/{id}` (Phase 5,
+  // docs/decisions.md) now makes the role correctable afterward: creation
+  // still shouldn't be made role-optional too, since a group briefly
+  // existing with no role at all would be a meaningless intermediate
+  // state — so this modal keeps a role select the org-scoped one doesn't
+  // need.
   const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupRole, setNewGroupRole] = useState<ProjectRole>("member");
@@ -172,6 +192,26 @@ export function ProjectAdminPage() {
   const [materializing, setMaterializing] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
   const [memberSort, setMemberSort] = useState<SortState<"email" | "display_name"> | null>(null);
+
+  // --- Members section (Phase 5, docs/decisions.md) ---------------------
+  // `MemberRoleTable`'s two data sources, both fetched unpaginated (unlike
+  // the Groups section's own `groups`/`groupsTotal` below, which stays
+  // genuinely server-paginated) — small enough to load whole and let the
+  // shared table search/paginate client-side, the same precedent
+  // `effectiveMembers` above already set. `memberTableGroups` doubles as
+  // the Groups section's own lookup source for a deep-linked `?openGroup=`
+  // id that isn't on the currently-loaded paginated page (see
+  // `openGroupId` below).
+  const [memberTableGroups, setMemberTableGroups] = useState<ProjectGroup[]>([]);
+  const [directMembers, setDirectMembers] = useState<DirectProjectMember[]>([]);
+  const [addMemberRole, setAddMemberRole] = useState<ProjectRole>("member");
+
+  // --- Groups section: per-group SidePanel (Phase 5) ---------------------
+  // Replaces the old always-expanded `CollapsibleSection` accordion. A real
+  // id, not a boolean, so at most one group's panel is open at a time.
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   // Guards the two field groups above against `reload()` — called after
   // every unrelated mutation on this page (adding/deleting a custom
   // field, stage/component/category CRUD, action-type CRUD, ...; 33 call
@@ -281,6 +321,12 @@ export function ProjectAdminPage() {
     // ProjectListPage's "New project" modal uses for its own parent field.
     setOrgProjects(await api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${p.organization_id}`));
     setMemberSources(await api.get<ProjectMemberSource[]>(`/api/v1/projects/${projectId}/member-sources`));
+
+    // Members section (Phase 5): unpaginated (no `limit`) — see this
+    // state's own declaration comment for why, and how `memberTableGroups`
+    // also backs the Groups section's `?openGroup=` deep-link lookup.
+    setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
+    setDirectMembers(await api.get<DirectProjectMember[]>(`/api/v1/projects/${projectId}/direct-members`));
   }
 
   async function reloadEffectiveMembers() {
@@ -694,6 +740,94 @@ export function ProjectAdminPage() {
     reload();
   }
 
+  // --- Members section handlers (Phase 5, docs/decisions.md) ------------
+
+  /** Toggles one direct role for an already-listed direct member — updates
+   * `directMembers` locally on success rather than calling the full page
+   * `reload()`, the same fix the style guide's "Pattern: multi-select
+   * dropdown" section already applied to `OrgAdminPage.tsx`'s analogous
+   * `grantOrgRole`/`revokeOrgRole` (a full reload after every checkbox
+   * toggle both re-fetches everything on this heavy page unnecessarily and
+   * risks the exact stale-reload race that fix was written to close). A
+   * user whose last direct role is revoked here drops out of
+   * `directMembers` entirely, matching `GET .../direct-members`'s own
+   * "only users with at least one direct grant" contract. */
+  async function toggleDirectMemberRole(userId: string, role: ProjectRole, checked: boolean) {
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/roles/${userId}/${role}`);
+      }
+      setDirectMembers((prev) =>
+        prev
+          .map((m) =>
+            m.user_id === userId
+              ? { ...m, roles: checked ? [...m.roles, role] : m.roles.filter((r) => r !== role) }
+              : m
+          )
+          .filter((m) => m.roles.length > 0)
+      );
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** Grants a brand-new direct role — the Members section's own
+   * `addControl` (an existing-org-member `UserAutocomplete` result; the
+   * external-invite branch reuses `addExternalMember` below unchanged,
+   * since `assign_project_role_by_email` already grants a *direct* role,
+   * not group membership). A full `reload()` is fine here (unlike the
+   * toggle above): this is a genuinely new row, not an update to one
+   * already rendered. */
+  async function addDirectMember(userId: string) {
+    await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role: addMemberRole });
+    reload();
+  }
+
+  /** Changes a project group's granted role (`PATCH .../groups/{id}`,
+   * Phase 5) — the fix for "project groups' role was fixed at creation,
+   * making add-then-assign impossible." Shared by `MemberRoleTable`'s own
+   * per-group `<select>` on the Members section and the role `<select>`
+   * atop each group's `SidePanel` on the Groups section below. Updates
+   * both `memberTableGroups` (Members) and `groups` (Groups, if this group
+   * happens to be on the currently-loaded page) locally on success, so
+   * either section reflects the change immediately without a refetch. */
+  async function changeGroupRole(groupId: string, role: ProjectRole) {
+    try {
+      const updated = await api.patch<ProjectGroup>(`/api/v1/projects/${projectId}/groups/${groupId}`, { role });
+      setMemberTableGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)));
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)));
+      showToast(strings.admin.groupUpdated);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  const memberRoleRows: MemberRoleRow[] = [
+    ...memberTableGroups.map((g): MemberRoleRow => ({
+      kind: "group",
+      id: g.id,
+      name: g.name,
+      email: null,
+      role: g.role,
+      memberCount: g.member_user_ids.length + g.member_org_group_ids.length + g.member_source_project_ids.length,
+      isDefault: g.is_default,
+    })),
+    ...directMembers.map((m): MemberRoleRow => ({
+      kind: "user", id: m.user_id, name: m.display_name, email: m.email, roles: m.roles,
+    })),
+  ];
+
+  // Same client-side "last manager" hint `MemberRoleTable` computes
+  // internally from its own `rows` prop (see that component's docstring)
+  // — recomputed here too since the Groups section's per-group `SidePanel`
+  // role `<select>` (below) needs the identical count for its own disabled
+  // state, outside of `MemberRoleTable` itself.
+  const memberRoleManagerSourceCount = memberRoleRows.filter((r) =>
+    r.kind === "user" ? r.roles.includes("project_manager") : r.role === "project_manager"
+  ).length;
+
   // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
   // Project Admin's 8-tab bar against the 5-tab ceiling"). Terminology's
   // content moved into Overview (a sub-block, not its own group); Stages +
@@ -701,10 +835,42 @@ export function ProjectAdminPage() {
   // Types merged into Fields & Actions; Groups and Report Setup keep their
   // own groups unchanged. See `docs/decisions.md` for the full rationale —
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
-  // above `ProjectAdminGroupKey`.
+  // above `ProjectAdminGroupKey`, and Phase 5's later "groups" -> "members"
+  // + "groups" split recorded there too.
   const activeGroup: ProjectAdminGroupKey = PROJECT_ADMIN_GROUP_KEYS.includes(groupParam as ProjectAdminGroupKey)
     ? (groupParam as ProjectAdminGroupKey)
     : "overview";
+
+  // --- Groups section: per-group SidePanel + ?openGroup= deep link -------
+  // (Phase 5, docs/decisions.md) — "click a group in Members, see its
+  // members" is a real URL, not client-only state, matching `ResourceMenu`'s
+  // own bookmarkability principle one level deeper (see that component's
+  // own docstring/comment for the framing this reuses). `memberTableGroups`
+  // (unpaginated) is searched first, not the Groups section's own paginated
+  // `groups`, so a deep-linked group not on the currently-loaded page is
+  // still found.
+  useEffect(() => {
+    if (activeGroup !== "groups") return;
+    const openGroupParam = searchParams.get("openGroup");
+    if (!openGroupParam) return;
+    setOpenGroupId(openGroupParam);
+    const next = new URLSearchParams(searchParams);
+    next.delete("openGroup");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroup, searchParams]);
+
+  async function deleteGroup(groupId: string) {
+    try {
+      await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}`);
+      setDeletingGroupId(null);
+      if (openGroupId === groupId) setOpenGroupId(null);
+      showToast(strings.admin.groupDeleted);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
 
   if (!stages || !project) return <Spinner />;
 
@@ -734,6 +900,7 @@ export function ProjectAdminPage() {
     { key: "overview", label: strings.admin.settings, href: `/projects/${projectId}/admin/overview` },
     { key: "structure", label: strings.admin.structure, href: `/projects/${projectId}/admin/structure` },
     { key: "fieldsActions", label: strings.admin.fieldsAndActions, href: `/projects/${projectId}/admin/fieldsActions` },
+    { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
   ];
@@ -1481,87 +1648,142 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {activeGroup === "groups" && (
-      <div className="card stack">
+      {activeGroup === "members" && (
+      <div className="stack">
+        <div className="card stack">
+          <MemberRoleTable
+            rows={memberRoleRows}
+            onToggleUserRole={toggleDirectMemberRole}
+            onChangeGroupRole={changeGroupRole}
+            groupHref={(groupId) => `/projects/${projectId}/admin/groups?openGroup=${groupId}`}
+            ariaLabel={strings.admin.membersNav}
+            addControl={
+              <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                <UserAutocomplete
+                  users={orgUsers}
+                  placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                  onSelect={(userId) => addDirectMember(userId)}
+                  organizationId={project?.organization_id}
+                  projectId={project?.id}
+                  onSelectExternal={(email) => addExternalMember(email, addMemberRole)}
+                />
+                <select
+                  className="input"
+                  aria-label={strings.memberRoleTable.addRoleSelectLabel}
+                  value={addMemberRole}
+                  onChange={(e) => setAddMemberRole(e.target.value as ProjectRole)}
+                >
+                  <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                  <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                  <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                  <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+                </select>
+              </div>
+            }
+          />
+          {externalAddResult && (
+            <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
+              {externalAddResult.message}
+            </div>
+          )}
+        </div>
+
+        {/* Phase 3 (docs/decisions.md): "resend a stalled invite" — a
+            small, self-contained section (own component, own state/fetch),
+            relocated here (Phase 5) from the old combined "Project groups"
+            tab now that a Members section exists for it — a project-scoped,
+            not per-group, member-directory concern. See
+            PendingInvitesSection.tsx's own docstring. */}
+        <PendingInvitesSection projectId={project.id} />
+
         {/* Effective members with provenance (decision 10, docs/decisions.md)
             — direct vs. inherited (and how), plus the "convert to direct
             roles" safety net (decision 9) before disabling inheritance
-            elsewhere silently drops someone's access. Lazy-loaded (not
+            elsewhere silently drops someone's access. A different question
+            from the editable table above (resolved-per-user-with-provenance
+            for audit, not direct grants), so it stays a separate table
+            below rather than being merged into it. Lazy-loaded (not
             fetched in the main reload()) since it iterates every org
             member server-side and is only needed once this section is
             actually opened. */}
-        <CollapsibleSection
-          sectionKey="projectAdmin.effectiveMembers"
-          title={strings.admin.effectiveMembers}
-          defaultCollapsed
-        >
-          <p className="text-muted" style={{ margin: 0 }}>{strings.admin.effectiveMembersHint}</p>
-          {!effectiveMembers && (
-            <button className="btn" style={{ alignSelf: "flex-start" }} onClick={reloadEffectiveMembers}>
-              {strings.admin.loadEffectiveMembers}
-            </button>
-          )}
-          {effectiveMembers && (
-            <>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <input
-                  className="input"
-                  style={{ maxWidth: 320 }}
-                  placeholder={strings.admin.searchMembers}
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                />
-                <button
-                  className="btn"
-                  onClick={materializeInheritedAccess}
-                  disabled={materializing}
-                >
-                  {strings.admin.materializeAll}
-                </button>
-              </div>
-              {filteredSortedMembers.length === 0 ? (
-                <p className="text-muted">{strings.admin.noMembersFound}</p>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <SortableHeader label={strings.admin.email} sortKey="email" sort={memberSort} onSort={applyMemberSort} />
-                        <SortableHeader label={strings.admin.name} sortKey="display_name" sort={memberSort} onSort={applyMemberSort} />
-                        <th>{strings.admin.role}</th>
-                        <th>{strings.admin.source}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSortedMembers.map((m) => (
-                        <tr key={m.user_id}>
-                          <td>{m.email}</td>
-                          <td>{m.display_name}</td>
-                          <td>{PROJECT_ROLE_LABEL[m.effective_role]}</td>
-                          <td>
-                            <div className="stack" style={{ gap: "0.15rem" }}>
-                              {m.sources.map((s, i) => (
-                                <span key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
-                                  {s.kind === "direct" && strings.admin.sourceDirect}
-                                  {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
-                                    strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
-                                  {s.kind === "member_source_inherited" && s.via_project_name && s.via_mode &&
-                                    strings.admin.sourceMemberSourceInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
-                                  {" "}({PROJECT_ROLE_LABEL[s.role]})
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+        <div className="card stack">
+          <CollapsibleSection
+            sectionKey="projectAdmin.effectiveMembers"
+            title={strings.admin.effectiveMembers}
+            defaultCollapsed
+          >
+            <p className="text-muted" style={{ margin: 0 }}>{strings.admin.effectiveMembersHint}</p>
+            {!effectiveMembers && (
+              <button className="btn" style={{ alignSelf: "flex-start" }} onClick={reloadEffectiveMembers}>
+                {strings.admin.loadEffectiveMembers}
+              </button>
+            )}
+            {effectiveMembers && (
+              <>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <input
+                    className="input"
+                    style={{ maxWidth: 320 }}
+                    placeholder={strings.admin.searchMembers}
+                    value={memberSearch}
+                    onChange={(e) => setMemberSearch(e.target.value)}
+                  />
+                  <button
+                    className="btn"
+                    onClick={materializeInheritedAccess}
+                    disabled={materializing}
+                  >
+                    {strings.admin.materializeAll}
+                  </button>
                 </div>
-              )}
-            </>
-          )}
-        </CollapsibleSection>
+                {filteredSortedMembers.length === 0 ? (
+                  <p className="text-muted">{strings.admin.noMembersFound}</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <SortableHeader label={strings.admin.email} sortKey="email" sort={memberSort} onSort={applyMemberSort} />
+                          <SortableHeader label={strings.admin.name} sortKey="display_name" sort={memberSort} onSort={applyMemberSort} />
+                          <th>{strings.admin.role}</th>
+                          <th>{strings.admin.source}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSortedMembers.map((m) => (
+                          <tr key={m.user_id}>
+                            <td>{m.email}</td>
+                            <td>{m.display_name}</td>
+                            <td>{PROJECT_ROLE_LABEL[m.effective_role]}</td>
+                            <td>
+                              <div className="stack" style={{ gap: "0.15rem" }}>
+                                {m.sources.map((s, i) => (
+                                  <span key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
+                                    {s.kind === "direct" && strings.admin.sourceDirect}
+                                    {s.kind === "forward_inherited" && s.via_project_name && s.via_mode &&
+                                      strings.admin.sourceForwardInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
+                                    {s.kind === "member_source_inherited" && s.via_project_name && s.via_mode &&
+                                      strings.admin.sourceMemberSourceInherited(s.via_project_name, PROJECT_ROLE_INHERITANCE_MODE_LABEL[s.via_mode])}
+                                    {" "}({PROJECT_ROLE_LABEL[s.role]})
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </CollapsibleSection>
+        </div>
+      </div>
+      )}
 
+      {activeGroup === "groups" && (
+      <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.groups}</h2>
         <button
           className="btn btn-primary"
@@ -1575,7 +1797,10 @@ export function ProjectAdminPage() {
           // a brand-new entity (a group) opens in a Modal, not a Popover —
           // the Popover-vs-Modal decision tree reserves Popover for a
           // one/two-field quick action on something that already exists,
-          // not creating a new entity.
+          // not creating a new entity. `ProjectGroupCreate` still requires
+          // a role up front — see this modal's own state declaration
+          // comment for why that stays true even now that the role is
+          // correctable afterward (Phase 5).
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.admin.name}
@@ -1616,12 +1841,32 @@ export function ProjectAdminPage() {
           value={groupSearch}
           onChange={(e) => handleGroupSearchChange(e.target.value)}
         />
-        {externalAddResult && (
-          <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
-            {externalAddResult.message}
-          </div>
-        )}
-        {groups.map((g) => {
+        {groups.map((g) => (
+          // Style guide "Pattern: directories at scale" / "Pattern: entity
+          // detail panel" (Phase 5) — a plain row that opens a `SidePanel`
+          // on click, replacing the old always-expanded `CollapsibleSection`
+          // accordion (unnoticeable at a handful of seed-data groups,
+          // becomes the entire page at a hundred).
+          <button
+            key={g.id}
+            type="button"
+            className="btn"
+            style={{ border: "none", justifyContent: "space-between", width: "100%" }}
+            onClick={() => setOpenGroupId(g.id)}
+          >
+            <span className="row" style={{ gap: "0.5rem" }}>
+              {g.name}
+              <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
+              {g.is_default && <span className="badge">{strings.admin.defaultGroupBadge}</span>}
+            </span>
+            <span className="text-muted">{strings.admin.memberCount(g.member_user_ids.length)}</span>
+          </button>
+        ))}
+        <LoadMoreButton loaded={groups.length} total={groupsTotal} onClick={() => loadGroups(groupSearch, groups.length, true)} />
+
+        {openGroupId && (() => {
+          const g = memberTableGroups.find((x) => x.id === openGroupId) ?? groups.find((x) => x.id === openGroupId);
+          if (!g) return null;
           const availableUsers = orgUsers.filter((u) => !g.member_user_ids.includes(u.user_id));
           const nestedOrgGroups = orgGroups.filter((og) => g.member_org_group_ids.includes(og.id));
           const nestableOrgGroups = orgGroups.filter((og) => !g.member_org_group_ids.includes(og.id));
@@ -1629,131 +1874,182 @@ export function ProjectAdminPage() {
           const referenceableProjects = orgProjects.filter(
             (p) => p.id !== projectId && !g.member_source_project_ids.includes(p.id),
           );
+          const groupRoleDisabled = g.role === "project_manager" && memberRoleManagerSourceCount <= 1;
           return (
-            <CollapsibleSection
-              key={g.id}
-              sectionKey={`projectAdmin.group.${g.id}`}
-              variant="plain"
-              defaultCollapsed
-              title={`${g.name} (${PROJECT_ROLE_LABEL[g.role]}, ${strings.admin.memberCount(g.member_user_ids.length)})`}
-            >
-              {g.member_user_ids.length > 0 && (
-                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                  {g.member_user_ids.map((userId) => {
-                    const u = orgUsers.find((ou) => ou.user_id === userId);
-                    return (
-                      <li key={userId} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
-                        <span>{u ? `${u.display_name} (${u.email})` : userId}</span>
+            <SidePanel title={strings.admin.groupDetails(g.name)} onClose={() => setOpenGroupId(null)}>
+              <div className="stack">
+                <label className="stack" style={{ gap: "0.25rem" }}>
+                  {strings.admin.groupRoleAtTop}
+                  <select
+                    className="input"
+                    value={g.role}
+                    disabled={groupRoleDisabled}
+                    title={groupRoleDisabled ? strings.memberRoleTable.cannotRemoveLastManager : undefined}
+                    onChange={(e) => changeGroupRole(g.id, e.target.value as ProjectRole)}
+                  >
+                    <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                    <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                    <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                    <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+                  </select>
+                </label>
+                <button
+                  className="btn btn-danger"
+                  style={{ alignSelf: "flex-start" }}
+                  disabled={g.is_default}
+                  title={g.is_default ? strings.admin.deleteGroupDefaultBlocked : strings.admin.deleteGroup}
+                  onClick={() => setDeletingGroupId(g.id)}
+                >
+                  <Trash2 size={14} /> {strings.admin.deleteGroup}
+                </button>
+
+                {g.member_user_ids.length > 0 && (
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                    {g.member_user_ids.map((userId) => {
+                      const u = orgUsers.find((ou) => ou.user_id === userId);
+                      return (
+                        <li key={userId} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
+                          <span>{u ? `${u.display_name} (${u.email})` : userId}</span>
+                          <button
+                            className="btn btn-danger"
+                            title={strings.admin.removeMember(u ? u.display_name : userId)}
+                            aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
+                            onClick={() => removeGroupMember(g.id, userId)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <UserAutocomplete
+                  users={availableUsers}
+                  placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                  onSelect={(userId) => addGroupMember(g.id, userId)}
+                  organizationId={project?.organization_id}
+                  projectId={project?.id}
+                  onSelectExternal={(email) => addExternalMember(email, g.role)}
+                />
+                {/* `externalAddResult` is shared with the Members section's
+                    own add control (same `addExternalMember` handler) — it
+                    needs its own render here too, not just there, since this
+                    panel's invite-by-email path sets the same state and
+                    otherwise had nowhere on the Groups section to surface
+                    the outcome (Principle 7, feedback on every mutation). */}
+                {externalAddResult && (
+                  <div style={{ color: externalAddResult.isError ? "var(--color-danger)" : "var(--color-accent)" }}>
+                    {externalAddResult.message}
+                  </div>
+                )}
+                {nestedOrgGroups.length > 0 && (
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                    {nestedOrgGroups.map((og) => (
+                      <li key={og.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
+                        <span>{strings.admin.viaOrgGroup(og.name, orgLabel)}</span>
                         <button
                           className="btn btn-danger"
-                          title={strings.admin.removeMember(u ? u.display_name : userId)}
-                          aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
-                          onClick={() => removeGroupMember(g.id, userId)}
+                          title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                          aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                          onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
                           <Trash2 size={14} />
                         </button>
                       </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <UserAutocomplete
-                users={availableUsers}
-                placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                onSelect={(userId) => addGroupMember(g.id, userId)}
-                organizationId={project?.organization_id}
-                projectId={project?.id}
-                onSelectExternal={(email) => addExternalMember(email, g.role)}
-              />
-              {nestedOrgGroups.length > 0 && (
-                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                  {nestedOrgGroups.map((og) => (
-                    <li key={og.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
-                      <span>{strings.admin.viaOrgGroup(og.name, orgLabel)}</span>
-                      <button
-                        className="btn btn-danger"
-                        title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
-                        aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
-                        onClick={() => removeOrgGroupMember(g.id, og.id)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {nestableOrgGroups.length > 0 && (
-                <div className="row">
-                  <select
-                    className="input"
-                    value={orgGroupSelections[g.id] ?? ""}
-                    onChange={(e) => setOrgGroupSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                  >
-                    <option value="">{strings.admin.addOrgGroupToProjectGroup(orgLabel)}</option>
-                    {nestableOrgGroups.map((og) => (
-                      <option key={og.id} value={og.id}>
-                        {og.name}
-                      </option>
                     ))}
-                  </select>
-                  <button
-                    className="btn"
-                    disabled={!orgGroupSelections[g.id]}
-                    title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
-                    aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
-                    onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              )}
-              {referencedProjects.length > 0 && (
-                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                  {referencedProjects.map((p) => (
-                    <li key={p.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
-                      <span>{strings.admin.viaProjectMembers(p.name)}</span>
-                      <button
-                        className="btn btn-danger"
-                        title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
-                        aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
-                        onClick={() => removeProjectRefMember(g.id, p.id)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {referenceableProjects.length > 0 && (
-                <div className="row">
-                  <select
-                    className="input"
-                    value={sourceProjectSelections[g.id] ?? ""}
-                    aria-label={strings.admin.projectReferenceSelect}
-                    onChange={(e) => setSourceProjectSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                  >
-                    <option value="">{strings.admin.addProjectReferenceToProjectGroup}</option>
-                    {referenceableProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn"
-                    disabled={!sourceProjectSelections[g.id]}
-                    title={strings.admin.addProjectReferenceToProjectGroup}
-                    aria-label={strings.admin.addProjectReferenceToProjectGroup}
-                    onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              )}
-            </CollapsibleSection>
+                  </ul>
+                )}
+                {nestableOrgGroups.length > 0 && (
+                  <div className="row">
+                    <select
+                      className="input"
+                      aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      value={orgGroupSelections[g.id] ?? ""}
+                      onChange={(e) => setOrgGroupSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                    >
+                      <option value="">{strings.admin.addOrgGroupToProjectGroup(orgLabel)}</option>
+                      {nestableOrgGroups.map((og) => (
+                        <option key={og.id} value={og.id}>
+                          {og.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn"
+                      disabled={!orgGroupSelections[g.id]}
+                      title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                )}
+                {referencedProjects.length > 0 && (
+                  <>
+                    <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                      {referencedProjects.map((p) => (
+                        <li key={p.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
+                          <span className="row" style={{ gap: "0.35rem" }}>
+                            {strings.admin.viaProjectMembers(p.name)}
+                            <Link to={`/projects/${p.id}/admin/members`}>{strings.admin.viaProjectMembersLinkLabel}</Link>
+                          </span>
+                          <button
+                            className="btn btn-danger"
+                            title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                            aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                            onClick={() => removeProjectRefMember(g.id, p.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-muted" style={{ fontSize: "0.8rem", margin: 0 }}>{strings.admin.viaProjectMembersHint}</p>
+                  </>
+                )}
+                {referenceableProjects.length > 0 && (
+                  <div className="row">
+                    <select
+                      className="input"
+                      value={sourceProjectSelections[g.id] ?? ""}
+                      aria-label={strings.admin.projectReferenceSelect}
+                      onChange={(e) => setSourceProjectSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                    >
+                      <option value="">{strings.admin.addProjectReferenceToProjectGroup}</option>
+                      {referenceableProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn"
+                      disabled={!sourceProjectSelections[g.id]}
+                      title={strings.admin.addProjectReferenceToProjectGroup}
+                      aria-label={strings.admin.addProjectReferenceToProjectGroup}
+                      onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </SidePanel>
           );
-        })}
-        <LoadMoreButton loaded={groups.length} total={groupsTotal} onClick={() => loadGroups(groupSearch, groups.length, true)} />
+        })()}
+
+        {deletingGroupId && (
+          <ConfirmDialog
+            title={strings.admin.deleteGroupTitle(
+              (memberTableGroups.find((x) => x.id === deletingGroupId) ?? groups.find((x) => x.id === deletingGroupId))?.name ?? ""
+            )}
+            message={strings.admin.deleteGroupMessage}
+            confirmLabel={strings.admin.deleteGroup}
+            onConfirm={() => deleteGroup(deletingGroupId)}
+            onCancel={() => setDeletingGroupId(null)}
+          />
+        )}
       </div>
       )}
 

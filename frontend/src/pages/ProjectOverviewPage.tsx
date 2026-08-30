@@ -45,7 +45,11 @@ export function ProjectOverviewPage() {
 
   const tiles: Array<[string, string | number, string]> = [
     [strings.overview.requirementCount, metrics.requirement_count, requirementsPath()],
-    [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`, requirementsPath("status=completed")],
+    // C-G-11: completion is `Requirement.is_completed`, an independent
+    // overlay marker, not a `status` value — links to the requirements
+    // list's own "Completed" filter checkbox rather than a status filter
+    // (RequirementsPage.tsx seeds `completedFilter` from this same param).
+    [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`, requirementsPath("completed=1")],
     // Links to the project-wide file browser (ProjectFilesPage), not the
     // unfiltered requirements list — a bug flagged separately from this
     // page's other tiles, which correctly link to a requirements/change-

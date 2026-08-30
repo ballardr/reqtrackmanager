@@ -22,7 +22,11 @@ from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
 
-LOCKED_STATUSES = {RequirementStatus.APPROVED, RequirementStatus.COMPLETED}
+# C-G-11: completion is an overlay marker on top of APPROVED, not a
+# separate lifecycle status a requirement can be "in" — a completed
+# requirement's status is still APPROVED (see `Requirement.is_completed`),
+# so this set no longer needs a second member to cover it.
+LOCKED_STATUSES = {RequirementStatus.APPROVED}
 
 
 def get_current_version(db: Session, requirement_id: UUID) -> RequirementVersion:

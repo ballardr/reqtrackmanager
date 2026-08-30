@@ -11,7 +11,11 @@ by the target organisation's `sso_only` flag:
   once the invitee actually creates an account, from either of the two
   places that can do that — native signup (`routers/auth.py::signup`) and
   OIDC first-login (`routers/auth_oidc.py`), since the invitee may reach
-  either one first.
+  either one first. `resend_pending_invite` rotates an existing row's
+  token/`expires_at` and re-sends the same email, for when the original
+  didn't arrive or already expired (`routers/projects.py`'s
+  `GET/POST .../pending-invites[/{id}/resend]`, Phase 3 — standard flow
+  only, not the `sso_only` path below).
 - `sso_only` orgs: `provision_sso_invite` grants access immediately by
   pre-creating the `User` row and its org/project roles up front, with no
   token or `PendingInvite` at all — see its docstring for why this is safe
@@ -81,14 +85,55 @@ def create_pending_invite(
     )
     db.add(invite)
     db.flush()
+    _send_invite_email(invite, organization=organization, project=project)
+    return invite
+
+
+def resend_pending_invite(
+    db: Session, invite: PendingInvite, *, organization: Organization, project: Project | None
+) -> PendingInvite:
+    """Rotates `invite`'s token and `expires_at`, then re-sends the signup-
+    link email — for a project admin retriggering delivery (e.g. "the
+    invite email never arrived in prod") or reviving an already-expired
+    invite, without creating a second `PendingInvite` row for the same
+    email/project (calling `create_pending_invite` again would do that,
+    leaving two live tokens).
+
+    A fresh token is issued rather than resending the stale one — the
+    original may already have been exposed (e.g. logged, forwarded), so
+    rotating it is safer than re-delivering the same value. Works whether
+    `invite` is still pending or already expired; callers are responsible
+    for rejecting an already-*accepted* invite before calling this (see
+    `routers/projects.py::resend_pending_project_invite`).
+
+    Args:
+        db: Active database session; `invite` is updated but not committed.
+        invite: The existing `PendingInvite` row to rotate/resend.
+        organization: The invite's owning organisation (for the email body).
+        project: The invite's target project, or `None` for an org-only
+            invite — must match `invite.project_id`'s presence/absence.
+
+    Returns:
+        The same `invite`, mutated in place with a fresh token/expires_at.
+    """
+    invite.token = secrets.token_urlsafe(32)
+    invite.expires_at = datetime.now(UTC) + _INVITE_LIFETIME
+    db.flush()
+    _send_invite_email(invite, organization=organization, project=project)
+    return invite
+
+
+def _send_invite_email(invite: PendingInvite, *, organization: Organization, project: Project | None) -> None:
+    """Shared signup-link email body/send for both `create_pending_invite`
+    and `resend_pending_invite` — keeps the link format and wording in one
+    place rather than duplicated across the two call sites."""
     settings = get_settings()
     signup_url = f"{settings.frontend_base_url.rstrip('/')}/signup?invite={invite.token}"
     if project is not None:
         body = f"You've been invited to join the project '{project.name}' in {organization.name}. Sign up here: {signup_url}"
     else:
         body = f"You've been invited to join {organization.name}. Sign up here: {signup_url}"
-    send_email(email, f"You've been invited to {organization.name}", body)
-    return invite
+    send_email(invite.email, f"You've been invited to {organization.name}", body)
 
 
 def consume_pending_invites(db: Session, user: User) -> None:

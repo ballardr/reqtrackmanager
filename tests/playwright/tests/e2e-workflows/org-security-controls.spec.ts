@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can require 2FA org-wide (blocking every
@@ -162,12 +162,11 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Project groups");
-      // Groups now render collapsed by default (2026-08 UX audit
-      // "Directories at scale") — expand "Members" specifically before its
-      // own add-member input is reachable at all.
-      await openGroupCard(page, "Members");
+      // Each group row opens a `SidePanel` now (Phase 5, docs/decisions.md)
+      // instead of an always-expanded accordion.
+      const panel = await openProjectGroupPanel(page, "Members");
       const outsideEmail = `e2e-external-${Date.now()}@example.com`;
-      await page.getByPlaceholder("Type a name to add, or an email to invite…").last().fill(outsideEmail);
+      await panel.getByPlaceholder("Type a name to add, or an email to invite…").fill(outsideEmail);
       // A brand-new email with no account anywhere shows an "Invite"
       // option (not "Add"), per UserAutocomplete's existing/new distinction.
       await page.getByText(`Invite ${outsideEmail}`, { exact: true }).click();

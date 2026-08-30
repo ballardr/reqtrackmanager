@@ -188,9 +188,17 @@ def test_project_manager_can_approve_requirement_via_direct_edit(client, admin_t
 
 def test_direct_edit_cannot_jump_straight_to_completed(client, admin_token, org_id):
     """Completion has its own dedicated, precondition-checked endpoint
-    (POST .../complete, requiring the requirement to already be approved)
-    — the general-purpose direct-edit PUT must not be usable to skip that
-    precondition, regardless of the caller's role."""
+    (POST .../complete, requiring the requirement to already be approved) —
+    the general-purpose direct-edit PUT must not be usable to skip that
+    precondition, regardless of the caller's role.
+
+    C-G-11: this used to be an explicit application-level guard in
+    `update_requirement` (a `payload.status == RequirementStatus.COMPLETED`
+    check returning 400) — now that `COMPLETED` isn't a valid
+    `RequirementStatus` value at all (completion is the independent
+    `Requirement.is_completed` overlay instead), the same rejection happens
+    naturally via Pydantic/enum request validation, which FastAPI reports as
+    422, not 400."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement_for_approval(client, admin_token, project["id"], component_id, category_id)
@@ -203,7 +211,7 @@ def test_direct_edit_cannot_jump_straight_to_completed(client, admin_token, org_
         },
         headers=auth_headers(admin_token),
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 # --- Custom field definitions: require_project_manage, not just view/edit access ---

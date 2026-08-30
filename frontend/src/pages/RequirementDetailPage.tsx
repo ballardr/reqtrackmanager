@@ -534,12 +534,12 @@ export function RequirementDetailPage() {
               <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
             </Link>
           )}
-          {canArchive && requirement.status === "approved" && (
+          {canArchive && requirement.status === "approved" && !requirement.is_completed && (
             <button className="btn" onClick={markCompleted}>
               {strings.requirements.markCompleted}
             </button>
           )}
-          {canArchive && requirement.status === "completed" && (
+          {canArchive && requirement.is_completed && (
             <button className="btn" onClick={unmarkCompleted}>
               {strings.requirements.unmarkCompleted}
             </button>
@@ -604,6 +604,12 @@ export function RequirementDetailPage() {
           )}
           <div className="row">
             <span className="badge">{strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}</span>
+            {/* C-G-11: completion is a separate overlay marker from lifecycle
+                status — rendered as its own badge rather than merged into the
+                status badge above, since the two are now independent
+                concepts (a completed requirement's status badge still reads
+                "Approved"). */}
+            {requirement.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
             <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
             <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</span>
             {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}

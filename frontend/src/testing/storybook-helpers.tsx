@@ -162,14 +162,20 @@ export function buildCategory(overrides: Partial<Category> = {}): Category {
 export function buildRequirement(overrides: Partial<Requirement> = {}): Requirement {
   // `is_locked`/`requires_approval` derive from `status` by the same rule
   // the backend uses (`LOCKED_STATUSES`/`REQUIRES_APPROVAL_STATUSES`,
-  // backend/app/services/requirements.py:25,
-  // backend/app/routers/requirements.py:107) so a story only needs to set
+  // backend/app/services/requirements.py,
+  // backend/app/routers/requirements.py) so a story only needs to set
   // `status` and gets a consistent, real derived state — rather than every
-  // "approved"/"completed" story call site having to separately remember to
+  // "approved" story call site having to separately remember to
   // also pass `is_locked: true` (2026-08 UX audit roadmap, "No requirement
   // approval action" — added when the Approve button/"Make change request"
   // gating started actually reading these two fields). An explicit override
   // for either still wins, via the trailing `...overrides` spread.
+  //
+  // C-G-11: completion (`is_completed`/`completed_at`/`completed_by`) is now
+  // an independent overlay, not derived from `status` at all (unlike the
+  // old "completed" status value this replaced) — a story that wants a
+  // completed fixture must pass `is_completed: true` explicitly, same as
+  // any other override.
   const status = overrides.status ?? "draft";
   return {
     id: nextId("requirement"),
@@ -188,7 +194,10 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     sort_order: 0,
     creator_id: "user-1",
     is_archived: false,
-    is_locked: status === "approved" || status === "completed",
+    is_locked: status === "approved",
+    is_completed: false,
+    completed_at: null,
+    completed_by: null,
     keywords: [],
     custom_fields: {},
     created_at: "2026-01-10T09:00:00Z",

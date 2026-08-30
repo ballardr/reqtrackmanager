@@ -379,6 +379,31 @@ export function ChangeRequestDetailPage() {
               >
                 {strings.changeRequests.approve}
               </button>
+              {/* C-G-11: an explicit, opt-in second action — shown only for
+                  a MODIFY_REQUIREMENT change request whose target is
+                  currently completed, since only then is there a
+                  meaningful choice between "keep completion" (plain
+                  Approve, above) and "this change is substantial enough to
+                  need re-verifying" (this button). Every other case keeps
+                  the single Approve button unchanged. */}
+              {cr.kind === "modify_requirement" && requirement?.is_completed && (
+                <button
+                  className="btn"
+                  onClick={() =>
+                    act(
+                      () =>
+                        api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/decide`, {
+                          approve: true,
+                          note: decisionNote,
+                          clear_completion: true,
+                        }),
+                      strings.changeRequests.approvedToast
+                    )
+                  }
+                >
+                  {strings.changeRequests.approveAndClearCompletion}
+                </button>
+              )}
               <button
                 className="btn btn-danger"
                 onClick={() =>

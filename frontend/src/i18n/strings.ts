@@ -235,6 +235,10 @@ const en = {
     unmarkCompleted: "Revert completion",
     completed: "{Requirement} marked completed",
     completionReverted: "Completion reverted",
+    // C-G-11 overlay-marker badge, distinct from the lifecycle status badge
+    // (which stays "Approved" for a completed {requirement}).
+    completedBadge: "Completed",
+    completedFilter: "Completed",
     reviewSection: "Review scheduling",
     reviewDate: "Review date",
     reviewLeadDays: "Reminder lead time (days)",
@@ -306,6 +310,11 @@ const en = {
     submit: "Submit",
     withdraw: "Withdraw",
     approve: "Approve",
+    // C-G-11: shown alongside plain "Approve" only when the target
+    // {requirement} is currently completed — an explicit, opt-in second
+    // action for the approver, distinct from the default carry-forward
+    // behaviour a plain Approve keeps.
+    approveAndClearCompletion: "Approve and clear completion",
     reject: "Reject",
     decisionNote: "Decision note",
     status: "Status",
@@ -477,6 +486,22 @@ const en = {
       `${email} was added and will get the '${role}' role next time they sign in via SSO.`,
     externalAddError: "Could not add this user.",
     memberCount: (n: number) => `${n} member(s)`,
+    // Pending invites (Phase 3, docs/decisions.md) — a small, self-contained
+    // section (`components/PendingInvitesSection.tsx`) listing unaccepted
+    // `PendingInvite`s for this {project} with a resend action, deliberately
+    // kept out of the per-group add/invite flow above since a pending
+    // invite is project-scoped, not per-group.
+    pendingInvites: "Pending invites",
+    pendingInvitesHint: "Invites sent to people who haven't finished signing up yet.",
+    noPendingInvites: "No pending invites.",
+    invitedEmail: "Email",
+    invitedRole: "Role",
+    invitedSent: "Sent",
+    invitedStatus: "Status",
+    resendInvite: "Resend",
+    resendInviteAria: (email: string) => `Resend invite to ${email}`,
+    resendInviteSuccess: (email: string) => `Invite resent to ${email}.`,
+    resendInviteError: "Could not resend this invite.",
     viaOrgGroup: (name: string, org: string) => `${name} (${org} group)`,
     addOrgGroupToProjectGroup: (org: string) => `Nest an ${org} group…`,
     viaProjectMembers: (name: string) => `${name}'s members`,
@@ -511,6 +536,69 @@ const en = {
     removeNestedGroup: (label: string) => `Remove ${label}`,
     deleteCustomField: (name: string) => `Delete ${name}`,
     deleteCustomFieldConfirm: (name: string) => `This removes the "${name}" field and its values from every {requirement}/{changeRequest} that has it set. This cannot be undone.`,
+    // Phase 5 (docs/decisions.md): "Members" split out of the old combined
+    // "Project groups" tab into its own resource-menu section, holding the
+    // new editable `MemberRoleTable` (direct users + groups, one role
+    // control each) plus the pre-existing Effective members audit table and
+    // PendingInvitesSection (both relocated here, unchanged in shape).
+    membersNav: "Members",
+    // "Groups" keeps `groups`/`newGroup`/`searchGroups`/`groupCreated`
+    // above for its own heading/create-modal copy — these are its
+    // SidePanel-specific additions.
+    groupDetails: (name: string) => `${name} details`,
+    groupRoleAtTop: "Group role",
+    defaultGroupBadge: "Default",
+    deleteGroup: "Delete group",
+    deleteGroupTitle: (name: string) => `Delete "${name}"?`,
+    deleteGroupMessage: "This removes the group and every membership under it. Direct roles and other groups' memberships are unaffected. This cannot be undone.",
+    deleteGroupDefaultBlocked: "The default groups created with this {project} can't be deleted.",
+    groupUpdated: "Group updated",
+    groupDeleted: "Group deleted",
+    // member_source_project_ids groups (Phase 5) — extends the existing
+    // `viaProjectMembers` line with a link to the referenced {project}'s
+    // own new Members page and a clarifying sentence that this isn't a
+    // fixed list (`docs/ux-style-guide.md`'s Phase-5 addendum).
+    viaProjectMembersLinkLabel: "View members",
+    viaProjectMembersHint: "Live — always mirrors that {project}'s own current direct members, not a fixed list captured at the time it was added.",
+  },
+  memberRoleTable: {
+    // frontend/src/components/MemberRoleTable.tsx — the "add a user or
+    // group, then assign a role" shared table (Phase 5, docs/decisions.md):
+    // one call site on the new Members section (`ProjectAdminPage.tsx`),
+    // one inside Org Admin's "Manage users" modal (`OrgAdminPage.tsx`).
+    // Deliberately its own top-level namespace, not nested under `admin`/
+    // `orgAdmin`, since both pages share this exact copy verbatim.
+    search: "Search members and groups",
+    name: "Name",
+    email: "Email",
+    role: "Role",
+    type: "Type",
+    typeUser: "User",
+    typeGroup: "Group",
+    groupMemberCount: (n: number) => `${n} member${n === 1 ? "" : "s"}`,
+    rolesFor: (name: string) => `${name}'s roles`,
+    noRoles: "No roles",
+    grantRole: (role: string, name: string) => `Grant ${role} to ${name}`,
+    revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
+    // Client-side hint only — a fast approximation of C-U-08 ("a project
+    // must always have at least one manager") computed from the rows
+    // already on screen, mirroring the same disabled+title treatment
+    // `MultiSelectDropdown` already gives self-role-revoke on
+    // `OrgAdminPage.tsx`. The backend guard (`PATCH`/`DELETE .../groups/
+    // {group_id}`, `DELETE .../roles/{user_id}/{role}`) is authoritative
+    // either way, so this can be wrong in edge cases (e.g. a manager
+    // inherited from a parent {project}) without being unsafe.
+    cannotRemoveLastManager: "This is the {project}'s only manager source — add another manager first.",
+    groupRoleSelectLabel: (name: string) => `Role for ${name}`,
+    viewGroupMembers: (name: string) => `View ${name}'s members`,
+    noResults: "No members or groups match this search.",
+    empty: "No direct members or groups yet.",
+    // Shared by both `addControl` compositions (`ProjectAdminPage.tsx`'s
+    // Members section, `OrgAdminPage.tsx`'s "Manage users" modal) — the
+    // role `<select>` accompanying `UserAutocomplete` in the "add a
+    // member" row.
+    addRoleSelectLabel: "Role to grant",
+    add: "Add",
   },
   serverSettings: {
     title: "Platform branding",
@@ -625,6 +713,11 @@ const en = {
     projects: "{Projects}",
     projectsHint: (org: string) => `Every {project} in this ${org}, including ones you don't otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
     manageUsers: "Manage users",
+    // Phase 5 (docs/decisions.md): the inline "Manage users" expand-in-place
+    // became a `Modal` wrapping the same `MemberRoleTable` `ProjectAdminPage.
+    // tsx`'s own Members section uses — literally the same component, not a
+    // parallel reimplementation.
+    manageUsersModalTitle: (projectName: string) => `Manage users — ${projectName}`,
     users: (orgCap: string) => `${orgCap} users`,
     email: "Email",
     name: "Name",
@@ -674,6 +767,12 @@ const en = {
     userAccessProjects: "Projects",
     userAccessNoProjects: "No access to any project in this organisation.",
     userAccessProjectGroups: "Via project group(s)",
+    // 2026-08 UX audit reversal (docs/decisions.md, docs/ux-style-guide.md
+    // "Pattern: role display"): this panel now shows the collapsed summary
+    // by default per project row, with this pair of toggle labels revealing/
+    // hiding the full, uncollapsed role set on demand.
+    userAccessShowAllRoles: (count: number) => `Show all ${count} roles`,
+    userAccessShowFewerRoles: "Show fewer",
     // The old "Advanced settings" catch-all doesn't survive the resource-
     // menu regrouping as one item — its settings domains split by what
     // they actually govern (style guide "Pattern: settings hierarchy"):

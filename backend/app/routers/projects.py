@@ -28,13 +28,12 @@ from app.models.enums import (
     ProjectRole,
     ProjectRoleInheritanceMode,
     ProjectVisibility,
-    RequirementStatus,
     ReviewTargetType,
     StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup, ReportTemplate, UserOrgRole
+from app.models.organization import Organization, OrgGroup, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.project import (
     FavoriteProject,
     Project,
@@ -61,14 +60,17 @@ from app.schemas.project import (
     ComponentCreate,
     ComponentOut,
     ComponentUpdate,
+    DirectMemberOut,
     EffectiveMemberOut,
     MaterializeResultOut,
     MoveDirection,
+    PendingInviteOut,
     ProjectAncestorOut,
     ProjectCreate,
     ProjectGroupCreate,
     ProjectGroupMemberAdd,
     ProjectGroupOut,
+    ProjectGroupUpdate,
     ProjectImportResult,
     ProjectListItemOut,
     ProjectMemberSourceAdd,
@@ -1460,12 +1462,14 @@ def get_project_metrics(
     requirement_count = len(requirement_ids)
     completed = 0
     if requirement_ids:
+        # C-G-11: completion is `Requirement.is_completed`, an overlay
+        # marker independent of `RequirementVersion.status` (no longer a
+        # `RequirementStatus` value at all) — queried directly off the
+        # identity row, not the version.
         completed = len(
             db.scalars(
-                select(RequirementVersion.requirement_id).where(
-                    RequirementVersion.requirement_id.in_(requirement_ids),
-                    RequirementVersion.valid_to.is_(None),
-                    RequirementVersion.status == RequirementStatus.COMPLETED,
+                select(Requirement.id).where(
+                    Requirement.id.in_(requirement_ids), Requirement.is_completed.is_(True)
                 )
             ).all()
         )
@@ -1525,10 +1529,8 @@ def get_project_metrics(
             if item_requirement_ids:
                 stage_completed = len(
                     db.scalars(
-                        select(RequirementVersion.requirement_id).where(
-                            RequirementVersion.requirement_id.in_(item_requirement_ids),
-                            RequirementVersion.valid_to.is_(None),
-                            RequirementVersion.status == RequirementStatus.COMPLETED,
+                        select(Requirement.id).where(
+                            Requirement.id.in_(item_requirement_ids), Requirement.is_completed.is_(True)
                         )
                     ).all()
                 )
@@ -2192,6 +2194,111 @@ def _get_group_in_project(db: Session, project_id: UUID, group_id: UUID) -> Proj
     return group
 
 
+def _project_group_out(db: Session, group: ProjectGroup) -> ProjectGroupOut:
+    """Shared `ProjectGroupOut` assembly for the endpoints below that return
+    a single, already-persisted group with its resolved membership lists —
+    factored out of `list_project_groups`'s per-row loop so `update_project_
+    group` doesn't duplicate the same three queries."""
+    members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
+    return ProjectGroupOut(
+        id=group.id, name=group.name, role=group.role, is_default=group.is_default,
+        member_user_ids=[m.user_id for m in members if m.user_id],
+        member_org_group_ids=[m.org_group_id for m in members if m.org_group_id],
+        member_source_project_ids=[m.source_project_id for m in members if m.source_project_id],
+    )
+
+
+@router.patch("/{project_id}/groups/{group_id}", response_model=ProjectGroupOut)
+def update_project_group(
+    project_id: UUID, group_id: UUID, payload: ProjectGroupUpdate,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Updates a project group's granted role (C-U-11) — the only mutable
+    field a project group has after creation, matching `OrgGroup`'s own
+    scope (neither has a rename endpoint). Modeled directly on
+    `routers.orgs.update_org_group`; unlike that endpoint, a group's role
+    here can leave a project with zero managers, so this needs a C-U-08
+    guard `update_org_group` has no equivalent of. No data migration was
+    needed to make existing groups editable: effective-role resolution
+    (`services.rbac`) already reads `ProjectGroup.role` live at query time,
+    never a value copied at member-add time.
+
+    Guard: if the role is changing *away from* `PROJECT_MANAGER`, the
+    project row is locked first (`lock_project_for_update`, serializing
+    against a concurrent removal of this project's other managers), then
+    the new role is tentatively set and flushed, then `get_effective_
+    project_managers` is re-checked before commit — same lock-then-check
+    idiom `remove_project_group_member`/`revoke_project_role` already use.
+    Raising here (instead of committing) discards the flushed change via
+    the request-scoped session's own close-without-commit, the same
+    rollback-by-non-commit pattern those two endpoints rely on.
+    """
+    group = _get_group_in_project(db, project.id, group_id)
+    old_role = group.role
+    if payload.role == old_role:
+        return _project_group_out(db, group)
+
+    if old_role == ProjectRole.PROJECT_MANAGER:
+        lock_project_for_update(db, project.id)
+    group.role = payload.role
+    db.flush()
+    if old_role == ProjectRole.PROJECT_MANAGER and not get_effective_project_managers(db, project.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
+
+    log_event(
+        db, entity_type="project_group", entity_id=group_id, action="role_updated", actor_id=current_user.id,
+        project_id=project.id, detail={"old_role": old_role.value, "new_role": payload.role.value},
+    )
+    db.commit()
+    db.refresh(group)
+    return _project_group_out(db, group)
+
+
+@router.delete("/{project_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_group(
+    project_id: UUID, group_id: UUID,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Deletes a project group entirely; its `ProjectGroupMember` rows go
+    with it via `ondelete="CASCADE"`. Rejects (400) deleting one of the
+    four standard groups created with the project (`is_default=True`,
+    C-U-10) — nothing else guarantees a project always retains, e.g., a
+    Project Managers-role group to fall back to.
+
+    Same C-U-08 guard as `update_project_group`, shaped for a whole-group
+    removal rather than a single-role change: if this is the project's
+    manager-role group, the project row is locked first, then the group
+    (and every membership under it) is deleted and flushed, then
+    `get_effective_project_managers` is re-checked before commit. The
+    check has to run *after* the delete is flushed, not before, unlike
+    `remove_project_group_member`'s single-membership check — a whole-group
+    delete removes every membership at once, so a pre-check would have to
+    reproduce "what would managers look like without this group" rather
+    than just asking the normal live-state question afterward.
+    """
+    group = _get_group_in_project(db, project.id, group_id)
+    if group.is_default:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The default project groups cannot be deleted.")
+
+    is_manager_group = group.role == ProjectRole.PROJECT_MANAGER
+    if is_manager_group:
+        lock_project_for_update(db, project.id)
+
+    log_event(
+        db, entity_type="project_group", entity_id=group_id, action="deleted", actor_id=current_user.id,
+        project_id=project.id, detail={"name": group.name, "role": group.role.value},
+    )
+    db.delete(group)
+    db.flush()
+    if is_manager_group and not get_effective_project_managers(db, project.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
+    db.commit()
+
+
 @router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
 def add_project_group_member(
     project_id: UUID, group_id: UUID, payload: ProjectGroupMemberAdd,
@@ -2295,6 +2402,41 @@ def remove_project_group_member(
     if member_id and not get_effective_project_roles(db, member_id, project.id):
         engagement.remove_subscriptions_and_favorites_for_projects(db, member_id, [project.id])
     db.commit()
+
+
+@router.get("/{project_id}/direct-members", response_model=list[DirectMemberOut])
+def list_direct_members(
+    project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db),
+):
+    """Lists every user holding at least one direct `UserProjectRole` grant
+    on this project, one row per user with all of their held roles (Phase
+    5's Members page) — no endpoint previously listed `UserProjectRole` as
+    a directory; only mutate-by-user (`assign_project_role`/
+    `revoke_project_role`) and mutate-by-email existed. Same gate tier as
+    `list_project_groups` (`require_project_view_or_manage`): this exposes
+    role *structure*, not requirement/change-request content.
+
+    Deliberately a real multi-valued array per user, not force-collapsed to
+    one row per (user, role): `UserProjectRole`'s unique constraint is
+    `(user_id, project_id, role)`, so a user can simultaneously hold more
+    than one direct role (e.g. both `stakeholder` and `member`), and the
+    Members page's `MultiSelectDropdown` needs the full held set to render
+    correctly-checked options.
+    """
+    rows = db.execute(
+        select(UserProjectRole.user_id, UserProjectRole.role, User.display_name, User.email)
+        .join(User, User.id == UserProjectRole.user_id)
+        .where(UserProjectRole.project_id == project_id)
+        .order_by(User.display_name)
+    ).all()
+    by_user: dict[UUID, DirectMemberOut] = {}
+    for user_id, role, display_name, email in rows:
+        member = by_user.get(user_id)
+        if member is None:
+            member = DirectMemberOut(user_id=user_id, display_name=display_name, email=email, roles=[])
+            by_user[user_id] = member
+        member.roles.append(role)
+    return list(by_user.values())
 
 
 @router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
@@ -2424,6 +2566,89 @@ def assign_project_role_by_email(
     )
     db.commit()
     return AssignByEmailOut(outcome="invited")
+
+
+def _pending_invite_out(invite: PendingInvite) -> PendingInviteOut:
+    """Shared status computation for both endpoints below — `status` is
+    derived from `expires_at` at read time rather than stored, so it's
+    always current."""
+    return PendingInviteOut(
+        id=invite.id,
+        email=invite.email,
+        role=invite.project_role,
+        status="pending" if invite.expires_at > datetime.now(UTC) else "expired",
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+    )
+
+
+def _get_pending_invite_in_project(db: Session, project_id: UUID, invite_id: UUID) -> PendingInvite:
+    """Loads a `PendingInvite` and 404s unless it targets `project_id`.
+
+    Without this check, a manager of *some* project (any project — that's
+    all `require_project_manage` validates) could pass the `invite_id` of a
+    *different* project's pending invite and resend it (rotating its
+    token and re-sending its email), the same cross-project-boundary shape
+    `_get_group_in_project` already guards against for group membership.
+    """
+    invite = db.get(PendingInvite, invite_id)
+    if invite is None or invite.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite not found.")
+    return invite
+
+
+@router.get("/{project_id}/pending-invites", response_model=list[PendingInviteOut])
+def list_pending_project_invites(
+    project_id: UUID,
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists this project's outstanding (unaccepted) `PendingInvite`s, most
+    recent first — including already-expired ones, since an expired invite
+    is exactly the case `resend_pending_project_invite` exists to fix.
+
+    Standard (non-SSO) `PendingInvite` flow only (Phase 3 scope decision,
+    docs/decisions.md) — an `sso_only` org's by-email invites are
+    provisioned immediately via `services.invites.provision_sso_invite`
+    and never create a row here. Gated the same as
+    `assign_project_role_by_email`, the only endpoint that creates these
+    rows, since listing/resending them is a continuation of that same
+    capability.
+    """
+    invites_list = db.scalars(
+        select(PendingInvite)
+        .where(PendingInvite.project_id == project.id, PendingInvite.accepted_at.is_(None))
+        .order_by(PendingInvite.created_at.desc())
+    ).all()
+    return [_pending_invite_out(invite) for invite in invites_list]
+
+
+@router.post("/{project_id}/pending-invites/{invite_id}/resend", response_model=PendingInviteOut)
+def resend_pending_project_invite(
+    project_id: UUID, invite_id: UUID,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Rotates the invite's token/`expires_at` and re-sends the signup-link
+    email (`services.invites.resend_pending_invite`) — for "the original
+    invite email never arrived" or reviving an invite that's since
+    expired. Works in either case (still-pending or already-expired);
+    only an already-*accepted* invite is rejected, since there's nothing
+    left to resend once someone's redeemed it.
+    """
+    invite = _get_pending_invite_in_project(db, project.id, invite_id)
+    if invite.accepted_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This invite has already been accepted.")
+    org = db.get(Organization, project.organization_id)
+    invites.resend_pending_invite(db, invite, organization=org, project=project)
+    log_event(
+        db, entity_type="pending_invite", entity_id=invite.id, action="invite_resent",
+        actor_id=current_user.id, organization_id=org.id, project_id=project.id,
+        detail={"email": invite.email},
+    )
+    db.commit()
+    return _pending_invite_out(invite)
 
 
 @router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)

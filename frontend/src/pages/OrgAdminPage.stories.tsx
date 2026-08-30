@@ -351,7 +351,15 @@ export const UsersSectionSortByEmail: Story = {
  * user has a role on, their role(s) there, which project group granted
  * it, and which org groups they directly belong to — assembled server-
  * side (`GET /orgs/{id}/users/{id}/access`) rather than pieced together
- * from the frontend. */
+ * from the frontend.
+ *
+ * **2026-08-30 revision** (reverses the 2026-08-24/25 "always show the
+ * full, uncollapsed role set" decision — see `docs/decisions.md` and
+ * `docs/ux-style-guide.md`'s "Pattern: role display" section): each
+ * project row now shows `collapseProjectRoles()`'s collapsed summary by
+ * default, with a "Show all N roles" toggle revealing the full,
+ * uncollapsed set on demand — this story pins the collapsed default. See
+ * `ViewUserAccessPanelExpandRoles` below for the expand-on-demand state. */
 export const ViewUserAccessPanel: Story = {
   beforeEach: () => {
     mockOrgAdminApis({
@@ -377,6 +385,62 @@ export const ViewUserAccessPanel: Story = {
     await expect(within(panel).getByText("Atlas Platform")).toBeInTheDocument();
     await expect(within(panel).getByText("Project manager")).toBeInTheDocument();
     await expect(within(panel).getByText(/Project Managers/)).toBeInTheDocument();
+
+    // `["project_manager", "member"]` collapses to `["project_manager"]`
+    // alone (project_manager is the sole top tier) — "Member" stays hidden
+    // until the row's own expand toggle is used.
+    await expect(within(panel).queryByText("Member")).not.toBeInTheDocument();
+    await expect(within(panel).getByRole("button", { name: "Show all 2 roles" })).toBeInTheDocument();
+  },
+};
+
+/** Expanding a project row's "Show all N roles" toggle reveals the full,
+ * uncollapsed role set (the audit detail the panel's whole purpose is to
+ * preserve — just not as the default view), and the toggle itself becomes
+ * "Show fewer" to collapse it back. */
+export const ViewUserAccessPanelExpandRoles: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      userAccess: {
+        org_groups: [],
+        projects: [
+          {
+            project_id: "proj1", project_name: "Atlas Platform",
+            // Held via different group memberships — a genuinely real case
+            // per `collapseProjectRoles()`'s own doc comment. Collapses to
+            // `["project_manager"]` alone (the sole top tier), hiding the
+            // other three — the toggle exists specifically to recover them.
+            roles: ["project_manager", "project_administrator", "stakeholder", "member"],
+            project_groups: [],
+          },
+        ],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "View Alex Morgan's access" }));
+    const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's access" });
+    await waitFor(() => expect(within(panel).getByText("Atlas Platform")).toBeInTheDocument());
+
+    await expect(within(panel).getByText("Project manager")).toBeInTheDocument();
+    await expect(within(panel).queryByText("Project administrator")).not.toBeInTheDocument();
+    await expect(within(panel).queryByText("Stakeholder")).not.toBeInTheDocument();
+    await expect(within(panel).queryByText("Member")).not.toBeInTheDocument();
+
+    const toggle = within(panel).getByRole("button", { name: "Show all 4 roles" });
+    await userEvent.click(toggle);
+    await expect(within(panel).getByText("Project manager")).toBeInTheDocument();
+    await expect(within(panel).getByText("Project administrator")).toBeInTheDocument();
+    await expect(within(panel).getByText("Stakeholder")).toBeInTheDocument();
+    await expect(within(panel).getByText("Member")).toBeInTheDocument();
+    await expect(within(panel).getByRole("button", { name: "Show fewer" })).toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Show fewer" }));
+    await expect(within(panel).getByRole("button", { name: "Show all 4 roles" })).toBeInTheDocument();
+    await expect(within(panel).queryByText("Project administrator")).not.toBeInTheDocument();
   },
 };
 
@@ -1016,33 +1080,79 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
   },
 };
 
-/** A project group's role badge under Projects & workflow renders through
- * `PROJECT_ROLE_LABEL` (2026-08 UX audit roadmap, "Fix raw-enum filter/table
- * text") — "Project administrator", not the raw `project_administrator`
- * enum value. */
+// --- "Manage users" Modal (Phase 5, docs/decisions.md) -------------------
+// Replaces the old inline expand-in-place (`expandedProjectId`/
+// `expandedProjectGroups`/...) with a `Modal` wrapping the same
+// `MemberRoleTable` `ProjectAdminPage.tsx`'s own Members section uses — see
+// `OrgAdminPage.tsx`'s own comment on `manageUsersProjectId`. `mockOrgAdminApis`'s
+// generic `api.get` mock (above) resolves "/groups" to the *org*-scoped
+// `OrgGroup[]` fixture before it can reach a project-scoped path (checked
+// earlier in that chain, since both substrings collide) — every story
+// below needs its own full `api.get` override, the same reason the
+// pre-Phase-5 label-map regression test already did.
+
+function mockProjectsWorkflowWithOneProject(overrides: {
+  projectGroups?: unknown[];
+  directMembers?: unknown[];
+} = {}) {
+  const projectGroups = overrides.projectGroups ?? [
+    { id: "pg1", name: "Reviewers", role: "project_administrator", is_default: false, member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
+  ];
+  const directMembers = overrides.directMembers ?? [];
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+    if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
+    if (path === "/api/v1/projects/proj-1/groups") return projectGroups;
+    if (path === "/api/v1/projects/proj-1/direct-members") return directMembers;
+    if (path.includes("/project-statuses")) return [];
+    if (path.includes("/link-types")) return [];
+    if (path.includes("/groups")) return groups;
+    if (path.includes("/resources")) return [];
+    if (path.includes("archived=false")) return [];
+    if (path.includes("/report-templates")) return [];
+    if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
+    if (path.includes("/advanced-settings")) return advanced;
+    if (path.includes("/pats")) return [];
+    if (path.includes("/sso-config")) return ssoConfig;
+    if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
+    if (path.includes("/access")) return { org_groups: [], projects: [] };
+    if (path.includes("/users")) return [orgUser];
+    throw new Error(`unmocked path: ${path}`);
+  });
+}
+
+/** A project group's role renders through `PROJECT_ROLE_LABEL` (2026-08 UX
+ * audit roadmap, "Fix raw-enum filter/table text") — "Project
+ * administrator", not the raw `project_administrator` enum value — pinned
+ * against `MemberRoleTable`'s own group-role `<select>` now that this is a
+ * Modal, not an inline badge. */
 export const ProjectGroupRoleBadgeUsesLabelMap: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path === `/api/v1/orgs/${ORG_ID}`) return org;
-      if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
-      if (path === "/api/v1/projects/proj-1/groups") {
-        return [{ id: "pg1", name: "Reviewers", role: "project_administrator", is_default: false, member_user_ids: [], member_org_group_ids: [] }];
-      }
-      if (path.includes("/project-statuses")) return [];
-      if (path.includes("/link-types")) return [];
-      if (path.includes("/groups")) return groups;
-      if (path.includes("/resources")) return [];
-      if (path.includes("archived=false")) return [];
-      if (path.includes("/report-templates")) return [];
-      if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
-      if (path.includes("/advanced-settings")) return advanced;
-      if (path.includes("/pats")) return [];
-      if (path.includes("/sso-config")) return ssoConfig;
-      if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
-      if (path.includes("/access")) return { org_groups: [], projects: [] };
-      if (path.includes("/users")) return [orgUser];
-      throw new Error(`unmocked path: ${path}`);
+    mockProjectsWorkflowWithOneProject();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const modal = within(document.body).getByRole("dialog", { name: "Manage users — Beta" });
+    const select = within(modal).getByRole("combobox", { name: "Role for Reviewers" }) as HTMLSelectElement;
+    await expect(select).toHaveValue("project_administrator");
+    await expect(within(select).getByText("Project administrator")).toBeInTheDocument();
+    await expect(within(modal).queryByText("project_administrator")).not.toBeInTheDocument();
+  },
+};
+
+/** The Modal wraps the exact same `MemberRoleTable` `ProjectAdminPage.tsx`'s
+ * Members section uses — direct members and groups both render, with their
+ * own (deliberately different) role controls. */
+export const ManageUsersModalShowsMemberRoleTable: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject({
+      directMembers: [{ user_id: "u-alex", display_name: "Alex Morgan", email: "alex@example.com", roles: ["member"] }],
     });
   },
   play: async ({ canvasElement }) => {
@@ -1050,8 +1160,61 @@ export const ProjectGroupRoleBadgeUsesLabelMap: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
-    await waitFor(() => expect(canvas.getByText("Project administrator")).toBeInTheDocument());
-    await expect(canvas.queryByText("project_administrator")).not.toBeInTheDocument();
+
+    const modal = within(document.body).getByRole("dialog", { name: "Manage users — Beta" });
+    await expect(within(modal).getByRole("cell", { name: "Reviewers" })).toBeInTheDocument();
+    await expect(within(modal).getByRole("cell", { name: "Alex Morgan" })).toBeInTheDocument();
+    await expect(within(modal).getByRole("button", { name: "Alex Morgan's roles" })).toBeInTheDocument();
+  },
+};
+
+/** Changing a group's role from inside the modal calls the same
+ * `PATCH .../groups/{id}` (Phase 5) `ProjectAdminPage.tsx`'s Members
+ * section uses — the direct fix for "should show up in a similar way to
+ * the project admin page." */
+export const ManageUsersModalChangeGroupRole: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject();
+    spyOn(api, "patch").mockResolvedValue({
+      id: "pg1", name: "Reviewers", role: "stakeholder", is_default: false,
+      member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const modal = within(document.body).getByRole("dialog", { name: "Manage users — Beta" });
+    const select = within(modal).getByRole("combobox", { name: "Role for Reviewers" });
+    await userEvent.selectOptions(select, "stakeholder");
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/api/v1/projects/proj-1/groups/pg1", { role: "stakeholder" })
+    );
+    // Principle 7 — every mutation ends with feedback.
+    await expect(within(document.body).getByText("Group updated")).toBeInTheDocument();
+  },
+};
+
+/** The modal's own "add a direct member" control — same `UserAutocomplete`
+ * + role `<select>` composition `ProjectAdminPage.tsx`'s Members section
+ * uses, scoped to whichever project's modal is open. */
+export const ManageUsersModalAddControlRenders: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const modal = within(document.body).getByRole("dialog", { name: "Manage users — Beta" });
+    await expect(within(modal).getByRole("combobox", { name: "Role to grant" })).toBeInTheDocument();
+    await expect(within(modal).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
   },
 };
 

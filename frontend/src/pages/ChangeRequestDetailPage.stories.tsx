@@ -2,11 +2,12 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ChangeRequestVoteTally, ProjectRole, RequirementAction } from "../api/types";
+import type { ChangeRequestVoteTally, ProjectRole, Requirement, RequirementAction } from "../api/types";
 import {
   buildActionType,
   buildChangeRequest,
   buildProjectListItem,
+  buildRequirement,
   buildRequirementAction,
   buildUser,
   withAuth,
@@ -27,7 +28,7 @@ const emptyTally: ChangeRequestVoteTally = { votes: [], approve_count: 0, reject
  * check itself. */
 function mockChangeRequestDetailApis(
   myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {},
-  extra: { linkedActionPreview?: RequirementAction } = {}
+  extra: { linkedActionPreview?: RequirementAction; requirement?: Requirement } = {}
 ) {
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
   const actionTypes = [buildActionType({ id: "at1", name: "Review" })];
@@ -39,7 +40,7 @@ function mockChangeRequestDetailApis(
     if (path.endsWith("/activity")) return [];
     if (path.endsWith("/tasks")) return [];
     if (path.endsWith("/votes")) return emptyTally;
-    if (path.endsWith(`/requirements/${cr.requirement_id}`)) return null;
+    if (path.endsWith(`/requirements/${cr.requirement_id}`)) return extra.requirement ?? null;
     if (path.endsWith("/action-types")) return actionTypes;
     if (extra.linkedActionPreview && path.endsWith(`/actions/${extra.linkedActionPreview.id}`)) return extra.linkedActionPreview;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
@@ -157,6 +158,61 @@ export const SubmittedManagerCanDecide: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+  },
+};
+
+/**
+ * C-G-11: when a MODIFY_REQUIREMENT change request targets a currently-
+ * completed requirement, a project manager sees a second "Approve and clear
+ * completion" action alongside the plain "Approve" — plain Approve keeps
+ * `is_completed` untouched (today's default carry-forward behaviour); the
+ * second button explicitly clears it via `clear_completion: true`. Neither
+ * button appears for a target that isn't completed (`SubmittedManagerCanDecide`
+ * above pins that single-button default).
+ */
+export const SubmittedManagerSeesClearCompletionOptionForCompletedTarget: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({
+      id: "requirement-1", project_id: PROJECT_ID, status: "approved",
+      is_completed: true, completed_at: "2026-02-01T09:00:00Z", completed_by: "user-2",
+    });
+    mockChangeRequestDetailApis(
+      ["project_manager"],
+      { kind: "modify_requirement", status: "submitted", requirement_id: "requirement-1", changed_fields: ["reasoning"], proposed_reasoning: "Tighten the wording." },
+      { requirement }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Approve" })).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Approve and clear completion" })).toBeInTheDocument();
+  },
+};
+
+/** Approving with the "Approve and clear completion" button sends
+ * `clear_completion: true` in the decide payload. */
+export const ApproveAndClearCompletionSendsFlag: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({
+      id: "requirement-1", project_id: PROJECT_ID, status: "approved",
+      is_completed: true, completed_at: "2026-02-01T09:00:00Z", completed_by: "user-2",
+    });
+    mockChangeRequestDetailApis(
+      ["project_manager"],
+      { kind: "modify_requirement", status: "submitted", requirement_id: "requirement-1", changed_fields: ["reasoning"], proposed_reasoning: "Tighten the wording." },
+      { requirement }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = await canvas.findByRole("button", { name: "Approve and clear completion" });
+    await userEvent.click(button);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        expect.stringContaining("/decide"),
+        expect.objectContaining({ approve: true, clear_completion: true })
+      )
+    );
   },
 };
 

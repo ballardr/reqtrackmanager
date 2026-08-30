@@ -79,23 +79,48 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
- * Same idea as `ensureExpanded`, for one org/project group's own card in
- * Org Admin's Groups section or Project Admin's Groups tab (2026-08 UX
- * audit "Directories at scale") — each group now renders collapsed by
- * default behind its own `CollapsibleSection`, so its member list,
- * "add member" input, and nesting picker are all unreachable until
- * expanded. Unlike `ensureExpanded`'s exact `"<title> section"` match,
- * each group's title combines its name with a dynamic member count (and,
- * for project groups, its role), so this matches by the group's name as a
- * substring instead. Also persists server-side per user across
- * runs/specs sharing a persona, same caveat as `ensureExpanded` — hence
- * the same idempotent "only click if collapsed" guard.
+ * Same idea as `ensureExpanded`, for one org group's own card in Org
+ * Admin's Groups section (2026-08 UX audit "Directories at scale") — each
+ * group renders collapsed by default behind its own `CollapsibleSection`,
+ * so its member list, "add member" input, and nesting picker are all
+ * unreachable until expanded. Unlike `ensureExpanded`'s exact
+ * `"<title> section"` match, each group's title combines its name with a
+ * dynamic member count, so this matches by the group's name as a substring
+ * instead. Also persists server-side per user across runs/specs sharing a
+ * persona, same caveat as `ensureExpanded` — hence the same idempotent
+ * "only click if collapsed" guard.
+ *
+ * Project-scoped groups (`ProjectAdminPage`'s own Groups section) moved off
+ * this exact same accordion shape to a per-group `SidePanel` (Phase 5,
+ * docs/decisions.md) — use `openProjectGroupPanel` below for those, not
+ * this helper.
  */
 export async function openGroupCard(page: Page, groupName: string): Promise<void> {
   const toggle = page.getByRole("button", { name: new RegExp(`^${groupName}`) });
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
   }
+}
+
+/**
+ * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
+ * section (Phase 5, docs/decisions.md) — replaces the pre-Phase-5
+ * always-expanded `CollapsibleSection` accordion `openGroupCard` (above)
+ * still serves for Org Admin's own group cards. A `SidePanel` has no
+ * expand/collapse state to race the way a `CollapsibleSection` does, so
+ * this isn't guarded the same idempotent way — clicking the row again while
+ * its own panel is already open is a harmless no-op re-render, not a
+ * toggle-shut.
+ *
+ * Returns the panel's own `dialog` locator (its accessible name is
+ * `"<group name> details"`), so callers scope every subsequent interaction
+ * to it rather than the whole page — necessary once more than one group in
+ * this run could plausibly match a page-wide selector for the same
+ * add-member input/role text.
+ */
+export async function openProjectGroupPanel(page: Page, groupName: string) {
+  await page.getByRole("button", { name: new RegExp(`^${groupName}`) }).click();
+  return page.getByRole("dialog", { name: `${groupName} details` });
 }
 
 /**

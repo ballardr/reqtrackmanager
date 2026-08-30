@@ -13,7 +13,10 @@ const metrics: ProjectMetrics = {
   change_requests_approved: 12,
   change_requests_rejected: 2,
   file_count: 8,
-  requirements_by_status: { draft: 4, reviewed: 3, approved: 5, completed: 10, archived: 2 },
+  // C-G-11: "completed" is no longer a `RequirementStatus` value (it's the
+  // independent `Requirement.is_completed` overlay now) — sums to 24
+  // (requirement_count) the same as before, just without that bucket.
+  requirements_by_status: { draft: 4, reviewed: 3, approved: 15, archived: 2 },
   stage_progress: [
     { stage_id: "s1", name: "Scoping", status: "completed", requirement_count: 10, completed_percent: 100 },
     { stage_id: "s2", name: "Build", status: "scoping", requirement_count: 14, completed_percent: 30 },

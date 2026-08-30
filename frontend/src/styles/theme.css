@@ -665,6 +665,15 @@ th:has(> .th-sort) {
   .side-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* On mobile the filter panel is always the second DOM child of
+     .side-grid (list/detail content first, filters second), so users had
+     to scroll past the entire list to reach it. Reorder it first in the
+     single-column mobile layout only — desktop's two-column grid position
+     is untouched since this rule lives inside the mobile-only breakpoint
+     above. */
+  .side-grid > .filter-panel {
+    order: -1;
+  }
   .resource-menu {
     flex-direction: column;
   }

@@ -61,9 +61,16 @@ def get_project_changes(
     # same transition (UX review: duplicate activity-feed entries).
     # `archived`/`unarchived`/`review_recorded` (requirement) and
     # `submitted`/`withdrawn`/approve-reject (change_request) don't bump a
-    # version and are unaffected.
+    # version and are unaffected. `completed`/`uncompleted` used to belong
+    # here too, back when marking a requirement completed bumped its
+    # version — since C-G-11's overlay-marker rework
+    # (`routers.requirements.complete_requirement`/`uncomplete_requirement`),
+    # neither creates a new `RequirementVersion` any more, so their
+    # `AuditEvent` is now the *only* record of the action; leaving them in
+    # this covered-actions set would silently drop them from the activity
+    # feed entirely, with no version-history entry left to stand in for them.
     VERSION_HISTORY_COVERED_ACTIONS: dict[str, set[str]] = {
-        "requirement": {"created", "updated", "approved", "completed", "uncompleted"},
+        "requirement": {"created", "updated", "approved"},
         "change_request": {"created"},
     }
 

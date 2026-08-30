@@ -9,6 +9,7 @@ C-U-03, C-U-11).
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
@@ -377,6 +378,20 @@ class ProjectGroupCreate(BaseModel):
     role: ProjectRole
 
 
+class ProjectGroupUpdate(BaseModel):
+    """Changes a project group's granted role after creation (Phase 5,
+    2026-08 UX audit — project groups' role was previously fixed at
+    creation, making "add members first, assign a role later" impossible).
+    Modeled directly on `OrgGroupUpdate`'s shape; unlike that schema, this
+    group's role is the *only* thing it ever grants (no separate
+    idp-sync-target concept for `ProjectGroup`), so it's a single required
+    field rather than an optional set-or-clear one. See
+    `routers.projects.update_project_group` for the C-U-08 guard this
+    triggers when moving a group's role away from `PROJECT_MANAGER`."""
+
+    role: ProjectRole
+
+
 class ProjectGroupMemberAdd(BaseModel):
     user_id: UUID | None = None
     org_group_id: UUID | None = None
@@ -396,6 +411,28 @@ class ProjectGroupOut(BaseModel):
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID]
     member_source_project_ids: list[UUID]
+
+
+class DirectMemberOut(BaseModel):
+    """One user holding at least one direct (non-group) `UserProjectRole`
+    grant on a project (`GET /{id}/direct-members`, Phase 5) — the new
+    Members page's editable-row source. Distinct from `EffectiveMemberOut`:
+    that endpoint answers "who effectively has access and why" (resolved,
+    with provenance, including inherited/group-derived access) for the
+    audit view; this one answers "which direct grants exist, per user" for
+    the editable table, since no endpoint previously listed
+    `UserProjectRole` as a directory (only mutate-by-user/by-email existed).
+
+    `roles` is genuinely multi-valued, not force-collapsed to one: the
+    unique constraint on `UserProjectRole` is `(user_id, project_id,
+    role)`, not one row per user, so a user can simultaneously hold, e.g.,
+    both `stakeholder` and `member` as separate direct grants.
+    """
+
+    user_id: UUID
+    display_name: str
+    email: str
+    roles: list[ProjectRole]
 
 
 class UserProjectRoleAssign(BaseModel):
@@ -425,6 +462,28 @@ class AssignByEmailOut(BaseModel):
     """
 
     outcome: str
+
+
+class PendingInviteOut(BaseModel):
+    """A project's outstanding (not-yet-accepted) `PendingInvite` — the
+    "resend a stalled invite" feature's list shape (Phase 3,
+    docs/decisions.md). Standard (non-SSO) `PendingInvite` flow only; an
+    `sso_only` org's invitees are provisioned immediately by
+    `services.invites.provision_sso_invite` and never get a row here (see
+    that scope decision in docs/decisions.md).
+
+    `status` is computed at read time (`expires_at` vs. now), not stored —
+    an expired invite is still listed (and still resendable) rather than
+    disappearing, since resending an expired one is the whole point of
+    this endpoint.
+    """
+
+    id: UUID
+    email: str
+    role: ProjectRole
+    status: Literal["pending", "expired"]
+    created_at: datetime
+    expires_at: datetime
 
 
 class StageProgressOut(BaseModel):

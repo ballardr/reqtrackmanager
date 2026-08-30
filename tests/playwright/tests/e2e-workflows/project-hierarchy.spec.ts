@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Opens a project by name from the project list, forced to tile view. A
@@ -155,7 +155,10 @@ test.describe("hierarchical (parent/child) projects", () => {
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
-      await selectProjectAdminGroup(page, "Project groups");
+      // Effective members moved onto its own "Members" section (Phase 5,
+      // docs/decisions.md) — the old combined "Project groups" tab no
+      // longer has it.
+      await selectProjectAdminGroup(page, "Members");
       await ensureExpanded(page, "Effective members");
       await page.getByRole("button", { name: "Show members" }).click();
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
@@ -244,12 +247,17 @@ test.describe("hierarchical (parent/child) projects", () => {
         await expect(gamma2SourceRow.locator(".badge")).toHaveText("Mirror all roles");
       });
 
-      await test.step("Gamma-1's own default 'Members' group can also define a member as 'Gamma-2's members' directly (no new group created — there is no group-delete endpoint, so this reuses an existing default group to stay cleanly reversible)", async () => {
+      await test.step("Gamma-1's own default 'Members' group can also define a member as 'Gamma-2's members' directly (reuses an existing default group, which stays cleanly reversible, rather than a throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it)", async () => {
         await selectProjectAdminGroup(page, "Project groups");
-        await openGroupCard(page, "Members");
-        await page.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
-        await page.getByRole("button", { name: "Reference another project's members…" }).click();
-        await expect(page.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+        const panel = await openProjectGroupPanel(page, "Members");
+        await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+        await panel.getByRole("button", { name: "Reference another project's members…" }).click();
+        await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+        // Phase 5: the referenced-project line also links to that project's
+        // own new Members page now, with a "this is live" clarifying hint.
+        await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
+        await expect(panel.getByText(/Live/)).toBeVisible();
+        await page.getByRole("button", { name: "Close" }).click();
       });
     } finally {
       await test.step("clean up: remove both additions so this shared fixture is left as found", cleanup);

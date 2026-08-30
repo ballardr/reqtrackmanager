@@ -58,7 +58,7 @@ export function FilterPanel({
 }) {
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
   return (
-    <div className="card stack" style={{ alignSelf: "flex-start", minWidth: 220 }}>
+    <div className="card stack filter-panel" style={{ alignSelf: "flex-start", minWidth: 220 }}>
       <div className="stack" style={{ gap: "0.5rem" }}>
         {total !== undefined && <ResultCount matching={matching ?? total} total={total} />}
         {onSearchChange && (

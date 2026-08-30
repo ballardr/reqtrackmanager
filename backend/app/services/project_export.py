@@ -281,6 +281,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         user_ids.add(r.creator_id)
         if r.archived_by:
             user_ids.add(r.archived_by)
+        if r.completed_by:
+            user_ids.add(r.completed_by)
     for link in links:
         user_ids.add(link.created_by)
     for cr in change_requests:
@@ -350,6 +352,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "unique_code": r.unique_code, "component_prefix": component_prefix_by_id.get(r.component_id),
             "category_prefix": category_prefix, "creator_email": email(r.creator_id),
             "is_archived": r.is_archived, "archived_at": _j(r.archived_at), "archived_by_email": email(r.archived_by),
+            # C-G-11 overlay marker (`models.requirement.Requirement.is_completed`),
+            # round-tripped the same way as the sibling archive overlay above.
+            "is_completed": r.is_completed, "completed_at": _j(r.completed_at), "completed_by_email": email(r.completed_by),
             "versions": [serialize_requirement_version(v) for v in versions_by_req.get(r.id, [])],
             "keywords": keywords_by_req.get(r.id, []), "attachments": attachments_by_req.get(r.id, []),
         })
@@ -692,6 +697,8 @@ def apply_project_data(
             creator_id=users.resolve(r.get("creator_email"), required=True, context=f"Requirement {r['unique_code']} creator"),
             is_archived=r.get("is_archived", False), archived_at=_dt(r.get("archived_at")),
             archived_by=users.resolve(r.get("archived_by_email"), required=False, context=f"Requirement {r['unique_code']} archiver"),
+            is_completed=r.get("is_completed", False), completed_at=_dt(r.get("completed_at")),
+            completed_by=users.resolve(r.get("completed_by_email"), required=False, context=f"Requirement {r['unique_code']} completer"),
         )
         db.add(requirement)
         db.flush()

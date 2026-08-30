@@ -40,6 +40,24 @@ class Requirement(UUIDPKMixin, TimestampMixin, Base):
         is_archived: Soft-delete flag; archived requirements are hidden from
             default views but their full version history is preserved
             (C-A-06).
+        is_completed: Overlay marker (C-G-11) — "independently of lifecycle
+            state, a requirement may be marked completed... subject to the
+            potential of periodic review where it may later be reversed to
+            non-compliant." Deliberately not a `RequirementStatus` value:
+            completion sits on top of the `approved` lifecycle status rather
+            than replacing it, so a completed requirement's `status` stays
+            `approved` throughout (see `services.requirements.LOCKED_STATUSES`
+            and `routers.requirements.complete_requirement`/
+            `uncomplete_requirement`, which set/clear these three fields
+            directly rather than writing a new `RequirementVersion` — marking
+            something complete doesn't change its content). `completed_at`/
+            `completed_by` mirror `archived_at`/`archived_by`'s own shape.
+            Cleared automatically when a `FAILED` review outcome is recorded
+            against a completed requirement (`record_review_outcome`) — the
+            concrete mechanism behind C-G-11's "reversed to non-compliant...
+            when a review/audit occurs" — or explicitly by a project manager
+            approving a change request with `clear_completion=True`
+            (`decide_change_request`).
     """
 
     __tablename__ = "requirements"
@@ -58,6 +76,10 @@ class Requirement(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     versions: Mapped[list[RequirementVersion]] = relationship(
         back_populates="requirement", order_by="RequirementVersion.version_number"

@@ -131,6 +131,8 @@ def _to_out(db: Session, requirement: Requirement, version: RequirementVersion, 
         category_id=requirement.category_id, target_stage_id=version.target_stage_id, level=version.level,
         sort_order=version.sort_order, creator_id=requirement.creator_id,
         is_archived=requirement.is_archived, is_locked=is_locked(version),
+        is_completed=requirement.is_completed, completed_at=requirement.completed_at,
+        completed_by=requirement.completed_by,
         keywords=get_keywords(db, requirement.id), custom_fields=version.custom_fields,
         created_at=requirement.created_at, updated_at=version.created_at,
         is_subscribed=engagement.is_subscribed(db, current_user_id, "requirement", requirement.id),
@@ -212,6 +214,7 @@ def list_requirements(
     keyword: str | None = None,
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
+    is_completed: bool | None = None,
     target_stage_id: UUID | None = None,
     has_comments: bool | None = None,
     only_watched: bool | None = None,
@@ -223,7 +226,13 @@ def list_requirements(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
-    and filter-panel query params (status/target version/comments/watched).
+    and filter-panel query params (status/completed/target version/comments/watched).
+
+    `is_completed` filters on the `Requirement.is_completed` overlay marker
+    (C-G-11) independently of `status` — completion is no longer a
+    `RequirementStatus` value, so it's its own boolean query param rather
+    than a `status` option, matching the frontend's separate "Completed"
+    `FilterCheckbox` alongside the status `<select>`.
 
     `limit`/`offset` (U-P-06) are optional: omitting both returns every
     matching requirement, unchanged from before pagination existed (C-G-05:
@@ -243,8 +252,8 @@ def list_requirements(
     `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
     2026-08 UX audit roadmap) is a second response header reporting the
     count within only the mandatory project + default archived-visibility
-    scope, before component/category/search/status/stage/comments/watched
-    filters below narrow it further — unlike `X-Total-Count`, it does not
+    scope, before component/category/search/status/completed/stage/comments/
+    watched filters below narrow it further — unlike `X-Total-Count`, it does not
     change when the caller adds a filter or search term, so the frontend
     can show "12 matching · 57 total" instead of just a bare filtered count.
     """
@@ -256,6 +265,8 @@ def list_requirements(
         db.scalar(select(func.count()).select_from(query.subquery()))
     )
 
+    if is_completed is not None:
+        query = query.where(Requirement.is_completed.is_(is_completed))
     if component_id:
         query = query.where(Requirement.component_id == component_id)
     if category_id:
@@ -602,13 +613,11 @@ def update_requirement(
         # approval_authority, self-approving and locking it.
         if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
-    if payload.status == RequirementStatus.COMPLETED:
-        # Completion has its own dedicated, precondition-checked endpoint
-        # (POST .../complete, requiring the current status to already be
-        # "approved") — allowing it here too would let a caller jump
-        # straight from draft to completed in one request, skipping that
-        # precondition entirely regardless of role.
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use POST .../complete to mark a requirement completed.")
+    # The previous reject-COMPLETED-in-payload guard that lived here is now
+    # moot: `COMPLETED` isn't a valid `RequirementStatus` value at all
+    # (C-G-11 — completion is `Requirement.is_completed`, an overlay marker,
+    # not a lifecycle status), so Pydantic/enum validation rejects it on the
+    # way in before this handler ever runs, with no special case needed.
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
@@ -713,6 +722,15 @@ def record_review_outcome(
     as a fallback. Doesn't touch `review_date` itself (see
     `services/reviews.py`'s due-list definition) — the requirement drops off
     the due list because a review now exists, not because the date changed.
+
+    A `FAILED` outcome recorded against a currently-completed requirement
+    also clears its completion overlay (`is_completed`/`completed_at`/
+    `completed_by`) — the concrete mechanism behind C-G-11's "[a requirement
+    marked completed] may later be reversed to non-compliant... when a
+    review/audit occurs." Logged as a distinct audit event
+    (`completion_cleared_by_review`) from `review_recorded`, so it's
+    traceable that the reviewer's outcome, not some other action, is what
+    dropped the requirement back off the completed list.
     """
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
@@ -733,6 +751,12 @@ def record_review_outcome(
     db.add(review)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="review_recorded",
               actor_id=current_user.id, project_id=project_id, detail={"outcome": payload.outcome.value})
+    if payload.outcome == RequirementReviewOutcome.FAILED and requirement.is_completed:
+        requirement.is_completed = False
+        requirement.completed_at = None
+        requirement.completed_by = None
+        log_event(db, entity_type="requirement", entity_id=requirement.id, action="completion_cleared_by_review",
+                  actor_id=current_user.id, project_id=project_id, detail={"reason": "failed_review_outcome"})
     db.commit()
     db.refresh(review)
     return RequirementReviewOut(
@@ -792,26 +816,32 @@ def complete_requirement(
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Marks an approved requirement completed (C-P-03), gated the same as
-    archiving — a status transition a project manager can make directly,
-    not content that needs to go through a change request. Who/when is
-    captured by the resulting version's created_by/created_at, same as
-    every other requirement edit."""
+    """Marks an approved requirement completed (C-P-03, C-G-11), gated the
+    same as archiving — a status transition a project manager can make
+    directly, not content that needs to go through a change request.
+
+    Sets `is_completed`/`completed_at`/`completed_by` directly on the
+    `Requirement` row rather than calling `apply_new_version` — completion
+    is an overlay marker independent of lifecycle state (C-G-11), not a
+    change to the requirement's content, so it must not bump the version
+    number the way every actual content/status edit does.
+    """
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     current_version = get_current_version(db, requirement.id)
     if current_version.status != RequirementStatus.APPROVED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only an approved requirement can be marked completed.")
-    new_version = apply_new_version(
-        db, requirement, current_version, current_user,
-        status_value=RequirementStatus.COMPLETED, change_note="Marked completed.",
-    )
+    if requirement.is_completed:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is already marked completed.")
+    requirement.is_completed = True
+    requirement.completed_at = datetime.now(UTC)
+    requirement.completed_by = current_user.id
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="completed",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(requirement)
-    return _to_out(db, requirement, new_version, current_user.id)
+    return _to_out(db, requirement, current_version, current_user.id)
 
 
 @router.post("/{requirement_id}/uncomplete", response_model=RequirementOut)
@@ -820,22 +850,25 @@ def uncomplete_requirement(
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Reverts a completed requirement back to approved, to correct a mistake."""
+    """Reverts a completed requirement's completion overlay, to correct a
+    mistake — the requirement's lifecycle `status` was never changed by
+    `complete_requirement` in the first place (it stays `approved`
+    throughout), so this only clears `is_completed`/`completed_at`/
+    `completed_by`, again without creating a new version."""
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     current_version = get_current_version(db, requirement.id)
-    if current_version.status != RequirementStatus.COMPLETED:
+    if not requirement.is_completed:
         raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is not marked completed.")
-    new_version = apply_new_version(
-        db, requirement, current_version, current_user,
-        status_value=RequirementStatus.APPROVED, change_note="Completion reverted.",
-    )
+    requirement.is_completed = False
+    requirement.completed_at = None
+    requirement.completed_by = None
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="uncompleted",
               actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(requirement)
-    return _to_out(db, requirement, new_version, current_user.id)
+    return _to_out(db, requirement, current_version, current_user.id)
 
 
 @router.get("/{requirement_id}/history", response_model=list[RequirementVersionOut])

@@ -116,6 +116,17 @@ def _build_rich_project(client, admin_token, org_id):
     assert decide_resp.status_code == 200, decide_resp.text
 
     _approve_current_stage(client, admin_token, project["id"])
+
+    # C-G-11 overlay marker: also mark `second_req` (still `approved` after
+    # the CR decision above) completed, so the export/import round trip has
+    # something real to carry over on `is_completed`/`completed_at`/
+    # `completed_by` — see the assertion in
+    # test_import_reconstructs_structure_and_full_history_in_the_same_org.
+    complete_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{second_req['id']}/complete", headers=auth_headers(admin_token)
+    )
+    assert complete_resp.status_code == 200, complete_resp.text
+
     return project, requirement, req_field
 
 
@@ -169,6 +180,11 @@ def test_import_reconstructs_structure_and_full_history_in_the_same_org(client, 
     renamed_req = next(r for r in requirements if r["name"] == "Renamed via CR")
     assert renamed_req["status"] == "approved"  # approved via the CR, then stage approval locked it
     assert renamed_req["is_locked"] is True
+    # C-G-11 overlay marker round-trips through export/import too, same as
+    # the sibling archive overlay does.
+    assert renamed_req["is_completed"] is True
+    assert renamed_req["completed_at"] is not None
+    assert renamed_req["completed_by"] is not None
     history = client.get(
         f"/api/v1/projects/{new_project['id']}/requirements/{renamed_req['id']}/history", headers=auth_headers(admin_token)
     ).json()

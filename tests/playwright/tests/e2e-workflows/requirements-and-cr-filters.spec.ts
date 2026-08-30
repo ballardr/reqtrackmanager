@@ -83,6 +83,19 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await settled();
     });
 
+    await test.step("completed filter narrows the list independently of status (C-G-11)", async () => {
+      // "Completed" is no longer a status <select> option (it's the
+      // separate `Requirement.is_completed` overlay) — a dedicated filter
+      // checkbox alongside Status instead.
+      const statusOptionLabels = await page.getByLabel("Status").locator("option").allTextContents();
+      expect(statusOptionLabels).not.toContain("Completed");
+
+      await page.getByLabel("Completed").check();
+      await expect(page.getByText(draftReqName)).toHaveCount(0);
+      await page.getByLabel("Completed").uncheck();
+      await settled();
+    });
+
     await test.step("category filter narrows the list", async () => {
       const categorySelect = page.getByLabel("Category");
       const options = await categorySelect.locator("option").allTextContents();

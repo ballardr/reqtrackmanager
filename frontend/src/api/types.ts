@@ -22,12 +22,15 @@ export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
   completed: "Implemented",
   archived: "Archived",
 };
-export type RequirementStatus = "draft" | "reviewed" | "approved" | "completed" | "archived";
+// C-G-11: completion is an overlay marker independent of lifecycle status
+// (`Requirement.is_completed`, below), not a `RequirementStatus` value —
+// see docs/decisions.md's entry on this rework. `"completed"` deliberately
+// does not appear here any more.
+export type RequirementStatus = "draft" | "reviewed" | "approved" | "archived";
 export const REQUIREMENT_STATUS_LABEL: Record<RequirementStatus, string> = {
   draft: "Draft",
   reviewed: "Reviewed",
   approved: "Approved",
-  completed: "Completed",
   archived: "Archived",
 };
 export type RequirementLevel = "requirement" | "recommended" | "optional";
@@ -81,9 +84,14 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
  * since they aren't ordered relative to each other. Otherwise `member` is
  * the floor. Deliberately NOT applied to `OrgRole` — that's a different,
  * unordered three-value enum with no defined precedence in the style
- * guide's pattern, unlike `ProjectRole`'s real four-tier structure — and
- * NOT applied to any access-audit view (e.g. Org Admin's "View access"
- * panel), which exists specifically to show the full, uncollapsed set.
+ * guide's pattern, unlike `ProjectRole`'s real four-tier structure.
+ *
+ * As of the 2026-08-30 reversal (docs/decisions.md), this IS now applied to
+ * access-audit views too — e.g. Org Admin's "View access" panel uses this
+ * as each project row's *default* display, with a per-row toggle revealing
+ * the full, uncollapsed set on demand, so audit detail stays reachable
+ * without being the default view. See `docs/ux-style-guide.md`'s "Pattern:
+ * role display" section for the current rule.
  */
 export function collapseProjectRoles(roles: ProjectRole[]): ProjectRole[] {
   if (roles.includes("project_manager")) return ["project_manager"];
@@ -152,6 +160,8 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   reordered: "reordered",
   completed: "completed",
   uncompleted: "reopened",
+  completion_cleared_by_review: "cleared completion (failed review)",
+  completion_cleared_via_change_request: "cleared completion via change request",
   granted: "granted",
   revoked: "revoked",
   member_added: "added a member",
@@ -363,6 +373,25 @@ export interface OutsideDomainUser {
  * `AssignByEmailOut`'s docstring in the backend schema for what each
  * value means. */
 export type AssignByEmailOutcome = "added" | "invited" | "sso_provisioned";
+
+/** A project's outstanding (not-yet-accepted) `PendingInvite` — see
+ * `PendingInviteOut`'s docstring in the backend schema. Standard
+ * (non-SSO) invite flow only (Phase 3, docs/decisions.md); `status` is
+ * computed server-side from `expires_at`, not stored. */
+export type PendingInviteStatus = "pending" | "expired";
+export const PENDING_INVITE_STATUS_LABEL: Record<PendingInviteStatus, string> = {
+  pending: "Pending",
+  expired: "Expired",
+};
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  role: ProjectRole;
+  status: PendingInviteStatus;
+  created_at: string;
+  expires_at: string;
+}
 
 export interface SystemUser {
   user_id: string;
@@ -634,6 +663,18 @@ export interface ProjectGroup {
   member_source_project_ids: string[];
 }
 
+/** One user holding at least one direct (non-group) `UserProjectRole` grant
+ * on a project (`GET /{project_id}/direct-members`, Phase 5) — the Members
+ * page's editable-row source. See `DirectMemberOut`'s docstring in the
+ * backend schema: `roles` is genuinely multi-valued (a user can hold more
+ * than one simultaneous direct grant), not collapsed to one row per role. */
+export interface DirectProjectMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+  roles: ProjectRole[];
+}
+
 export interface StageProgress {
   stage_id: string;
   name: string;
@@ -671,6 +712,11 @@ export interface Requirement {
   creator_id: string;
   is_archived: boolean;
   is_locked: boolean;
+  // C-G-11 overlay marker, independent of `status` — see the note on
+  // `RequirementStatus` above.
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
   keywords: string[];
   custom_fields: Record<string, unknown>;
   created_at: string;

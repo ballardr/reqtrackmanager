@@ -247,9 +247,15 @@ def set_requirement_status(
     return r.json()
 
 
-def complete_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
+def complete_requirement(headers: dict, project_id: str, requirement_id: str) -> dict:
+    """Marks an already-approved requirement completed (C-G-11 overlay
+    marker) — returns the updated requirement so callers can refresh their
+    local copy's `is_completed`/`completed_at`/`completed_by` rather than
+    hand-patching a stale `status` field, now that completing no longer
+    changes `status` at all."""
     r = httpx.post(f"{BASE}/projects/{project_id}/requirements/{requirement_id}/complete", headers=headers, timeout=30)
     r.raise_for_status()
+    return r.json()
 
 
 def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
@@ -336,9 +342,10 @@ def create_add_action_change_request(
     action_title: str, action_description: str, action_type_id: str, reason: str, assignee_id: str | None = None,
 ) -> dict:
     """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
-    only valid once `requirement_id` is already locked (APPROVED/COMPLETED);
-    see `create_change_request`'s sibling helpers, which each already
-    require the same, for a requirement to target with this."""
+    only valid once `requirement_id` is already locked (status APPROVED,
+    completed or not — C-G-11 completion no longer changes `status`); see
+    `create_change_request`'s sibling helpers, which each already require
+    the same, for a requirement to target with this."""
     body = {
         "kind": "add_action", "requirement_id": requirement_id, "reason": reason,
         "proposed_action_title": action_title, "proposed_action_description": action_description,
@@ -612,9 +619,12 @@ def seed_project(
                 reviewer_id = demo_admin_id
             target_status = "completed" if status_value == "complete" else status_value
             if target_status == "completed":
+                # C-G-11: completion is an overlay on top of "approved", not
+                # its own status — `req["status"]` correctly stays
+                # "approved" after this; `req["is_completed"]` is what now
+                # reflects the demo intent.
                 req = set_requirement_status(headers, project["id"], req, "approved")
-                complete_requirement(headers, project["id"], req["id"])
-                req["status"] = "completed"
+                req = complete_requirement(headers, project["id"], req["id"])
             else:
                 req = set_requirement_status(headers, project["id"], req, target_status, review_date=review_date, reviewer_id=reviewer_id)
         elif "review_in_days" in extra:
@@ -723,8 +733,9 @@ def main() -> None:
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
-    # `remote_id_req` is seeded directly into "complete" status (DRONE_
-    # REQUIREMENTS, above) — already locked, so adding an action to it goes
+    # `remote_id_req` is seeded directly into "complete" (DRONE_REQUIREMENTS,
+    # above) — approved and marked completed (C-G-11), so already locked
+    # (status stays APPROVED throughout), so adding an action to it goes
     # through an ADD_ACTION change request (2026-08 UX audit roadmap item
     # 514) rather than the direct create-and-link call every other action
     # below still uses on its still-draft target requirement.
@@ -757,7 +768,7 @@ def main() -> None:
 
     print("Attaching files across Falcon-3 (direct requirement attachment + action attachment)...")
     # `preflight_req`, not `remote_id_req` — `remote_id_req` is seeded
-    # directly into "complete" status (DRONE_REQUIREMENTS, above) and is
+    # directly into "complete" (DRONE_REQUIREMENTS, above) and is
     # therefore locked from the moment it's created, so a *direct*
     # requirement-file upload against it always 409s ("must be added via a
     # change request", `routers/requirements.py`) — the same lock the
