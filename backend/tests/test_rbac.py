@@ -6,6 +6,7 @@ from tests.conftest import (
     create_org_admin_in,
     create_org_user,
     create_project,
+    direct_project_roles,
     login,
 )
 
@@ -33,7 +34,10 @@ def test_project_creator_can_create_project(client, admin_token, org_id):
 
 
 def test_project_creator_becomes_project_manager(client, admin_token, org_id):
-    """The project creator is added to the Project Managers group (C-U-10)."""
+    """The project creator is granted a direct PROJECT_MANAGER role (C-U-10)
+    — no group is created at all (follow-up UX batch Phase C, 2026-08-31,
+    docs/decisions.md: the four auto-created "standard" project groups were
+    removed; a fresh project's initial manager grant is now always direct)."""
     create_org_user(client, admin_token, org_id, "creator2@example.com", role="project_creator")
     token = login(client, "creator2@example.com", "Password123!")
     project = client.post(
@@ -42,9 +46,10 @@ def test_project_creator_becomes_project_manager(client, admin_token, org_id):
     ).json()
 
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(token)).json()
-    manager_group = next(g for g in groups if g["role"] == "project_manager")
+    assert groups == []
+
     me = client.get("/api/v1/auth/me", headers=auth_headers(token)).json()
-    assert me["id"] in manager_group["member_user_ids"]
+    assert direct_project_roles(project["id"]).get(me["id"]) == {"project_manager"}
 
 
 def test_member_cannot_create_requirement(client, admin_token, org_id):
@@ -105,8 +110,13 @@ def test_org_admin_can_manage_group_membership_on_a_project_with_no_role(client,
     project = create_project(client, creator_token, org["id"], "Group Manage Project")
     target_id = create_org_user(client, admin_token, org["id"], "reach_target@example.com", role="member")
 
-    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(org_admin_token)).json()
-    member_group = next(g for g in groups if g["role"] == "member")
+    # No group is auto-created on project creation any more (follow-up UX
+    # batch Phase C, 2026-08-31) — create the member-role group this test
+    # needs explicitly.
+    member_group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Members", "role": "member"},
+        headers=auth_headers(creator_token),
+    ).json()
 
     add_resp = client.post(
         f"/api/v1/projects/{project['id']}/groups/{member_group['id']}/members",

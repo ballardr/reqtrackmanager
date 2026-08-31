@@ -439,7 +439,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     for group in groups:
         members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
         groups_json.append({
-            "name": group.name, "role": group.role.value, "is_default": group.is_default,
+            "name": group.name, "role": group.role.value,
             "member_emails": [email(m.user_id) for m in members if m.user_id and email(m.user_id)],
         })
 
@@ -671,7 +671,13 @@ def apply_project_data(
     # project manager regardless (see the `get_effective_project_managers` fallback
     # below), matching the same guarantee `create_project` gives its caller.
     for g in data.get("groups", []):
-        db.add(ProjectGroup(project_id=project.id, name=g["name"], role=ProjectRole(g["role"]), is_default=g.get("is_default", False)))
+        # A bundle exported before Phase C (follow-up UX batch, 2026-08-31)
+        # may still carry an `"is_default"` key from the old format —
+        # ignored on import, same as any other retired field: `is_default`
+        # no longer exists on `ProjectGroup` at all, and re-creating a
+        # group from a bundle is always an ordinary, fully-manageable group
+        # regardless of what it originally was.
+        db.add(ProjectGroup(project_id=project.id, name=g["name"], role=ProjectRole(g["role"])))
 
     def import_file_ref(att: dict, uploaded_by_email_key: str) -> FileAsset | None:
         data_bytes = file_bytes_by_ref.get(att["file_ref"])

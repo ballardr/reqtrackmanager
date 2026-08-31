@@ -110,13 +110,16 @@ def add_member_source(
     r.raise_for_status()
 
 
-def get_project_group_id(headers: dict, project_id: str, group_name: str) -> str:
-    """Looks up a project group's id by its exact name — used to reach one
-    of the four default groups every project seeds (`DEFAULT_GROUPS` in
-    `routers/projects.py`) without hardcoding an id."""
-    r = httpx.get(f"{BASE}/projects/{project_id}/groups", headers=headers, timeout=30)
+def create_project_group(headers: dict, project_id: str, name: str, role: str) -> dict:
+    """Creates a project group explicitly. Projects no longer auto-create
+    any groups on creation (follow-up UX batch Phase C, 2026-08-31 removed
+    the four "standard" default groups — see docs/decisions.md), so any
+    group this script wants to demonstrate (e.g. a cross-project source
+    reference below) has to be created as its own explicit step now,
+    rather than reached by name via a pre-existing default."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/groups", json={"name": name, "role": role}, headers=headers, timeout=30)
     r.raise_for_status()
-    return next(g["id"] for g in r.json() if g["name"] == group_name)
+    return r.json()
 
 
 def add_project_group_source_reference(headers: dict, project_id: str, group_id: str, source_project_id: str) -> None:
@@ -880,12 +883,13 @@ def main() -> None:
     # Platform project, so demo_stakeholder's real stakeholder role on Cloud
     # also reaches Falcon-3 without a second, duplicate direct grant there.
     add_member_source(h_pm, drone["id"], cloud["id"], mirror_mode="mirror_role", mirror_filter_role="stakeholder")
-    # Project-referencing group: Solstice Cloud Platform's own default
-    # "Stakeholders" group is defined as "Falcon-3's own direct members" —
-    # the second mechanism, reached from the group side rather than the
-    # project side.
-    cloud_stakeholders_group_id = get_project_group_id(h_pm, cloud["id"], "Stakeholders")
-    add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group_id, drone["id"])
+    # Project-referencing group: Solstice Cloud Platform gets its own
+    # explicit "Stakeholders" group (no default group exists to reach by
+    # name any more — Phase C, follow-up UX batch, 2026-08-31), defined as
+    # "Falcon-3's own direct members" — the second cross-project mechanism,
+    # reached from the group side rather than the project side.
+    cloud_stakeholders_group = create_project_group(h_pm, cloud["id"], "Stakeholders", "stakeholder")
+    add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group["id"], drone["id"])
 
     cloud_components = {
         "API": create_component(h_pm, cloud["id"], "API", "API"),

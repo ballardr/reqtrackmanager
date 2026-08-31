@@ -156,6 +156,74 @@ export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
   },
 };
 
+/** Phase E (follow-up UX batch, 2026-08-31) — Access Review moved onto the
+ * shared `DirectoryTable` + `FilterPanel` layout (Org Admin's Users table
+ * is the direct composition template). Pins that the pre-existing "view"/
+ * "includeDeactivated" filters still behave identically now that they're a
+ * `FilterField`/`FilterCheckbox` instead of a bare `<select>`/checkbox row,
+ * and that the new search box narrows the request via the new backend
+ * `search` param. */
+export const AccessReviewFilterPanelSearchAndFilters: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/system/branding")) return SERVER_SETTINGS;
+      if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      if (!path.includes("/system/users")) throw new Error(`unmocked path: ${path}`);
+      return { items: [systemUser({ email: "orphan@example.com" })], total: 1 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+
+    // "Show" (view) is now a `FilterField` <select> — same accessible name
+    // and options as the old bare <select> it replaced.
+    await expect(canvas.getByLabelText("Show")).toBeInTheDocument();
+    // "includeDeactivated" is now a `FilterCheckbox` — same accessible name.
+    await expect(canvas.getByLabelText("Include deactivated accounts")).toBeInTheDocument();
+
+    const search = canvas.getByPlaceholderText("Search by name or email");
+    await userEvent.type(search, "orphan");
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("search=orphan"))
+    );
+
+    // Follow-up UX fix: this table's columns (Email, Name, Last login,
+    // Created, Organizations, Groups, Actions) crowded the old
+    // `.side-grid` sidebar, so its `FilterPanel` now renders `layout="top"`
+    // (a full-width bar above the table) instead — see
+    // docs/ux-style-guide.md's "Pattern: filter panel placement — side vs.
+    // top".
+    await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
+  },
+};
+
+/** Column-header sorting (Phase E) — Email/Name/Last login/Created are
+ * sortable via `DirectoryTable`'s `SortableHeader`, backed by
+ * `list_system_users`'s new `sort`/`order` params (mirrors `list_org_
+ * users`'s pre-existing contract) so the full filtered result re-sorts
+ * correctly, not just the currently loaded page. */
+export const AccessReviewSortByEmail: Story = {
+  beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(/sort=email&order=asc/))
+    );
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(/sort=email&order=desc/))
+    );
+  },
+};
+
 export const PlatformBrandingTab: Story = {
   beforeEach: () => mockServerManagementApis([]),
   play: async ({ canvasElement }) => {

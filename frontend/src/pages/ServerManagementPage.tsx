@@ -5,10 +5,13 @@ import { useParams } from "react-router-dom";
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { DirectoryColumn } from "../components/DirectoryTable";
+import { DirectoryTable } from "../components/DirectoryTable";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
-import { LoadMoreButton } from "../components/LoadMoreButton";
+import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
+import { cycleSort, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -22,11 +25,22 @@ type ReviewView = "orphaned" | "server_admins" | "all";
 
 type AccessReviewConfirmKind = "deactivate" | "ban" | "grantServerAdmin" | "revokeServerAdmin";
 
+/** Sortable columns of the Access Review `DirectoryTable` (Phase E,
+ * follow-up UX batch, 2026-08-31) — mirrors `list_org_users`'s own
+ * `sort`/`order` contract; `created_at` is the one addition `/system/users`
+ * needed beyond that (Org Users has no "Created" column). */
+type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at";
+
 function AccessReviewTab() {
   const [users, setUsers] = useState<SystemUser[] | null>(null);
   const [total, setTotal] = useState(0);
   const [view, setView] = useState<ReviewView>("orphaned");
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
+  const [search, setSearch] = useState("");
+  // Column-header sorting (Phase E) — this table is backend-paginated
+  // (`PAGE_SIZE`/`LoadMoreButton`), so sorting has to be honoured
+  // server-side, same reasoning as Org Admin's Users table.
+  const [sort, setSort] = useState<SortState<SystemUserSortKey> | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [patResult, setPatResult] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
@@ -43,6 +57,11 @@ function AccessReviewTab() {
     if (view === "orphaned") params.set("no_org_membership", "true");
     if (view === "server_admins") params.set("is_server_admin", "true");
     if (!includeDeactivated) params.set("is_active", "true");
+    if (search) params.set("search", search);
+    if (sort) {
+      params.set("sort", sort.key);
+      params.set("order", sort.direction);
+    }
     return params;
   }
 
@@ -53,14 +72,25 @@ function AccessReviewTab() {
   }
 
   async function reload() {
-    setUsers(null);
+    // Deliberately doesn't reset `users` to `null` first (unlike the old
+    // pre-Phase-E implementation): the search box now lives inside the
+    // same `.side-grid`/`FilterPanel` this list renders, so nulling `users`
+    // on every keystroke would unmount the input mid-type (and drop focus)
+    // rather than just refresh the rows — same reasoning Org Admin's Users
+    // table's `loadUsers` already follows (`null` is only ever the initial,
+    // pre-first-fetch state, shown once via the `!users` Spinner guard
+    // below). Rows simply stay as-is until the new page resolves.
     await loadUsers(0, false);
   }
 
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, includeDeactivated]);
+  }, [view, includeDeactivated, search, sort]);
+
+  function applySort(key: SystemUserSortKey) {
+    setSort(cycleSort(sort, key));
+  }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
     setActionError(null);
@@ -148,107 +178,132 @@ function AccessReviewTab() {
     },
   };
 
+  // Rebuilt on the shared `DirectoryTable` (Phase 0) inside the standard
+  // `.side-grid` + `FilterPanel` layout every other directory in this app
+  // now uses — replacing the old bare `<table>` + inline filter-control row
+  // (2026-08-31, Phase E, follow-up UX batch — see docs/decisions.md).
+  // `view`/`includeDeactivated` behave identically to before, just hosted
+  // as a `FilterField`/`FilterCheckbox`; `search` and column-header sorting
+  // are new (see `list_system_users`'s own docstring for the backend side).
+  const usersColumns: DirectoryColumn<SystemUser>[] = [
+    { key: "email", label: strings.system.email, sortable: true, render: (u) => u.email },
+    { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
+    {
+      // Comma-joined names have no natural order — not sortable, per style
+      // guide "Pattern: sortable column header".
+      key: "organizations", label: strings.system.organizations(orgLabelPlural),
+      render: (u) =>
+        u.organization_names.length > 0
+          ? u.organization_names.join(", ")
+          : u.organization_count > 0
+            ? strings.system.organizationCount(u.organization_count, orgLabel)
+            : strings.system.noOrganizations,
+    },
+    {
+      key: "groups", label: strings.system.groups,
+      render: (u) => (u.group_names.length > 0 ? u.group_names.join(", ") : "—"),
+    },
+    {
+      key: "last_login_at", label: strings.system.lastLogin, sortable: true,
+      render: (u) => (u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never),
+    },
+    {
+      key: "created_at", label: strings.system.created, sortable: true,
+      render: (u) => new Date(u.created_at).toLocaleDateString(),
+    },
+    {
+      key: "actions", label: "",
+      render: (u) => (
+        <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
+          {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
+          {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
+          {u.is_server_admin && <span className="text-muted">{strings.system.serverAdminBadge}</span>}
+          {!u.has_org_membership &&
+            (u.is_active ? (
+              <button className="btn" onClick={() => deactivate(u.user_id)}>
+                {strings.system.deactivate}
+              </button>
+            ) : (
+              <button className="btn" onClick={() => reactivate(u.user_id)}>
+                {strings.system.reactivate}
+              </button>
+            ))}
+          {!u.has_org_membership &&
+            (u.is_banned ? (
+              <button className="btn" onClick={() => unban(u.user_id)}>
+                {strings.system.unban}
+              </button>
+            ) : (
+              <button className="btn btn-danger" onClick={() => ban(u.user_id)}>
+                {strings.system.ban}
+              </button>
+            ))}
+          {u.is_server_admin ? (
+            <button className="btn btn-danger" onClick={() => revokeServerAdmin(u.user_id)}>
+              {strings.system.revokeServerAdmin}
+            </button>
+          ) : (
+            <button className="btn" onClick={() => grantServerAdmin(u.user_id)}>
+              {strings.system.grantServerAdmin}
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="stack">
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
-        <div className="row" style={{ gap: "1rem", alignItems: "center" }}>
-          <label className="row" style={{ gap: "0.4rem" }}>
-            {strings.system.view}
-            <select className="input" value={view} onChange={(e) => setView(e.target.value as ReviewView)}>
-              <option value="orphaned">{strings.system.viewOrphaned}</option>
-              <option value="server_admins">{strings.system.viewServerAdmins}</option>
-              <option value="all">{strings.system.viewAll}</option>
-            </select>
-          </label>
-          <label className="row" style={{ gap: "0.4rem" }}>
-            <input
-              type="checkbox"
-              checked={includeDeactivated}
-              onChange={(e) => setIncludeDeactivated(e.target.checked)}
-            />
-            {strings.system.includeDeactivated}
-          </label>
-        </div>
-
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
 
         {!users ? (
           <Spinner />
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>{strings.system.email}</th>
-                  <th>{strings.system.name}</th>
-                  <th>{strings.system.organizations(orgLabelPlural)}</th>
-                  <th>{strings.system.groups}</th>
-                  <th>{strings.system.lastLogin}</th>
-                  <th>{strings.system.created}</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.user_id}>
-                    <td>{u.email}</td>
-                    <td>{u.display_name}</td>
-                    <td>
-                      {u.organization_names.length > 0
-                        ? u.organization_names.join(", ")
-                        : u.organization_count > 0
-                          ? strings.system.organizationCount(u.organization_count, orgLabel)
-                          : strings.system.noOrganizations}
-                    </td>
-                    <td>{u.group_names.length > 0 ? u.group_names.join(", ") : "—"}</td>
-                    <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : strings.system.never}</td>
-                    <td>{new Date(u.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
-                        {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
-                        {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
-                        {u.is_server_admin && <span className="text-muted">{strings.system.serverAdminBadge}</span>}
-                        {!u.has_org_membership &&
-                          (u.is_active ? (
-                            <button className="btn" onClick={() => deactivate(u.user_id)}>
-                              {strings.system.deactivate}
-                            </button>
-                          ) : (
-                            <button className="btn" onClick={() => reactivate(u.user_id)}>
-                              {strings.system.reactivate}
-                            </button>
-                          ))}
-                        {!u.has_org_membership &&
-                          (u.is_banned ? (
-                            <button className="btn" onClick={() => unban(u.user_id)}>
-                              {strings.system.unban}
-                            </button>
-                          ) : (
-                            <button className="btn btn-danger" onClick={() => ban(u.user_id)}>
-                              {strings.system.ban}
-                            </button>
-                          ))}
-                        {u.is_server_admin ? (
-                          <button className="btn btn-danger" onClick={() => revokeServerAdmin(u.user_id)}>
-                            {strings.system.revokeServerAdmin}
-                          </button>
-                        ) : (
-                          <button className="btn" onClick={() => grantServerAdmin(u.user_id)}>
-                            {strings.system.grantServerAdmin}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          // `FilterPanel` renders as a full-width bar ABOVE the table
+          // (`layout="top"`), not the standard `.side-grid` side layout —
+          // this table is wide (columns include email, name, role, project
+          // access, actions), and a 240px side sidebar visibly crowded it
+          // (follow-up UX fix; see docs/decisions.md and
+          // docs/ux-style-guide.md's "Pattern: filter panel placement —
+          // side vs. top").
+          <div className="stack">
+            <FilterPanel
+              layout="top"
+              sectionKey="serverAccessReviewFilters"
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder={strings.system.searchUsers}
+            >
+              <FilterField label={strings.system.view}>
+                <select className="input" value={view} onChange={(e) => setView(e.target.value as ReviewView)}>
+                  <option value="orphaned">{strings.system.viewOrphaned}</option>
+                  <option value="server_admins">{strings.system.viewServerAdmins}</option>
+                  <option value="all">{strings.system.viewAll}</option>
+                </select>
+              </FilterField>
+              <FilterCheckbox
+                label={strings.system.includeDeactivated}
+                checked={includeDeactivated}
+                onChange={setIncludeDeactivated}
+              />
+            </FilterPanel>
+            <DirectoryTable
+              ariaLabel={strings.system.users}
+              columns={usersColumns}
+              rows={users}
+              rowKey={(u) => u.user_id}
+              sort={sort}
+              onSort={(key) => applySort(key as SystemUserSortKey)}
+              total={total}
+              onLoadMore={() => loadUsers(users.length, true)}
+              emptyState={<p className="text-muted">{strings.system.noUsersFound}</p>}
+            />
           </div>
         )}
-        {users && <LoadMoreButton loaded={users.length} total={total} onClick={() => loadUsers(users.length, true)} />}
       </div>
 
       <div className="card stack">

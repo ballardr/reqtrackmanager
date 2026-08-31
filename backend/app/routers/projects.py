@@ -60,7 +60,6 @@ from app.schemas.project import (
     ComponentCreate,
     ComponentOut,
     ComponentUpdate,
-    DirectMemberOut,
     EffectiveMemberOut,
     MaterializeResultOut,
     MoveDirection,
@@ -121,13 +120,6 @@ from app.services.stages import complete_stage
 from app.services.templates import clone_project
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
-
-DEFAULT_GROUPS = [
-    ("Project Managers", ProjectRole.PROJECT_MANAGER),
-    ("Project Administrators", ProjectRole.PROJECT_ADMINISTRATOR),
-    ("Stakeholders", ProjectRole.STAKEHOLDER),
-    ("Members", ProjectRole.MEMBER),
-]
 
 _ACCESSIBLE_EXPANSION_ITERATION_CAP = 50
 
@@ -274,6 +266,35 @@ def _project_out_with_redacted_parent(db: Session, current_user: User, project: 
     return out
 
 
+def _ensure_project_has_a_manager(db: Session, project: Project, fallback_user_id: UUID) -> None:
+    """C-U-08 fallback: guarantees `project` has at least one effective
+    manager, granting `fallback_user_id` one if it doesn't.
+
+    Shared by both of `create_project`'s branches (follow-up UX batch Phase
+    C, 2026-08-31 — previously only the template-clone branch needed this
+    at all, since the non-template branch always auto-created its own
+    manager-role `ProjectGroup` and added the creator to it directly).
+    Prefers adding `fallback_user_id` to an existing manager-role
+    `ProjectGroup` on `project` if one exists (only possible here via a
+    template clone that copied a user-created manager-role group — a
+    from-scratch project has zero groups at the point this is called, so
+    that branch is structurally unreachable there and this always falls
+    through to the direct grant); otherwise grants a direct
+    `PROJECT_MANAGER` `UserProjectRole`, mirroring the guarantee
+    `import_project_bundle` (`services.project_export`) gives its own
+    importer for the same reason.
+    """
+    if get_effective_project_managers(db, project.id):
+        return
+    fallback_group = db.scalar(
+        select(ProjectGroup).where(ProjectGroup.project_id == project.id, ProjectGroup.role == ProjectRole.PROJECT_MANAGER)
+    )
+    if fallback_group is not None:
+        db.add(ProjectGroupMember(project_group_id=fallback_group.id, user_id=fallback_user_id))
+    else:
+        db.add(UserProjectRole(user_id=fallback_user_id, project_id=project.id, role=ProjectRole.PROJECT_MANAGER))
+
+
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate,
@@ -300,17 +321,29 @@ def create_project(
     the target parent (not just view it) — attaching to a parent is
     authorized by *both* sides, unlike detaching (see decision 12).
 
-    On creation, the four standard project groups are created and the
-    creator is added to the Project Managers group (C-U-10) — unless a
-    template project is used (C-E-05), per C-U-10's explicit "unless using
-    a template project" clause: groups/members are copied from the template
-    instead. If that leaves the new project with no manager at all, the
-    creator is still added as a fallback so C-U-08 (every project must have
+    On creation, the creator is granted a direct `PROJECT_MANAGER`
+    `UserProjectRole` (C-U-10) — unless a template project is used (C-E-05),
+    per C-U-10's explicit "unless using a template project" clause:
+    groups/members (and, as of the follow-up UX batch's Phase C, direct role
+    grants too) are copied from the template instead, via `clone_project`.
+    If that leaves the new project with no manager at all, the creator is
+    still added as a fallback (the exact same
+    `get_effective_project_managers`-then-fallback-`UserProjectRole` code
+    path both branches below now share) so C-U-08 (every project must have
     a manager) can never be violated. This is unconditional regardless of
     `parent_project_id`/`role_inheritance_mode` — a newly created project
     always gets its own direct, individually accountable manager, so
     creation-time C-U-08 never depends on inheritance being present or
     stable later.
+
+    Prior to the follow-up UX batch's Phase C (2026-08-31), the non-template
+    path instead auto-created four "standard" `ProjectGroup` rows
+    (`is_default=True`) and added the creator to the manager-role one —
+    see docs/decisions.md's entry on that migration for why this changed
+    (in short: those four groups could never be deleted, existed on every
+    project whether wanted or not, and made group membership the only path
+    to a first manager even though direct grants were always the simpler,
+    equally-supported mechanism for a single person).
 
     `organization_id` lives in the request body here (the project doesn't
     exist yet to have a path segment of its own), so — unlike every other
@@ -367,14 +400,7 @@ def create_project(
             parent_project_id=payload.parent_project_id,
         )
         db.flush()
-        if not get_effective_project_managers(db, project.id):
-            fallback_group = db.scalar(
-                select(ProjectGroup).where(ProjectGroup.project_id == project.id, ProjectGroup.role == ProjectRole.PROJECT_MANAGER)
-            )
-            if fallback_group is not None:
-                db.add(ProjectGroupMember(project_group_id=fallback_group.id, user_id=current_user.id))
-            else:
-                db.add(UserProjectRole(user_id=current_user.id, project_id=project.id, role=ProjectRole.PROJECT_MANAGER))
+        _ensure_project_has_a_manager(db, project, current_user.id)
     else:
         project = Project(
             organization_id=payload.organization_id, name=payload.name, summary=payload.summary,
@@ -386,25 +412,24 @@ def create_project(
 
         db.add(ProjectStage(project_id=project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
 
-        manager_group = None
-        for name, role in DEFAULT_GROUPS:
-            group = ProjectGroup(project_id=project.id, name=name, role=role, is_default=True)
-            db.add(group)
-            db.flush()
-            if role == ProjectRole.PROJECT_MANAGER:
-                manager_group = group
-        if manager_group is not None:
-            db.add(ProjectGroupMember(project_group_id=manager_group.id, user_id=current_user.id))
+        # C-U-10: the creator becomes the project's initial manager via a
+        # direct grant — no group is auto-created any more (follow-up UX
+        # batch Phase C, 2026-08-31; see docs/decisions.md). This project
+        # has zero groups at this point, so `_ensure_project_has_a_manager`'s
+        # "existing manager-role group" branch is unreachable here and it
+        # always takes the direct-grant path — the exact same fallback the
+        # template-clone branch above uses, reused rather than duplicated.
+        _ensure_project_has_a_manager(db, project, current_user.id)
 
-        # Default action types (Review, Test) — mirrors the default project
-        # groups just above (C-U-10): seeded fresh for a manually-created
-        # project. A template-cloned project instead *copies* the template's
-        # own action types (see `clone_project`), the same treatment as its
-        # custom field definitions, so an admin's customisations to a
-        # template carry over rather than being silently reset to defaults.
-        # A project created with a parent is skipped entirely: it starts
-        # with zero of its own and immediately falls back to the nearest
-        # ancestor's (`services.project_hierarchy.resolve_effective_action_types`),
+        # Default action types (Review, Test) — seeded fresh for a manually-
+        # created project. A template-cloned project instead *copies* the
+        # template's own action types (see `clone_project`), the same
+        # treatment as its custom field definitions, so an admin's
+        # customisations to a template carry over rather than being
+        # silently reset to defaults. A project created with a parent is
+        # skipped entirely: it starts with zero of its own and immediately
+        # falls back to the nearest ancestor's
+        # (`services.project_hierarchy.resolve_effective_action_types`),
         # always on regardless of the RBAC inheritance settings above.
         if payload.parent_project_id is None:
             seed_action_types(db, project.id)
@@ -1223,16 +1248,45 @@ def remove_child_project(
 
 @router.get("/{project_id}/effective-members", response_model=list[EffectiveMemberOut])
 def get_effective_members(
-    project_id: UUID, project: Project = Depends(require_project_manage), db: Session = Depends(get_db),
+    project_id: UUID,
+    response: Response,
+    search: str | None = None,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
 ):
     """Every user with effective access to this project, with provenance —
-    direct, or inherited (and how) — for the project admin/access-review
-    view (decision 10 in docs/decisions.md). `require_project_manage`-gated
-    rather than view-only: this is an access-review surface, appropriately
-    restricted to people who already manage the project — see the
-    forward/member-source-inheritance blast-radius discussion in
-    docs/decisions.md for why that's not a new disclosure beyond what
-    `role_inheritance_mode` already implies once enabled.
+    direct (and, since the follow-up UX batch's Phase D, which of the five
+    direct sources specifically — see `MemberSourceProvenanceOut`'s
+    docstring), or inherited (and how) — for the project admin/access-review
+    view (decision 10 in docs/decisions.md) and the unified Members table
+    (decision 11). `require_project_manage`-gated rather than view-only:
+    this is an access-review surface, appropriately restricted to people who
+    already manage the project — see the forward/member-source-inheritance
+    blast-radius discussion in docs/decisions.md for why that's not a new
+    disclosure beyond what `role_inheritance_mode` already implies once
+    enabled.
+
+    `search` (name/email substring, case-insensitive) and `limit`/`offset`
+    are optional, same contract as `list_project_groups`: omitting `limit`
+    returns every matching member unpaginated, and the pre-slice
+    (post-search) total is returned via `X-Total-Count`.
+
+    IMPORTANT — this is application-level pagination, not database-level:
+    `get_effective_project_members_with_provenance` still resolves every
+    candidate user's full provenance in Python before any sorting/filtering
+    happens here (see that function's own docstring — it iterates every
+    user in the organisation, one admin-only view opened occasionally, not
+    a request-hot-path RBAC check). `search`/`limit`/`offset` are applied as
+    an in-memory slice *after* that full resolution and a deterministic
+    sort by `display_name` (case-insensitive), not pushed down into SQL —
+    this gets the directory pattern's UI/UX (search box, `LoadMoreButton`)
+    without restructuring the underlying query engine, and does not scale
+    indefinitely the way a real DB-level `LIMIT`/`OFFSET` would. A future
+    pass should not assume this endpoint scales past a project admin's
+    realistic member-list size without revisiting `get_effective_project_
+    members_with_provenance` itself.
     """
     provenance = get_effective_project_members_with_provenance(db, project_id)
     project_name_cache: dict[UUID, str] = {}
@@ -1273,6 +1327,15 @@ def get_effective_members(
                 ],
             )
         )
+
+    out.sort(key=lambda m: m.display_name.lower())
+    if search:
+        needle = search.lower()
+        out = [m for m in out if needle in m.display_name.lower() or needle in m.email.lower()]
+
+    response.headers["X-Total-Count"] = str(len(out))
+    if limit is not None:
+        out = out[offset:offset + limit]
     return out
 
 
@@ -2135,7 +2198,7 @@ def create_project_group(
     )
     db.commit()
     db.refresh(group)
-    return ProjectGroupOut(id=group.id, name=group.name, role=group.role, is_default=group.is_default,
+    return ProjectGroupOut(id=group.id, name=group.name, role=group.role,
                             member_user_ids=[], member_org_group_ids=[], member_source_project_ids=[])
 
 
@@ -2144,6 +2207,7 @@ def list_project_groups(
     project_id: UUID,
     response: Response,
     search: str | None = None,
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view_or_manage),
@@ -2157,11 +2221,17 @@ def list_project_groups(
     contract as `list_org_groups`: omitting `limit` returns every group
     unpaginated, and the pre-slice total is returned via `X-Total-Count`
     when given.
+
+    `order` (Phase B, follow-up UX batch, 2026-08-31 — same reasoning as
+    `list_org_groups`'s own `order` param) flips the existing name
+    ascending order to descending; `DirectoryTable`'s Name column is this
+    list's only sortable column, so there's no separate `sort` field param.
     """
     query = select(ProjectGroup).where(ProjectGroup.project_id == project_id)
     if search:
         query = query.where(ProjectGroup.name.ilike(f"%{search}%"))
-    groups = db.scalars(query.order_by(ProjectGroup.name)).all()
+    name_order = ProjectGroup.name.desc() if order == "desc" else ProjectGroup.name
+    groups = db.scalars(query.order_by(name_order)).all()
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:
@@ -2171,7 +2241,7 @@ def list_project_groups(
     for g in groups:
         members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == g.id)).all()
         out.append(ProjectGroupOut(
-            id=g.id, name=g.name, role=g.role, is_default=g.is_default,
+            id=g.id, name=g.name, role=g.role,
             member_user_ids=[m.user_id for m in members if m.user_id],
             member_org_group_ids=[m.org_group_id for m in members if m.org_group_id],
             member_source_project_ids=[m.source_project_id for m in members if m.source_project_id],
@@ -2201,7 +2271,7 @@ def _project_group_out(db: Session, group: ProjectGroup) -> ProjectGroupOut:
     group` doesn't duplicate the same three queries."""
     members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
     return ProjectGroupOut(
-        id=group.id, name=group.name, role=group.role, is_default=group.is_default,
+        id=group.id, name=group.name, role=group.role,
         member_user_ids=[m.user_id for m in members if m.user_id],
         member_org_group_ids=[m.org_group_id for m in members if m.org_group_id],
         member_source_project_ids=[m.source_project_id for m in members if m.source_project_id],
@@ -2264,10 +2334,13 @@ def delete_project_group(
     db: Session = Depends(get_db),
 ):
     """Deletes a project group entirely; its `ProjectGroupMember` rows go
-    with it via `ondelete="CASCADE"`. Rejects (400) deleting one of the
-    four standard groups created with the project (`is_default=True`,
-    C-U-10) — nothing else guarantees a project always retains, e.g., a
-    Project Managers-role group to fall back to.
+    with it via `ondelete="CASCADE"`. No group is specially protected from
+    deletion any more (follow-up UX batch Phase C, 2026-08-31 removed the
+    four auto-created "standard" groups and their `is_default` flag
+    entirely — see docs/decisions.md) — the only thing standing between a
+    delete and an unmanaged project is the C-U-08 guard immediately below,
+    which applies identically to every group regardless of how it was
+    created.
 
     Same C-U-08 guard as `update_project_group`, shaped for a whole-group
     removal rather than a single-role change: if this is the project's
@@ -2281,8 +2354,6 @@ def delete_project_group(
     than just asking the normal live-state question afterward.
     """
     group = _get_group_in_project(db, project.id, group_id)
-    if group.is_default:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The default project groups cannot be deleted.")
 
     is_manager_group = group.role == ProjectRole.PROJECT_MANAGER
     if is_manager_group:
@@ -2402,41 +2473,6 @@ def remove_project_group_member(
     if member_id and not get_effective_project_roles(db, member_id, project.id):
         engagement.remove_subscriptions_and_favorites_for_projects(db, member_id, [project.id])
     db.commit()
-
-
-@router.get("/{project_id}/direct-members", response_model=list[DirectMemberOut])
-def list_direct_members(
-    project_id: UUID, current_user: User = Depends(require_project_view_or_manage), db: Session = Depends(get_db),
-):
-    """Lists every user holding at least one direct `UserProjectRole` grant
-    on this project, one row per user with all of their held roles (Phase
-    5's Members page) — no endpoint previously listed `UserProjectRole` as
-    a directory; only mutate-by-user (`assign_project_role`/
-    `revoke_project_role`) and mutate-by-email existed. Same gate tier as
-    `list_project_groups` (`require_project_view_or_manage`): this exposes
-    role *structure*, not requirement/change-request content.
-
-    Deliberately a real multi-valued array per user, not force-collapsed to
-    one row per (user, role): `UserProjectRole`'s unique constraint is
-    `(user_id, project_id, role)`, so a user can simultaneously hold more
-    than one direct role (e.g. both `stakeholder` and `member`), and the
-    Members page's `MultiSelectDropdown` needs the full held set to render
-    correctly-checked options.
-    """
-    rows = db.execute(
-        select(UserProjectRole.user_id, UserProjectRole.role, User.display_name, User.email)
-        .join(User, User.id == UserProjectRole.user_id)
-        .where(UserProjectRole.project_id == project_id)
-        .order_by(User.display_name)
-    ).all()
-    by_user: dict[UUID, DirectMemberOut] = {}
-    for user_id, role, display_name, email in rows:
-        member = by_user.get(user_id)
-        if member is None:
-            member = DirectMemberOut(user_id=user_id, display_name=display_name, email=email, roles=[])
-            by_user[user_id] = member
-        member.roles.append(role)
-    return list(by_user.values())
 
 
 @router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT)

@@ -245,7 +245,7 @@ def test_deactivating_last_project_manager_falls_back_to_acting_admin(client, ad
     never leave the project without one — the acting org admin is assigned
     as a fallback manager. The project is created by the soon-to-be-deactivated
     user (not the admin), so the admin isn't already a manager via the
-    default "Project Managers" group the creator is auto-added to."""
+    direct PROJECT_MANAGER grant the creator receives (C-U-10)."""
     manager_id = create_org_user(client, admin_token, org_id, "sole_manager@example.com", role="project_creator")
     manager_token = login(client, "sole_manager@example.com", "Password123!")
     project = create_project(client, manager_token, org_id, name="Solely Managed Project")

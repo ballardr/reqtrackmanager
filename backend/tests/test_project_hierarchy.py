@@ -229,21 +229,18 @@ def test_cannot_disable_inheritance_when_only_manager_is_inherited(client, admin
         client, admin_token, org_id, "CU08 Child", parent_project_id=parent["id"],
         role_inheritance_mode="mirror_all",
     )
-    # A manually-created project's creator becomes a manager via the
-    # default "Project Managers" *group* (C-U-10), not a direct
-    # UserProjectRole — remove them from that group (not
-    # DELETE .../roles/..., which would be a no-op here) to leave child
-    # with zero *direct* managers of its own. admin_token remains an
-    # inherited manager of child throughout, via their own still-intact
-    # direct manager status on parent.
+    # A manually-created project's creator becomes a manager via a direct
+    # PROJECT_MANAGER UserProjectRole (C-U-10, follow-up UX batch Phase C,
+    # 2026-08-31 — no default group exists to remove them from any more) —
+    # revoke that direct role to leave child with zero *direct* managers of
+    # its own. admin_token remains an inherited manager of child throughout,
+    # via their own still-intact direct manager status on parent.
     creator_id = _get_project_creator_id(client, admin_token)
-    groups = client.get(f"/api/v1/projects/{child['id']}/groups", headers=auth_headers(admin_token)).json()
-    manager_group = next(g for g in groups if g["role"] == "project_manager")
-    remove = client.delete(
-        f"/api/v1/projects/{child['id']}/groups/{manager_group['id']}/members/{creator_id}",
+    revoke = client.delete(
+        f"/api/v1/projects/{child['id']}/roles/{creator_id}/project_manager",
         headers=auth_headers(admin_token),
     )
-    assert remove.status_code == 204, remove.text
+    assert revoke.status_code == 204, revoke.text
 
     # Now switching child's mode away from mirror_all would leave it with
     # zero effective managers (its only ones were inherited) — blocked.
@@ -830,7 +827,7 @@ def test_effective_members_shows_provenance_for_direct_and_inherited_users(clien
     assert any(s["kind"] == "forward_inherited" and s["via_project_name"] == "Provenance Parent" for s in members[pm_id]["sources"])
 
     assert members[direct_stakeholder]["effective_role"] == "stakeholder"
-    assert any(s["kind"] == "direct" for s in members[direct_stakeholder]["sources"])
+    assert any(s["kind"] == "direct_role" for s in members[direct_stakeholder]["sources"])
 
 
 def test_effective_members_requires_manage_not_just_view(client, admin_token, org_id):

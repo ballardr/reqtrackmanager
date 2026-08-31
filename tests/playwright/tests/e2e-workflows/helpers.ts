@@ -79,38 +79,44 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
- * Same idea as `ensureExpanded`, for one org group's own card in Org
- * Admin's Groups section (2026-08 UX audit "Directories at scale") — each
- * group renders collapsed by default behind its own `CollapsibleSection`,
- * so its member list, "add member" input, and nesting picker are all
- * unreachable until expanded. Unlike `ensureExpanded`'s exact
- * `"<title> section"` match, each group's title combines its name with a
- * dynamic member count, so this matches by the group's name as a substring
- * instead. Also persists server-side per user across runs/specs sharing a
- * persona, same caveat as `ensureExpanded` — hence the same idempotent
- * "only click if collapsed" guard.
+ * Opens one org group's `SidePanel` on Org Admin's Groups section
+ * (`DirectoryTable`, Phase B, follow-up UX batch, 2026-08-31 — replaces the
+ * pre-Phase-B always-expanded `CollapsibleSection` accordion this helper
+ * used to open a card in instead). A `SidePanel` has no expand/collapse
+ * state to race, so this isn't guarded the idempotent way `ensureExpanded`
+ * is — clicking the row again while its own panel is already open is a
+ * harmless no-op re-render, not a toggle-shut.
  *
- * Project-scoped groups (`ProjectAdminPage`'s own Groups section) moved off
- * this exact same accordion shape to a per-group `SidePanel` (Phase 5,
- * docs/decisions.md) — use `openProjectGroupPanel` below for those, not
- * this helper.
+ * Returns the panel's own `dialog` locator (its accessible name is
+ * `"<group name> details"`), so callers scope every subsequent interaction
+ * to it rather than the whole page.
  */
-export async function openGroupCard(page: Page, groupName: string): Promise<void> {
-  const toggle = page.getByRole("button", { name: new RegExp(`^${groupName}`) });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
-    await toggle.click();
-  }
+export async function openOrgGroupPanel(page: Page, groupName: string) {
+  await page.getByRole("button", { name: new RegExp(`^${groupName}`) }).click();
+  return page.getByRole("dialog", { name: `${groupName} details` });
 }
 
 /**
  * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
- * section (Phase 5, docs/decisions.md) — replaces the pre-Phase-5
- * always-expanded `CollapsibleSection` accordion `openGroupCard` (above)
- * still serves for Org Admin's own group cards. A `SidePanel` has no
- * expand/collapse state to race the way a `CollapsibleSection` does, so
- * this isn't guarded the same idempotent way — clicking the row again while
- * its own panel is already open is a harmless no-op re-render, not a
- * toggle-shut.
+ * section — a `DirectoryTable` row (Phase B, follow-up UX batch,
+ * 2026-08-31; before that, Phase 5's own `<button>`-row list, docs/
+ * decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
+ * not `rowHref` — found during Phase B verification, not assumed: at the
+ * time, every standard project auto-seeded a default group literally named
+ * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — removed in Phase C,
+ * 2026-08-31, but the finding that motivated `onRowClick` stands
+ * regardless), the exact same accessible name as this page's own
+ * `ResourceMenu` "Members" nav link, so a `rowHref` `<Link>` row would
+ * collide with it (two `role="link"` elements sharing one accessible name
+ * on the same page — a real ambiguity, not just a Playwright artifact, and
+ * one any project could still hit today with a manually-named custom
+ * group). The existing `?openGroup=` deep link is unaffected
+ * either way — it's handled by `ProjectAdminPage.tsx`'s own
+ * `useSearchParams` effect, which `onRowClick`'s `setOpenGroupId` call
+ * feeds into identically. A `SidePanel` has no expand/collapse state to
+ * race the way a `CollapsibleSection` does, so this isn't guarded the same
+ * idempotent way `ensureExpanded` is — clicking the row again while its own
+ * panel is already open is a harmless no-op re-render, not a toggle-shut.
  *
  * Returns the panel's own `dialog` locator (its accessible name is
  * `"<group name> details"`), so callers scope every subsequent interaction

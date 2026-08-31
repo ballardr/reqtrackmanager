@@ -5,14 +5,20 @@ Platform-wide UI branding defaults (accent colour, logo, header title) and
 the small colour-math helper used to keep an admin-picked accent colour
 from producing unreadable button/badge text.
 
-`ServerSettings` is a lazily-created singleton row, not a DB-enforced one —
-`get_server_settings()` is the only way anything in this app should read or
-create it, so "there might be zero rows" only ever needs handling here.
+`ServerSettings` is a lazily-created singleton row — `get_server_settings()`
+is the only way anything in this app should read or create it, so "there
+might be zero rows" only ever needs handling here. True singleton-ness is
+now enforced at the DB level (`ServerSettings.singleton_guard`, migration
+0020, follow-up UX batch Phase D) after live evidence showed the earlier
+purely-application-level "read then insert if absent" check really did let
+two concurrent requests both create a row in practice — see that migration
+and the model's own docstring for the full incident.
 """
 
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.organization import ServerSettings
@@ -22,15 +28,32 @@ DEFAULT_ACCENT_COLOR_HEX = "#475569"
 
 def get_server_settings(db: Session) -> ServerSettings:
     """Returns the single `ServerSettings` row, creating it with built-in
-    defaults on first access. There is deliberately no unique/check
-    constraint enforcing "only one row" — every write path goes through
-    this function, which always operates on the first row it finds."""
+    defaults on first access.
+
+    Two concurrent callers can both observe `settings is None` below before
+    either commits — the `singleton_guard` UNIQUE constraint (migration
+    0020) makes the second `INSERT` fail with an `IntegrityError` rather
+    than silently succeeding as a duplicate row; that loser rolls back and
+    re-reads, picking up the winner's row instead.
+    """
     settings = db.scalar(select(ServerSettings))
     if settings is None:
         settings = ServerSettings(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)
         db.add(settings)
-        db.commit()
-        db.refresh(settings)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            settings = db.scalar(select(ServerSettings))
+            if settings is None:
+                # The row that made us lose the race should be visible to
+                # a fresh read immediately after the other transaction
+                # committed — a still-missing row here means something
+                # other than the expected singleton race, so surface it
+                # rather than looping/guessing.
+                raise
+        else:
+            db.refresh(settings)
     return settings
 
 

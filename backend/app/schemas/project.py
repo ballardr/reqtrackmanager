@@ -407,32 +407,9 @@ class ProjectGroupOut(BaseModel):
     id: UUID
     name: str
     role: ProjectRole
-    is_default: bool
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID]
     member_source_project_ids: list[UUID]
-
-
-class DirectMemberOut(BaseModel):
-    """One user holding at least one direct (non-group) `UserProjectRole`
-    grant on a project (`GET /{id}/direct-members`, Phase 5) — the new
-    Members page's editable-row source. Distinct from `EffectiveMemberOut`:
-    that endpoint answers "who effectively has access and why" (resolved,
-    with provenance, including inherited/group-derived access) for the
-    audit view; this one answers "which direct grants exist, per user" for
-    the editable table, since no endpoint previously listed
-    `UserProjectRole` as a directory (only mutate-by-user/by-email existed).
-
-    `roles` is genuinely multi-valued, not force-collapsed to one: the
-    unique constraint on `UserProjectRole` is `(user_id, project_id,
-    role)`, not one row per user, so a user can simultaneously hold, e.g.,
-    both `stakeholder` and `member` as separate direct grants.
-    """
-
-    user_id: UUID
-    display_name: str
-    email: str
-    roles: list[ProjectRole]
 
 
 class UserProjectRoleAssign(BaseModel):

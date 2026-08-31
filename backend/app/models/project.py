@@ -257,6 +257,27 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
     customisable permissions, so a group's purpose is simply to bulk-assign
     one of those roles to many users (and, via nested org groups, whole
     organisational teams, C-U-12).
+
+    Every group is now an ordinary, user-created group (follow-up UX batch
+    Phase C, 2026-08-31) — there is no longer a notion of a project
+    automatically seeding "standard" groups on creation. Prior to this
+    phase, `create_project`'s non-template path auto-created four groups
+    per project (`is_default=True`) and the creator's initial
+    `PROJECT_MANAGER` grant went through membership in one of them; that
+    made bulk-group scaffolding, not a direct grant, the *only* way a fresh
+    project ever got its first manager, and those four groups could never
+    be deleted. The creator's initial manager role is now always a direct
+    `UserProjectRole` grant instead (the same fallback the template-clone
+    path already used when a cloned project ended up with no manager) — see
+    `routers.projects.create_project` and docs/decisions.md's entry on this
+    migration. `is_default` (and every group-count/deletability special
+    case built on it) was removed entirely as part of the same change; a
+    data migration (`alembic/versions/0019_...py`) converted every
+    pre-existing `is_default=True` group's direct user members into direct
+    grants and either deleted the group (if it had no other composition) or
+    demoted it to an ordinary group (if it did — e.g. a nested org group or
+    a cross-project member reference), so no group anywhere in the schema
+    still carries any special protection based on how it was created.
     """
 
     __tablename__ = "project_groups"
@@ -265,7 +286,6 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):

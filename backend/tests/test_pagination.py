@@ -332,6 +332,15 @@ def test_org_groups_search_and_paginate(client, admin_token, org_id):
     by_search = client.get(f"/api/v1/orgs/{org_id}/groups?search=finance", headers=auth_headers(admin_token))
     assert [g["name"] for g in by_search.json()] == ["Finance Reviewers"]
 
+    # `order` (Phase B, follow-up UX batch, 2026-08-31) — `DirectoryTable`'s
+    # Name column sort refetches with this rather than sorting only the
+    # currently-loaded page, since this list already pages via limit/offset
+    # (style guide "Pattern: sortable column header").
+    ascending = client.get(f"/api/v1/orgs/{org_id}/groups?order=asc", headers=auth_headers(admin_token)).json()
+    descending = client.get(f"/api/v1/orgs/{org_id}/groups?order=desc", headers=auth_headers(admin_token)).json()
+    assert [g["name"] for g in ascending] == sorted(g["name"] for g in ascending)
+    assert descending == list(reversed(ascending))
+
 
 def test_project_groups_search_and_paginate(client, admin_token, org_id):
     """Project Admin's Groups tab — the same finding, one level further
@@ -349,7 +358,9 @@ def test_project_groups_search_and_paginate(client, admin_token, org_id):
 
     unpaginated = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token))
     total = len(unpaginated.json())
-    # Every project seeds 4 default groups (Managers/Administrators/Stakeholders/Members) on creation.
+    # No groups are auto-created on project creation any more (follow-up UX
+    # batch Phase C, 2026-08-31 removed the four default groups) — only the
+    # 5 created just above by this test exist.
     assert total >= 5
     assert int(unpaginated.headers["x-total-count"]) == total
 
@@ -361,3 +372,10 @@ def test_project_groups_search_and_paginate(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/groups?search=safety", headers=auth_headers(admin_token)
     )
     assert [g["name"] for g in by_search.json()] == ["Safety Reviewers"]
+
+    # `order` (Phase B, follow-up UX batch, 2026-08-31) — same reasoning as
+    # `test_org_groups_search_and_paginate`'s own `order` assertions.
+    ascending = client.get(f"/api/v1/projects/{project['id']}/groups?order=asc", headers=auth_headers(admin_token)).json()
+    descending = client.get(f"/api/v1/projects/{project['id']}/groups?order=desc", headers=auth_headers(admin_token)).json()
+    assert [g["name"] for g in ascending] == sorted(g["name"] for g in ascending)
+    assert descending == list(reversed(ascending))

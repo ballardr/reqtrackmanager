@@ -343,18 +343,27 @@ jobs:
             tests/container/pytest-report.xml
           retention-days: 14
 
-      # Backend pytest's schema fixture leaves the shared containers with a
-      # migrated-but-empty database once the session ends (see conftest.py) —
-      # restart to re-run bootstrap admin creation, then reseed both fixed
-      # datasets the Playwright suite expects: the E2E persona/org/project
-      # set most specs are written against, and the demo dataset
-      # (demo.admin@example.com etc.) badge-filters.spec.ts specifically
-      # needs. Same sequence documented for local development in
-      # docs/deployment.md's troubleshooting section. Found via local `act`
-      # runs: this step previously only ran seed_e2e_dataset.py, so
-      # badge-filters.spec.ts failed deterministically (not flakily) on
-      # every real CI run — demo.admin@example.com genuinely didn't exist,
-      # so login never redirected and the test timed out waiting for it.
+      # Backend pytest now runs against its own dedicated
+      # `reqtrack_pytest_test` database, never the `reqtrack_test` database
+      # this job's `backend` service actually serves requests from (see
+      # conftest.py's `pytest_database_url()` and docs/decisions.md) — so
+      # unlike before that fix, this restart is no longer needed to recover
+      # `reqtrack_test` from pytest's session-scoped schema fixture. It's
+      # kept anyway as a cheap, deterministic way to guarantee a clean
+      # bootstrap-admin state right before seeding, rather than depending on
+      # whatever `reqtrack_test` happened to look like after container
+      # startup. The two seed scripts below are what this step actually
+      # exists for: reseeding both fixed datasets the Playwright suite
+      # expects — the E2E persona/org/project set most specs are written
+      # against, and the demo dataset (demo.admin@example.com etc.)
+      # badge-filters.spec.ts specifically needs — since nothing earlier in
+      # this job has populated `reqtrack_test` with either one yet. Same
+      # sequence documented for local development in docs/deployment.md's
+      # troubleshooting section. Found via local `act` runs: this step
+      # previously only ran seed_e2e_dataset.py, so badge-filters.spec.ts
+      # failed deterministically (not flakily) on every real CI run —
+      # demo.admin@example.com genuinely didn't exist, so login never
+      # redirected and the test timed out waiting for it.
       - name: Restart backend and reseed test datasets
         working-directory: tests/container
         run: |

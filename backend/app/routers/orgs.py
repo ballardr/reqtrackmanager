@@ -23,7 +23,7 @@ from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.project_status import ProjectStatusDefinition
@@ -53,6 +53,8 @@ from app.schemas.org import (
     OrgLoginInfoOut,
     OrgMergePreviewResult,
     OrgMergeResult,
+    OrgPendingInviteCreate,
+    OrgPendingInviteOut,
     OrgProjectSummaryOut,
     OrgRoleAssign,
     OrgSsoConfigOut,
@@ -74,7 +76,7 @@ from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.schemas.report import OrgReportDefaults
 from app.security import generate_scim_token, hash_password
-from app.services import engagement
+from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.definitions import (
     delete_definition_with_reassignment,
@@ -629,6 +631,149 @@ def list_org_users(
     if limit is not None:
         results = results[offset:offset + limit]
     return results
+
+
+def _org_pending_invite_out(invite: PendingInvite, db: Session) -> OrgPendingInviteOut:
+    """Shared status computation for the two endpoints below — mirrors
+    `routers/projects.py::_pending_invite_out` (status derived from
+    `expires_at` at read time, not stored), plus resolving `invited_by` to
+    a display name: the org-level Users table shows who sent each invite,
+    unlike the project-level table which doesn't surface that column
+    today."""
+    inviter = db.get(User, invite.invited_by)
+    return OrgPendingInviteOut(
+        id=invite.id,
+        email=invite.email,
+        status="pending" if invite.expires_at > datetime.now(UTC) else "expired",
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+        invited_by_display_name=inviter.display_name if inviter is not None else "?",
+    )
+
+
+def _get_org_only_pending_invite(db: Session, organization_id: UUID, invite_id: UUID) -> PendingInvite:
+    """Loads a `PendingInvite` and 404s unless it's an org-only invite
+    (`project_id IS NULL`) belonging to `organization_id` — mirrors
+    `routers/projects.py::_get_pending_invite_in_project`'s cross-boundary
+    guard. Without this, an org admin could pass a *project-scoped*
+    invite's id (or one belonging to a different organisation) and resend
+    it via this org-level endpoint, rotating its token and re-sending its
+    email outside the project-level gate that actually owns it."""
+    invite = db.get(PendingInvite, invite_id)
+    if invite is None or invite.organization_id != organization_id or invite.project_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite not found.")
+    return invite
+
+
+@router.get("/{organization_id}/pending-invites", response_model=list[OrgPendingInviteOut])
+def list_org_pending_invites(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_admin_or_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Lists this organisation's outstanding (unaccepted) org-only
+    `PendingInvite`s, most recent first — `project_id IS NULL` only.
+    Project-scoped invites (created via a project's by-email add-user flow)
+    stay owned by `routers/projects.py::list_pending_project_invites` and
+    are never double-listed here (Phase A, follow-up UX batch;
+    docs/decisions.md).
+
+    Gated the same tier as `create_org_user`/`create_org_pending_invite`,
+    the only endpoints that create these rows.
+    """
+    invites_list = db.scalars(
+        select(PendingInvite)
+        .where(
+            PendingInvite.organization_id == organization_id,
+            PendingInvite.project_id.is_(None),
+            PendingInvite.accepted_at.is_(None),
+        )
+        .order_by(PendingInvite.created_at.desc())
+    ).all()
+    return [_org_pending_invite_out(invite, db) for invite in invites_list]
+
+
+@router.post(
+    "/{organization_id}/pending-invites", response_model=OrgPendingInviteOut, status_code=status.HTTP_201_CREATED
+)
+def create_org_pending_invite(
+    organization_id: UUID,
+    payload: OrgPendingInviteCreate,
+    current_user: User = Depends(require_org_admin_or_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Invites a new user into the organisation by email — the org-level
+    "Invite user" action (Phase A, follow-up UX batch), distinct from
+    `create_org_user`'s "New user" (an immediate password-based account).
+    The invitee sets their own display name/password at signup via the
+    emailed link and is granted `OrgRole.MEMBER` on redemption
+    (`services.invites.consume_pending_invites`); an admin can promote them
+    afterward via the existing role-grant control, same as any other user.
+
+    Thin wrapper over `services.invites.create_pending_invite` with
+    `project=None`/`project_role=None` (an org-only invite).
+
+    `org.sso_only` is rejected with 400, mirroring `create_org_user`'s own
+    guard for the same reason: there is no working native-signup path to
+    redeem a token against for an `sso_only` org (native login is blocked
+    outright once every one of a user's orgs requires SSO). Unlike
+    `assign_project_role_by_email`'s sso_only branch — which provisions a
+    project role immediately via `provision_sso_invite` because it already
+    knows which project/role to grant — a bare org-only "invite" has no
+    such target to provision ahead of a real SSO login, so a straight
+    reject (matching `create_org_user`'s existing message shape) is the
+    correct scope here rather than introducing a second, invite-shaped
+    response type for an immediate-provision outcome. An org admin who
+    needs to pre-add a specific person to an `sso_only` org can still do so
+    once that person's IdP group/role claim is configured to match on
+    first SSO login.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.sso_only:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This organisation is SSO-only; email invites are not used — access is provisioned at SSO login.",
+        )
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
+    invite = invites.create_pending_invite(
+        db, email=email, organization=org, project=None, project_role=None, invited_by=current_user.id,
+    )
+    log_event(
+        db, entity_type="pending_invite", entity_id=invite.id, action="invited",
+        actor_id=current_user.id, organization_id=organization_id, detail={"email": email},
+    )
+    db.commit()
+    return _org_pending_invite_out(invite, db)
+
+
+@router.post("/{organization_id}/pending-invites/{invite_id}/resend", response_model=OrgPendingInviteOut)
+def resend_org_pending_invite(
+    organization_id: UUID, invite_id: UUID,
+    current_user: User = Depends(require_org_admin_or_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Rotates the invite's token/`expires_at` and re-sends the signup-link
+    email — the org-level counterpart to
+    `routers/projects.py::resend_pending_project_invite`, same behavior
+    (works whether the invite is still pending or already expired; only an
+    already-*accepted* invite is rejected, since there's nothing left to
+    resend once someone's redeemed it).
+    """
+    invite = _get_org_only_pending_invite(db, organization_id, invite_id)
+    if invite.accepted_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This invite has already been accepted.")
+    org = db.get(Organization, organization_id)
+    invites.resend_pending_invite(db, invite, organization=org, project=None)
+    log_event(
+        db, entity_type="pending_invite", entity_id=invite.id, action="invite_resent",
+        actor_id=current_user.id, organization_id=organization_id, detail={"email": invite.email},
+    )
+    db.commit()
+    return _org_pending_invite_out(invite, db)
 
 
 @router.get("/{organization_id}/users/{user_id}/access", response_model=UserAccessOut)
@@ -1255,6 +1400,7 @@ def list_org_groups(
     organization_id: UUID,
     response: Response,
     search: str | None = None,
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
@@ -1271,6 +1417,15 @@ def list_org_groups(
     unchanged), and when given, the pre-slice total is returned via
     `X-Total-Count`.
 
+    `order` (Phase B, follow-up UX batch, 2026-08-31 — `DirectoryTable`'s
+    Name column is this list's only sortable column, so there's no
+    separate `sort` param to pick a field the way `list_org_users` has;
+    only which direction to apply to the existing name order) defaults to
+    `asc` (unchanged pre-existing behaviour) — style guide "Pattern:
+    sortable column header"'s "already pages via limit/offset -> backend
+    sort/order params" branch, since a client-side sort of only the
+    currently-loaded page would misrepresent the true full-list order.
+
     `granted_org_role` (item 522) is masked to `None` for a non-admin
     caller — this endpoint is deliberately open to any org member (a
     `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
@@ -1285,7 +1440,8 @@ def list_org_groups(
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
     if search:
         query = query.where(OrgGroup.name.ilike(f"%{search}%"))
-    groups = db.scalars(query.order_by(OrgGroup.name)).all()
+    name_order = OrgGroup.name.desc() if order == "desc" else OrgGroup.name
+    groups = db.scalars(query.order_by(name_order)).all()
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:

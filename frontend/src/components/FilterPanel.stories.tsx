@@ -14,11 +14,12 @@ import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
  * `withAuth` defaults to) because the collapsible body goes through
  * `CollapsibleSection`, which persists collapsed/expanded state via
  * `useUiPreference` → `useAuth()`. */
-function Interactive({ matching = 57, total = 57 }: { matching?: number; total?: number }) {
+function Interactive({ matching = 57, total = 57, layout }: { matching?: number; total?: number; layout?: "side" | "top" }) {
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
   return (
     <FilterPanel
+      layout={layout}
       sectionKey="storyFilters"
       matching={matching}
       total={total}
@@ -105,3 +106,45 @@ export const MobileCollapsedByDefault: Story = {
 
 export const LightTheme: Story = { ...DesktopAlwaysExpanded, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...DesktopAlwaysExpanded, globals: { theme: "dark" } };
+
+/** `layout="top"` (follow-up UX fix, see docs/decisions.md and
+ * docs/ux-style-guide.md's "Pattern: filter panel placement — side vs.
+ * top") — used above wide, many-column tables (Org Users, Server Admin's
+ * Access Review, `ProjectMembersTable`) instead of the default `"side"`
+ * sidebar shell. On desktop, the header (result count + search) and the
+ * filter fields both render in a single wrapping horizontal row, and —
+ * unlike `"side"` — there's no `"Filters"` heading above the fields, since
+ * a horizontal bar of visible controls doesn't need one. */
+export const TopLayoutDesktop: Story = {
+  args: { layout: "top" },
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
+    await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
+    await expect(canvas.getByText("Include archived")).toBeInTheDocument();
+    // No "Filters" heading in top layout, unlike the default side layout.
+    await expect(canvas.queryByRole("heading", { name: "Filters" })).not.toBeInTheDocument();
+    // No collapse toggle either, same as side layout at this width.
+    await expect(canvas.queryByRole("button", { name: "Filters section" })).not.toBeInTheDocument();
+  },
+};
+
+/** `layout="top"` below the mobile breakpoint still collapses the filter
+ * fields behind the same `CollapsibleSection` accordion `"side"` uses — the
+ * header (result count + search) stays visible regardless. */
+export const TopLayoutMobileCollapsedByDefault: Story = {
+  args: { layout: "top" },
+  play: async ({ canvasElement }) => {
+    await page.viewport(400, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
+    await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
+    const toggle = await waitFor(() => canvas.getByRole("button", { name: "Filters section" }));
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+    await expect(canvas.queryByText("Include archived")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    await expect(canvas.getByText("Include archived")).toBeInTheDocument();
+  },
+};

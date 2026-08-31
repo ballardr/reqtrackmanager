@@ -93,13 +93,32 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await expect(page.getByText(priorityField)).toHaveCount(0);
     });
 
+    // No group is auto-created on project creation any more (follow-up UX
+    // batch Phase C, 2026-08-31) — this spec creates its own throwaway
+    // group up front (via the API, same as `token`/`projectId` resolution
+    // the later "nest an org group" step already needed) rather than
+    // reaching for a default "Members" group that no longer exists.
+    const { projectId, groupName: memberGroupName } = await test.step("create a project group to exercise member add/remove and org-group nesting against", async () => {
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const id = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
+      const groupName = `E2E Beta-2 Group ${Date.now()}`;
+      await page.request.post(`http://localhost:8000/api/v1/projects/${id}/groups`, {
+        headers: { Authorization: `Bearer ${token}` }, data: { name: groupName, role: "member" },
+      });
+      // ProjectAdminPage fetches project groups once on mount — the group
+      // just created via a direct API call isn't in that state until
+      // reloaded.
+      await page.reload();
+      return { projectId: id, groupName };
+    });
+
     await test.step("add and remove a project group member", async () => {
       await selectProjectAdminGroup(page, "Project groups");
       // Each group row now opens a `SidePanel` (Phase 5, docs/decisions.md)
       // instead of an always-expanded `CollapsibleSection` accordion — the
       // panel's own accessible name ("<group> details") scopes every
       // interaction below to it.
-      const panel = await openProjectGroupPanel(page, "Members");
+      const panel = await openProjectGroupPanel(page, memberGroupName);
       await panel.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
       await page.getByText(PERSONAS.memberAlphaBeta.email).click();
       await expect(panel.getByText(PERSONAS.memberAlphaBeta.name)).toBeVisible();
@@ -110,12 +129,38 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.getByRole("button", { name: "Close" }).click();
     });
 
+    await test.step("?openGroup= deep link opens that group's SidePanel directly", async () => {
+      // A real, directly-navigable URL contract (`DirectoryTable`'s
+      // `rowHref`, `ProjectAdminPage.tsx`'s own `useSearchParams` effect) —
+      // no in-app link currently produces this exact query param (the
+      // Members table stopped linking into Groups once it dropped group
+      // rows entirely, Phase D, follow-up UX batch, 2026-08-31), but the
+      // deep link itself is still live, bookmarkable behavior worth
+      // pinning directly rather than only indirectly via whatever produces
+      // it at any given time.
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const projectGroups: { id: string; name: string }[] = await page
+        .request.get(`http://localhost:8000/api/v1/projects/${projectId}/groups`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((r) => r.json());
+      const group = projectGroups.find((g) => g.name === memberGroupName)!;
+
+      await page.goto(`/projects/${projectId}/admin/groups?openGroup=${group.id}`);
+      const panel = page.getByRole("dialog", { name: `${memberGroupName} details` });
+      await expect(panel).toBeVisible();
+      // The param is cleared once consumed (`ProjectAdminPage.tsx`'s own
+      // `useSearchParams` effect), so browser-back doesn't reopen it
+      // unexpectedly — a real URL, not client-only state.
+      await expect(page).not.toHaveURL(/openGroup=/);
+      await page.getByRole("button", { name: "Close" }).click();
+    });
+
     await test.step("nest an org group into a project group directly from Project Admin", async () => {
       // The backend has always supported org_group_id here (add_project_group_member);
       // this closes the UX gap where no frontend surface sent it — only
       // OrgAdminPage's own "expanded project" panel could, previously.
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
       const project = await (
         await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +175,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.reload();
 
       await selectProjectAdminGroup(page, "Project groups");
-      const panel = await openProjectGroupPanel(page, "Members");
+      const panel = await openProjectGroupPanel(page, memberGroupName);
       const nestSelect = panel.getByRole("combobox", { name: /Nest an? .*group…/ });
       await nestSelect.selectOption({ label: groupName });
       await nestSelect.locator("xpath=../button").click();
@@ -162,7 +207,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // Principle 7 — every mutation ends with feedback.
       await expect(page.getByText("Group created")).toBeVisible();
       await expect(dialog).not.toBeVisible();
-      const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) });
+      // The group's Name cell is a real `<button>` (`DirectoryTable`'s
+      // `onRowClick`) — the Role badge sits in a sibling `<td>`, so this
+      // checks the whole `<tr>`, not just the button itself.
+      const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) }).locator("xpath=ancestor::tr[1]");
       await expect(row).toContainText("Stakeholder");
     });
 

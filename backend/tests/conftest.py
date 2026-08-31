@@ -2,32 +2,49 @@
 Module: tests.conftest
 
 Test fixtures for the backend test suite. Runs against a real PostgreSQL
-database (a dedicated `reqtrack_test` database on the same server used by
-docker-compose) rather than SQLite, since the schema uses PostgreSQL-specific
-types (UUID, JSONB). The schema is created once per test session by running
-the real Alembic migrations (not `Base.metadata.create_all()` directly) so
-the test suite exercises the same migration path production deployments use
-— and so it doesn't fight with the app's own startup-time
-`alembic upgrade head` (see app/migrations.py), which would otherwise try to
-re-apply non-idempotent `op.add_column` migrations against a schema a raw
-`create_all()` had already brought to the same end state. Every table is
-truncated between tests so each test starts from a clean slate, including a
-freshly bootstrapped server admin user.
+database (a dedicated `reqtrack_pytest_test` database on the same server
+used by docker-compose) rather than SQLite, since the schema uses
+PostgreSQL-specific types (UUID, JSONB). The schema is created once per test
+session by running the real Alembic migrations (not `Base.metadata.
+create_all()` directly) so the test suite exercises the same migration path
+production deployments use — and so it doesn't fight with the app's own
+startup-time `alembic upgrade head` (see app/migrations.py), which would
+otherwise try to re-apply non-idempotent `op.add_column` migrations against a
+schema a raw `create_all()` had already brought to the same end state. Every
+table is truncated between tests so each test starts from a clean slate,
+including a freshly bootstrapped server admin user.
+
+`reqtrack_pytest_test` is a database pytest owns exclusively — never
+`reqtrack_test`, which `tests/container/docker-compose.yml`'s `backend`
+service (the dev/demo stack Playwright also targets) uses. This distinction
+matters because this suite's schema-per-session fixture below does a hard
+`DROP SCHEMA public CASCADE` at the start of every session, and every single
+test truncates every table afterward — see `_schema`'s and `_clean_tables`'s
+own docstrings for exactly why. Forcing pytest onto a separate, dedicated
+database name (below) is what makes that safe to run at any time, repeatedly,
+without disturbing whatever manually-seeded demo/dev data the same
+docker-compose stack's backend is also serving requests against.
 """
 
 import os
 
+# `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
+# module `tests/_pytest_database.py`, not here, purely so this can be a
+# plain import: this rewrite has to run before any `app.*` import below
+# (importing `app.database` creates a SQLAlchemy engine from DATABASE_URL at
+# module-import time), but a module-level `def` here — ahead of those other
+# imports — would itself trip ruff's E402 (module-level import not at top of
+# file) on every import that follows it. See that module's own docstring
+# for the full mechanical reason, and its `dedicated_pytest_database_url`
+# docstring for *why* this rewrite exists at all.
+from tests._pytest_database import dedicated_pytest_database_url
+
 # NOTE: `setdefault` here is a convenience for local/CI runners that haven't
-# set DATABASE_URL at all — it is NOT sufficient on its own to guarantee
-# tests run against a test database. If DATABASE_URL is already set in the
-# environment (as it always is inside the `backend` service container, to
-# the real application database), `setdefault` is a no-op and this whole
-# suite would otherwise run its session-scoped schema DROP/CREATE fixture
-# below against that real database. This previously happened for real: running
-# `docker compose exec backend pytest` wiped the live dev/demo database on
-# every test run, including at session teardown, which left the running app
-# with no tables at all until its next restart. See docs/decisions.md.
+# set DATABASE_URL at all — it seeds a sensible default before the
+# `dedicated_pytest_database_url()` rewrite below runs. It is NOT what makes
+# this suite safe on its own: see that function's docstring for why.
 os.environ.setdefault("DATABASE_URL", "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test")
+os.environ["DATABASE_URL"] = dedicated_pytest_database_url(os.environ["DATABASE_URL"])
 os.environ.setdefault("SERVER_ADMIN_EMAIL", "admin@example.com")
 os.environ.setdefault("SERVER_ADMIN_PASSWORD", "ChangeMe123!")
 os.environ.setdefault("SERVER_ADMIN_CREATE_ORG", "true")
@@ -53,7 +70,7 @@ if not _test_db_name.endswith("_test"):
         "the entire public schema, including at session teardown — running it "
         "against the wrong database destroys real data. Set DATABASE_URL to a "
         "*_test database explicitly, e.g. "
-        "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test."
+        "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_pytest_test."
     )
 
 
@@ -86,14 +103,18 @@ def _schema():
     # already guarantees a clean slate regardless of what's left behind, so
     # a teardown drop only ever served to tidy up between runs — at the cost
     # of leaving a completely tableless database for anything else pointed
-    # at it. In tests/container/docker-compose.yml, the backend app
-    # container shares this exact database with the test suite, so a
-    # teardown drop meant every `docker compose exec backend pytest` left
-    # the live app unable to serve any request (`relation "..." does not
-    # exist`) until it was restarted. Leaving the migrated-but-truncated
-    # schema in place after the session lets that app keep running (with an
-    # empty admin/session state until its next restart, rather than none at
-    # all).
+    # at it. This module now forces pytest onto its own dedicated
+    # `reqtrack_pytest_test` database (see the DATABASE_URL rewrite near the
+    # top of this file), so nothing else is ever pointed at it in the first
+    # place — but this rule predates that fix and is kept unchanged
+    # regardless: `tests/container/docker-compose.yml`'s `backend` app
+    # container used to share this exact database with the test suite
+    # (before the dedicated-database fix), and a teardown drop there meant
+    # every `docker compose exec backend pytest` left the live app unable to
+    # serve any request (`relation "..." does not exist`) until it was
+    # restarted. Leaving the migrated-but-truncated schema in place after
+    # the session is harmless now and was the actual fix for that failure
+    # mode then, so there's no reason to reintroduce a teardown drop.
 
 
 @pytest.fixture(autouse=True)
@@ -196,6 +217,35 @@ def create_project(
     resp = client.post("/api/v1/projects", json=payload, headers=auth_headers(admin_token))
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+def direct_project_roles(project_id: str) -> dict[str, set[str]]:
+    """Reads `UserProjectRole` rows for `project_id` straight from the
+    database — `user_id -> {role, ...}` (a user can hold more than one
+    direct role simultaneously; the unique constraint is `(user_id,
+    project_id, role)`, not one row per user).
+
+    `GET /projects/{id}/direct-members`, the endpoint several older tests
+    used for this exact assertion, was removed in the follow-up UX batch's
+    Phase D (2026-08-31, docs/decisions.md) once the new unified Members
+    table made it a dead surface with no remaining frontend caller — this
+    helper replaces those call sites with a direct read of the same
+    underlying data, since a "does this user hold this direct grant" check
+    doesn't need a dedicated directory endpoint to express in a test.
+    """
+    from app.models.project import UserProjectRole
+
+    db = SessionLocal()
+    try:
+        rows = db.query(UserProjectRole.user_id, UserProjectRole.role).filter(
+            UserProjectRole.project_id == project_id
+        ).all()
+    finally:
+        db.close()
+    result: dict[str, set[str]] = {}
+    for user_id, role in rows:
+        result.setdefault(str(user_id), set()).add(role.value if hasattr(role, "value") else role)
+    return result
 
 
 def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:

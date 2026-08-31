@@ -125,9 +125,13 @@ def test_cannot_join_project_group_belonging_to_another_project(client, admin_to
         headers=auth_headers(attacker_token),
     ).json()
     project_b = create_project(client, admin_token, org_id, "Victim Project")
-
-    groups_b = client.get(f"/api/v1/projects/{project_b['id']}/groups", headers=auth_headers(admin_token)).json()
-    manager_group_b = next(g for g in groups_b if g["role"] == "project_manager")
+    # No group is auto-created on project creation any more (follow-up UX
+    # batch Phase C, 2026-08-31) — create the manager-role group this test
+    # needs explicitly.
+    manager_group_b = client.post(
+        f"/api/v1/projects/{project_b['id']}/groups", json={"name": "Managers", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
 
     attacker_id = client.get("/api/v1/auth/me", headers=auth_headers(attacker_token)).json()["id"]
     resp = client.post(
@@ -138,7 +142,7 @@ def test_cannot_join_project_group_belonging_to_another_project(client, admin_to
     assert resp.status_code == 404
 
     roles_b = client.get(f"/api/v1/projects/{project_b['id']}/groups", headers=auth_headers(admin_token)).json()
-    manager_group_b_after = next(g for g in roles_b if g["role"] == "project_manager")
+    manager_group_b_after = next(g for g in roles_b if g["id"] == manager_group_b["id"])
     assert attacker_id not in manager_group_b_after["member_user_ids"]
 
 
@@ -151,8 +155,13 @@ def test_cannot_nest_org_group_from_another_organization(client, admin_token, or
     ).json()
 
     project = create_project(client, admin_token, org_id, "My Project")
-    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
-    manager_group = next(g for g in groups if g["role"] == "project_manager")
+    # No group is auto-created on project creation any more (follow-up UX
+    # batch Phase C, 2026-08-31) — create the manager-role group this test
+    # needs explicitly.
+    manager_group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
 
     resp = client.post(
         f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}/members",

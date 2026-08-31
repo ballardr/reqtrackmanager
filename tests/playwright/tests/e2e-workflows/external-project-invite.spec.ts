@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { ensureExpanded, openProjectGroupPanel, selectProjectAdminGroup } from "./helpers";
+import { selectProjectAdminGroup } from "./helpers";
 
 /**
  * End-to-end proof of the "add a project user by email" flow
@@ -12,12 +12,15 @@ import { ensureExpanded, openProjectGroupPanel, selectProjectAdminGroup } from "
  * the project access promised at invite time. See docs/decisions.md's
  * "Self-signup, invites, and SSO" entry.
  *
- * Also covers Phase 3 ("resend a pending invite", docs/decisions.md): the
- * invite shows up in the new pending-invites list
- * (`components/PendingInvitesSection.tsx`) with "Pending" status, and
- * clicking Resend retriggers a fresh email — verified the same way, via
- * MailHog's real HTTP API, rather than asserting only that the backend
- * attempted a send.
+ * Also covers Phase 3 ("resend a pending invite", docs/decisions.md),
+ * rebuilt in Phase D (follow-up UX batch, 2026-08-31): the invite shows up
+ * as a row in the unified `ProjectMembersTable` (`components/
+ * ProjectMembersTable.tsx`, folded in from the retired
+ * `PendingInvitesSection.tsx`) with a "Pending" status badge in its Role
+ * cell, hideable via the "Show invited" `FilterCheckbox`, and clicking
+ * Resend retriggers a fresh email — verified the same way, via MailHog's
+ * real HTTP API, rather than asserting only that the backend attempted a
+ * send.
  *
  * Configures the organisation via API first (setup), then drives the
  * actual invite through the browser's project-admin UI, and verifies the
@@ -112,13 +115,15 @@ test("project admin invites a brand-new external user by email, and they can sig
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await selectProjectAdminGroup(page, "Project groups");
-  // Each group row opens a `SidePanel` (Phase 5, docs/decisions.md) —
-  // "Project Managers" is the first default group.
-  const invitePanel = await openProjectGroupPanel(page, "Project Managers");
+  // No group is auto-created on project creation any more (follow-up UX
+  // batch Phase C, 2026-08-31) — invite via the Members section's own
+  // add control instead, which grants the by-email invite a *direct*
+  // role (`assign_project_role_by_email`) the exact same way a project
+  // group's own member picker used to.
+  await selectProjectAdminGroup(page, "Members");
 
-  await test.step("invite the new email via the project group's user picker", async () => {
-    const picker = invitePanel.getByPlaceholder("Type a name to add, or an email to invite…");
+  await test.step("invite the new email via the Members section's own add control", async () => {
+    const picker = page.getByPlaceholder("Type a name to add, or an email to invite…");
     await picker.fill(inviteeEmail);
     // The dropdown follows the WAI-ARIA combobox/listbox pattern
     // (`UserAutocomplete.tsx`) — each match, including the invite result,
@@ -126,7 +131,6 @@ test("project admin invites a brand-new external user by email, and they can sig
     await expect(page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
     await page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).click();
   });
 
   const inviteUrl = await test.step("find the invite email in MailHog and extract the signup link", async () => {
@@ -181,16 +185,17 @@ test("project admin sees a pending invite listed and can resend it, retriggering
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  await selectProjectAdminGroup(page, "Project groups");
-  const invitePanel = await openProjectGroupPanel(page, "Project Managers");
+  // No group is auto-created on project creation any more (follow-up UX
+  // batch Phase C, 2026-08-31) — invite via the Members section's own
+  // add control instead, which is also where pending invites now live.
+  await selectProjectAdminGroup(page, "Members");
 
-  await test.step("invite the new email via the project group's user picker", async () => {
-    const picker = invitePanel.getByPlaceholder("Type a name to add, or an email to invite…");
+  await test.step("invite the new email via the Members section's own add control", async () => {
+    const picker = page.getByPlaceholder("Type a name to add, or an email to invite…");
     await picker.fill(inviteeEmail);
     await expect(page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
     await page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).click();
   });
 
   const firstLink = await test.step("wait for the original invite email to land in MailHog", async () => {
@@ -208,16 +213,23 @@ test("project admin sees a pending invite listed and can resend it, retriggering
     return link as unknown as string;
   });
 
-  await test.step("see the invite listed as Pending", async () => {
+  await test.step("see the invite listed as Pending, and hideable via Show invited", async () => {
     await page.reload();
     // Pending invites moved onto the new "Members" section (Phase 5,
-    // docs/decisions.md) — the old combined "Project groups" tab no
-    // longer has it.
+    // docs/decisions.md), folded directly into the unified
+    // `ProjectMembersTable` as a per-row status in Phase D (follow-up UX
+    // batch, 2026-08-31) — no separate "Pending invites" section any more.
     await selectProjectAdminGroup(page, "Members");
-    await ensureExpanded(page, "Pending invites");
     const row = page.getByRole("row", { name: new RegExp(inviteeEmail) });
     await expect(row).toBeVisible();
     await expect(row.getByText("Pending")).toBeVisible();
+
+    await test.step("Show invited toggle hides and reveals the pending-invite row", async () => {
+      await page.getByLabel("Show invited").uncheck();
+      await expect(page.getByText(inviteeEmail)).toHaveCount(0);
+      await page.getByLabel("Show invited").check();
+      await expect(row).toBeVisible();
+    });
 
     await test.step("resend it and confirm feedback + a second, different email fires", async () => {
       await row.getByRole("button", { name: `Resend invite to ${inviteeEmail}` }).click();

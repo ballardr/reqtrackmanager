@@ -1,21 +1,68 @@
 """Tests for Phase 5 (project membership/groups redesign, docs/decisions.md):
 `PATCH /projects/{id}/groups/{group_id}` (making a project group's role
-editable after creation, C-U-11), `DELETE /projects/{id}/groups/{group_id}`
-(new), and `GET /projects/{id}/direct-members` (new) — the backend half of
-the Members/Groups page split.
+editable after creation, C-U-11) and `DELETE /projects/{id}/groups/{group_id}`
+(new) — the backend half of the Members/Groups page split.
 
-All three share `require_project_manage`'s gate tier (same as
-`create_project_group`/`add_project_group_member`), and the two mutating
-endpoints share C-U-08's "a project must always have at least one manager"
-guard with `remove_project_group_member`/`revoke_project_role`.
+`GET /projects/{id}/direct-members`, also added in that phase, was removed
+in the follow-up UX batch's Phase D (2026-08-31, docs/decisions.md) once the
+new unified Members table (built on `GET /effective-members`'s `direct_role`
+provenance kind) made it a dead surface with no remaining frontend caller —
+see `tests/test_project_group_role_editing.py`'s own history and `tests.
+conftest.direct_project_roles` for the direct-DB-read replacement several of
+this suite's assertions used to reach for it now use instead.
+
+Both remaining mutating endpoints share `require_project_manage`'s gate tier
+(same as `create_project_group`/`add_project_group_member`) and C-U-08's "a
+project must always have at least one manager" guard with `remove_project_
+group_member`/`revoke_project_role`.
+
+Follow-up UX batch Phase C (2026-08-31, docs/decisions.md) removed the four
+auto-created "standard" project groups and their `is_default` flag
+entirely: `create_project`'s non-template path now grants the creator a
+direct `PROJECT_MANAGER` `UserProjectRole` instead of adding them to a
+default "Project Managers" group. Every test below that used to reach for
+that default group via `_default_manager_group` now either uses the
+creator's own direct grant directly, or — where a scenario specifically
+needs an *existing group* to already be the project's sole manager source —
+uses `_make_group_the_sole_manager` to set that up explicitly (grant a
+second person the role via a brand-new group, then revoke the creator's own
+direct grant, since a fresh project always has exactly one manager: the
+creator, directly).
 """
 
 from tests.conftest import auth_headers, create_org_user, create_project, login
 
 
-def _default_manager_group(client, admin_token, project_id) -> dict:
-    groups = client.get(f"/api/v1/projects/{project_id}/groups", headers=auth_headers(admin_token)).json()
-    return next(g for g in groups if g["role"] == "project_manager")
+def _make_group_the_sole_manager(client, admin_token, org_id, project_id) -> dict:
+    """Creates a manager-role group with a *different* user as its only
+    member, then revokes the project creator's own direct manager grant
+    (C-U-10) — leaving the new group as the project's only manager source.
+
+    `revoke_project_role`'s own C-U-08 guard only blocks removing a
+    direct grant when the grantee would become the project's *sole*
+    effective manager afterward (and isn't also an inherited manager) — so
+    this only works cleanly because the new group's member is someone
+    other than the creator: with two independent manager sources (the
+    creator's direct grant, the new group), revoking the creator's direct
+    grant leaves exactly one (the group), and the revoke itself is never
+    blocked by the very guard this helper exists to set up a test for.
+    """
+    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
+    other_id = create_org_user(client, admin_token, org_id, "sole-manager-source@example.com", role="member")
+    group = client.post(
+        f"/api/v1/projects/{project_id}/groups", json={"name": "Managers", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
+    added = client.post(
+        f"/api/v1/projects/{project_id}/groups/{group['id']}/members",
+        json={"user_id": other_id}, headers=auth_headers(admin_token),
+    )
+    assert added.status_code == 204, added.text
+    revoke = client.delete(
+        f"/api/v1/projects/{project_id}/roles/{me['id']}/project_manager", headers=auth_headers(admin_token)
+    )
+    assert revoke.status_code == 204, revoke.text
+    return group
 
 
 def test_update_group_role_reflected_live_with_no_membership_row_change(client, admin_token, org_id):
@@ -67,12 +114,11 @@ def test_update_group_role_no_op_when_role_unchanged(client, admin_token, org_id
 
 
 def test_update_group_role_away_from_manager_blocked_when_sole_manager(client, admin_token, org_id):
-    """C-U-08: the project's only manager source is the default "Project
-    Managers" group (the creator's membership from project creation) — PATCHing
-    its role away from project_manager, with no backup manager source, must
-    be rejected."""
+    """C-U-08: PATCHing a group's role away from project_manager, with no
+    backup manager source, must be rejected — here that group is set up as
+    the project's *only* manager source via `_make_group_the_sole_manager`."""
     project = create_project(client, admin_token, org_id)
-    manager_group = _default_manager_group(client, admin_token, project["id"])
+    manager_group = _make_group_the_sole_manager(client, admin_token, org_id, project["id"])
 
     resp = client.patch(
         f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}", json={"role": "member"},
@@ -92,7 +138,7 @@ def test_update_group_role_away_from_manager_allowed_with_backup_manager(client,
     whether this specific group used to grant it."""
     project = create_project(client, admin_token, org_id)
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
-    manager_group = _default_manager_group(client, admin_token, project["id"])
+    manager_group = _make_group_the_sole_manager(client, admin_token, org_id, project["id"])
 
     backup_group = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Backup Managers", "role": "project_manager"},
@@ -111,42 +157,32 @@ def test_update_group_role_away_from_manager_allowed_with_backup_manager(client,
     assert resp.json()["role"] == "member"
 
 
-def test_delete_default_group_is_rejected(client, admin_token, org_id):
-    """C-U-10's four standard groups are never deletable, independent of
-    C-U-08 — this project's default "Project Managers" group is also its
-    only manager source, but the rejection reason is is_default, not the
-    manager guard."""
+def test_group_response_has_no_is_default_field_and_delete_never_special_cases_it(client, admin_token, org_id):
+    """`is_default` was removed from `ProjectGroup`/`ProjectGroupOut`
+    entirely, and `delete_project_group` no longer special-cases it — the
+    only remaining delete guard is C-U-08 ("a project must retain at least
+    one manager"), which applies uniformly regardless of how a group came
+    to exist. This project's creator already holds a direct
+    PROJECT_MANAGER grant (C-U-10), so a brand-new manager-role group here
+    is never the project's sole manager source and is freely deletable."""
     project = create_project(client, admin_token, org_id)
-    manager_group = _default_manager_group(client, admin_token, project["id"])
+    group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Extra Managers", "role": "project_manager"},
+        headers=auth_headers(admin_token),
+    ).json()
+    assert "is_default" not in group
 
     resp = client.delete(
-        f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}", headers=auth_headers(admin_token)
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}", headers=auth_headers(admin_token)
     )
-    assert resp.status_code == 400, resp.text
+    assert resp.status_code == 204, resp.text
 
 
 def test_delete_custom_manager_group_blocked_when_sole_manager(client, admin_token, org_id):
-    """C-U-08 on delete: a non-default manager-role group can normally be
-    deleted, but not if doing so would leave the project with zero
-    managers."""
+    """C-U-08 on delete: a manager-role group can normally be deleted, but
+    not if doing so would leave the project with zero managers."""
     project = create_project(client, admin_token, org_id)
-    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
-    manager_group = _default_manager_group(client, admin_token, project["id"])
-    custom_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Custom Managers", "role": "project_manager"},
-        headers=auth_headers(admin_token),
-    ).json()
-    client.post(
-        f"/api/v1/projects/{project['id']}/groups/{custom_group['id']}/members",
-        json={"user_id": me["id"]}, headers=auth_headers(admin_token),
-    )
-    # Move the only manager off the default group so custom_group is now the
-    # sole manager source (this itself succeeds — backup existed at the time).
-    demote = client.patch(
-        f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}", json={"role": "member"},
-        headers=auth_headers(admin_token),
-    )
-    assert demote.status_code == 200, demote.text
+    custom_group = _make_group_the_sole_manager(client, admin_token, org_id, project["id"])
 
     resp = client.delete(
         f"/api/v1/projects/{project['id']}/groups/{custom_group['id']}", headers=auth_headers(admin_token)
@@ -169,8 +205,8 @@ def test_delete_custom_manager_group_allowed_with_backup_manager(client, admin_t
         f"/api/v1/projects/{project['id']}/groups/{custom_group['id']}/members",
         json={"user_id": me["id"]}, headers=auth_headers(admin_token),
     )
-    # me is manager via both the default group and custom_group here, so
-    # deleting custom_group is safe.
+    # me is manager via both their own direct grant (C-U-10) and
+    # custom_group here, so deleting custom_group is safe.
     resp = client.delete(
         f"/api/v1/projects/{project['id']}/groups/{custom_group['id']}", headers=auth_headers(admin_token)
     )
@@ -213,64 +249,14 @@ def test_update_and_delete_group_gated_at_manage_tier(client, admin_token, org_i
         f"/api/v1/projects/{project['id']}/groups/{group['id']}", json={"role": "stakeholder"},
         headers=auth_headers(org_admin_token),
     ).status_code == 200
+    # Org admin of this project's own org, with no project role of their
+    # own, can also reach the manage-tier-gated effective-members view
+    # (`can_manage_project_settings`'s existing carve-out, C-U-01
+    # clarification) — same tier `GET /direct-members` used to be gated at
+    # before its removal (Phase D, follow-up UX batch, 2026-08-31).
     assert client.get(
-        f"/api/v1/projects/{project['id']}/direct-members", headers=auth_headers(org_admin_token)
+        f"/api/v1/projects/{project['id']}/effective-members", headers=auth_headers(org_admin_token)
     ).status_code == 200
     assert client.delete(
         f"/api/v1/projects/{project['id']}/groups/{group['id']}", headers=auth_headers(org_admin_token)
     ).status_code == 204
-
-
-def test_direct_members_gated_at_view_or_manage_tier(client, admin_token, org_id):
-    """`GET /direct-members` uses the same broader gate as
-    `list_project_groups` (`require_project_view_or_manage`): any genuine
-    project role is enough to view it (unlike PATCH/DELETE's stricter
-    manage-tier gate), but a user with no role on the project at all — not
-    even in the same organisation — still gets 403."""
-    project = create_project(client, admin_token, org_id)
-    non_member_id = create_org_user(client, admin_token, org_id, "no-project-role@example.com", role="member")
-    assert non_member_id
-    non_member_token = login(client, "no-project-role@example.com", "Password123!")
-    assert client.get(
-        f"/api/v1/projects/{project['id']}/direct-members", headers=auth_headers(non_member_token)
-    ).status_code == 403
-
-    plain_member_id = create_org_user(client, admin_token, org_id, "has-project-role@example.com", role="member")
-    client.post(
-        f"/api/v1/projects/{project['id']}/roles", json={"user_id": plain_member_id, "role": "member"},
-        headers=auth_headers(admin_token),
-    )
-    member_token = login(client, "has-project-role@example.com", "Password123!")
-    assert client.get(
-        f"/api/v1/projects/{project['id']}/direct-members", headers=auth_headers(member_token)
-    ).status_code == 200
-
-
-def test_direct_members_returns_multi_role_array_per_user(client, admin_token, org_id):
-    """A user holding two simultaneous direct role grants must appear as one
-    row with both roles, not two rows or a collapsed single role — pins
-    `UserProjectRole`'s real multiplicity (unique on (user_id, project_id,
-    role), not one row per user)."""
-    project = create_project(client, admin_token, org_id)
-    user_id = create_org_user(client, admin_token, org_id, "multi-role@example.com", role="member")
-    client.post(
-        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "stakeholder"},
-        headers=auth_headers(admin_token),
-    )
-    client.post(
-        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "member"},
-        headers=auth_headers(admin_token),
-    )
-
-    resp = client.get(f"/api/v1/projects/{project['id']}/direct-members", headers=auth_headers(admin_token))
-    assert resp.status_code == 200, resp.text
-    rows = resp.json()
-    row = next(r for r in rows if r["user_id"] == user_id)
-    assert set(row["roles"]) == {"stakeholder", "member"}
-    assert row["email"] == "multi-role@example.com"
-
-    # The project creator holds their manager role only via the default
-    # group (ProjectGroupMember), never a direct UserProjectRole row from
-    # project creation — so they must not appear here at all yet.
-    me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
-    assert not any(r["user_id"] == me["id"] for r in rows)

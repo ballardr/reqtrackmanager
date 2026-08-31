@@ -391,29 +391,36 @@ const en = {
     memberSourceModeSelect: "Mirror mode",
     memberSourceFilterRoleSelect: "Mirrored role",
     projectReferenceSelect: "Referenced {project}",
-    // Deliberately not just "Members" — every project seeds a default
-    // group of that exact name (`DEFAULT_GROUPS` in `routers/projects.py`),
-    // which renders as its own "Members (...) section" card lower on this
-    // same "Project groups" tab; a title collision there broke
-    // `openGroupCard`'s prefix-matching regex in the Playwright suite.
-    effectiveMembers: "Effective members",
-    effectiveMembersHint: "Everyone with access to this {project}, direct or inherited.",
-    loadEffectiveMembers: "Show members",
-    sourceDirect: "Direct",
-    sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
-    sourceMemberSourceInherited: (sourceName: string, mode: string) => `Via member source '${sourceName}' (${mode.toLowerCase()})`,
+    // Effective-members-derived "Members" section heading/hint (Phase D,
+    // follow-up UX batch, 2026-08-31) — since default project groups no
+    // longer exist (Phase C), no title collision risk remains with a
+    // group literally named "Members" the way there once was.
+    effectiveMembers: "Members",
+    effectiveMembersHint: "Everyone with access to this {project}, direct or inherited — add, edit, and invite from this one table.",
     materializeAll: "Convert all inherited access to direct roles",
     materializedCount: (n: number) => (n === 0 ? "Nothing to convert — no inherited access to make direct." : `Converted ${n} ${n === 1 ? "user" : "users"} to direct roles.`),
-    // Effective-members table columns (UX review: matches Org Admin's Users
-    // table's searchable/sortable pattern — Source replaces that table's
-    // status/2FA/last-login columns, which don't exist at project scope).
     email: "Email",
-    role: "Role",
-    source: "Source",
-    searchMembers: "Search members",
-    noMembersFound: "No members match this search.",
     terminology: "Terminology",
     terminologyHint: "Override how these terms are labelled in this {project}'s UI. Leave blank to use the default.",
+    // Row labels for the terminology-override list above — one per
+    // `TERMINOLOGY_KEYS` entry (`ProjectAdminPage.tsx`). Previously derived
+    // from the raw key via CSS `text-transform: capitalize` + a manual
+    // `.replace("_", " ")` rather than a real label map — exactly the
+    // pattern this repo's own rule on rendering enum/derived-string values
+    // forbids (a sibling element two lines away already does this
+    // correctly for role/status values). A plain literal label map, not
+    // run through the `{project}`-style terminology-substitution system:
+    // these rows *are* the canonical default term names being configured,
+    // so substituting them through the not-yet-applied override they name
+    // would be circular.
+    terminologyKeyLabel: {
+      project: "Project",
+      stage: "Stage",
+      component: "Component",
+      category: "Category",
+      requirement: "Requirement",
+      change_request: "Change Request",
+    } as Record<"project" | "stage" | "component" | "category" | "requirement" | "change_request", string>,
     // Distinct from `saveSettings` only because Terminology's Save button
     // now shares a screen with Overview's own "Save settings" button
     // (2026-08 UX audit roadmap: 8 tabs -> 5) — two identically-labelled
@@ -471,9 +478,14 @@ const en = {
     categories: "{Categories}",
     groups: "{Project} groups",
     searchGroups: "Search by name",
+    noGroupsFound: "No groups match this search.",
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Reviewers",
     groupRole: "Role",
+    // Column header for the `DirectoryTable` row-count column (Phase B,
+    // follow-up UX batch, 2026-08-31) — distinct from `memberCount(n)`
+    // below, which renders the actual "N member(s)" cell content.
+    groupMembersColumn: "Members",
     groupCreated: "Group created",
     addMember: "Add member",
     addMemberPlaceholder: "Type a name or email to add…",
@@ -486,18 +498,13 @@ const en = {
       `${email} was added and will get the '${role}' role next time they sign in via SSO.`,
     externalAddError: "Could not add this user.",
     memberCount: (n: number) => `${n} member(s)`,
-    // Pending invites (Phase 3, docs/decisions.md) — a small, self-contained
-    // section (`components/PendingInvitesSection.tsx`) listing unaccepted
-    // `PendingInvite`s for this {project} with a resend action, deliberately
-    // kept out of the per-group add/invite flow above since a pending
-    // invite is project-scoped, not per-group.
-    pendingInvites: "Pending invites",
-    pendingInvitesHint: "Invites sent to people who haven't finished signing up yet.",
-    noPendingInvites: "No pending invites.",
-    invitedEmail: "Email",
-    invitedRole: "Role",
-    invitedSent: "Sent",
-    invitedStatus: "Status",
+    // Pending invites (Phase 3, docs/decisions.md): originally their own
+    // small, self-contained section (`components/PendingInvitesSection.tsx`)
+    // — folded into the unified `ProjectMembersTable` as a per-row status
+    // instead (Phase D, follow-up UX batch, 2026-08-31) — these four
+    // "Resend" strings are still shared with Org Admin's own org-level
+    // resend flow (Phase A, same batch), so they stay here rather than
+    // moving into `membersTable`'s own namespace.
     resendInvite: "Resend",
     resendInviteAria: (email: string) => `Resend invite to ${email}`,
     resendInviteSuccess: (email: string) => `Invite resent to ${email}.`,
@@ -537,21 +544,20 @@ const en = {
     deleteCustomField: (name: string) => `Delete ${name}`,
     deleteCustomFieldConfirm: (name: string) => `This removes the "${name}" field and its values from every {requirement}/{changeRequest} that has it set. This cannot be undone.`,
     // Phase 5 (docs/decisions.md): "Members" split out of the old combined
-    // "Project groups" tab into its own resource-menu section, holding the
-    // new editable `MemberRoleTable` (direct users + groups, one role
-    // control each) plus the pre-existing Effective members audit table and
-    // PendingInvitesSection (both relocated here, unchanged in shape).
+    // "Project groups" tab into its own resource-menu section. Rebuilt
+    // again in Phase D (follow-up UX batch, 2026-08-31): the editable
+    // users+groups table, the effective-members audit table, and pending
+    // invites — three sections doing one job — became the single unified
+    // `ProjectMembersTable` (`components/ProjectMembersTable.tsx`).
     membersNav: "Members",
     // "Groups" keeps `groups`/`newGroup`/`searchGroups`/`groupCreated`
     // above for its own heading/create-modal copy — these are its
     // SidePanel-specific additions.
     groupDetails: (name: string) => `${name} details`,
     groupRoleAtTop: "Group role",
-    defaultGroupBadge: "Default",
     deleteGroup: "Delete group",
     deleteGroupTitle: (name: string) => `Delete "${name}"?`,
     deleteGroupMessage: "This removes the group and every membership under it. Direct roles and other groups' memberships are unaffected. This cannot be undone.",
-    deleteGroupDefaultBlocked: "The default groups created with this {project} can't be deleted.",
     groupUpdated: "Group updated",
     groupDeleted: "Group deleted",
     // member_source_project_ids groups (Phase 5) — extends the existing
@@ -561,44 +567,70 @@ const en = {
     viaProjectMembersLinkLabel: "View members",
     viaProjectMembersHint: "Live — always mirrors that {project}'s own current direct members, not a fixed list captured at the time it was added.",
   },
-  memberRoleTable: {
-    // frontend/src/components/MemberRoleTable.tsx — the "add a user or
-    // group, then assign a role" shared table (Phase 5, docs/decisions.md):
-    // one call site on the new Members section (`ProjectAdminPage.tsx`),
-    // one inside Org Admin's "Manage users" modal (`OrgAdminPage.tsx`).
+  membersTable: {
+    // frontend/src/components/ProjectMembersTable.tsx — the unified
+    // "effective members, editable, with pending invites folded in" table
+    // (Phase D, follow-up UX batch, 2026-08-31, docs/decisions.md) that
+    // replaced `MemberRoleTable`/`PendingInvitesSection`: one call site on
+    // Project Admin's own "Members" section (`ProjectAdminPage.tsx`), one
+    // inside Org Admin's "Manage users" modal (`OrgAdminPage.tsx`).
     // Deliberately its own top-level namespace, not nested under `admin`/
-    // `orgAdmin`, since both pages share this exact copy verbatim.
-    search: "Search members and groups",
+    // `orgAdmin`, since both pages share this exact copy verbatim — the
+    // same reasoning `MemberRoleTable`'s own now-retired namespace had.
     name: "Name",
     email: "Email",
     role: "Role",
-    type: "Type",
-    typeUser: "User",
-    typeGroup: "Group",
-    groupMemberCount: (n: number) => `${n} member${n === 1 ? "" : "s"}`,
+    source: "Source",
+    search: "Search by name or email",
+    noResults: "No members or invites match this search/filter.",
+    empty: "No members yet.",
     rolesFor: (name: string) => `${name}'s roles`,
     noRoles: "No roles",
     grantRole: (role: string, name: string) => `Grant ${role} to ${name}`,
     revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
     // Client-side hint only — a fast approximation of C-U-08 ("a project
-    // must always have at least one manager") computed from the rows
-    // already on screen, mirroring the same disabled+title treatment
-    // `MultiSelectDropdown` already gives self-role-revoke on
-    // `OrgAdminPage.tsx`. The backend guard (`PATCH`/`DELETE .../groups/
-    // {group_id}`, `DELETE .../roles/{user_id}/{role}`) is authoritative
-    // either way, so this can be wrong in edge cases (e.g. a manager
-    // inherited from a parent {project}) without being unsafe.
+    // must always have at least one manager"), sourced from `direct_role`-
+    // kind entries only (Phase D's `kind` split — see `MemberSourceProvenanceKind`'s
+    // own doc comment), not the old collapsed `direct` bucket, since a
+    // manager whose role actually comes from a group or org-wide
+    // visibility would otherwise misreport here. The backend guard
+    // (`DELETE .../roles/{user_id}/{role}`) is authoritative either way,
+    // so this can be wrong in edge cases (e.g. a manager inherited from a
+    // parent {project}) without being unsafe.
     cannotRemoveLastManager: "This is the {project}'s only manager source — add another manager first.",
-    groupRoleSelectLabel: (name: string) => `Role for ${name}`,
-    viewGroupMembers: (name: string) => `View ${name}'s members`,
-    noResults: "No members or groups match this search.",
-    empty: "No direct members or groups yet.",
+    // Shown (checked, disabled) for a role option whose *only* source is
+    // not a genuine direct grant — a group, nested org group, project
+    // reference, or org-wide visibility. `DELETE .../roles/{user_id}/{role}`
+    // only ever deletes a `UserProjectRole` row, so this role isn't
+    // togglable from here at all; it must be changed at its actual source
+    // (the group's own membership/role, the project's visibility setting).
+    roleNotDirectlyRevocable: "This role isn't a direct grant on this {project} — it comes from a group, nested org group, project reference, or org-wide visibility. Change it at that source instead.",
     // Shared by both `addControl` compositions (`ProjectAdminPage.tsx`'s
     // Members section, `OrgAdminPage.tsx`'s "Manage users" modal) — the
     // role `<select>` accompanying `UserAutocomplete` in the "add a
     // member" row.
     addRoleSelectLabel: "Role to grant",
     add: "Add",
+    // Per-role provenance text (Source column) — one line per source a
+    // user holds a given role through; see `MemberSourceProvenanceKind`'s
+    // own doc comment for what each of the five direct kinds means.
+    sourceDirectRole: "Direct",
+    sourceDirectGroup: "Via group",
+    sourceDirectOrgGroup: "Via nested org group",
+    sourceDirectProjectRef: "Via project reference",
+    sourceDirectOrgWide: "Org-wide visibility",
+    sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
+    sourceMemberSourceInherited: (sourceName: string, mode: string) => `Via member source '${sourceName}' (${mode.toLowerCase()})`,
+    // Role filter (`FilterField`, matching every other directory's own
+    // role filter, e.g. Org Admin's Users table) — only show members
+    // holding a given role; doesn't affect invited rows' own role.
+    roleFilterLabel: "Role",
+    allRoles: "All roles",
+    showInvited: "Show invited",
+    // Invited-row treatment, folded in from the retired
+    // `PendingInvitesSection.tsx` — status badge + Resend button replace
+    // the MultiSelectDropdown a real member row's Role cell would show.
+    invitedSentOn: (date: string) => `Sent ${date}`,
   },
   serverSettings: {
     title: "Platform branding",
@@ -714,9 +746,10 @@ const en = {
     projectsHint: (org: string) => `Every {project} in this ${org}, including ones you don't otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
     manageUsers: "Manage users",
     // Phase 5 (docs/decisions.md): the inline "Manage users" expand-in-place
-    // became a `Modal` wrapping the same `MemberRoleTable` `ProjectAdminPage.
-    // tsx`'s own Members section uses — literally the same component, not a
-    // parallel reimplementation.
+    // became a `Modal` wrapping the same `ProjectMembersTable`
+    // `ProjectAdminPage.tsx`'s own Members section uses (rebuilt onto that
+    // component in Phase D, follow-up UX batch, 2026-08-31) — literally the
+    // same component, not a parallel reimplementation.
     manageUsersModalTitle: (projectName: string) => `Manage users — ${projectName}`,
     users: (orgCap: string) => `${orgCap} users`,
     email: "Email",
@@ -730,9 +763,28 @@ const en = {
     statusActive: "Active",
     statusArchived: "Archived",
     statusDeactivated: "Deactivated",
+    // 2026-08-31 clarity pass (Phase A, follow-up UX batch): "Active" means
+    // "not deactivated", not "has ever logged in" — a freshly created user
+    // (or an invite the moment it's accepted) shows Active immediately,
+    // which read as surprising until this tooltip spelled out why.
+    statusActiveHint: "This account is not deactivated. It doesn't necessarily mean the person has logged in yet.",
     newUser: "New user",
     userCreated: "User created",
+    // "Invite user" (Phase A, follow-up UX batch): a second, distinct way
+    // to add a user, alongside "New user" — an email link the invitee
+    // completes themselves, rather than an admin-set password. The hint
+    // below sits next to both buttons so the difference is obvious rather
+    // than discovered by trial.
+    inviteUser: "Invite user",
+    newUserVsInviteHint: "‘New user’ sets a password immediately. ‘Invite user’ emails a sign-up link so they set their own.",
+    inviteUserModalHint: "They'll get an email with a link to choose their own password and display name.",
+    sendInvite: "Send invite",
+    inviteSent: "Invite sent",
+    invitedBy: (name: string) => `Invited by ${name}`,
+    invitedSentOn: (date: string) => `Sent ${date}`,
+    noUsersFound: "No users match this search/filter.",
     role: "Role",
+    allRoles: "All roles",
     grantRole: (role: string, name: string) => `Grant ${role} to ${name}`,
     revokeRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
     roleGranted: "Role granted",
@@ -740,13 +792,33 @@ const en = {
     searchUsers: "Search by name or email",
     groups: (orgCap: string) => `${orgCap} groups`,
     searchGroups: "Search by name",
+    noGroupsFound: "No groups match this search.",
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
+    // `DirectoryTable`'s row-detail panel (Phase B, follow-up UX batch,
+    // 2026-08-31) — same "{name} details" shape `admin.groupDetails` already
+    // established for Project Groups.
+    groupDetails: (name: string) => `${name} details`,
+    // Column header text for the row-count column both Org and Project
+    // Groups tables share — distinct from `admin.memberCount(n)`, which
+    // renders the actual "N member(s)" cell content, not the header.
+    groupMembersColumn: "Members",
     addNestedGroup: "Nest a group…",
     nestedGroupLabel: (name: string) => `${name} (nested group)`,
-    idpSyncedGroupName: "IdP-synced group name",
+    // Renamed from "IdP-synced group name" (Phase B, follow-up UX batch,
+    // 2026-08-31 bug-fix pass) to match this app's existing "SSO group"
+    // terminology (`oidcRequiredGroup`'s "Required SSO group" label below)
+    // rather than the more technical "IdP" term, which appears nowhere else
+    // in this org's own SSO copy. Key name kept as-is to avoid touching
+    // every existing call site for a copy-only change.
+    idpSyncedGroupName: "SSO group name",
     idpSyncedGroupNamePlaceholder: "e.g. eng-team",
+    // The explicit enable/disable toggle (Phase B) wrapping the sync name +
+    // granted-role fields — checked by default only when the group already
+    // has a sync name set; unchecking clears both fields via the same PATCH
+    // the Save button already uses.
+    syncFromSso: "Sync membership and role from an SSO/IdP group",
     // Role-granting (2026-08 UX audit roadmap item 522) is surfaced right
     // next to the sync name and saved together via one button — replaces
     // the old, disconnected "SSO group mappings" list this org's Advanced/
@@ -754,8 +826,15 @@ const en = {
     grantedOrgRole: "Grants role on sync",
     grantedOrgRoleNone: "No role granted",
     grantedOrgRoleHint: "A user whose IdP group claim matches the sync name above is granted this role — requires a sync name to also be set.",
+    // Phase B bug fix (2026-08-31, follow-up UX batch): this hint used to
+    // sit next to a granted-role select that was the *only* gated field —
+    // the sync-name input and Save button rendered unconditionally above it
+    // even with no SSO configured at all. Now the whole sync sub-section
+    // (name, role, toggle, save) is gated on the same check, and this is
+    // the sole thing shown when it isn't configured.
     ssoNotConfiguredHint: (org: string) => `Set up SSO/OIDC for this ${org} first to grant a role here.`,
     saveIdpSync: "Save sync settings",
+    groupSyncUpdated: "Sync settings updated",
     resources: "Shared resources",
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
     lockDisplayName: "Lock display name",
@@ -810,6 +889,11 @@ const en = {
     filterNo2fa: "No 2FA",
     filterNoProjectAccess: "No {project} access",
     filterClear: "Clear filters",
+    // "Show invited" (Phase A, follow-up UX batch): pending, not-yet-
+    // accepted invites are a new row kind merged into this table — this
+    // checkbox lets an admin hide them again, defaulting on since they're
+    // new and otherwise invisible.
+    filterShowInvited: "Show invited",
     lastLogin: "Last login",
     never: "Never",
     twoFactor: "2FA",
@@ -929,6 +1013,12 @@ const en = {
     viewOrphaned: "Orphaned accounts",
     viewServerAdmins: "Server administrators",
     viewAll: "All users",
+    // Phase E (follow-up UX batch, 2026-08-31): FilterPanel search box and
+    // DirectoryTable empty state, added alongside the FilterPanel/
+    // DirectoryTable rebuild — matches Org Admin's own `searchUsers`/
+    // `noUsersFound` copy style.
+    searchUsers: "Search by name or email",
+    noUsersFound: "No users match this search/filter.",
     includeDeactivated: "Include deactivated accounts",
     deactivated: "Deactivated",
     bannedBadge: "Banned",

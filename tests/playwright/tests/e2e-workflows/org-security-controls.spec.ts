@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin can require 2FA org-wide (blocking every
@@ -28,12 +28,17 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // the section is reachable at all.
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
-      await page.getByRole("button", { name: "No 2FA" }).click();
+      // Migrated from three ad-hoc toggle `<button>`s to `FilterCheckbox`es
+      // inside the shared `FilterPanel` (Phase A, follow-up UX batch,
+      // 2026-08-31) — now genuinely independent (checking one no longer
+      // implicitly clears another), so each is unchecked explicitly rather
+      // than via a single "Clear filters" button, which no longer exists.
+      await page.getByRole("checkbox", { name: "No 2FA" }).click();
       await expect(page.getByText(PERSONAS.orgAdminGamma.email)).toBeVisible();
-      await page.getByRole("button", { name: "No 2FA" }).click();
+      await page.getByRole("checkbox", { name: "No 2FA" }).click();
 
-      await page.getByRole("button", { name: "Stale (180+ days)" }).click();
-      await page.getByRole("button", { name: "Clear filters" }).click();
+      await page.getByRole("checkbox", { name: "Stale (180+ days)" }).click();
+      await page.getByRole("checkbox", { name: "Stale (180+ days)" }).click();
     });
 
     await test.step("lock then unlock a display name", async () => {
@@ -161,12 +166,14 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.goto("/projects");
       await page.getByText(PROJECT_NAMES.gamma1).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await selectProjectAdminGroup(page, "Project groups");
-      // Each group row opens a `SidePanel` now (Phase 5, docs/decisions.md)
-      // instead of an always-expanded accordion.
-      const panel = await openProjectGroupPanel(page, "Members");
+      // No group is auto-created on project creation any more (follow-up
+      // UX batch Phase C, 2026-08-31) — invite via the Members section's
+      // own add control instead, which grants the by-email invite a
+      // *direct* role the exact same way a project group's own member
+      // picker used to.
+      await selectProjectAdminGroup(page, "Members");
       const outsideEmail = `e2e-external-${Date.now()}@example.com`;
-      await panel.getByPlaceholder("Type a name to add, or an email to invite…").fill(outsideEmail);
+      await page.getByPlaceholder("Type a name to add, or an email to invite…").fill(outsideEmail);
       // A brand-new email with no account anywhere shows an "Invite"
       // option (not "Add"), per UserAutocomplete's existing/new distinction.
       await page.getByText(`Invite ${outsideEmail}`, { exact: true }).click();

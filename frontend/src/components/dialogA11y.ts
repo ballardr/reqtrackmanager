@@ -12,6 +12,25 @@ export const FOCUSABLE_SELECTOR =
  * `RichTextEditor`'s link-URL field, isn't stolen back), cycles Tab/Shift+Tab
  * within the dialog while it's open, and restores focus to whatever
  * triggered it once it closes.
+ *
+ * Escape only closes *this* dialog if it currently contains focus — found
+ * as a real bug (not just a test-selector artifact) while adding the
+ * follow-up UX batch's Phase C Playwright coverage for the "Manage users"
+ * modal's per-row `MultiSelectDropdown`: every open `Modal`/`SidePanel`/
+ * `Popover` registers its own independent `window` "keydown" listener, all
+ * of which fire for a single Escape press regardless of nesting, since
+ * `addEventListener` has no concept of "only the topmost one" on its own.
+ * Without this guard, opening a `Popover` (e.g. a row's role dropdown)
+ * inside a `Modal`/`SidePanel` and pressing Escape closed *both* — the
+ * outer container's own contents (and whatever state it held) vanished
+ * along with the popover the user actually meant to dismiss. Each
+ * instance's own initial-focus effect above already moves focus inside
+ * itself on open, and (since `Modal`/`SidePanel`/`Popover` are all
+ * portalled to `document.body` as independent DOM subtrees, not nested
+ * inside one another even when opened "inside" each other logically) only
+ * the innermost currently-open one ever actually contains
+ * `document.activeElement` — the same containment check the Tab-trap
+ * logic just below already relies on for its own correctness.
  */
 export function useDialogA11y(dialogRef: RefObject<HTMLElement | null>, onClose: () => void): void {
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -31,6 +50,8 @@ export function useDialogA11y(dialogRef: RefObject<HTMLElement | null>, onClose:
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        const dialog = dialogRef.current;
+        if (!dialog || !dialog.contains(document.activeElement)) return;
         onClose();
         return;
       }

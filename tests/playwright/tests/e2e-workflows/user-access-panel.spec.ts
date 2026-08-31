@@ -24,6 +24,23 @@ test.describe("view a user's access", () => {
     await selectOrgAdminGroup(page, "Users");
     await ensureExpanded(page, "Organisation users");
 
+    await test.step("the filter panel renders as a full-width bar above the table, not a cramped sidebar (follow-up UX fix — the Users table's 6 columns crowded the old 240px side sidebar)", async () => {
+      const filterPanel = page.locator(".filter-panel-top");
+      const table = page.getByRole("table", { name: /users/i });
+      await expect(filterPanel).toBeVisible();
+      await expect(table).toBeVisible();
+      const panelBox = await filterPanel.boundingBox();
+      const tableBox = await table.boundingBox();
+      expect(panelBox).not.toBeNull();
+      expect(tableBox).not.toBeNull();
+      // Top layout: the panel sits above the table, not beside it — its
+      // bottom edge is at or above the table's top edge.
+      expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(tableBox!.y + 1);
+      // Full width, not squeezed into a 240px `.side-grid` sidebar — the
+      // panel spans at least as wide as the table it sits above.
+      expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
+    });
+
     const row = page.locator("tr", { hasText: PERSONAS.orgAdminAlphaBeta.email });
     await row.getByRole("button", { name: /'s access$/ }).click();
 
@@ -56,6 +73,13 @@ test.describe("org admin users table sorting", () => {
     await selectOrgAdminGroup(page, "Users");
     await ensureExpanded(page, "Organisation users");
     await expect(page.getByText(PERSONAS.orgAdminAlphaBeta.email)).toBeVisible();
+    // `visibleEmails()` below asserts every visible row's first cell forms
+    // a sorted sequence — true for real user rows (server-sorted) but not
+    // for a `kind: "invited"` row merged in ahead of them (Phase A,
+    // follow-up UX batch), which isn't part of that server-side sort.
+    // Unchecking "Show invited" keeps this an apples-to-apples comparison
+    // regardless of whether this org happens to have a pending invite.
+    await page.getByRole("checkbox", { name: "Show invited" }).uncheck();
 
     const emailHeader = page.getByRole("button", { name: "Email" });
     const emailHeaderCell = page.locator("th", { has: emailHeader });

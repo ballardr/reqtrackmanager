@@ -157,10 +157,12 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
       // Effective members moved onto its own "Members" section (Phase 5,
       // docs/decisions.md) — the old combined "Project groups" tab no
-      // longer has it.
+      // longer has it. Rebuilt again in Phase D (follow-up UX batch,
+      // 2026-08-31) onto the unified `ProjectMembersTable`, which renders
+      // immediately (no lazy "Show members" button/collapsed section any
+      // more — this is now the tab's primary content, not a secondary
+      // audit view).
       await selectProjectAdminGroup(page, "Members");
-      await ensureExpanded(page, "Effective members");
-      await page.getByRole("button", { name: "Show members" }).click();
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
       await expect(
@@ -217,6 +219,29 @@ test.describe("hierarchical (parent/child) projects", () => {
     const gamma1Id = await projectIdByName(PROJECT_NAMES.gamma1);
     const gamma2Id = await projectIdByName(PROJECT_NAMES.gamma2);
 
+    // No project auto-creates any group any more (follow-up UX batch Phase
+    // C, 2026-08-31) — Gamma-1 previously had a default "Members" group
+    // this test reused for its own project-referencing-group case; that no
+    // longer exists, so this test now maintains its own dedicated, fixed-
+    // name custom group instead (created idempotently — get-or-create, not
+    // always-create — so the defensive `cleanup()` below, and a fresh run
+    // after an earlier one failed mid-test, both still find the same group
+    // rather than accumulating duplicates).
+    const sourceRefGroupName = "E2E Gamma-1 Source Ref Group";
+    async function ensureSourceRefGroup(): Promise<{ id: string; name: string }> {
+      const groups: { id: string; name: string }[] = await page
+        .request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers: authHeaders })
+        .then((r) => r.json());
+      const existing = groups.find((g) => g.name === sourceRefGroupName);
+      if (existing) return existing;
+      return page
+        .request.post(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, {
+          headers: authHeaders, data: { name: sourceRefGroupName, role: "member" },
+        })
+        .then((r) => r.json());
+    }
+    const sourceRefGroup = await ensureSourceRefGroup();
+
     async function cleanup(): Promise<void> {
       await page.request.delete(
         `http://localhost:8000/api/v1/projects/${gamma1Id}/member-sources/${gamma2Id}`, { headers: authHeaders },
@@ -224,7 +249,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       const groups: { id: string; name: string; member_source_project_ids: string[] }[] = await page
         .request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers: authHeaders })
         .then((r) => r.json());
-      const membersGroup = groups.find((g) => g.name === "Members");
+      const membersGroup = groups.find((g) => g.name === sourceRefGroupName);
       if (membersGroup?.member_source_project_ids.includes(gamma2Id)) {
         await page.request.delete(
           `http://localhost:8000/api/v1/projects/${gamma1Id}/groups/${membersGroup.id}/members/${gamma2Id}`,
@@ -247,9 +272,9 @@ test.describe("hierarchical (parent/child) projects", () => {
         await expect(gamma2SourceRow.locator(".badge")).toHaveText("Mirror all roles");
       });
 
-      await test.step("Gamma-1's own default 'Members' group can also define a member as 'Gamma-2's members' directly (reuses an existing default group, which stays cleanly reversible, rather than a throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it)", async () => {
+      await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
         await selectProjectAdminGroup(page, "Project groups");
-        const panel = await openProjectGroupPanel(page, "Members");
+        const panel = await openProjectGroupPanel(page, sourceRefGroup.name);
         await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
         await panel.getByRole("button", { name: "Reference another project's members…" }).click();
         await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();

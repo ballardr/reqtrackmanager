@@ -393,6 +393,21 @@ export interface PendingInvite {
   expires_at: string;
 }
 
+/** An organisation's outstanding (not-yet-accepted) org-only `PendingInvite`
+ * — see `OrgPendingInviteOut`'s docstring in the backend schema. The
+ * org-level counterpart to `PendingInvite` above (Phase A, follow-up UX
+ * batch): `GET /orgs/{id}/pending-invites` only ever returns `project_id
+ * IS NULL` rows, and unlike the project-level shape this carries
+ * `invited_by_display_name` (surfaced in Org Admin's merged Users table). */
+export interface OrgPendingInvite {
+  id: string;
+  email: string;
+  status: PendingInviteStatus;
+  created_at: string;
+  expires_at: string;
+  invited_by_display_name: string;
+}
+
 export interface SystemUser {
   user_id: string;
   email: string;
@@ -512,12 +527,36 @@ export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceM
 };
 
 // Access provenance (decision 10, docs/decisions.md) — why a user has a
-// given effective role: direct (any of the four direct sources on this
-// exact project), forward-inherited (role_inheritance_mode, with
+// given effective role: one of five direct sources on this exact project
+// (split from a single collapsed "direct" kind in the follow-up UX batch's
+// Phase D, 2026-08-31 — see the backend's
+// `_direct_effective_project_roles_by_kind` docstring for the full
+// rationale), forward-inherited (role_inheritance_mode, with
 // via_project_name/via_mode naming the ancestor hop), or member-source-
-// inherited (always MEMBER; via_project_name intentionally omitted — see
-// the backend's get_effective_project_members_with_provenance docstring).
-export type MemberSourceProvenanceKind = "direct" | "forward_inherited" | "member_source_inherited";
+// inherited (via_project_name intentionally omitted for member_source —
+// see the backend's get_effective_project_members_with_provenance
+// docstring). Only `"direct_role"` — a genuine, individually-revocable
+// `UserProjectRole` row — is ever safe to offer as toggle-off-able in a UI
+// (`DELETE /{project_id}/roles/{user_id}/{role}` only ever deletes
+// `UserProjectRole` rows): the other four all resolve through a group,
+// nested-group, project-reference, or org-wide-visibility mechanism that
+// endpoint has no effect on.
+export type MemberSourceProvenanceKind =
+  | "direct_role"
+  | "direct_group"
+  | "direct_org_group"
+  | "direct_project_ref"
+  | "direct_org_wide"
+  | "forward_inherited"
+  | "member_source_inherited";
+
+/** True only for the one provenance kind that's a genuine, individually-
+ * revocable `UserProjectRole` row — see `MemberSourceProvenanceKind`'s own
+ * doc comment for why the other six kinds must never be offered as
+ * toggle-off-able via `DELETE /{project_id}/roles/{user_id}/{role}`. */
+export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
+  return kind === "direct_role";
+}
 
 export interface MemberSourceProvenance {
   kind: MemberSourceProvenanceKind;
@@ -655,24 +694,11 @@ export interface ProjectGroup {
   id: string;
   name: string;
   role: ProjectRole;
-  is_default: boolean;
   member_user_ids: string[];
   member_org_group_ids: string[];
   /** Members defined as "the direct members of that other project" — see
    * `models.project.ProjectGroupMember.source_project_id`'s docstring. */
   member_source_project_ids: string[];
-}
-
-/** One user holding at least one direct (non-group) `UserProjectRole` grant
- * on a project (`GET /{project_id}/direct-members`, Phase 5) — the Members
- * page's editable-row source. See `DirectMemberOut`'s docstring in the
- * backend schema: `roles` is genuinely multi-valued (a user can hold more
- * than one simultaneous direct grant), not collapsed to one row per role. */
-export interface DirectProjectMember {
-  user_id: string;
-  display_name: string;
-  email: string;
-  roles: ProjectRole[];
 }
 
 export interface StageProgress {

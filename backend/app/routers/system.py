@@ -164,6 +164,9 @@ def list_system_users(
     is_active: bool | None = None,
     has_2fa: bool | None = None,
     is_server_admin: bool | None = None,
+    search: str | None = None,
+    sort: str | None = Query(None, pattern="^(display_name|email|last_login_at|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_server_admin),
@@ -193,6 +196,22 @@ def list_system_users(
     intentionally is *not* restricted to org-less accounts — I-M-08 lets a
     bootstrap server admin also hold an organisation of their own).
 
+    `search` (Phase E, follow-up UX batch, 2026-08-31) is name/email
+    substring, case-insensitive — the exact same Python-side matching
+    approach `list_org_users` (`routers/orgs.py`) already established,
+    reused verbatim rather than reinvented as a SQL `ilike`.
+
+    `sort`/`order` (same phase) mirror `list_org_users`'s own `sort`/`order`
+    contract: `display_name` (default), `email`, `last_login_at`, or
+    `created_at`, ascending unless `order=desc`. This is necessary plumbing
+    for `DirectoryTable`'s sortable Email/Name/Last login/Created columns to
+    re-sort the *full* filtered result correctly across pages, not just the
+    already-loaded rows — the same reasoning that motivated `list_org_users`'
+    own `sort`/`order` params originally. `last_login_at` is nullable (never
+    logged in); those rows always sort last regardless of `order`, so "sort
+    by last login, descending" surfaces the most recently active users first
+    without "never logged in" accounts jumping to the top.
+
     Server-admin only (`require_server_admin`, no org-admin fallback) — this
     spans every organisation's users.
     """
@@ -210,7 +229,25 @@ def list_system_users(
         cutoff = datetime.now(UTC) - timedelta(days=stale_since_days)
         query = query.where((User.last_login_at.is_(None)) | (User.last_login_at < cutoff))
 
-    users = db.scalars(query).all()
+    users = list(db.scalars(query).all())
+    if search:
+        needle = search.lower()
+        users = [u for u in users if needle in u.display_name.lower() or needle in u.email.lower()]
+
+    if sort and sort != "display_name":
+        def _sort_value(u: User):
+            value = getattr(u, sort)
+            if sort == "last_login_at":
+                # Nulls (never logged in) always sort last, in either
+                # direction — see docstring.
+                return (value is None, value)
+            if sort == "email":
+                return value.lower()
+            return value
+        users.sort(key=_sort_value, reverse=(order == "desc"))
+    else:
+        users.sort(key=lambda u: u.display_name.lower(), reverse=(sort == "display_name" and order == "desc"))
+
     response.headers["X-Total-Count"] = str(len(users))
     if limit is not None:
         users = users[offset:offset + limit]

@@ -3,21 +3,22 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: Phase 5 (docs/decisions.md) — Org Admin's per-project
- * "Manage users" now opens a `Modal` wrapping the exact same
- * `MemberRoleTable` `ProjectAdminPage.tsx`'s own Members section uses,
- * replacing the old inline expand-in-place that duplicated a worse version
- * of the project admin page. No prior Playwright coverage existed for this
- * flow at all (grep confirms zero "Manage users" hits before this spec).
+ * Job to be done: Phase 5 (docs/decisions.md), rebuilt in Phase D (follow-up
+ * UX batch, 2026-08-31) — Org Admin's per-project "Manage users" opens a
+ * `Modal` wrapping the exact same `ProjectMembersTable`
+ * `ProjectAdminPage.tsx`'s own Members section uses, fed by the same
+ * `GET /effective-members`/`GET /pending-invites` endpoints — one real
+ * shared implementation, not a parallel reimplementation. This is what
+ * actually satisfies "org admin's view should look like project admin's,"
+ * precisely.
  *
  * Uses a brand-new, dedicated throwaway project (created via the API under
  * the shared single-admin Gamma org) rather than a shared seeded project —
- * this mutates a project group's role, and Gamma-1/Gamma-2/Gamma-3/Gamma-4
- * are all depended on by project-hierarchy.spec.ts's own exact
- * configuration.
+ * this mutates project role grants, and Gamma-1/Gamma-2/Gamma-3/Gamma-4 are
+ * all depended on by project-hierarchy.spec.ts's own exact configuration.
  */
 test.describe("org admin: Manage users modal", () => {
-  test("opens the same MemberRoleTable as Project Admin's Members section, and its role controls work", async ({ page }) => {
+  test("shows the identical ProjectMembersTable Project Admin's own Members section uses, and its role controls work", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
     const authHeaders = { Authorization: `Bearer ${token}` };
@@ -26,10 +27,12 @@ test.describe("org admin: Manage users modal", () => {
 
     const suffix = Date.now();
     const projectName = `E2E Manage Users Project ${suffix}`;
-    await page.request.post("http://localhost:8000/api/v1/projects", {
-      headers: authHeaders,
-      data: { organization_id: gammaOrg.id, name: projectName, summary: "" },
-    });
+    const project = await (
+      await page.request.post("http://localhost:8000/api/v1/projects", {
+        headers: authHeaders,
+        data: { organization_id: gammaOrg.id, name: projectName, summary: "" },
+      })
+    ).json();
 
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Projects & workflow");
@@ -44,25 +47,36 @@ test.describe("org admin: Manage users modal", () => {
     const modal = page.getByRole("dialog", { name: `Manage users — ${projectName}` });
     await expect(modal).toBeVisible();
 
-    await test.step("shows the project's default groups, each with an editable role control", async () => {
-      const managerRoleSelect = modal.getByRole("combobox", { name: "Role for Project Managers" });
-      await expect(managerRoleSelect).toHaveValue("project_manager");
-      // C-U-08: the project's creator (this org admin, via the default
-      // Project Managers group) is its only manager source on a
-      // brand-new project — the same client-side last-manager hint
-      // `ProjectAdminPage.tsx`'s own Members section gives.
-      await expect(managerRoleSelect).toBeDisabled();
-
-      const stakeholdersRoleSelect = modal.getByRole("combobox", { name: "Role for Stakeholders" });
-      await expect(stakeholdersRoleSelect).toHaveValue("stakeholder");
-      await expect(stakeholdersRoleSelect).toBeEnabled();
+    await test.step("the filter panel renders as a full-width bar above the table inside the modal, not a cramped sidebar (follow-up UX fix)", async () => {
+      const filterPanel = modal.locator(".filter-panel-top");
+      const table = modal.getByRole("table");
+      await expect(filterPanel).toBeVisible();
+      await expect(table).toBeVisible();
+      const panelBox = await filterPanel.boundingBox();
+      const tableBox = await table.boundingBox();
+      expect(panelBox).not.toBeNull();
+      expect(tableBox).not.toBeNull();
+      expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(tableBox!.y + 1);
+      expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("changing a group's role calls the same PATCH .../groups/{id} endpoint the project's own admin page uses", async () => {
-      const stakeholdersRoleSelect = modal.getByRole("combobox", { name: "Role for Stakeholders" });
-      await stakeholdersRoleSelect.selectOption("project_administrator");
-      await expect(page.getByText("Group updated")).toBeVisible();
-      await expect(stakeholdersRoleSelect).toHaveValue("project_administrator");
+    await test.step("shows the project's creator as a direct manager, disabled as the only manager source (C-U-08)", async () => {
+      // The project's creator (this org admin) holds their manager role via
+      // a direct grant on a brand-new project — no default group exists any
+      // more (follow-up UX batch Phase C, 2026-08-31) — and is its only
+      // manager source, the same client-side last-manager hint
+      // `ProjectAdminPage.tsx`'s own Members section gives.
+      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
+      await rolesButton.click();
+      // Not scoped to `modal`: `MultiSelectDropdown`'s opened checkbox list
+      // renders via `Popover`, which portals to `document.body` rather than
+      // the modal's own DOM subtree.
+      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
+      const managerCheckbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Project manager from ${PERSONAS.orgAdminGamma.name}`) });
+      await expect(managerCheckbox).toBeChecked();
+      await expect(managerCheckbox).toBeDisabled();
+      await expect(managerCheckbox).toHaveAttribute("title", /only manager source/);
+      await page.keyboard.press("Escape");
     });
 
     await test.step("adding a direct member via the modal's own add control", async () => {
@@ -74,6 +88,17 @@ test.describe("org admin: Manage users modal", () => {
       // trigger button's own accessible name ("<name>'s roles") contains
       // this name as a substring.
       await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toBeVisible();
+    });
+
+    await test.step("toggling that same direct role off calls DELETE .../roles, same as Project Admin's own Members page", async () => {
+      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
+      await rolesButton.click();
+      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
+      const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${PERSONAS.projectMgrGamma.name}`) });
+      await expect(checkbox).toBeEnabled();
+      await checkbox.click();
+      await page.keyboard.press("Escape");
+      await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toHaveCount(0);
     });
 
     await test.step("closing the modal returns to the plain project list row", async () => {

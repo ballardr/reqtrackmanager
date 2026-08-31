@@ -610,6 +610,23 @@ th:has(> .th-sort) {
   color: var(--color-primary);
 }
 
+/* `DirectoryTable`'s row-opening first-column control — a real <button>
+   (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
+   directory row that opens a side panel and one that navigates to a URL
+   read the same, matching this app's default `a { color: var(--color-
+   primary) }` link look rather than an inset button control. */
+.directory-table-row-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* Below 860px there isn't room for a full-width nav rail, a content
    column, and a 240px filter/activity sidebar side by side (confirmed:
    the page overflows past the viewport at 600px without this) — force the
