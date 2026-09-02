@@ -53,8 +53,14 @@ export const AccessReviewOrphanedAccounts: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("None")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Grant server admin" })).toBeInTheDocument();
+
+    // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab
+    // instead of separate always-visible buttons — style guide "Pattern:
+    // action menu", same "OrgAdminPage.tsx" consolidation applied here.
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Grant server admin" })).toBeInTheDocument();
   },
 };
 
@@ -73,14 +79,17 @@ export const AccessReviewShowsGroups: Story = {
 export const AccessReviewBannedAndAdminBadges: Story = {
   beforeEach: () =>
     mockServerManagementApis([
-      systemUser({ user_id: "u1", email: "banned@example.com", is_banned: true, is_active: false }),
-      systemUser({ user_id: "u2", email: "admin@example.com", is_server_admin: true }),
+      systemUser({ user_id: "u1", email: "banned@example.com", display_name: "Banned User", is_banned: true, is_active: false }),
+      systemUser({ user_id: "u2", email: "admin@example.com", display_name: "Admin User", is_server_admin: true }),
     ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
     await expect(canvas.getByText("Server admin")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Revoke server admin" })).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Revoke server admin" })).toBeInTheDocument();
   },
 };
 
@@ -95,7 +104,9 @@ export const AccessReviewGrantServerAdmin: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Grant server admin" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "Grant server admin" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Grant server admin to this user?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Grant server admin" }));
@@ -115,7 +126,9 @@ export const AccessReviewDeactivateCancelled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Deactivate" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "Deactivate" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Deactivate this account?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

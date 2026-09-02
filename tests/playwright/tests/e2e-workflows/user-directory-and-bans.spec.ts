@@ -104,11 +104,28 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       await page.goto("/server/management");
     });
 
+    // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab per
+    // row instead of separate always-visible buttons (style guide "Pattern:
+    // action menu", same consolidation as OrgAdminPage.tsx's Users table).
+    // The kebab's accessible name is the row's own display name, and the
+    // `Popover` menu it opens is portalled to `document.body`, so it's
+    // looked up at the page level, not scoped to `row`.
+    async function openOrphanActionsMenu() {
+      await page.getByRole("button", { name: `${PERSONAS.orphan.name}'s actions` }).click();
+      const menu = page.getByRole("menu", { name: `${PERSONAS.orphan.name}'s actions` });
+      // Clicking a menuitem before the Popover-based menu finishes
+      // positioning can silently miss it — see the identical fix in
+      // org-rename-and-test-email.spec.ts / org-merge-import.spec.ts.
+      await expect(menu).toBeVisible();
+      return menu;
+    }
+
     await test.step("deactivate then reactivate the orphaned account", async () => {
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
       // Deactivate now confirms via the shared `ConfirmDialog` (sixth-pass
       // audit) rather than `window.confirm`.
-      await row.getByRole("button", { name: "Deactivate" }).click();
+      let menu = await openOrphanActionsMenu();
+      await menu.getByRole("menuitem", { name: "Deactivate" }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/deactivate") && r.request().method() === "POST"),
         page.getByRole("dialog", { name: "Deactivate this account?" }).getByRole("button", { name: "Deactivate" }).click(),
@@ -116,9 +133,10 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       // The default listing excludes deactivated accounts entirely.
       await page.getByLabel("Include deactivated accounts").check();
       await expect(row.getByText("Deactivated", { exact: true })).toBeVisible();
+      menu = await openOrphanActionsMenu();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/reactivate") && r.request().method() === "POST"),
-        row.getByRole("button", { name: "Reactivate" }).click(),
+        menu.getByRole("menuitem", { name: "Reactivate" }).click(),
       ]);
       await expect(row.getByText("Deactivated", { exact: true })).toHaveCount(0);
     });
@@ -127,7 +145,8 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
       // Ban now confirms via the shared `ConfirmDialog` (sixth-pass audit)
       // rather than `window.confirm`.
-      await row.getByRole("button", { name: "Ban", exact: true }).click();
+      const menu = await openOrphanActionsMenu();
+      await menu.getByRole("menuitem", { name: "Ban", exact: true }).click();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/ban") && r.request().method() === "POST"),
         page.getByRole("dialog", { name: "Ban this account?" }).getByRole("button", { name: "Ban", exact: true }).click(),
@@ -168,9 +187,10 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       // "include deactivated" checkbox — re-check it to find the row.
       await page.getByLabel("Include deactivated accounts").check();
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      const menu = await openOrphanActionsMenu();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/unban") && r.request().method() === "POST"),
-        row.getByRole("button", { name: "Unban" }).click(),
+        menu.getByRole("menuitem", { name: "Unban" }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toHaveCount(0);
     });
@@ -193,9 +213,10 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       // "Always ends unbanned and active again," but this step was
       // missing, so it never actually delivered the "active" half.
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      const menu = await openOrphanActionsMenu();
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/reactivate") && r.request().method() === "POST"),
-        row.getByRole("button", { name: "Reactivate" }).click(),
+        menu.getByRole("menuitem", { name: "Reactivate" }).click(),
       ]);
       await expect(row.getByText("Deactivated", { exact: true })).toHaveCount(0);
     });

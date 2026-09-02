@@ -1,9 +1,10 @@
-import { Upload } from "lucide-react";
+import { Ban, ShieldMinus, ShieldPlus, Upload, UserCheck, UserX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -212,40 +213,33 @@ function AccessReviewTab() {
       render: (u) => new Date(u.created_at).toLocaleDateString(),
     },
     {
+      // Consolidated behind one `ActionMenu` (style guide "Pattern: action
+      // menu") — up to three secondary, non-primary actions (deactivate/
+      // reactivate, ban/unban, grant/revoke server admin) previously sat
+      // side by side as separate always-visible buttons on the same row,
+      // the exact "two-or-more secondary actions" shape the pattern exists
+      // for. Status badges stay outside the menu, visible at a glance.
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
           {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
           {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
           {u.is_server_admin && <span className="text-muted">{strings.system.serverAdminBadge}</span>}
-          {!u.has_org_membership &&
-            (u.is_active ? (
-              <button className="btn" onClick={() => deactivate(u.user_id)}>
-                {strings.system.deactivate}
-              </button>
-            ) : (
-              <button className="btn" onClick={() => reactivate(u.user_id)}>
-                {strings.system.reactivate}
-              </button>
-            ))}
-          {!u.has_org_membership &&
-            (u.is_banned ? (
-              <button className="btn" onClick={() => unban(u.user_id)}>
-                {strings.system.unban}
-              </button>
-            ) : (
-              <button className="btn btn-danger" onClick={() => ban(u.user_id)}>
-                {strings.system.ban}
-              </button>
-            ))}
-          {u.is_server_admin ? (
-            <button className="btn btn-danger" onClick={() => revokeServerAdmin(u.user_id)}>
-              {strings.system.revokeServerAdmin}
-            </button>
-          ) : (
-            <button className="btn" onClick={() => grantServerAdmin(u.user_id)}>
-              {strings.system.grantServerAdmin}
-            </button>
+          {!u.has_org_membership && (
+            <ActionMenu
+              triggerLabel={strings.system.usersActionsFor(u.display_name)}
+              items={[
+                u.is_active
+                  ? { label: strings.system.deactivate, icon: <UserX size={14} />, onSelect: () => deactivate(u.user_id) }
+                  : { label: strings.system.reactivate, icon: <UserCheck size={14} />, onSelect: () => reactivate(u.user_id) },
+                u.is_banned
+                  ? { label: strings.system.unban, icon: <Ban size={14} />, onSelect: () => unban(u.user_id) }
+                  : { label: strings.system.ban, icon: <Ban size={14} />, onSelect: () => ban(u.user_id) },
+                u.is_server_admin
+                  ? { label: strings.system.revokeServerAdmin, icon: <ShieldMinus size={14} />, onSelect: () => revokeServerAdmin(u.user_id) }
+                  : { label: strings.system.grantServerAdmin, icon: <ShieldPlus size={14} />, onSelect: () => grantServerAdmin(u.user_id) },
+              ]}
+            />
           )}
         </div>
       ),

@@ -1104,6 +1104,7 @@ const en = {
     deactivated: "Deactivated",
     bannedBadge: "Banned",
     serverAdminBadge: "Server admin",
+    usersActionsFor: (name: string) => `${name}'s actions`,
     deactivate: "Deactivate",
     reactivate: "Reactivate",
     deactivateTitle: "Deactivate this account?",
