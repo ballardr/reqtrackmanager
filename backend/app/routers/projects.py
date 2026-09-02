@@ -3168,10 +3168,23 @@ def revoke_group_project_role(
     group-derived managers here — that would be a materially larger,
     separate change to a longstanding invariant, not something this PR
     introduces.
+
+    `org_group_id` is validated to belong to this project's own
+    organisation before anything else runs (hardening pass, 2026-09) —
+    the delete itself was already safely scoped by its own `WHERE
+    project_id=...` clause (no cross-tenant row can ever exist to remove),
+    but an unvalidated id let a caller fabricate an "revoked" audit-log
+    entry for a grant that never existed and run the membership-resolution
+    query below against an arbitrary group, mirroring the same rowcount
+    guard `revoke_project_group_role` (its `ProjectGroupRole`-scoped
+    sibling) already has.
     """
+    org_group = db.get(OrgGroup, org_group_id)
+    if org_group is None or org_group.organization_id != project.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation group not found.")
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
-    db.execute(
+    removed = db.execute(
         OrgGroupProjectRole.__table__.delete().where(
             OrgGroupProjectRole.org_group_id == org_group_id, OrgGroupProjectRole.project_id == project.id,
             OrgGroupProjectRole.role == role,
@@ -3180,6 +3193,9 @@ def revoke_group_project_role(
     db.flush()
     if role == ProjectRole.PROJECT_MANAGER and not get_effective_project_managers(db, project.id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
+    if not removed.rowcount:
+        db.commit()
+        return
     log_event(
         db, entity_type="org_group_project_role", entity_id=org_group_id, action="revoked",
         actor_id=current_user.id, project_id=project.id, detail={"role": role.value},

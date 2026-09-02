@@ -119,15 +119,21 @@ def _parse_simple_eq_filter(filter_param: str | None) -> tuple[str, str] | None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
     end_quote = len(s) - 1
     start_quote = s.rfind('"', 0, end_quote)
-    before = s[:start_quote].rstrip() if start_quote != -1 else ""
+    # At least one whitespace char must separate "eq" from the opening
+    # quote (hardening pass, 2026-09) — `before = s[:start_quote].rstrip()`
+    # alone would accept a zero-whitespace gap too (e.g. `eq"active"`,
+    # never valid per SCIM's grammar or the original `\s+eq\s+"..."` regex
+    # this function replaced), since rstrip() has nothing to strip when
+    # the quote immediately follows "eq". Checked before rstripping so a
+    # missing gap is rejected regardless of how much whitespace precedes
+    # the "eq" token itself.
+    before_raw = s[:start_quote] if start_quote != -1 else ""
+    if start_quote == -1 or not before_raw or not before_raw[-1].isspace():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
+    before = before_raw.rstrip()
     # "eq" must be its own token: at least one char of attr, then
     # whitespace, then "eq", immediately before the opening quote.
-    if (
-        start_quote == -1
-        or len(before) < 3
-        or before[-2:].lower() != "eq"
-        or not before[-3].isspace()
-    ):
+    if len(before) < 3 or before[-2:].lower() != "eq" or not before[-3].isspace():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported filter expression.")
     value = s[start_quote + 1 : end_quote]
     attr = before[:-3].rstrip()

@@ -313,6 +313,25 @@ def test_parse_simple_eq_filter_rejects_malformed_expressions():
         assert raised, f"expected a 400 for filter={bad!r}"
 
 
+def test_parse_simple_eq_filter_requires_whitespace_between_eq_and_the_quote():
+    """Hardening-pass regression test: the ReDoS-fix rewrite above dropped
+    the original regex's `\\s+` requirement between "eq" and the opening
+    quote — `before = s[:start_quote].rstrip()` has nothing to strip when
+    the quote immediately follows "eq", so `userName eq"active"` (invalid
+    per the SCIM grammar this module implements, and rejected by the
+    original `...\\s+eq\\s+"..."` regex) was silently accepted. No real
+    attribute-allowlist or org-scoping bypass resulted (`attr` is still
+    checked against a fixed allowlist at every call site), but the parser
+    should still reject exactly what the grammar it documents rejects."""
+    for bad in ['userName eq"active"', '.foo  eq"="', 'emails[type eq "work"].value eq"a@b.com"']:
+        try:
+            scim_module._parse_simple_eq_filter(bad)
+            raised = False
+        except HTTPException as exc:
+            raised = exc.status_code == 400
+        assert raised, f"expected a 400 for filter={bad!r} (no whitespace before the opening quote)"
+
+
 def test_parse_simple_eq_filter_is_not_vulnerable_to_polynomial_redos():
     # Neither attack pattern contains a valid filter expression, so both
     # are expected to raise — the property under test is *how fast* they

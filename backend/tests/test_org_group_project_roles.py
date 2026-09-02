@@ -146,6 +146,53 @@ def test_revoke_of_a_nonexistent_grant_is_a_no_op_204(client, admin_token, org_i
     assert _revoke(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
 
 
+def test_revoke_of_a_nonexistent_grant_does_not_fabricate_an_audit_event(client, admin_token, org_id):
+    """Hardening-pass regression test: the no-op path used to unconditionally
+    log a "revoked" audit event and resolve group membership even when
+    nothing was actually removed — a caller could fabricate audit-trail
+    entries for grants that never existed by calling revoke against any
+    real org group in their own organisation with no matching grant."""
+    project = create_project(client, admin_token, org_id, "Revoke Noop Audit Project")
+    org_group = _create_org_group(client, admin_token, org_id, "Never Granted Audit Group")
+    assert _revoke(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
+
+    db = SessionLocal()
+    try:
+        events = list(
+            db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.entity_type == "org_group_project_role", AuditEvent.entity_id == org_group["id"]
+                )
+            )
+        )
+    finally:
+        db.close()
+    assert events == [], "a no-op revoke must not write any audit event"
+
+
+def test_revoke_404s_for_an_org_group_belonging_to_a_different_organization(client, admin_token, org_id):
+    """Hardening-pass regression test: `org_group_id` was previously never
+    validated at all before use — the delete itself was safely scoped by
+    its own `project_id` filter, so no real cross-tenant grant could be
+    removed, but an unvalidated id still let the endpoint run a real
+    membership-resolution query against an arbitrary group and log a
+    fabricated audit event (see the no-op test above). `_get_group_in_project`'s
+    sibling `ProjectGroupRole`-scoped endpoint 404s a foreign group; this
+    endpoint now does the same for a foreign *org* group."""
+    project = create_project(client, admin_token, org_id, "Revoke Cross Tenant Project")
+    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Other Group Revoke Org")
+    foreign_group = _create_org_group(client, other_admin_token, other_org["id"], "Foreign Revoke Group")
+
+    resp = _revoke(client, admin_token, project["id"], foreign_group["id"], "member")
+    assert resp.status_code == 404
+
+
+def test_revoke_404s_for_a_nonexistent_org_group_id(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "Revoke Bogus Group Project")
+    resp = _revoke(client, admin_token, project["id"], "00000000-0000-0000-0000-000000000000", "member")
+    assert resp.status_code == 404
+
+
 def test_two_org_groups_granting_same_role_produce_two_source_entries(client, admin_token, org_id):
     """Matches the existing `direct_group`/`direct_org_group` precedent
     (`test_effective_members_provenance.py`): two *different* groups
