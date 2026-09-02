@@ -668,7 +668,7 @@ def _get_org_only_pending_invite(db: Session, organization_id: UUID, invite_id: 
 @router.get("/{organization_id}/pending-invites", response_model=list[OrgPendingInviteOut])
 def list_org_pending_invites(
     organization_id: UUID,
-    current_user: User = Depends(require_org_admin_or_server_admin),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
     """Lists this organisation's outstanding (unaccepted) org-only
@@ -678,8 +678,18 @@ def list_org_pending_invites(
     are never double-listed here (Phase A, follow-up UX batch;
     docs/decisions.md).
 
-    Gated the same tier as `create_org_user`/`create_org_pending_invite`,
-    the only endpoints that create these rows.
+    `require_org_role(ORG_ADMIN)` — deliberately **no** server-admin
+    bypass. This previously reused `require_org_admin_or_server_admin`
+    (`create_org_user`'s dependency), which is documented in that
+    dependency's own docstring and in I-M-05's hardening-pass entry
+    (docs/decisions.md) as a single, narrow carve-out for bootstrapping the
+    *first* user of a brand-new org. Listing/creating/resending invites has
+    no such bootstrap need — the org already has an admin by the time
+    these are reachable — so letting an org-uninvolved server admin read
+    invitee PII and seed new members into an arbitrary organisation was a
+    real regression against I-M-05's "does not give access to data within
+    organisations" invariant, not a legitimate extension of it. Fixed as
+    part of a hardening pass (see decisions.md's I-M-05 entry addendum).
     """
     invites_list = db.scalars(
         select(PendingInvite)
@@ -699,7 +709,7 @@ def list_org_pending_invites(
 def create_org_pending_invite(
     organization_id: UUID,
     payload: OrgPendingInviteCreate,
-    current_user: User = Depends(require_org_admin_or_server_admin),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
     """Invites a new user into the organisation by email — the org-level
@@ -753,7 +763,7 @@ def create_org_pending_invite(
 @router.post("/{organization_id}/pending-invites/{invite_id}/resend", response_model=OrgPendingInviteOut)
 def resend_org_pending_invite(
     organization_id: UUID, invite_id: UUID,
-    current_user: User = Depends(require_org_admin_or_server_admin),
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
     """Rotates the invite's token/`expires_at` and re-sends the signup-link

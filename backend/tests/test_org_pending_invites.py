@@ -245,9 +245,8 @@ def test_resend_org_pending_invite_rejects_an_already_accepted_invite(client, ad
 
 
 def test_org_pending_invite_endpoints_are_gated_at_org_admin_tier(client, admin_token):
-    """Same gate as `create_org_user` (`require_org_admin_or_server_admin`)
-    — a plain org member (below that tier) is rejected on all three
-    endpoints."""
+    """`require_org_role(ORG_ADMIN)` — a plain org member (below that tier)
+    is rejected on all three endpoints."""
     org, org_admin_token = create_org_admin_in(client, admin_token, "OrgInviteGateOrg")
     with patch.object(invites_module, "send_email", new=Mock()):
         client.post(
@@ -277,6 +276,45 @@ def test_org_pending_invite_endpoints_are_gated_at_org_admin_tier(client, admin_
     resp = client.post(
         f"/api/v1/orgs/{org['id']}/pending-invites/{invite_id}/resend",
         headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 403
+
+
+def test_org_pending_invite_endpoints_reject_a_server_admin_with_no_role_in_the_org(client, admin_token):
+    """Hardening-pass regression test (docs/decisions.md's I-M-05 entry
+    addendum): these three endpoints previously reused
+    `require_org_admin_or_server_admin` — the single, narrow carve-out
+    documented for `create_org_user` only (bootstrapping the first user of
+    a brand-new org). A server admin with no genuine role in an
+    *already-existing* org must not be able to read that org's invitee PII
+    or seed/rotate invites into it — I-M-05's "does not give access to
+    data within organisations" invariant applies here same as everywhere
+    else. `admin_token` is the bootstrap server admin, who holds no
+    `UserOrgRole` in the org `create_org_admin_in` creates below (that
+    helper hands org-admin standing to a brand-new, separate user)."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "OrgInviteServerAdminGateOrg")
+    with patch.object(invites_module, "send_email", new=Mock()):
+        resp = client.post(
+            f"/api/v1/orgs/{org['id']}/pending-invites",
+            json={"email": "gatecheck2@orginviteserveradmingate.example.com"},
+            headers=auth_headers(org_admin_token),
+        )
+    assert resp.status_code == 201, resp.text
+    invite_id = resp.json()["id"]
+
+    resp = client.get(f"/api/v1/orgs/{org['id']}/pending-invites", headers=auth_headers(admin_token))
+    assert resp.status_code == 403
+
+    resp = client.post(
+        f"/api/v1/orgs/{org['id']}/pending-invites",
+        json={"email": "another2@orginviteserveradmingate.example.com"},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 403
+
+    resp = client.post(
+        f"/api/v1/orgs/{org['id']}/pending-invites/{invite_id}/resend",
+        headers=auth_headers(admin_token),
     )
     assert resp.status_code == 403
 
