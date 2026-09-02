@@ -79,10 +79,16 @@ test.describe("org admin: Manage users modal", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("adding a direct member via the modal's own add control", async () => {
-      await modal.getByRole("combobox", { name: "Role to grant" }).selectOption("member");
-      await modal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.projectMgrGamma.name);
-      await page.getByText(PERSONAS.projectMgrGamma.email).click();
+    await test.step("adding a direct member via the modal's own add control (PR3, members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3)", async () => {
+      await modal.getByRole("button", { name: "Add member" }).click();
+      const addMemberModal = page.getByRole("dialog", { name: "Add member" });
+      await addMemberModal.getByRole("combobox", { name: "Role to grant" }).selectOption("member");
+      await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.projectMgrGamma.name);
+      await addMemberModal.getByText(PERSONAS.projectMgrGamma.email).click();
+      // Selecting a match submits and closes only the nested modal — the
+      // outer "Manage users" modal stays open underneath it.
+      await expect(addMemberModal).not.toBeVisible();
+      await expect(modal).toBeVisible();
       // `exact: true`: Playwright's default substring matching would also
       // match the same row's Role cell, whose `MultiSelectDropdown`
       // trigger button's own accessible name ("<name>'s roles") contains

@@ -8,7 +8,7 @@ Use the dedicated dev/test stack, **not** the root `docker-compose.yml` (that on
 
 ```bash
 cd tests/container
-docker compose up --build
+docker compose up --build -d
 ```
 
 This starts Postgres (its own `reqtrack_test` database, isolated from any production instance), MinIO (S3-compatible file storage), MailHog (SMTP catcher), Keycloak (a real OIDC provider, for testing per-organisation SSO end-to-end), the backend, and the frontend. On first boot the backend automatically runs database migrations and creates a bootstrap **server admin** user and default organisation.

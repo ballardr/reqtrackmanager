@@ -8,8 +8,12 @@ tests specifically pin down."""
 
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.database import SessionLocal
+from app.models.audit import AuditEvent
 from app.models.enums import ProjectRole
+from app.models.project import UserProjectRole
 from app.services.rbac import get_project_users_by_role
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
@@ -555,11 +559,16 @@ def test_project_group_can_reference_another_projects_members(client, admin_toke
     assert _assign_role(client, admin_token, source["id"], user_id, "stakeholder").status_code == 204
 
     group = client.post(
-        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "Ref Group", "role": "stakeholder"},
+        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "Ref Group"},
         headers=auth_headers(admin_token),
     )
     assert group.status_code == 201, group.text
     group_id = group.json()["id"]
+    grant_role = client.post(
+        f"/api/v1/projects/{receiving['id']}/groups/{group_id}/roles", json={"role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     add_member = client.post(
         f"/api/v1/projects/{receiving['id']}/groups/{group_id}/members",
         json={"source_project_id": source["id"]}, headers=auth_headers(admin_token),
@@ -575,7 +584,7 @@ def test_project_group_source_reference_rejects_cross_org(client, admin_token, o
     other_org_admin, other_admin_token = create_org_admin_in(client, admin_token, "PG Ref CrossOrg Other Org")
     other_org_project = create_project(client, other_admin_token, other_org_admin["id"], "PG Ref CrossOrg Source")
     group = client.post(
-        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "CrossOrg Ref Group", "role": "member"},
+        f"/api/v1/projects/{receiving['id']}/groups", json={"name": "CrossOrg Ref Group"},
         headers=auth_headers(admin_token),
     )
     group_id = group.json()["id"]
@@ -589,7 +598,7 @@ def test_project_group_source_reference_rejects_cross_org(client, admin_token, o
 def test_project_group_source_reference_rejects_self_reference(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id, "PG Ref Self")
     group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Self Ref Group", "role": "member"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Self Ref Group"},
         headers=auth_headers(admin_token),
     )
     group_id = group.json()["id"]
@@ -613,9 +622,13 @@ def test_project_group_source_reference_is_one_hop_only(client, admin_token, org
 
     # Y's group references Z's members.
     y_group = client.post(
-        f"/api/v1/projects/{y['id']}/groups", json={"name": "Y refs Z", "role": "stakeholder"},
+        f"/api/v1/projects/{y['id']}/groups", json={"name": "Y refs Z"},
         headers=auth_headers(admin_token),
     ).json()
+    assert client.post(
+        f"/api/v1/projects/{y['id']}/groups/{y_group['id']}/roles", json={"role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).status_code == 204
     assert client.post(
         f"/api/v1/projects/{y['id']}/groups/{y_group['id']}/members",
         json={"source_project_id": z["id"]}, headers=auth_headers(admin_token),
@@ -623,9 +636,13 @@ def test_project_group_source_reference_is_one_hop_only(client, admin_token, org
 
     # X's group references Y's members (not Z directly).
     x_group = client.post(
-        f"/api/v1/projects/{x['id']}/groups", json={"name": "X refs Y", "role": "stakeholder"},
+        f"/api/v1/projects/{x['id']}/groups", json={"name": "X refs Y"},
         headers=auth_headers(admin_token),
     ).json()
+    assert client.post(
+        f"/api/v1/projects/{x['id']}/groups/{x_group['id']}/roles", json={"role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).status_code == 204
     assert client.post(
         f"/api/v1/projects/{x['id']}/groups/{x_group['id']}/members",
         json={"source_project_id": y["id"]}, headers=auth_headers(admin_token),
@@ -865,3 +882,361 @@ def test_materialize_converts_inherited_access_to_direct_and_survives_disabling_
     # their own direct role from materialization.
     assert _set_parent(client, admin_token, child["id"], role_inheritance_mode="none").status_code == 200
     assert client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(token)).status_code == 200
+
+
+# --- Per-user materialize (PR6 of the members/groups directory rework plan,
+# docs/decisions.md) --------------------------------------------------------
+#
+# `POST /{project_id}/materialize-inherited-access/{user_id}` is the per-row
+# counterpart to the bulk endpoint above: same rank logic, idempotency, and
+# audit action (`inherited_access_materialized`), just filtered to one
+# user's own provenance entries. These tests pin its own behaviour rather
+# than re-deriving the bulk endpoint's, per the plan's explicit note that
+# this reuses (not rebuilds) the bulk logic.
+
+
+def test_materialize_for_user_converts_only_that_users_inherited_access(client, admin_token, org_id):
+    """Two users both inherit PROJECT_MANAGER from the parent; materializing
+    for one of them by user id must not touch the other's provenance at
+    all — the per-row action is scoped to its target, not a disguised bulk
+    call."""
+    parent = create_project(client, admin_token, org_id, "PerUser Materialize Parent", can_be_parent=True)
+    pm_id = create_org_user(client, admin_token, org_id, "peruser_materialize_pm@example.com", role="member")
+    other_pm_id = create_org_user(client, admin_token, org_id, "peruser_materialize_other_pm@example.com", role="member")
+    assert _assign_role(client, admin_token, parent["id"], pm_id, "project_manager").status_code == 204
+    assert _assign_role(client, admin_token, parent["id"], other_pm_id, "project_manager").status_code == 204
+
+    child = create_project(
+        client, admin_token, org_id, "PerUser Materialize Child", parent_project_id=parent["id"],
+        role_inheritance_mode="mirror_all",
+    )
+
+    result = client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{pm_id}", headers=auth_headers(admin_token)
+    )
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert any(c["user_id"] == pm_id and c["role"] == "project_manager" for c in body["created"])
+    assert not any(c["user_id"] == other_pm_id for c in body["created"])
+
+    resp = client.get(f"/api/v1/projects/{child['id']}/effective-members", headers=auth_headers(admin_token))
+    members = {m["user_id"]: m for m in resp.json()}
+    assert any(s["kind"] == "direct_role" and s["role"] == "project_manager" for s in members[pm_id]["sources"])
+    # The other user still only has the inherited source — no direct row
+    # was created for them by this per-user call.
+    assert all(s["kind"] != "direct_role" for s in members[other_pm_id]["sources"])
+    assert any(s["kind"] == "forward_inherited" for s in members[other_pm_id]["sources"])
+
+
+def test_materialize_for_user_is_idempotent(client, admin_token, org_id):
+    """Calling twice must not create a duplicate direct role or a second
+    audit event."""
+    parent = create_project(client, admin_token, org_id, "PerUser Idempotent Parent", can_be_parent=True)
+    pm_id = create_org_user(client, admin_token, org_id, "peruser_idempotent_pm@example.com", role="member")
+    assert _assign_role(client, admin_token, parent["id"], pm_id, "project_manager").status_code == 204
+    child = create_project(
+        client, admin_token, org_id, "PerUser Idempotent Child", parent_project_id=parent["id"],
+        role_inheritance_mode="mirror_all",
+    )
+
+    first = client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{pm_id}", headers=auth_headers(admin_token)
+    )
+    assert first.status_code == 200, first.text
+    assert any(c["user_id"] == pm_id for c in first.json()["created"])
+
+    second = client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{pm_id}", headers=auth_headers(admin_token)
+    )
+    assert second.status_code == 200, second.text
+    assert not any(c["user_id"] == pm_id for c in second.json()["created"])
+    assert any(s["user_id"] == pm_id for s in second.json()["skipped"])
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(
+            select(UserProjectRole).where(UserProjectRole.user_id == UUID(pm_id), UserProjectRole.project_id == UUID(child["id"]))
+        ).all()
+    finally:
+        db.close()
+    assert len(rows) == 1, "must not create a duplicate direct role on a second call"
+
+    db = SessionLocal()
+    try:
+        events = list(
+            db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.entity_id == child["id"], AuditEvent.action == "inherited_access_materialized",
+                )
+            )
+        )
+    finally:
+        db.close()
+    assert len(events) == 1, "a no-op re-materialize must not log a second audit event"
+
+
+def test_materialize_for_user_selects_highest_ranked_inherited_role(client, admin_token, org_id):
+    """A user with multiple inherited roles at different ranks (member-
+    source MIRROR_ALL from one project giving STAKEHOLDER, forward
+    inheritance from the parent giving PROJECT_MANAGER) must end up with
+    only their single highest-ranked role materialized as direct — matching
+    the bulk endpoint's own `_ROLE_RANK` selection logic exactly."""
+    parent = create_project(client, admin_token, org_id, "PerUser Rank Parent", can_be_parent=True)
+    source = create_project(client, admin_token, org_id, "PerUser Rank Source")
+    user_id = create_org_user(client, admin_token, org_id, "peruser_rank_user@example.com", role="member")
+    assert _assign_role(client, admin_token, parent["id"], user_id, "project_manager").status_code == 204
+    assert _assign_role(client, admin_token, source["id"], user_id, "stakeholder").status_code == 204
+
+    child = create_project(
+        client, admin_token, org_id, "PerUser Rank Child", parent_project_id=parent["id"],
+        role_inheritance_mode="mirror_all",
+    )
+    assert client.post(
+        f"/api/v1/projects/{child['id']}/member-sources",
+        json={"source_project_id": source["id"], "mirror_mode": "mirror_all"}, headers=auth_headers(admin_token),
+    ).status_code == 201
+
+    sources_before = client.get(
+        f"/api/v1/projects/{child['id']}/effective-members", headers=auth_headers(admin_token)
+    ).json()
+    member_before = next(m for m in sources_before if m["user_id"] == user_id)
+    inherited_roles_before = {s["role"] for s in member_before["sources"] if s["kind"] in ("forward_inherited", "member_source_inherited")}
+    assert inherited_roles_before == {"project_manager", "stakeholder"}, member_before
+
+    result = client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{user_id}", headers=auth_headers(admin_token)
+    )
+    assert result.status_code == 200, result.text
+    created = result.json()["created"]
+    assert created == [{"user_id": user_id, "role": "project_manager"}], created
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(
+            select(UserProjectRole.role).where(
+                UserProjectRole.user_id == UUID(user_id), UserProjectRole.project_id == UUID(child["id"])
+            )
+        ).all()
+    finally:
+        db.close()
+    assert set(rows) == {"project_manager"}, "only the single highest-ranked inherited role must become direct"
+
+
+def test_materialize_for_user_is_a_noop_when_user_has_no_inherited_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "PerUser No Inherited Project")
+    user_id = create_org_user(client, admin_token, org_id, "peruser_no_inherited@example.com", role="member")
+    assert _assign_role(client, admin_token, project["id"], user_id, "stakeholder").status_code == 204
+
+    result = client.post(
+        f"/api/v1/projects/{project['id']}/materialize-inherited-access/{user_id}", headers=auth_headers(admin_token)
+    )
+    assert result.status_code == 200, result.text
+    assert result.json() == {"created": [], "skipped": []}
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(
+            select(UserProjectRole.role).where(
+                UserProjectRole.user_id == UUID(user_id), UserProjectRole.project_id == UUID(project["id"])
+            )
+        ).all()
+    finally:
+        db.close()
+    assert set(rows) == {"stakeholder"}, "the pre-existing direct role must be untouched, and nothing new created"
+
+
+def test_materialize_for_user_audit_log_has_expected_detail(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "PerUser Audit Parent", can_be_parent=True)
+    pm_id = create_org_user(client, admin_token, org_id, "peruser_audit_pm@example.com", role="member")
+    assert _assign_role(client, admin_token, parent["id"], pm_id, "project_manager").status_code == 204
+    child = create_project(
+        client, admin_token, org_id, "PerUser Audit Child", parent_project_id=parent["id"],
+        role_inheritance_mode="mirror_all",
+    )
+
+    assert client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{pm_id}", headers=auth_headers(admin_token)
+    ).status_code == 200
+
+    db = SessionLocal()
+    try:
+        event = db.scalar(
+            select(AuditEvent).where(
+                AuditEvent.entity_id == child["id"], AuditEvent.action == "inherited_access_materialized",
+            )
+        )
+    finally:
+        db.close()
+    assert event is not None
+    assert event.detail.get("target_user_id") == pm_id
+    assert any(c["user_id"] == pm_id and c["role"] == "project_manager" for c in event.detail.get("created", []))
+
+
+def test_materialize_for_user_requires_manage_not_just_view(client, admin_token, org_id):
+    parent = create_project(client, admin_token, org_id, "PerUser NonManager Parent", can_be_parent=True)
+    pm_id = create_org_user(client, admin_token, org_id, "peruser_nonmanager_pm@example.com", role="member")
+    assert _assign_role(client, admin_token, parent["id"], pm_id, "project_manager").status_code == 204
+    child = create_project(
+        client, admin_token, org_id, "PerUser NonManager Child", parent_project_id=parent["id"],
+        role_inheritance_mode="mirror_all",
+    )
+    outsider_id = create_org_user(client, admin_token, org_id, "peruser_nonmanager_outsider@example.com", role="member")
+    assert _assign_role(client, admin_token, child["id"], outsider_id, "stakeholder").status_code == 204
+    outsider_token = login(client, "peruser_nonmanager_outsider@example.com", "Password123!")
+
+    resp = client.post(
+        f"/api/v1/projects/{child['id']}/materialize-inherited-access/{pm_id}", headers=auth_headers(outsider_token)
+    )
+    assert resp.status_code == 403
+
+
+# --- Org-admin hierarchy-visibility bypass (PR2 of the follow-up UX batch,
+# 2026-09) -----------------------------------------------------------------
+#
+# `_project_out_with_redacted_parent`'s own manager/org-admin exemption
+# (`can_manage_project_settings`, which already checks `is_org_admin`) was
+# already correct going into this work — the actual gap was narrower and in
+# two different places: (1) `list_projects`/`get_project_ancestors`/
+# `get_project_children` populated parent/ancestor/children fields strictly
+# from `_accessible_project_ids`, with no org-admin OR-condition at all; and
+# (2) `get_project`/`get_project_ancestors`/`get_project_children` were
+# gated by `require_project_view`, which requires a genuine effective role
+# on the project_id in the URL itself (not just org-admin status) — so an
+# org admin with zero role on a project couldn't even reach the endpoint to
+# find out `_project_out_with_redacted_parent`'s exemption existed. Verified
+# empirically before fixing: a throwaway probe test against this exact
+# scenario returned 403 "Not a member of this project." on all three
+# endpoints prior to this change. Fixed by switching those three endpoints'
+# dependency to `require_project_view_or_manage` (the same dependency
+# `list_project_groups` already uses for identical "structure, not content"
+# reasoning) and adding an explicit `is_org_admin(...)` OR-condition at each
+# of the three internal accessible-set checks — never a change to what
+# `_accessible_project_ids` itself returns. See docs/decisions.md's "Project
+# hierarchy on Project Overview" entry for the full identify/verify/
+# remediate writeup.
+
+
+def test_org_admin_sees_true_parent_children_and_ancestors_with_zero_project_role(client, admin_token, org_id):
+    """The positive case: an org admin who holds no role/group membership on
+    either the parent or the child project — not even indirectly — still
+    sees the true relationship on all three endpoints this PR touches."""
+    parent = create_project(client, admin_token, org_id, "OrgAdmin Bypass Parent", can_be_parent=True)
+    child = create_project(
+        client, admin_token, org_id, "OrgAdmin Bypass Child",
+        parent_project_id=parent["id"], role_inheritance_mode="none",
+    )
+    create_org_user(client, admin_token, org_id, "hierarchy_org_admin@example.com", role="org_admin")
+    org_admin_token = login(client, "hierarchy_org_admin@example.com", "Password123!")
+
+    # Confirm this is genuinely the interesting case, not a false positive
+    # from some other source of access: zero effective role on either
+    # project via the ordinary content-access check.
+    assert client.get(
+        f"/api/v1/projects/{child['id']}/requirements", headers=auth_headers(org_admin_token)
+    ).status_code == 403
+
+    child_resp = client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(org_admin_token))
+    assert child_resp.status_code == 200, child_resp.text
+    assert child_resp.json()["parent_project_id"] == parent["id"]
+    assert child_resp.json()["parent_project_name"] == "OrgAdmin Bypass Parent"
+
+    children_resp = client.get(f"/api/v1/projects/{parent['id']}/children", headers=auth_headers(org_admin_token))
+    assert children_resp.status_code == 200, children_resp.text
+    assert {c["id"] for c in children_resp.json()} == {child["id"]}
+
+    ancestors_resp = client.get(f"/api/v1/projects/{child['id']}/ancestors", headers=auth_headers(org_admin_token))
+    assert ancestors_resp.status_code == 200, ancestors_resp.text
+    assert [a["id"] for a in ancestors_resp.json()] == [parent["id"]]
+
+
+def test_org_admin_of_a_different_organisation_gets_no_bypass(client, admin_token, org_id):
+    """Regression: the bypass is scoped to `is_org_admin` on the *specific*
+    project's own organisation — an org admin of some other organisation
+    entirely gets the ordinary redacted/403 behaviour, same as any outsider,
+    proving this isn't a blanket "any org admin, anywhere" opt-out."""
+    parent = create_project(client, admin_token, org_id, "Cross Org Bypass Parent", can_be_parent=True)
+    child = create_project(
+        client, admin_token, org_id, "Cross Org Bypass Child",
+        parent_project_id=parent["id"], role_inheritance_mode="none",
+    )
+    _other_org, other_admin_token = create_org_admin_in(client, admin_token, "Hierarchy Bypass Other Org")
+
+    assert client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(other_admin_token)).status_code == 403
+    assert client.get(
+        f"/api/v1/projects/{parent['id']}/children", headers=auth_headers(other_admin_token)
+    ).status_code == 403
+    assert client.get(
+        f"/api/v1/projects/{child['id']}/ancestors", headers=auth_headers(other_admin_token)
+    ).status_code == 403
+
+
+def test_non_admin_with_role_on_child_only_still_gets_redacted_parent_and_truncated_ancestors(
+    client, admin_token, org_id
+):
+    """Negative/regression: a non-admin, ordinary member who holds a real
+    role on the child but none on the parent is unaffected by the bypass —
+    proves it's admin-scoped, not opened generally. This is the same
+    scenario the pre-existing manager-exemption test above covers for
+    `GET /{project_id}` (see
+    `test_get_project_shows_true_parent_to_a_manager_with_no_independent_
+    parent_access`, which additionally exercises the *manager* exemption on
+    the child, not the plain-`stakeholder` case here); repeated here for the
+    ancestors/children endpoints specifically, which had no coverage before
+    this PR."""
+    parent = create_project(client, admin_token, org_id, "Non Admin Bypass Parent", can_be_parent=True)
+    child = create_project(
+        client, admin_token, org_id, "Non Admin Bypass Child",
+        parent_project_id=parent["id"], role_inheritance_mode="none",
+    )
+    member_id = create_org_user(client, admin_token, org_id, "non_admin_child_only@example.com", role="member")
+    assert _assign_role(client, admin_token, child["id"], member_id, "stakeholder").status_code == 204
+    token = login(client, "non_admin_child_only@example.com", "Password123!")
+
+    # No independent access to the parent at all.
+    assert client.get(f"/api/v1/projects/{parent['id']}", headers=auth_headers(token)).status_code == 403
+
+    child_resp = client.get(f"/api/v1/projects/{child['id']}", headers=auth_headers(token))
+    assert child_resp.status_code == 200, child_resp.text
+    assert child_resp.json()["parent_project_id"] is None
+    assert child_resp.json()["parent_project_name"] is None
+
+    # Truncates immediately: the very first ancestor (the parent) is
+    # already inaccessible, so the chain is empty, not partially shown.
+    ancestors_resp = client.get(f"/api/v1/projects/{child['id']}/ancestors", headers=auth_headers(token))
+    assert ancestors_resp.status_code == 200, ancestors_resp.text
+    assert ancestors_resp.json() == []
+
+    # `GET /{parent_id}/children` is unreachable for this user at all — they
+    # neither view nor manage the parent, org-admin bypass included.
+    assert client.get(
+        f"/api/v1/projects/{parent['id']}/children", headers=auth_headers(token)
+    ).status_code == 403
+
+
+def test_list_projects_shows_true_parent_and_children_to_org_admin_across_the_visibility_boundary(
+    client, admin_token, org_id
+):
+    """`list_projects` itself still only *lists* projects the caller is
+    accessible on (unchanged by this PR — an org admin with zero role
+    anywhere still sees an empty list, matching the "No server-admin bypass"
+    /I-M-05 comment on that endpoint) — but for a project the org admin
+    *can* see, the `parent_project_name`/`children` fields on that row now
+    show the true relationship even when the parent/child itself is outside
+    their accessible set."""
+    parent = create_project(client, admin_token, org_id, "List Bypass Parent", can_be_parent=True)
+    child = create_project(
+        client, admin_token, org_id, "List Bypass Child",
+        parent_project_id=parent["id"], role_inheritance_mode="none",
+    )
+    org_admin_id = create_org_user(client, admin_token, org_id, "list_hierarchy_org_admin@example.com", role="org_admin")
+    # Grant the org admin an ordinary direct role on the child only, so it's
+    # the one row `list_projects` actually returns for them — the parent
+    # stays outside their accessible set entirely.
+    assert _assign_role(client, admin_token, child["id"], org_admin_id, "stakeholder").status_code == 204
+    org_admin_token = login(client, "list_hierarchy_org_admin@example.com", "Password123!")
+
+    listed = client.get("/api/v1/projects?archived=false", headers=auth_headers(org_admin_token)).json()
+    rows_by_id = {p["id"]: p for p in listed}
+    assert parent["id"] not in rows_by_id  # still not independently accessible/listed
+    assert rows_by_id[child["id"]]["parent_project_id"] == parent["id"]
+    assert rows_by_id[child["id"]]["parent_project_name"] == "List Bypass Parent"

@@ -170,7 +170,7 @@ def test_project_group_changes_are_audit_logged(client, admin_token, org_id):
     member_id = create_org_user(client, admin_token, org_id, "group_member@example.com", role="member")
 
     group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Reviewers", "role": "stakeholder"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Reviewers"},
         headers=auth_headers(admin_token),
     ).json()
     client.post(
@@ -202,9 +202,14 @@ def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, 
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
     other_id = create_org_user(client, admin_token, org_id, "group-based-sole-manager@example.com", role="member")
     group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers", "role": "project_manager"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers"},
         headers=auth_headers(admin_token),
     ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/roles", json={"role": "project_manager"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     added = client.post(
         f"/api/v1/projects/{project['id']}/groups/{group['id']}/members",
         json={"user_id": other_id}, headers=auth_headers(admin_token),

@@ -123,13 +123,21 @@ test("project admin invites a brand-new external user by email, and they can sig
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
-    const picker = page.getByPlaceholder("Type a name to add, or an email to invite…");
+    // PR3 (members/groups directory rework): the add control now opens in
+    // a Modal behind an "Add member" button, per docs/ux-style-guide.md
+    // Principle 3, instead of sitting permanently above the table.
+    await page.getByRole("button", { name: "Add member" }).click();
+    const addMemberModal = page.getByRole("dialog", { name: "Add member" });
+    const picker = addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…");
     await picker.fill(inviteeEmail);
     // The dropdown follows the WAI-ARIA combobox/listbox pattern
     // (`UserAutocomplete.tsx`) — each match, including the invite result,
     // is `role="option"`, not `role="button"`.
-    await expect(page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
-    await page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
+    await expect(addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
+    await addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
+    // Selecting closes the modal; the result message renders on the page
+    // underneath it, same as before this control moved into a Modal.
+    await expect(addMemberModal).not.toBeVisible();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
   });
 
@@ -191,10 +199,18 @@ test("project admin sees a pending invite listed and can resend it, retriggering
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
-    const picker = page.getByPlaceholder("Type a name to add, or an email to invite…");
+    // PR3 (members/groups directory rework): the add control now opens in
+    // a Modal behind an "Add member" button, per docs/ux-style-guide.md
+    // Principle 3, instead of sitting permanently above the table.
+    await page.getByRole("button", { name: "Add member" }).click();
+    const addMemberModal = page.getByRole("dialog", { name: "Add member" });
+    const picker = addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…");
     await picker.fill(inviteeEmail);
-    await expect(page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
-    await page.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
+    await expect(addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
+    await addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
+    // Selecting closes the modal; the result message renders on the page
+    // underneath it, same as before this control moved into a Modal.
+    await expect(addMemberModal).not.toBeVisible();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
   });
 

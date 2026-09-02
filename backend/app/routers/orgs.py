@@ -1215,6 +1215,138 @@ def leave_organization(
     db.commit()
 
 
+@router.delete("/{organization_id}/users/{user_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
+def remove_org_user(
+    organization_id: UUID,
+    user_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Admin-initiated counterpart to `leave_organization` above (PR6 of the
+    members/groups directory rework plan, docs/decisions.md — `OrgAdminPage
+    .tsx`'s Users table Actions column, "Remove from {org}"): an org admin
+    removes *another* user's membership in `organization_id`, rather than
+    the user removing their own. No prior admin-initiated removal endpoint
+    existed (`deactivate_org_user` below sets `is_active=False` on the
+    whole account, a cross-org lockout, not a per-org membership removal;
+    `archive_org_user` only hides an already-deactivated user from lists) —
+    this fills that specific gap: removing this org's `UserOrgRole` row(s)
+    without touching the account's standing in any other organisation.
+
+    Treated as access-mutating (identify -> verify -> remediate review,
+    docs/decisions.md), so it is deliberately built as a close mirror of
+    `leave_organization`'s own already-reviewed cleanup and guards, not a
+    bare `UserOrgRole` delete:
+
+    - **Self-targeting is blocked** (400) — same reasoning as
+      `deactivate_org_user`/`revoke_org_role`: an admin removing *their
+      own* org membership has its own, already-correct path
+      (`leave_organization`, which additionally lets a departing admin
+      reassign responsibilities before leaving) — this endpoint isn't a
+      second, less-guarded way to reach that same end state.
+    - **No separate last-admin count check** — same "by construction"
+      reasoning `revoke_org_role` already documents for itself, not
+      `leave_organization`'s reachable one: this endpoint requires the
+      *caller* to already hold `ORG_ADMIN` on `organization_id`
+      (`require_org_role` below), and self-targeting is blocked above, so
+      the caller is necessarily a *second*, distinct `ORG_ADMIN` still
+      present after `user_id`'s membership is removed — an organisation
+      can never reach zero admins through this endpoint, for any `user_id`
+      it's ever legal to call it with. (`leave_organization`'s own count
+      check is reachable precisely because there caller and target are the
+      *same* person — the case blocked here.)
+    - **Sole-project-manager guard**: refuses (409) if `user_id` is the
+      sole real manager of any project in this org — same check
+      `leave_organization` already applies to the leaving user, applied
+      here to the user being removed, so an admin can't accidentally
+      orphan a project of managers by removing someone through this
+      endpoint that `leave_organization` would have refused to let them
+      remove themselves as.
+    - **Cleanup**: every direct `UserProjectRole` and `ProjectGroupMember`
+      row for `user_id` across this org's projects, every `OrgGroupMember`
+      row for this org's groups, and subscriptions/favorites for this org's
+      projects — same shape `leave_organization` already performs for the
+      caller, applied here to `user_id`. This org's own `UserOrgRole` rows
+      are deleted last, after every dependent cleanup succeeds.
+    - Row-locks the organisation before the last-admin guard, and each
+      project in turn before that project's own sole-manager check
+      (`lock_organization_for_update`/`lock_project_for_update`) — same
+      ordering, and the same concurrent-removal race, `leave_organization`'s
+      own docstring describes.
+
+    A no-op (still 204) if `user_id` is not currently a member of
+    `organization_id` at all — removing a non-member has nothing to do,
+    matching `leave_organization`'s own "not a member" 404 being the only
+    case that actually errors instead (kept as a 404 here too, for the same
+    "you can't remove someone who isn't there" reason).
+    """
+    from app.models.enums import ProjectRole  # local import matching leave_organization's own convention
+    from app.services.rbac import lock_organization_for_update, lock_project_for_update
+
+    if user_id == current_user.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Use the leave-organisation action to remove your own membership."
+        )
+
+    lock_organization_for_update(db, organization_id)
+
+    roles = get_effective_org_roles(db, user_id, organization_id)
+    if not roles:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
+
+    projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
+    blocking_projects = []
+    for p in projects:
+        lock_project_for_update(db, p.id)
+        concrete_managers = get_effective_project_managers(db, p.id)
+        i_am_manager = user_id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
+            db, user_id, p.id
+        )
+        if i_am_manager and not (concrete_managers - {user_id}):
+            blocking_projects.append(p.name)
+    if blocking_projects:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This user is the sole manager of: " + ", ".join(blocking_projects) + ". Assign another manager first.",
+        )
+
+    project_ids = [p.id for p in projects]
+    if project_ids:
+        db.execute(
+            UserProjectRole.__table__.delete().where(
+                UserProjectRole.user_id == user_id, UserProjectRole.project_id.in_(project_ids)
+            )
+        )
+        db.execute(
+            ProjectGroupMember.__table__.delete().where(
+                ProjectGroupMember.user_id == user_id,
+                ProjectGroupMember.project_group_id.in_(
+                    select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
+                ),
+            )
+        )
+    db.execute(
+        OrgGroupMember.__table__.delete().where(
+            OrgGroupMember.user_id == user_id,
+            OrgGroupMember.org_group_id.in_(
+                select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
+            ),
+        )
+    )
+    engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, project_ids)
+
+    db.execute(
+        UserOrgRole.__table__.delete().where(
+            UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id
+        )
+    )
+    log_event(
+        db, entity_type="user_org_role", entity_id=user_id, action="removed_from_organization",
+        actor_id=current_user.id, organization_id=organization_id,
+    )
+    db.commit()
+
+
 @router.post("/{organization_id}/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_org_user(
     organization_id: UUID,

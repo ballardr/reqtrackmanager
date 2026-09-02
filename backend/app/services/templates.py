@@ -49,6 +49,7 @@ from app.models.project import (
     ProjectComponent,
     ProjectGroup,
     ProjectGroupMember,
+    ProjectGroupRole,
     ProjectStage,
     UserProjectRole,
 )
@@ -135,9 +136,18 @@ def clone_project(
         )
 
     for group in db.scalars(select(ProjectGroup).where(ProjectGroup.project_id == source.id)).all():
-        new_group = ProjectGroup(project_id=new_project.id, name=group.name, role=group.role)
+        new_group = ProjectGroup(project_id=new_project.id, name=group.name)
         db.add(new_group)
         db.flush()
+        # Roles (PR7, docs/decisions.md): a group's role(s) live in the
+        # separate ProjectGroupRole grant table now, not a scalar column on
+        # ProjectGroup itself — copy every role the template's group holds,
+        # not just one, the same "copy everything" precedent this loop
+        # already sets for membership below.
+        for group_role in db.scalars(
+            select(ProjectGroupRole).where(ProjectGroupRole.project_group_id == group.id)
+        ).all():
+            db.add(ProjectGroupRole(project_group_id=new_group.id, role=group_role.role))
         for member in db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all():
             # All three member-target kinds are copied — `source_project_id`
             # ("this group's members = that project's own direct members")

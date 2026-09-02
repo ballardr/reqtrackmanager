@@ -42,11 +42,31 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
     });
 
     await test.step("lock then unlock a display name", async () => {
+      // PR6 of the members/groups directory rework plan (docs/decisions.md)
+      // consolidated the Users table's previously-bare "Lock/Unlock display
+      // name" button into the row's `ActionMenu` — reachable via its kebab
+      // trigger (`${display name}'s actions`), then the `menuitem` inside
+      // the `Popover` it opens, same pattern org-merge-import.spec.ts/
+      // org-rename-and-test-email.spec.ts already use for other
+      // `ActionMenu` call sites (waiting for the menu itself before
+      // clicking an item, since the popover repositions after mount).
       const row = page.locator("tr", { hasText: PERSONAS.orgAdminGamma.email });
-      await row.getByRole("button", { name: "Lock display name" }).click();
-      await expect(row.getByRole("button", { name: "Unlock display name" })).toBeVisible();
-      await row.getByRole("button", { name: "Unlock display name" }).click();
-      await expect(row.getByRole("button", { name: "Lock display name" })).toBeVisible();
+      // The menu trigger's accessible name (`usersActionsFor`, strings.ts)
+      // is keyed off the user's display name, not their email.
+      const menuTriggerName = `${PERSONAS.orgAdminGamma.name}'s actions`;
+      await row.getByRole("button", { name: menuTriggerName }).click();
+      await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+      await page.getByRole("menuitem", { name: "Lock display name" }).click();
+
+      await row.getByRole("button", { name: menuTriggerName }).click();
+      await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Unlock display name" })).toBeVisible();
+      await page.getByRole("menuitem", { name: "Unlock display name" }).click();
+
+      await row.getByRole("button", { name: menuTriggerName }).click();
+      await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Lock display name" })).toBeVisible();
+      await page.keyboard.press("Escape");
     });
 
     let gamma1Id = "";
@@ -172,11 +192,20 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // *direct* role the exact same way a project group's own member
       // picker used to.
       await selectProjectAdminGroup(page, "Members");
+      // PR3 (members/groups directory rework): the add control now opens in
+      // a Modal behind an "Add member" button, per docs/ux-style-guide.md
+      // Principle 3 ("create is a layer, not a page reflow"), instead of
+      // sitting permanently above the table.
+      await page.getByRole("button", { name: "Add member" }).click();
+      const addMemberModal = page.getByRole("dialog", { name: "Add member" });
       const outsideEmail = `e2e-external-${Date.now()}@example.com`;
-      await page.getByPlaceholder("Type a name to add, or an email to invite…").fill(outsideEmail);
+      await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(outsideEmail);
       // A brand-new email with no account anywhere shows an "Invite"
       // option (not "Add"), per UserAutocomplete's existing/new distinction.
-      await page.getByText(`Invite ${outsideEmail}`, { exact: true }).click();
+      await addMemberModal.getByText(`Invite ${outsideEmail}`, { exact: true }).click();
+      // Selecting closes the modal; the result message renders on the page
+      // underneath it, same as before this control moved into a Modal.
+      await expect(addMemberModal).not.toBeVisible();
       await expect(page.getByText(/invite email was sent/i).first()).toBeVisible();
     });
   });

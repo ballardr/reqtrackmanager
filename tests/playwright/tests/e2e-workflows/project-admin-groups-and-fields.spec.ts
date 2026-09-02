@@ -102,8 +102,12 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const id = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
       const groupName = `E2E Beta-2 Group ${Date.now()}`;
+      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // no longer accepts a role at all — this group is created bare, which
+      // is fine here since none of the steps below (member add/remove,
+      // the `?openGroup=` deep link, org-group nesting) exercise its role.
       await page.request.post(`http://localhost:8000/api/v1/projects/${id}/groups`, {
-        headers: { Authorization: `Bearer ${token}` }, data: { name: groupName, role: "member" },
+        headers: { Authorization: `Bearer ${token}` }, data: { name: groupName },
       });
       // ProjectAdminPage fetches project groups once on mount — the group
       // just created via a direct API call isn't in that state until
@@ -190,28 +194,117 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     // Style guide "Pattern: create panels, popovers, and one door for
     // bulk" — closes the 2026-08 UX audit's "Groups tab manages membership
     // only, no create form at all" finding. Mirrors Org Admin's own "New
-    // group" popover coverage, against the project-scoped endpoint (which
-    // also requires a role up front — `PATCH .../groups/{id}`, Phase 5,
-    // makes it correctable afterward, but creation stays role-required).
-    await test.step("create a new project group via the New group popover", async () => {
+    // group" popover coverage, against the project-scoped endpoint. PR7 of
+    // the members/groups directory rework plan (docs/decisions.md) dropped
+    // the role picker this modal used to have — a group is created bare
+    // (zero roles) and a role is a separate grant made afterward via the
+    // new row's own `MultiSelectDropdown`, not at creation time.
+    await test.step("create a new project group via the New group popover, then grant it a role", async () => {
       await selectProjectAdminGroup(page, "Project groups");
       const newGroupName = `E2E New Project Group ${Date.now()}`;
 
       await page.getByRole("button", { name: "New group" }).click();
       const dialog = page.getByRole("dialog", { name: "New group" });
       await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+      // No role picker any more (PR7) — just the name field.
+      await expect(dialog.getByLabel("Role")).toHaveCount(0);
       await dialog.getByPlaceholder("e.g. Reviewers").fill(newGroupName);
-      await dialog.getByLabel("Role").selectOption("stakeholder");
       await dialog.getByRole("button", { name: "Create" }).click();
 
       // Principle 7 — every mutation ends with feedback.
       await expect(page.getByText("Group created")).toBeVisible();
       await expect(dialog).not.toBeVisible();
       // The group's Name cell is a real `<button>` (`DirectoryTable`'s
-      // `onRowClick`) — the Role badge sits in a sibling `<td>`, so this
-      // checks the whole `<tr>`, not just the button itself.
+      // `onRowClick`) — the role `MultiSelectDropdown` sits in a sibling
+      // `<td>`, so this checks the whole `<tr>`, not just the button itself.
       const row = page.getByRole("button", { name: new RegExp(`^${newGroupName}`) }).locator("xpath=ancestor::tr[1]");
+      await expect(row).toContainText("No roles assigned");
+      // PR5 of the members/groups directory rework plan: the Groups tab's
+      // `DirectoryTable` now type-badges every row — a real `ProjectGroup`
+      // reads "Project group", distinguishing it from a `ProjectMemberSource`
+      // row's "Project" badge (see the dedicated member-source coverage
+      // below, and `project-hierarchy.spec.ts`'s own member-source steps).
+      await expect(row).toContainText("Project group");
+
+      // Grant a role via the new per-row MultiSelectDropdown (PR7) —
+      // mirrors `ProjectMembersTable`'s own Role column interaction. Uses
+      // `.click()`, not `.check()`: the checkbox's own accessible name
+      // flips from "Grant X to Y" to "Revoke X from Y" the moment the
+      // toggle succeeds (`ProjectMembersTable`'s pre-existing pattern,
+      // reused here), so `.check()`'s built-in re-verification against
+      // that same original locator can never resolve — the working
+      // pattern elsewhere in this suite (project-admin-members.spec.ts)
+      // always clicks, then asserts the outcome via a separate, freshly
+      // resolved locator, exactly like the `row` assertion below.
+      await row.getByRole("button", { name: `${newGroupName}'s roles` }).click();
+      const roleGroup = page.getByRole("group", { name: `${newGroupName}'s roles` });
+      await roleGroup.getByRole("checkbox", { name: `Grant Stakeholder to ${newGroupName}` }).click();
       await expect(row).toContainText("Stakeholder");
+      await expect(row).not.toContainText("No roles assigned");
+    });
+
+    // PR5 of the members/groups directory rework plan: the same "Add
+    // member" autocomplete (button + `Modal`, PR3) that already grants a
+    // direct role to a user also matches org groups by name — selecting
+    // one grants it a role *directly* via PR4's new mechanism
+    // (`OrgGroupProjectRole`, `POST .../group-roles`), with no
+    // `ProjectGroup` wrapper created and no nesting involved. Distinct from
+    // the "nest an org group into a project group" step above, which is
+    // the older, still-supported composition mechanism.
+    await test.step("grant an org group a project role directly, from the Members tab's combined Add member autocomplete", async () => {
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const authHeaders = { Authorization: `Bearer ${token}` };
+      const project = await (
+        await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, { headers: authHeaders })
+      ).json();
+      const directGroupName = `E2E Direct Grant Group ${Date.now()}`;
+      const orgGroup = await (
+        await page.request.post(`http://localhost:8000/api/v1/orgs/${project.organization_id}/groups`, {
+          headers: authHeaders, data: { name: directGroupName },
+        })
+      ).json();
+      // The group needs at least one member for the grant to be visible on
+      // the Members table at all — an empty group's direct role has no
+      // effective member to show it on.
+      const orgUsers: { user_id: string; email: string }[] = await page
+        .request.get(`http://localhost:8000/api/v1/orgs/${project.organization_id}/users`, { headers: authHeaders })
+        .then((r) => r.json());
+      const member = orgUsers.find((u) => u.email === PERSONAS.memberAlphaBeta.email)!;
+      await page.request.post(
+        `http://localhost:8000/api/v1/orgs/${project.organization_id}/groups/${orgGroup.id}/members`,
+        { headers: authHeaders, data: { user_id: member.user_id } },
+      );
+
+      try {
+        await selectProjectAdminGroup(page, "Members");
+        // orgGroups is fetched once on mount — the group just created via a
+        // direct API call isn't in that state until reloaded (same reason
+        // the "nest an org group" step above reloads too).
+        await page.reload();
+
+        await page.getByRole("button", { name: "Add member" }).click();
+        const dialog = page.getByRole("dialog", { name: "Add member" });
+        await dialog.getByLabel("Role to grant").selectOption("stakeholder");
+        await dialog.getByPlaceholder("Type a name to add, or an email to invite…").fill(directGroupName);
+        const groupOption = dialog.getByRole("option", { name: new RegExp(`^${directGroupName}`) });
+        await expect(groupOption).toContainText("Org group");
+        await groupOption.click();
+        await expect(dialog).not.toBeVisible();
+
+        // Visible on the group's member's own row, naming the granting
+        // group directly (PR1's per-group provenance) and distinguishing
+        // this direct grant from the nesting mechanism's own wording.
+        const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
+        await expect(memberRow.getByText(`Via group '${directGroupName}' (direct)`)).toBeVisible();
+      } finally {
+        // This grants a real stakeholder role to a persona (memberAlphaBeta)
+        // several other specs share on Beta-2 — revoked so it doesn't leak
+        // into their own assertions, this project's test-independence rule.
+        await page.request.delete(
+          `http://localhost:8000/api/v1/projects/${projectId}/group-roles/${orgGroup.id}/stakeholder`,
+          { headers: authHeaders },
+        );
+      }
     });
 
     await test.step("override and then revert a terminology term", async () => {

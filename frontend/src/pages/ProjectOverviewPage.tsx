@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { ChangeEntry, Project, ProjectMetrics, RequirementStatus } from "../api/types";
+import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -23,6 +24,15 @@ export function ProjectOverviewPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [activity, setActivity] = useState<ChangeEntry[] | null>(null);
+  // Hierarchical projects (docs/decisions.md): root-first ancestor
+  // breadcrumb and "Child of/Parent of" labels, previously shown on
+  // ProjectListPage/FavouritesPage but never here. Both default to `[]`
+  // rather than `null` — an empty result (no parent/no children, or every
+  // ancestor redacted) is a normal, renderable state, not a loading one,
+  // so these don't gate the page's initial `<Spinner />` the way
+  // project/metrics do.
+  const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
+  const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,6 +45,8 @@ export function ProjectOverviewPage() {
       .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
       .then((entries) => setActivity(entries.slice(0, 8)))
       .catch(onError);
+    api.get<ProjectAncestor[]>(`/api/v1/projects/${projectId}/ancestors`).then(setAncestors).catch(onError);
+    api.get<ProjectListItem[]>(`/api/v1/projects/${projectId}/children`).then(setChildren).catch(onError);
   }, [projectId, strings.common.error]);
 
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
@@ -67,12 +79,36 @@ export function ProjectOverviewPage() {
     ["rejected", metrics.change_requests_rejected],
   ];
 
+  // Built from the single-`Project` GET response plus the `children` list
+  // fetched above — `ProjectOverviewPage` has no `ProjectListItem` of its
+  // own (list-only fields like `current_stage_name`/`my_roles` don't apply
+  // to a single-project dashboard), so this assembles just the fields
+  // `ProjectHierarchyLabels` actually needs (see `ProjectHierarchySummary`).
+  const hierarchySummary: ProjectHierarchySummary = {
+    id: project.id,
+    parent_project_id: project.parent_project_id,
+    parent_project_name: project.parent_project_name,
+    children,
+  };
+
   return (
     <div className="stack">
+      {ancestors.length > 0 && (
+        <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+          {ancestors.map((a) => (
+            <span key={a.id}>
+              <Link to={`/projects/${a.id}`}>{a.name}</Link>
+              {" / "}
+            </span>
+          ))}
+          {project.name}
+        </div>
+      )}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 style={{ margin: 0 }}>{project.name}</h1>
           <p className="text-muted">{project.summary}</p>
+          <ProjectHierarchyLabels project={hierarchySummary} />
         </div>
         <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
           <Plus size={16} /> {strings.requirements.newRequirement}

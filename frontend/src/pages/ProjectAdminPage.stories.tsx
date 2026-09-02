@@ -37,7 +37,7 @@ const components: Component[] = [{ id: "c1", project_id: PROJECT_ID, name: "Auth
 const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_id: "c1", name: "Login", prefix: "LOG", sort_order: 0 }];
 const groups: ProjectGroup[] = [
   {
-    id: "g1", name: "Stakeholders", role: "stakeholder",
+    id: "g1", name: "Stakeholders", roles: ["stakeholder"],
     member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [],
   },
 ];
@@ -101,6 +101,12 @@ function mockProjectAdminApis(
     if (path.includes("/effective-members")) return overrides.effectiveMembers ?? [];
     if (path.includes(`/projects/${PROJECT_ID}/children`)) return overrides.children ?? [];
     if (path.startsWith("/api/v1/projects?")) return overrides.orgProjects ?? [];
+    // `UserAutocomplete`'s debounced server-side search (organizationId
+    // mode) — checked before the plain "/users" catch-all below, which
+    // that path also matches. No user matches wired by default; a story
+    // exercising this control's group-matching (PR5) types into it without
+    // needing a real user result too.
+    if (path.includes("/users/search")) return { members: [], external: null };
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -327,9 +333,12 @@ export const CustomFieldsTabDeleteRequiresConfirmation: Story = {
 /** Style guide "Pattern: modal dialog for entity create/rename": "+ New
  * group" opens a Modal instead of the Groups tab having no create form at
  * all (2026-08 UX audit finding) — mirrors OrgAdminPage's own "New group"
- * modal, just against the project-scoped endpoint, which also requires a
- * role up front (`ProjectGroupCreate.role`) since a project group's role
- * can't be changed after creation. */
+ * modal, just against the project-scoped endpoint. PR7 of the members/
+ * groups directory rework plan (docs/decisions.md) dropped this modal's
+ * role picker: a group is now created bare (zero roles, `ProjectGroupCreate`
+ * no longer accepts one at all) and a role is a separate, explicit grant
+ * added afterward via the new group row's own `MultiSelectDropdown` — see
+ * `GroupsTabGrantAndRevokeGroupRole` below for that flow. */
 export const GroupsTabCreateGroupViaModal: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -346,16 +355,14 @@ export const GroupsTabCreateGroupViaModal: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New group" }));
     const dialog = body.getByRole("dialog", { name: "New group" });
     await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+    // No role picker any more (PR7) — just the name field.
+    await expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
 
     await userEvent.type(within(dialog).getByPlaceholderText("e.g. Reviewers"), "Reviewers");
-    await userEvent.selectOptions(within(dialog).getByLabelText("Role"), "stakeholder");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/groups`,
-        { name: "Reviewers", role: "stakeholder" }
-      )
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/groups`, { name: "Reviewers" })
     );
     // Principle 7 — every mutation ends with feedback.
     await expect(body.getByText("Group created")).toBeInTheDocument();
@@ -384,21 +391,60 @@ export const GroupsTabOpensSidePanelWithRoleSelectAndDelete: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: /Stakeholders/ })).toBeInTheDocument());
-    // Role (badge) and Members (count) columns render alongside Name,
-    // independent of opening the row.
-    await expect(canvas.getByRole("cell", { name: "Stakeholder" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholders" })).toBeInTheDocument());
+    // Role (PR7: MultiSelectDropdown, not a plain badge) and Members
+    // (count) columns render alongside Name, independent of opening the
+    // row.
+    await expect(canvas.getByRole("button", { name: "Stakeholders's roles" })).toHaveTextContent("Stakeholder");
     await expect(canvas.getByRole("cell", { name: "0 member(s)" })).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
+    await userEvent.click(canvas.getByRole("button", { name: "Stakeholders" }));
 
     const panel = within(document.body).getByRole("dialog", { name: "Stakeholders details" });
-    await expect(within(panel).getByRole("combobox", { name: "Group role" })).toHaveValue("stakeholder");
+    // The SidePanel's own role editor is the same MultiSelectDropdown, kept
+    // in sync with the Groups tab's row.
+    await expect(within(panel).getByRole("button", { name: "Stakeholders's roles" })).toHaveTextContent("Stakeholder");
     // No group is specially protected from deletion any more (Phase C,
     // follow-up UX batch, 2026-08-31 removed `is_default` and the four
     // auto-created "standard" groups entirely) — the only remaining guard
     // is C-U-08 ("a project must retain at least one manager"), which
     // doesn't apply to this stakeholder-role group at all.
     await expect(within(panel).getByRole("button", { name: "Delete group" })).toBeEnabled();
+  },
+};
+
+/** PR7 of the members/groups directory rework plan: a group's role is no
+ * longer fixed at creation — the Groups tab's per-row `MultiSelectDropdown`
+ * grants/revokes roles via the new `POST`/`DELETE .../groups/{group_id}/
+ * roles` endpoints, the same pattern `ProjectMembersTable`'s own Role
+ * column already uses for a user's roles. A group can hold more than one
+ * role at once (checking a second option doesn't uncheck the first). */
+export const GroupsTabGrantAndRevokeGroupRole: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholders's roles" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Stakeholders's roles" }));
+    const group = within(document.body).getByRole("group", { name: "Stakeholders's roles" });
+
+    // Granting a second role alongside the one it already holds.
+    const grantCheckbox = within(group).getByRole("checkbox", { name: "Grant Member to Stakeholders" });
+    await userEvent.click(grantCheckbox);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/groups/g1/roles`, { role: "member" })
+    );
+
+    // Revoking its original role — independent of the grant above.
+    const revokeCheckbox = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Stakeholders" });
+    await userEvent.click(revokeCheckbox);
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/groups/g1/roles/stakeholder`)
+    );
   },
 };
 
@@ -410,20 +456,20 @@ export const GroupsTabAddMemberViaSidePanel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: /Stakeholders/ })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholders" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Stakeholders" }));
     const panel = within(document.body).getByRole("dialog", { name: "Stakeholders details" });
 
     const userInput = within(panel).getByPlaceholderText("Type a name to add, or an email to invite…");
     await userEvent.type(userInput, "amy");
     // The panel's own `UserAutocomplete` — no server-side search wired in
     // this story (no matching org users mocked), so this just confirms the
-    // control renders and is reachable inside the panel (the panel now
-    // also has a "Group role" `<select>` and an org-group nesting
-    // `<select>`, both also `role="combobox"`, so this asserts against the
-    // specific input rather than a bare `getByRole("combobox")`); the add
-    // flow itself is exercised by `GroupsTabAddOrgGroupViaSidePanel` below
-    // and by `MembersTabAddDirectMember`'s equivalent direct-role add.
+    // control renders and is reachable inside the panel (the panel also has
+    // a role `MultiSelectDropdown` trigger and an org-group nesting
+    // `<select>`, so this asserts against the specific input rather than a
+    // bare role query); the add flow itself is exercised by
+    // `GroupsTabAddOrgGroupViaSidePanel` below and by `MembersTabAddDirectMember`'s
+    // equivalent direct-role add.
     await expect(userInput).toHaveValue("amy");
     // Typing with `organizationId` set (as this panel's own `UserAutocomplete`
     // is) arms a 250ms debounced search fetch (`UserAutocomplete.tsx`).
@@ -444,8 +490,8 @@ export const GroupsTabAddOrgGroupViaSidePanel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: /Stakeholders/ })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholders" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Stakeholders" }));
     const panel = within(document.body).getByRole("dialog", { name: "Stakeholders details" });
 
     const select = within(panel).getByRole("combobox", { name: "Nest an organisation group…" });
@@ -468,7 +514,7 @@ export const GroupsTabDeleteGroupRequiresConfirmation: Story = {
   beforeEach: () => {
     mockProjectAdminApis({
       groups: [
-        { id: "g2", name: "Reviewers", role: "member", member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
+        { id: "g2", name: "Reviewers", roles: ["member"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
       ],
     });
     spyOn(api, "delete").mockResolvedValue(undefined);
@@ -476,8 +522,8 @@ export const GroupsTabDeleteGroupRequiresConfirmation: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: /Reviewers/ })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: /Reviewers/ }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Reviewers" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Reviewers" }));
     const panel = within(document.body).getByRole("dialog", { name: "Reviewers details" });
     const deleteButton = within(panel).getByRole("button", { name: "Delete group" });
     await expect(deleteButton).toBeEnabled();
@@ -528,12 +574,12 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
         {
           user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
           sources: [
-            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all" },
+            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all", via_group_id: null, via_group_name: null },
           ],
         },
         {
           user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
-          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
       ],
     }),
@@ -550,7 +596,11 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
 /** The Members section's own "add a direct member" control
  * (`UserAutocomplete` + a role `<select>`) grants a direct role via
  * `POST .../roles` — distinct from the Groups tab's per-group add flow,
- * which grants group membership instead. */
+ * which grants group membership instead. Style guide "Pattern: modal
+ * dialog for entity create/rename" (Principle 3) — as of PR3 of the
+ * members/groups directory rework, this is no longer permanently visible
+ * above the table; "Add member" opens it in a `Modal`, mirroring
+ * `GroupsTabCreateGroupViaModal` above. */
 export const MembersTabAddDirectMember: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -559,12 +609,132 @@ export const MembersTabAddDirectMember: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Members" }));
-    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Role to grant" })).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Role to grant" }), "stakeholder");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add member" })).toBeInTheDocument());
+
+    const body = within(document.body);
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
+    const dialog = body.getByRole("dialog", { name: "Add member" });
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Role to grant" }), "stakeholder");
     // The add control's own `UserAutocomplete` — no server-side search
     // wired in this story, so this just confirms the control renders and
-    // is reachable with the chosen role alongside it.
-    await expect(canvas.getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+    // is reachable, inside the modal, with the chosen role alongside it.
+    await expect(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+  },
+};
+
+/** Modal-open state on its own — confirms "Add member" opens the modal
+ * with the table still visible underneath, and Cancel closes it without
+ * calling the API. */
+export const MembersTabAddMemberModalOpen: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      effectiveMembers: [
+        {
+          user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
+          sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+        },
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Members" }));
+    await waitFor(() => expect(canvas.getByText("Priya Shah")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
+    const body = within(document.body);
+    const dialog = body.getByRole("dialog", { name: "Add member" });
+    // The table underneath stays visible — a layer, not a page reflow.
+    await expect(canvas.getByText("Priya Shah")).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** PR5 of the members/groups directory rework plan: the same "Add member"
+ * autocomplete also matches org groups by name (client-side, against
+ * `orgGroups` — always loaded for the Groups tab regardless), rendered with
+ * an "Org group" badge distinguishing it from a user match. Picking one grants
+ * the role directly via PR4's `POST .../group-roles`, not
+ * `POST .../roles` — no `ProjectGroup` wrapper, no nesting. */
+export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Members" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Add member" });
+
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Role to grant" }), "stakeholder");
+    await userEvent.type(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
+    const groupOption = await within(dialog).findByRole("option", { name: /Engineering/ });
+    await expect(groupOption).toHaveTextContent("Org group");
+
+    await userEvent.click(groupOption);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/group-roles`,
+        { org_group_id: "og1", role: "stakeholder" },
+      )
+    );
+    // Closes the same way a user pick does.
+    await expect(within(document.body).queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** PR7 of the members/groups directory rework plan: the same "Add member"
+ * autocomplete also matches this project's own groups (client-side,
+ * against `memberTableGroups`), rendered with a "Project group" badge —
+ * distinct from the "Org group" badge above, since these are genuinely
+ * different concepts (local to this one project vs. org-wide). Picking one
+ * doesn't grant a role at all: a project group's roles are separate,
+ * possibly-zero, possibly-multiple grants unaffected by who joins it — so
+ * this switches the modal into a second step, "add someone to this group,"
+ * reusing the existing `POST .../groups/{group_id}/members` endpoint (no
+ * new backend call). */
+export const MembersTabAddMemberAutocompleteMatchesProjectGroup: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Members" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Add member" });
+
+    await userEvent.type(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…"), "Stake");
+    const groupOption = await within(dialog).findByRole("option", { name: /Stakeholders/ });
+    await expect(groupOption).toHaveTextContent("Project group");
+
+    await userEvent.click(groupOption);
+    // No grant call yet — the modal is now on its second step.
+    expect(api.post).not.toHaveBeenCalled();
+    const secondStepDialog = within(document.body).getByRole("dialog", { name: 'Add to "Stakeholders"' });
+
+    await userEvent.type(
+      within(secondStepDialog).getByPlaceholderText("Type a name to add, or an email to invite…"), "amy"
+    );
+    // No server-side search wired in this story — confirms the second
+    // step's own control renders and is reachable, mirroring
+    // `GroupsTabAddMemberViaSidePanel`'s equivalent assertion for the
+    // group's own SidePanel add-control.
+    await expect(
+      within(secondStepDialog).getByPlaceholderText("Type a name to add, or an email to invite…")
+    ).toHaveValue("amy");
+
+    // "Back" returns to the first step without adding anything.
+    await userEvent.click(within(secondStepDialog).getByRole("button", { name: "Back" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Add member" })).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   },
 };
 
@@ -578,7 +748,7 @@ export const MembersTabToggleDirectRoleOff: Story = {
       effectiveMembers: [
         {
           user_id: "u1", display_name: "Alex Morgan", email: "alex@example.com", effective_role: "stakeholder",
-          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
       ],
     });
@@ -786,7 +956,14 @@ export const SaveErrorShowsInline: Story = {
 
 /** Generalized (docs/decisions.md): member sources are no longer restricted
  * to a direct child — any same-organisation project is a valid source, and
- * each one shows its own mirror mode as a badge next to its name. */
+ * each one shows its own mirror mode as a badge next to its name.
+ *
+ * PR5 of the members/groups directory rework plan: this whole section moved
+ * from the Overview tab onto the Groups tab, rendering as type-badged rows
+ * in the same `DirectoryTable` as real `ProjectGroup` rows rather than a
+ * separate `<ul>` — see `GroupsTabShowsGroupsAndMemberSourcesTogether`
+ * below for the row/badge assertions specifically; this story keeps its
+ * original focus, the add-a-source flow, just relocated. */
 export const MemberSourcesListAndAdd: Story = {
   beforeEach: () =>
     mockProjectAdminApis({
@@ -800,7 +977,8 @@ export const MemberSourcesListAndAdd: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("link", { name: "Authentication" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
+    await waitFor(() => expect(canvas.getByRole("cell", { name: "Authentication" })).toBeInTheDocument());
     // Its mirror mode/filter role renders as a badge, not just a bare name.
     await expect(canvas.getByText("Mirrors Project manager")).toBeInTheDocument();
     // Already-listed source isn't offered again in the add dropdown — not
@@ -822,6 +1000,47 @@ export const MemberSourcesListAndAdd: Story = {
   },
 };
 
+/** PR5 of the members/groups directory rework plan: the Groups tab's
+ * `DirectoryTable` now mixes a real `ProjectGroup` row and a
+ * `ProjectMemberSource` row (moved here from the Overview tab) side by
+ * side, each carrying a "Type" badge distinguishing them ("Project group"
+ * vs "Project" — a member source names another whole project this one
+ * mirrors members *from*, not an org group) — see docs/ux-style-guide.md's
+ * "Pattern: type-badged mixed rows in a single directory". A member-source
+ * row is read-only detail (its mode, and a Remove action) — clicking it
+ * does not open a `SidePanel` the way a real group row does. */
+export const GroupsTabShowsGroupsAndMemberSourcesTogether: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      groups: [
+        { id: "g1", name: "Stakeholders", roles: ["stakeholder"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
+      ],
+      memberSources: [
+        { source_project_id: "sibling-1", source_project_name: "Authentication", mirror_mode: "mirror_all", mirror_filter_role: null },
+      ],
+      orgProjects: [buildProjectListItem({ id: "sibling-1", name: "Authentication", organization_id: "org-1" })],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
+
+    const groupRow = (await canvas.findByRole("cell", { name: "Stakeholders" })).closest("tr")!;
+    await expect(within(groupRow).getByText("Project group")).toBeInTheDocument();
+
+    const sourceRow = canvas.getByRole("cell", { name: "Authentication" }).closest("tr")!;
+    await expect(within(sourceRow).getByText("Project")).toBeInTheDocument();
+    await expect(within(sourceRow).getByText("Mirror all roles")).toBeInTheDocument();
+    // Read-only: a Remove action, not the real group's "click to open" panel.
+    await expect(within(sourceRow).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+
+    const deleteSpy = spyOn(api, "delete").mockResolvedValue(undefined);
+    await userEvent.click(within(sourceRow).getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(deleteSpy).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/member-sources/sibling-1`)
+    );
+  },
+};
+
 /** A project group's members can be defined as "the direct members of that
  * other project" (`ProjectGroupMember.source_project_id`, docs/decisions.md)
  * — a third option alongside individual users and nested {@link OrgGroup}s.
@@ -833,7 +1052,7 @@ export const ProjectGroupCanReferenceAnotherProjectsMembers: Story = {
     mockProjectAdminApis({
       groups: [
         {
-          id: "g1", name: "Stakeholders", role: "stakeholder",
+          id: "g1", name: "Stakeholders", roles: ["stakeholder"],
           member_user_ids: [], member_org_group_ids: [], member_source_project_ids: ["sibling-1"],
         },
       ],
@@ -845,7 +1064,7 @@ export const ProjectGroupCanReferenceAnotherProjectsMembers: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
-    await userEvent.click(canvas.getByRole("button", { name: /Stakeholders/ }));
+    await userEvent.click(canvas.getByRole("button", { name: "Stakeholders" }));
     const panel = within(document.body).getByRole("dialog", { name: "Stakeholders details" });
     await waitFor(() => expect(within(panel).getByText("Authentication's members")).toBeInTheDocument());
     // The new Phase-5 link to that project's own Members page, plus the
@@ -882,11 +1101,11 @@ export const MembersTabSearchFilters: Story = {
       effectiveMembers: [
         {
           user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
-          sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
         {
           user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
-          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
       ],
     }),
@@ -909,7 +1128,7 @@ export const MaterializeButtonConvertsInheritedAccess: Story = {
         {
           user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
           sources: [
-            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all" },
+            { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all", via_group_id: null, via_group_name: null },
           ],
         },
       ],

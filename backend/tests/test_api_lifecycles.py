@@ -181,7 +181,7 @@ def test_project_group_lifecycle_create_get_member_add_remove(client, admin_toke
     project = create_project(client, admin_token, org_id)
 
     created = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Custom Group", "role": "member"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Custom Group"},
         headers=auth_headers(admin_token),
     )
     assert created.status_code == 201, created.text

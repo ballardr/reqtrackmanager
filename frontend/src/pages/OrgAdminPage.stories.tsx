@@ -283,6 +283,84 @@ export const UsersSectionCannotRevokeOwnRole: Story = {
   },
 };
 
+/** Users table Actions column (PR6 of the members/groups directory rework
+ * plan, docs/decisions.md) — the two previously-bare buttons (View access,
+ * lock/unlock display name) consolidated into one `ActionMenu`, same
+ * "kebab over adjacent buttons" pattern `ExportOrgBundleViaActionMenu`
+ * already proved out for the Overview group. Exercised on Alex's own row
+ * (the logged-in user, `user-1`): "Remove from {org}" is withheld there
+ * (self-removal routes to the existing "Leave organisation" flow
+ * instead, matching the backend's own self-targeting guard), so this also
+ * pins that omission. */
+export const UsersActionsMenuConsolidatesViewAndLock: Story = {
+  beforeEach: () => mockOrgAdminApis({ users: [orgUser, secondOrgUser] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Alex Morgan's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "View Alex Morgan's access" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Lock display name" })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: /Remove from/ })).not.toBeInTheDocument();
+
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "View Alex Morgan's access" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Alex Morgan's access" })).toBeInTheDocument();
+  },
+};
+
+/** "Remove from {org}" (new, access-mutating) — offered on a user other
+ * than the caller, behind the same Tier-1 `ConfirmDialog` pattern
+ * `PreferencesPage.tsx`'s own "Leave organisation" flow already uses. */
+export const UsersActionsMenuRemoveFromOrg: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("jordan@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Jordan Lee's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove from organisation" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove Jordan Lee from this organisation?" });
+    await expect(api.delete).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/membership`)
+    );
+  },
+};
+
+/** "Add to group" (pure UI reachability fix — no new endpoint) — the same
+ * existing `addGroupMember` handler the group's own `SidePanel` member
+ * picker already calls, now reachable from the user's own row too, via
+ * `AddToGroupControl`'s own anchored `Popover`. */
+export const UsersActionsMenuAddToGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("jordan@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add Jordan Lee to a group" }));
+    const popover = within(document.body).getByRole("dialog", { name: "Add Jordan Lee to a group" });
+    await userEvent.selectOptions(within(popover).getByLabelText("Group"), "grp1");
+    await userEvent.click(within(popover).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/groups/grp1/members`, { user_id: "user-2" })
+    );
+  },
+};
+
 /** "Invite user" (Phase A, follow-up UX batch) — a second, distinct way to
  * add a user alongside "New user": an email-only `Modal` (no password/name
  * fields, since the invitee sets those themselves at signup) calling the
@@ -557,7 +635,9 @@ export const ViewUserAccessPanel: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "View Alex Morgan's access" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Alex Morgan's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "View Alex Morgan's access" }));
     const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's access" });
     await waitFor(() => expect(within(panel).getByText("Engineering")).toBeInTheDocument());
     await expect(within(panel).getByText("Atlas Platform")).toBeInTheDocument();
@@ -599,7 +679,9 @@ export const ViewUserAccessPanelExpandRoles: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
     await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "View Alex Morgan's access" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Alex Morgan's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "View Alex Morgan's access" }));
     const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's access" });
     await waitFor(() => expect(within(panel).getByText("Atlas Platform")).toBeInTheDocument());
 
@@ -1379,6 +1461,10 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/access")) return { org_groups: [], projects: [] };
+    // `UserAutocomplete`'s debounced server-side search (organizationId
+    // mode) — checked before the plain "/users" catch-all below, which
+    // that path also matches.
+    if (path.includes("/users/search")) return { members: [], external: null };
     if (path.includes("/users")) return [orgUser];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -1395,7 +1481,7 @@ export const ManageUsersModalShowsEffectiveMembers: Story = {
       effectiveMembers: [
         {
           user_id: "u-alex", display_name: "Alex Morgan", email: "alex@example.com", effective_role: "member",
-          sources: [{ kind: "direct_role", role: "member", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "member", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
       ],
     });
@@ -1429,7 +1515,7 @@ export const ManageUsersModalToggleDirectRole: Story = {
       effectiveMembers: [
         {
           user_id: "u-alex", display_name: "Alex Morgan", email: "alex@example.com", effective_role: "stakeholder",
-          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
         },
       ],
     });
@@ -1453,11 +1539,18 @@ export const ManageUsersModalToggleDirectRole: Story = {
 
 /** The modal's own "add a direct member" control — same `UserAutocomplete`
  * + role `<select>` composition `ProjectAdminPage.tsx`'s Members section
- * uses, scoped to whichever project's modal is open. */
+ * uses, scoped to whichever project's modal is open. Style guide "Pattern:
+ * modal dialog for entity create/rename" (Principle 3) — as of PR3 of the
+ * members/groups directory rework, this sub-form is no longer permanently
+ * visible inside the outer "Manage users" modal; "Add member" opens it in
+ * a second, nested `Modal` (`useDialogA11y`'s docstring covers why nesting
+ * is already handled safely: only the innermost open dialog ever actually
+ * contains focus, so Escape/Tab-trap don't cross between the two). */
 export const ManageUsersModalAddControlRenders: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     mockProjectsWorkflowWithOneProject();
+    spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -1465,9 +1558,87 @@ export const ManageUsersModalAddControlRenders: Story = {
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
-    const modal = within(document.body).getByRole("dialog", { name: "Manage users — Beta" });
-    await expect(within(modal).getByRole("combobox", { name: "Role to grant" })).toBeInTheDocument();
-    await expect(within(modal).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+    const body = within(document.body);
+    const outerModal = body.getByRole("dialog", { name: "Manage users — Beta" });
+    await expect(within(outerModal).getByRole("button", { name: "Add member" })).toBeInTheDocument();
+    await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(outerModal).getByRole("button", { name: "Add member" }));
+    const addMemberModal = body.getByRole("dialog", { name: "Add member" });
+    // Both dialogs stay mounted at once — the outer container is still the
+    // right home for "manage users for this project" as a whole.
+    await expect(body.getByRole("dialog", { name: "Manage users — Beta" })).toBeInTheDocument();
+    await expect(within(addMemberModal).getByRole("combobox", { name: "Role to grant" })).toBeInTheDocument();
+    await expect(within(addMemberModal).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+  },
+};
+
+/** Nested-modal-open state on its own — confirms Cancel closes only the
+ * inner "Add member" modal (Escape's own containment guard in
+ * `dialogA11y.ts` is what makes this safe; this story exercises the
+ * mouse-driven Cancel button path instead of Escape). */
+export const ManageUsersModalAddMemberNestedModalOpen: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const body = within(document.body);
+    const outerModal = body.getByRole("dialog", { name: "Manage users — Beta" });
+    await userEvent.click(within(outerModal).getByRole("button", { name: "Add member" }));
+    const addMemberModal = body.getByRole("dialog", { name: "Add member" });
+
+    await userEvent.click(within(addMemberModal).getByRole("button", { name: "Cancel" }));
+    await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+    // The outer "manage users" modal stays open — only the sub-form closed.
+    await expect(body.getByRole("dialog", { name: "Manage users — Beta" })).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** PR5 of the members/groups directory rework plan — the same combined
+ * user-or-group autocomplete `ProjectAdminPage.tsx`'s own Members section
+ * uses (`MembersTabAddMemberAutocompleteMatchesGroup`), reachable from
+ * here too since this modal shares the identical `UserAutocomplete` call
+ * site, now passed `groups={allGroups}` (every group in the org, the same
+ * unpaginated fixture the Groups section itself resolves nested-group
+ * names against). Picking a group grants it the role directly on
+ * `manageUsersProjectId` via `POST .../group-roles`. */
+export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const body = within(document.body);
+    const outerModal = body.getByRole("dialog", { name: "Manage users — Beta" });
+    await userEvent.click(within(outerModal).getByRole("button", { name: "Add member" }));
+    const addMemberModal = body.getByRole("dialog", { name: "Add member" });
+
+    await userEvent.type(within(addMemberModal).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
+    const groupOption = await within(addMemberModal).findByRole("option", { name: /Engineering/ });
+    await expect(groupOption).toHaveTextContent("Org group");
+
+    await userEvent.click(groupOption);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/v1/projects/proj-1/group-roles",
+        { org_group_id: "grp1", role: "member" },
+      )
+    );
+    await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
   },
 };
 

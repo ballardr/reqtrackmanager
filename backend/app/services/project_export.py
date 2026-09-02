@@ -24,7 +24,7 @@ organisation-resource files outside this project bundle's own file
 enumeration (`RequirementFile`/`CommentFile` attachments only) and is
 always imported as empty — re-attaching those is a manual follow-up.
 `ProjectGroupMember` rows are never recreated on import at all — only the
-group *structure* (name/role) is. Blindly re-granting membership by email
+group *structure* (name/roles) is. Blindly re-granting membership by email
 match would let an account with no prior relationship to the target
 organisation gain project access purely because its email happens to
 match, which is a privilege-escalation risk, not a convenience worth the
@@ -75,6 +75,7 @@ from app.models.project import (
     ProjectComponent,
     ProjectGroup,
     ProjectGroupMember,
+    ProjectGroupRole,
     ProjectStage,
     UserProjectRole,
 )
@@ -438,8 +439,11 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     groups_json = []
     for group in groups:
         members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
+        group_roles = db.scalars(
+            select(ProjectGroupRole.role).where(ProjectGroupRole.project_group_id == group.id)
+        ).all()
         groups_json.append({
-            "name": group.name, "role": group.role.value,
+            "name": group.name, "roles": [r.value for r in group_roles],
             "member_emails": [email(m.user_id) for m in members if m.user_id and email(m.user_id)],
         })
 
@@ -677,7 +681,19 @@ def apply_project_data(
         # no longer exists on `ProjectGroup` at all, and re-creating a
         # group from a bundle is always an ordinary, fully-manageable group
         # regardless of what it originally was.
-        db.add(ProjectGroup(project_id=project.id, name=g["name"], role=ProjectRole(g["role"])))
+        #
+        # `"roles"` (PR7, docs/decisions.md) replaced the old single
+        # required `"role"` key with a list — a group may now hold zero,
+        # one, or several roles. A bundle exported before PR7 still carries
+        # the old singular `"role"` key instead; read either shape so an
+        # older export can still be imported without losing its group's
+        # role, without needing to re-export it first.
+        new_group = ProjectGroup(project_id=project.id, name=g["name"])
+        db.add(new_group)
+        db.flush()
+        roles = g["roles"] if "roles" in g else ([g["role"]] if "role" in g else [])
+        for role_value in roles:
+            db.add(ProjectGroupRole(project_group_id=new_group.id, role=ProjectRole(role_value)))
 
     def import_file_ref(att: dict, uploaded_by_email_key: str) -> FileAsset | None:
         data_bytes = file_bytes_by_ref.get(att["file_ref"])

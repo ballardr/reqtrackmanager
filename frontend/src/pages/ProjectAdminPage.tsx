@@ -36,6 +36,7 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
+import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -56,6 +57,12 @@ import { downloadBlob } from "../utils/download";
 const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
+
+// PR7 of the members/groups directory rework plan: the four project roles a
+// group's per-row `MultiSelectDropdown` (Groups tab, and the group's own
+// `SidePanel`) offers — same fixed list `ProjectMembersTable.tsx`'s own Role
+// column already iterates for a user's roles.
+const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 
 /**
  * The 5 resource-menu groups Project Admin's previous 5-tab bar (itself
@@ -142,17 +149,15 @@ export function ProjectAdminPage() {
   const [sourceProjectSelections, setSourceProjectSelections] = useState<Record<string, string>>({});
   // "New group" create Modal (style guide "Pattern: modal dialog for
   // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
-  // just pointed at the project-scoped endpoint). Unlike the org-scoped
-  // equivalent, `ProjectGroupCreate` also requires a role up front — this
-  // stays true even though `PATCH .../groups/{id}` (Phase 5,
-  // docs/decisions.md) now makes the role correctable afterward: creation
-  // still shouldn't be made role-optional too, since a group briefly
-  // existing with no role at all would be a meaningless intermediate
-  // state — so this modal keeps a role select the org-scoped one doesn't
-  // need.
+  // just pointed at the project-scoped endpoint). PR7 of the members/
+  // groups directory rework plan (docs/decisions.md) dropped the role
+  // picker this modal used to have: `ProjectGroupCreate` no longer accepts
+  // a role at all — a group is now created bare (zero roles), symmetric
+  // with the org-scoped "New group" modal, and a role is a separate,
+  // explicit grant added afterward via the group's own per-row
+  // `MultiSelectDropdown` (see `groupsTabColumns`'s "role" column below).
   const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupRole, setNewGroupRole] = useState<ProjectRole>("member");
   const [newStageName, setNewStageName] = useState("");
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentPrefix, setNewComponentPrefix] = useState("");
@@ -224,6 +229,26 @@ export function ProjectAdminPage() {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [addMemberRole, setAddMemberRole] = useState<ProjectRole>("member");
+  // Style guide "Pattern: modal dialog for entity create/rename" (Principle
+  // 3, "Create is a layer, not a page reflow") — the add-member form used
+  // to render permanently above the table via `addControl`; it's now
+  // behind this button + `Modal`, mirroring the Groups tab's own "New
+  // group" button/Modal pair below. PR3 originally planned a sibling "Add
+  // group" button here; corrected during PR5's review to a single button
+  // whose `UserAutocomplete` matches both users and org groups instead —
+  // see that component's own module docstring.
+  const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
+  // PR7: the same modal's autocomplete also matches this project's own
+  // groups as a third kind — picking one doesn't grant a role at all (a
+  // group's roles are separate, possibly-zero, possibly-multiple grants,
+  // per PR7), it switches the modal into a second step, "add someone to
+  // this group," reusing the existing `addGroupMember`/`addOrgGroupMember`
+  // handlers (the Groups tab's own SidePanel already calls the same
+  // `POST /{project_id}/groups/{group_id}/members` endpoint for this) —
+  // per the product owner's confirmed answer, no new backend call. `null`
+  // means the modal is still on its first step (the normal user-or-
+  // org-group search).
+  const [addMemberTargetGroup, setAddMemberTargetGroup] = useState<ProjectGroup | null>(null);
 
   // --- Groups section: per-group SidePanel (Phase 5) ---------------------
   // Replaces the old always-expanded `CollapsibleSection` accordion. A real
@@ -708,11 +733,32 @@ export function ProjectAdminPage() {
 
   async function createProjectGroup() {
     try {
-      await api.post(`/api/v1/projects/${projectId}/groups`, { name: newGroupName, role: newGroupRole });
+      await api.post(`/api/v1/projects/${projectId}/groups`, { name: newGroupName });
       setNewGroupName("");
-      setNewGroupRole("member");
       setNewGroupModalOpen(false);
       showToast(strings.admin.groupCreated);
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** Grants/revokes one role on a project group (PR7 of the members/groups
+   * directory rework plan) — the Groups tab's per-row `MultiSelectDropdown`
+   * (mirroring `ProjectMembersTable`'s own Role column pattern) and the
+   * group's own `SidePanel` role editor both call this. Replaces the old
+   * `changeGroupRole` (`PATCH .../groups/{id}`, a single mutable field) now
+   * that a group can hold zero, one, or several independently-revocable
+   * roles at once. Re-fetches both group lists on success, same "Groups
+   * tab source of truth" pair `addGroupMember`/`removeGroupMember` already
+   * refresh via `reload()`. */
+  async function toggleProjectGroupRole(groupId: string, role: ProjectRole, checked: boolean) {
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/roles`, { role });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/roles/${role}`);
+      }
       reload();
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
@@ -730,9 +776,13 @@ export function ProjectAdminPage() {
    * yet a member of this project's organisation, possibly no account at
    * all) directly to the project with `role` — the by-email counterpart to
    * `addGroupMember`. Grants a *direct* project role rather than group
-   * membership (the group's own `role` is used so the effective access
-   * matches what joining the group would have granted), since the by-email
-   * endpoint has no notion of "this specific group" — see
+   * membership (from the Groups tab's own SidePanel, one of the group's
+   * currently-held roles is used as an approximation, so the effective
+   * access is close to what joining the group would have granted — PR7:
+   * since a group can now hold zero, one, or several roles, this is no
+   * longer necessarily exact if the group holds more than one), since the
+   * by-email endpoint has no notion of "this specific group" and only ever
+   * grants a single role per call — see
    * `routers/projects.py::assign_project_role_by_email`. */
   async function addExternalMember(email: string, role: string) {
     setExternalAddResult(null);
@@ -826,20 +876,64 @@ export function ProjectAdminPage() {
     await reloadEffectiveMembers();
   }
 
-  /** Changes a project group's granted role (`PATCH .../groups/{id}`,
-   * Phase 5) — the fix for "project groups' role was fixed at creation,
-   * making add-then-assign impossible." Only the Groups section's own
-   * per-group `SidePanel` role `<select>` calls this any more (Phase D
-   * removed groups as rows from the Members table entirely). Updates both
-   * `memberTableGroups` (still the Groups section's own `?openGroup=`
-   * lookup source) and `groups` (if this group happens to be on the
-   * currently-loaded page) locally on success. */
-  async function changeGroupRole(groupId: string, role: ProjectRole) {
+  /** The Members section's own add-control, group branch (PR5 of the
+   * members/groups directory rework plan) — `UserAutocomplete`'s combined
+   * user-or-group autocomplete calls this instead of `addProjectMember`
+   * when the selected match is an org group, granting it `role` *directly*
+   * via PR4's new one-step mechanism (`OrgGroupProjectRole`), parallel to
+   * how `addProjectMember` grants a direct `UserProjectRole`. No
+   * `ProjectGroup` wrapper is created by this flow, and nesting the group
+   * inside another group is deliberately not offered here at all — that
+   * composition stays on the Groups tab's own per-group `SidePanel` (a
+   * project group's existing "nest an org group" affordance) or the org
+   * group's own `SidePanel` (nesting a subgroup), unchanged by this PR.
+   * Same "re-fetch just effective-members" treatment `addProjectMember`
+   * uses, not a full `reload()`. */
+  async function addProjectGroupRole(orgGroupId: string, role: ProjectRole) {
+    await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
+    await reloadEffectiveMembers();
+  }
+
+  /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
+   * PR6 of the members/groups directory rework plan) — only ever called
+   * for a member whose sources are entirely `direct_role` (that
+   * component's own eligibility check), so looping the existing per-role
+   * `DELETE /roles/{user_id}/{role}` over every role the member currently
+   * holds is a full, safe revocation, not a partial one. Confirmed via
+   * `ConfirmDialog` inside `ProjectMembersTable` itself before this is
+   * ever called. */
+  async function removeAllProjectMemberAccess(userId: string) {
+    const member = effectiveMembers?.find((m) => m.user_id === userId);
+    if (!member) return;
     try {
-      const updated = await api.patch<ProjectGroup>(`/api/v1/projects/${projectId}/groups/${groupId}`, { role });
-      setMemberTableGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)));
-      setGroups((prev) => prev.map((g) => (g.id === groupId ? updated : g)));
-      showToast(strings.admin.groupUpdated);
+      const roles = [...new Set(member.sources.map((s) => s.role))];
+      await Promise.all(roles.map((role) => api.delete(`/api/v1/projects/${projectId}/roles/${userId}/${role}`)));
+      showToast(strings.membersTable.removeAllAccessSuccess(member.display_name));
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
+   * roles" (Actions column, PR6) — the per-user counterpart to
+   * `materializeInheritedAccess` above, calling the new `POST
+   * /{project_id}/materialize-inherited-access/{user_id}` endpoint (same
+   * idempotency/rank logic, filtered to this one member) rather than the
+   * bulk endpoint. */
+  async function convertProjectMemberToDirect(userId: string) {
+    const member = effectiveMembers?.find((m) => m.user_id === userId);
+    try {
+      const result = await api.post<MaterializeResult>(
+        `/api/v1/projects/${projectId}/materialize-inherited-access/${userId}`
+      );
+      const name = member?.display_name ?? "";
+      showToast(
+        result.created.length > 0
+          ? strings.membersTable.convertToDirectSuccess(name)
+          : strings.membersTable.convertToDirectNoOp(name)
+      );
+      await reloadEffectiveMembers();
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -856,7 +950,7 @@ export function ProjectAdminPage() {
   // that used to feed that merged row list, now that Members no longer
   // merges them into one.
   const groupManagerSourceCount =
-    memberTableGroups.filter((g) => g.role === "project_manager").length +
+    memberTableGroups.filter((g) => g.roles.includes("project_manager")).length +
     (effectiveMembers ?? []).filter((m) => m.sources.some((s) => s.role === "project_manager" && s.kind === "direct_role")).length;
 
   // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
@@ -911,15 +1005,88 @@ export function ProjectAdminPage() {
   // shell Org Groups now uses too. `groups` is already sorted server-side
   // (`applyGroupSort`/`loadGroups`'s `order` param), no client-side
   // re-sort needed.
-  const projectGroupColumns: DirectoryColumn<ProjectGroup>[] = [
+  //
+  // PR5 of the members/groups directory rework plan — this table's rows are
+  // now a frontend-only `kind`-discriminated union, the same pattern
+  // `ProjectMembersTable.tsx`'s own `member`/`invited` `Row` type already
+  // established: a real `ProjectGroup` alongside a `ProjectMemberSource`
+  // (moved here from the Overview tab, which previously showed it as a
+  // structurally-disconnected section that read like "just another way to
+  // add a group" even though it's a different mechanism — see
+  // docs/ux-style-guide.md's "Pattern: type-badged mixed rows in a single
+  // directory"). Member-source rows are a fixed, always-fully-loaded set
+  // (like `ProjectMembersTable`'s invited rows) and render first, ahead of
+  // the paginated/sortable group rows, so "Load more" only ever appends
+  // more groups after them rather than reordering them. A member-source row
+  // is read-only detail (its mirror mode/filter role, and a Remove action)
+  // — it does not get a real group's "click to open" affordance, since the
+  // underlying mechanism doesn't change, only where it's presented.
+  type GroupsTabRow = { kind: "group"; group: ProjectGroup } | { kind: "member_source"; source: ProjectMemberSource };
+  const groupsTabRows: GroupsTabRow[] = [
+    ...memberSources.map((source): GroupsTabRow => ({ kind: "member_source", source })),
+    ...groups.map((group): GroupsTabRow => ({ kind: "group", group })),
+  ];
+  const groupsTabColumns: DirectoryColumn<GroupsTabRow>[] = [
     {
       key: "name", label: strings.admin.name, sortable: true,
-      render: (g) => g.name,
+      render: (row) => (row.kind === "group" ? row.group.name : row.source.source_project_name),
     },
-    { key: "role", label: strings.admin.groupRole, render: (g) => <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span> },
+    {
+      key: "type", label: strings.admin.groupTypeColumn,
+      render: (row) => (
+        <span className="badge">
+          {row.kind === "group" ? strings.admin.groupTypeBadgeGroup : strings.admin.groupTypeBadgeMemberSource}
+        </span>
+      ),
+    },
+    {
+      key: "role", label: strings.admin.groupRole,
+      render: (row) =>
+        row.kind === "group" ? (
+          // PR7: a group's role is no longer a fixed badge — it's a
+          // MultiSelectDropdown over zero-to-several independently-
+          // revocable grants, same pattern ProjectMembersTable's own Role
+          // column already uses for a user's roles.
+          <MultiSelectDropdown
+            triggerLabel={strings.admin.groupRolesFor(row.group.name)}
+            emptyLabel={strings.admin.noRolesAssigned}
+            options={PROJECT_GROUP_ROLES.map((role) => {
+              const checked = row.group.roles.includes(role);
+              const isLastManager = checked && role === "project_manager" && groupManagerSourceCount <= 1;
+              return {
+                value: role,
+                label: PROJECT_ROLE_LABEL[role],
+                checked,
+                disabled: isLastManager,
+                title: isLastManager ? strings.membersTable.cannotRemoveLastManager : undefined,
+                optionLabel: checked
+                  ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], row.group.name)
+                  : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], row.group.name),
+                onToggle: () => toggleProjectGroupRole(row.group.id, role, !checked),
+              };
+            })}
+          />
+        ) : (
+          <span className="badge">
+            {row.source.mirror_mode === "mirror_role" && row.source.mirror_filter_role
+              ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[row.source.mirror_filter_role])
+              : PROJECT_ROLE_INHERITANCE_MODE_LABEL[row.source.mirror_mode]}
+          </span>
+        ),
+    },
     {
       key: "members", label: strings.admin.groupMembersColumn,
-      render: (g) => strings.admin.memberCount(g.member_user_ids.length),
+      render: (row) =>
+        row.kind === "group" ? strings.admin.memberCount(row.group.member_user_ids.length) : <span className="text-muted">—</span>,
+    },
+    {
+      key: "actions", label: "",
+      render: (row) =>
+        row.kind === "member_source" ? (
+          <button className="btn" onClick={() => removeMemberSource(row.source.source_project_id)}>
+            {strings.admin.removeMemberSource}
+          </button>
+        ) : null,
     },
   ];
 
@@ -1193,81 +1360,6 @@ export function ProjectAdminPage() {
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
-
-        {/* Member sources (docs/decisions.md) — the reverse (source ->
-            receiving) RBAC mechanism, deliberately NOT a field on the
-            source's own form: authorized entirely by managing *this*
-            project (the receiving side), never the source. Generalized
-            beyond direct children to any same-organisation project, and
-            beyond baseline Member to mirror_mode/mirror_filter_role — same
-            mode vocabulary and confirmation posture as the forward
-            (Inherit from parent) controls above: no confirmation needed on
-            "Member only" (same risk profile as visibility=org_wide), but
-            "Mirror all roles"/"Mirror one role" can convey a real elevated
-            role, same as the forward mechanism's own modes. */}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.memberSources}</h2>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.admin.memberSourcesHint}</p>
-        {memberSources.length > 0 && (
-          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-            {memberSources.map((ms) => (
-              <li key={ms.source_project_id} className="row" style={{ justifyContent: "space-between", listStyle: "disc" }}>
-                <span className="row" style={{ gap: "0.5rem" }}>
-                  <Link to={`/projects/${ms.source_project_id}`}>{ms.source_project_name}</Link>
-                  <span className="badge">
-                    {ms.mirror_mode === "mirror_role" && ms.mirror_filter_role
-                      ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[ms.mirror_filter_role])
-                      : PROJECT_ROLE_INHERITANCE_MODE_LABEL[ms.mirror_mode]}
-                  </span>
-                </span>
-                <button className="btn" onClick={() => removeMemberSource(ms.source_project_id)}>
-                  {strings.admin.removeMemberSource}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {sourceCandidates.length > 0 ? (
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            <select
-              className="input" style={{ maxWidth: 280 }} value={addSourceId}
-              aria-label={strings.admin.memberSourceProjectSelect}
-              onChange={(e) => setAddSourceId(e.target.value)}
-            >
-              <option value="">{strings.common.selectOption}</option>
-              {sourceCandidates.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <select
-              className="input" style={{ maxWidth: 200 }} value={addMirrorMode}
-              aria-label={strings.admin.memberSourceModeSelect}
-              onChange={(e) => setAddMirrorMode(e.target.value as ProjectRoleInheritanceMode)}
-            >
-              {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[])
-                .filter((m) => m !== "none")
-                .map((m) => (
-                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
-                ))}
-            </select>
-            {addMirrorMode === "mirror_role" && (
-              <select
-                className="input" style={{ maxWidth: 200 }} value={addMirrorFilterRole}
-                aria-label={strings.admin.memberSourceFilterRoleSelect}
-                onChange={(e) => setAddMirrorFilterRole(e.target.value as ProjectRole)}
-              >
-                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-              </select>
-            )}
-            <button className="btn" onClick={addMemberSource} disabled={!addSourceId}>
-              {strings.admin.addMemberSource}
-            </button>
-          </div>
-        ) : (
-          memberSources.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.admin.noChildrenToAdd}</p>
-        )}
       </div>
       )}
 
@@ -1697,6 +1789,115 @@ export function ProjectAdminPage() {
               {strings.admin.materializeAll}
             </button>
           </div>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
+              <Plus size={14} /> {strings.admin.addMember}
+            </button>
+            {/* No sibling "Add group" button (PR5 of the members/groups
+                directory rework plan, corrected during PR5's own review):
+                the autocomplete below is expanded to match org groups too,
+                rather than a second button/modal — see UserAutocomplete's
+                own module docstring. */}
+          </div>
+          {addMemberModalOpen && (
+            <Modal
+              title={addMemberTargetGroup ? strings.admin.addMemberToGroupTitle(addMemberTargetGroup.name) : strings.admin.addMember}
+              onClose={() => {
+                setAddMemberModalOpen(false);
+                setAddMemberTargetGroup(null);
+              }}
+            >
+              {addMemberTargetGroup ? (
+                // PR7: second step after picking a project-group match
+                // below — adds whoever's picked here as a member of that
+                // group (existing `addGroupMember`/`addOrgGroupMember`,
+                // both `POST .../groups/{group_id}/members`, no new
+                // backend call), rather than granting a role directly. The
+                // group's own role(s) — separate, possibly zero, possibly
+                // several — apply to whoever joins, unaffected by this.
+                <div className="stack">
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    {strings.admin.addMemberToGroupHint(addMemberTargetGroup.name)}
+                  </p>
+                  <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                    <UserAutocomplete
+                      users={orgUsers.filter((u) => !addMemberTargetGroup.member_user_ids.includes(u.user_id))}
+                      placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                      onSelect={(userId) => {
+                        addGroupMember(addMemberTargetGroup.id, userId);
+                        setAddMemberModalOpen(false);
+                        setAddMemberTargetGroup(null);
+                      }}
+                      groups={orgGroups.filter((og) => !addMemberTargetGroup.member_org_group_ids.includes(og.id))}
+                      onSelectGroup={(orgGroupId) => {
+                        addOrgGroupMember(addMemberTargetGroup.id, orgGroupId);
+                        setAddMemberModalOpen(false);
+                        setAddMemberTargetGroup(null);
+                      }}
+                    />
+                  </div>
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <button className="btn" onClick={() => setAddMemberTargetGroup(null)}>
+                      {strings.common.back}
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        setAddMemberModalOpen(false);
+                        setAddMemberTargetGroup(null);
+                      }}
+                    >
+                      {strings.common.cancel}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                    <UserAutocomplete
+                      users={orgUsers}
+                      placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                      onSelect={(userId) => {
+                        addProjectMember(userId);
+                        setAddMemberModalOpen(false);
+                      }}
+                      groups={orgGroups}
+                      onSelectGroup={(groupId) => {
+                        addProjectGroupRole(groupId, addMemberRole);
+                        setAddMemberModalOpen(false);
+                      }}
+                      projectGroups={memberTableGroups}
+                      onSelectProjectGroup={(groupId) => {
+                        setAddMemberTargetGroup(memberTableGroups.find((g) => g.id === groupId) ?? null);
+                      }}
+                      organizationId={project?.organization_id}
+                      projectId={project?.id}
+                      onSelectExternal={(email) => {
+                        addExternalMember(email, addMemberRole);
+                        setAddMemberModalOpen(false);
+                      }}
+                    />
+                    <select
+                      className="input"
+                      aria-label={strings.membersTable.addRoleSelectLabel}
+                      value={addMemberRole}
+                      onChange={(e) => setAddMemberRole(e.target.value as ProjectRole)}
+                    >
+                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                      <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+                    </select>
+                  </div>
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setAddMemberModalOpen(false)}>
+                      {strings.common.cancel}
+                    </button>
+                  </div>
+                </>
+              )}
+            </Modal>
+          )}
           {effectiveMembers === null ? (
             <Spinner />
           ) : (
@@ -1706,30 +1907,9 @@ export function ProjectAdminPage() {
               onToggleRole={toggleProjectMemberRole}
               onResendInvite={resendProjectInvite}
               resendingInviteId={resendingInviteId}
+              onRemoveAllAccess={removeAllProjectMemberAccess}
+              onConvertToDirect={convertProjectMemberToDirect}
               ariaLabel={strings.admin.membersNav}
-              addControl={
-                <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                  <UserAutocomplete
-                    users={orgUsers}
-                    placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                    onSelect={(userId) => addProjectMember(userId)}
-                    organizationId={project?.organization_id}
-                    projectId={project?.id}
-                    onSelectExternal={(email) => addExternalMember(email, addMemberRole)}
-                  />
-                  <select
-                    className="input"
-                    aria-label={strings.membersTable.addRoleSelectLabel}
-                    value={addMemberRole}
-                    onChange={(e) => setAddMemberRole(e.target.value as ProjectRole)}
-                  >
-                    <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                    <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                    <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                    <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-                  </select>
-                </div>
-              }
             />
           )}
           {externalAddResult && (
@@ -1757,10 +1937,12 @@ export function ProjectAdminPage() {
           // a brand-new entity (a group) opens in a Modal, not a Popover —
           // the Popover-vs-Modal decision tree reserves Popover for a
           // one/two-field quick action on something that already exists,
-          // not creating a new entity. `ProjectGroupCreate` still requires
-          // a role up front — see this modal's own state declaration
-          // comment for why that stays true even now that the role is
-          // correctable afterward (Phase 5).
+          // not creating a new entity. No role picker here any more (PR7
+          // of the members/groups directory rework plan, docs/
+          // decisions.md): `ProjectGroupCreate` no longer accepts a role at
+          // all — a freshly created group starts with zero roles, shown as
+          // "No roles assigned" in the Groups tab/SidePanel until one is
+          // granted via the new per-row `MultiSelectDropdown`.
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.admin.name}
@@ -1774,15 +1956,6 @@ export function ProjectAdminPage() {
                   if (e.key === "Enter" && newGroupName) createProjectGroup();
                 }}
               />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.admin.groupRole}
-              <select className="input" value={newGroupRole} onChange={(e) => setNewGroupRole(e.target.value as ProjectRole)}>
-                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-              </select>
             </label>
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
@@ -1818,14 +1991,16 @@ export function ProjectAdminPage() {
           <div className="stack">
             <DirectoryTable
               ariaLabel={strings.admin.groups}
-              columns={projectGroupColumns}
-              rows={groups}
-              rowKey={(row) => row.id}
+              columns={groupsTabColumns}
+              rows={groupsTabRows}
+              rowKey={(row) => (row.kind === "group" ? `group-${row.group.id}` : `member_source-${row.source.source_project_id}`)}
               sort={groupSort}
               onSort={(key) => applyGroupSort(key as ProjectGroupSortKey)}
-              total={groupsTotal}
+              total={groupsTotal + memberSources.length}
               onLoadMore={() => loadGroups(groupSearch, groups.length, true)}
-              onRowClick={(row) => setOpenGroupId(row.id)}
+              onRowClick={(row) => {
+                if (row.kind === "group") setOpenGroupId(row.group.id);
+              }}
               emptyState={<p className="text-muted">{strings.admin.noGroupsFound}</p>}
             />
           </div>
@@ -1843,6 +2018,70 @@ export function ProjectAdminPage() {
         </div>
       </div>
 
+      {/* Member sources (docs/decisions.md) — the reverse (source ->
+          receiving) RBAC mechanism, deliberately NOT a field on the
+          source's own form: authorized entirely by managing *this* project
+          (the receiving side), never the source. Generalized beyond direct
+          children to any same-organisation project, and beyond baseline
+          Member to mirror_mode/mirror_filter_role — same mode vocabulary
+          and confirmation posture as the forward (Inherit from parent)
+          controls on the Overview tab: no confirmation needed on "Member
+          only" (same risk profile as visibility=org_wide), but "Mirror all
+          roles"/"Mirror one role" can convey a real elevated role, same as
+          the forward mechanism's own modes.
+          PR5 of the members/groups directory rework plan: this section's
+          own list of entries moved into the `DirectoryTable` above as
+          type-badged rows (alongside real `ProjectGroup` rows) — this card
+          now holds only the "add a new one" affordance, relocated from the
+          Overview tab where it previously sat structurally disconnected
+          from both Members and Groups. Same handlers/validation as before,
+          just a new location. */}
+      <div className="card stack">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.memberSources}</h2>
+        <p className="text-muted" style={{ margin: 0 }}>{strings.admin.memberSourcesHint}</p>
+        {sourceCandidates.length > 0 ? (
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <select
+              className="input" style={{ maxWidth: 280 }} value={addSourceId}
+              aria-label={strings.admin.memberSourceProjectSelect}
+              onChange={(e) => setAddSourceId(e.target.value)}
+            >
+              <option value="">{strings.common.selectOption}</option>
+              {sourceCandidates.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              className="input" style={{ maxWidth: 200 }} value={addMirrorMode}
+              aria-label={strings.admin.memberSourceModeSelect}
+              onChange={(e) => setAddMirrorMode(e.target.value as ProjectRoleInheritanceMode)}
+            >
+              {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[])
+                .filter((m) => m !== "none")
+                .map((m) => (
+                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
+                ))}
+            </select>
+            {addMirrorMode === "mirror_role" && (
+              <select
+                className="input" style={{ maxWidth: 200 }} value={addMirrorFilterRole}
+                aria-label={strings.admin.memberSourceFilterRoleSelect}
+                onChange={(e) => setAddMirrorFilterRole(e.target.value as ProjectRole)}
+              >
+                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+              </select>
+            )}
+            <button className="btn" onClick={addMemberSource} disabled={!addSourceId}>
+              {strings.admin.addMemberSource}
+            </button>
+          </div>
+        ) : (
+          memberSources.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.admin.noChildrenToAdd}</p>
+        )}
+      </div>
+
         {openGroupId && (() => {
           const g = memberTableGroups.find((x) => x.id === openGroupId) ?? groups.find((x) => x.id === openGroupId);
           if (!g) return null;
@@ -1853,24 +2092,34 @@ export function ProjectAdminPage() {
           const referenceableProjects = orgProjects.filter(
             (p) => p.id !== projectId && !g.member_source_project_ids.includes(p.id),
           );
-          const groupRoleDisabled = g.role === "project_manager" && groupManagerSourceCount <= 1;
           return (
             <SidePanel title={strings.admin.groupDetails(g.name)} onClose={() => setOpenGroupId(null)}>
               <div className="stack">
                 <label className="stack" style={{ gap: "0.25rem" }}>
                   {strings.admin.groupRoleAtTop}
-                  <select
-                    className="input"
-                    value={g.role}
-                    disabled={groupRoleDisabled}
-                    title={groupRoleDisabled ? strings.membersTable.cannotRemoveLastManager : undefined}
-                    onChange={(e) => changeGroupRole(g.id, e.target.value as ProjectRole)}
-                  >
-                    <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                    <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                    <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                    <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-                  </select>
+                  {/* PR7: same per-row MultiSelectDropdown as the Groups
+                      tab's own "role" column (groupsTabColumns) — kept in
+                      sync since both read from `memberTableGroups`/`groups`
+                      and both call the same `toggleProjectGroupRole`. */}
+                  <MultiSelectDropdown
+                    triggerLabel={strings.admin.groupRolesFor(g.name)}
+                    emptyLabel={strings.admin.noRolesAssigned}
+                    options={PROJECT_GROUP_ROLES.map((role) => {
+                      const checked = g.roles.includes(role);
+                      const isLastManager = checked && role === "project_manager" && groupManagerSourceCount <= 1;
+                      return {
+                        value: role,
+                        label: PROJECT_ROLE_LABEL[role],
+                        checked,
+                        disabled: isLastManager,
+                        title: isLastManager ? strings.membersTable.cannotRemoveLastManager : undefined,
+                        optionLabel: checked
+                          ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], g.name)
+                          : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], g.name),
+                        onToggle: () => toggleProjectGroupRole(g.id, role, !checked),
+                      };
+                    })}
+                  />
                 </label>
                 <button
                   className="btn btn-danger"
@@ -1907,7 +2156,17 @@ export function ProjectAdminPage() {
                   onSelect={(userId) => addGroupMember(g.id, userId)}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
-                  onSelectExternal={(email) => addExternalMember(email, g.role)}
+                  // PR7: `g.role` (a single, required field) is gone — a
+                  // group may now hold zero, one, or several roles. The
+                  // by-email endpoint still only grants one role at a time
+                  // (see `addExternalMember`'s own docstring for why this
+                  // was always an approximation of "what joining the group
+                  // would have granted," never an exact membership), so
+                  // this keeps using the group's first held role; with no
+                  // role held at all there's nothing sensible to
+                  // approximate, so the invite affordance is withheld
+                  // entirely rather than granting nothing.
+                  onSelectExternal={g.roles.length > 0 ? (email) => addExternalMember(email, g.roles[0]) : undefined}
                 />
                 {/* `externalAddResult` is shared with the Members section's
                     own add control (same `addExternalMember` handler) — it

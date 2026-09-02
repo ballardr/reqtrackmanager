@@ -54,10 +54,15 @@ test.describe("project admin: Members section", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("add a direct member with a role via the Members page's own add control", async () => {
-      await page.getByRole("combobox", { name: "Role to grant" }).selectOption("stakeholder");
-      await page.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
-      await page.getByText(PERSONAS.memberAlphaBeta.email).click();
+    await test.step("add a direct member with a role via the Members page's own add control (PR3, members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3)", async () => {
+      await page.getByRole("button", { name: "Add member" }).click();
+      const modal = page.getByRole("dialog", { name: "Add member" });
+      await modal.getByRole("combobox", { name: "Role to grant" }).selectOption("stakeholder");
+      await modal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
+      await modal.getByText(PERSONAS.memberAlphaBeta.email).click();
+      // Selecting a match submits and closes the modal (relocated from the
+      // old always-visible control, which had no separate submit step).
+      await expect(modal).not.toBeVisible();
       // `exact: true`: Playwright's default substring matching would also
       // match the same row's Role cell, whose `MultiSelectDropdown`
       // trigger button's own accessible name ("<name>'s roles") contains
@@ -102,12 +107,18 @@ test.describe("project admin: Members section", () => {
       const memberUserId = orgUsers.find((u) => u.email === PERSONAS.memberAlphaBeta.email)!.user_id;
 
       const groupName = `E2E Members Group Source ${suffix}`;
+      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // no longer accepts a role — create bare, then grant it separately.
       const group = await (
         await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/groups`, {
           headers: authHeaders,
-          data: { name: groupName, role: "stakeholder" },
+          data: { name: groupName },
         })
       ).json();
+      await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/groups/${group.id}/roles`, {
+        headers: authHeaders,
+        data: { role: "stakeholder" },
+      });
       await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/groups/${group.id}/members`, {
         headers: authHeaders,
         data: { user_id: memberUserId },

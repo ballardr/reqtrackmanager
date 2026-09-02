@@ -27,8 +27,13 @@ def test_user_access_lists_org_groups_and_project_roles(client, admin_token, org
     group_project = create_project(client, admin_token, org_id, "Access Summary Group Project")
     project_group = client.post(
         f"/api/v1/projects/{group_project['id']}/groups",
-        json={"name": "Access Summary Project Group", "role": "member"}, headers=auth_headers(admin_token),
+        json={"name": "Access Summary Project Group"}, headers=auth_headers(admin_token),
     ).json()
+    grant = client.post(
+        f"/api/v1/projects/{group_project['id']}/groups/{project_group['id']}/roles",
+        json={"role": "member"}, headers=auth_headers(admin_token),
+    )
+    assert grant.status_code == 204, grant.text
     client.post(
         f"/api/v1/projects/{group_project['id']}/groups/{project_group['id']}/members",
         json={"user_id": user_id}, headers=auth_headers(admin_token),

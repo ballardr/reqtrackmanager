@@ -11,14 +11,27 @@ const MEMBERS: EffectiveMember[] = [
     display_name: "Alex Morgan",
     email: "alex@example.com",
     effective_role: "project_manager",
-    sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null }],
+    sources: [
+      {
+        kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null,
+        via_mode: null, via_group_id: null, via_group_name: null,
+      },
+    ],
   },
   {
     user_id: "u-priya",
     display_name: "Priya Shah",
     email: "priya@example.com",
     effective_role: "stakeholder",
-    sources: [{ kind: "direct_group", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null }],
+    // Named-group provenance (PR1: `via_group_id`/`via_group_name`) — the
+    // Source column must say *which* group granted the role, not just "Via
+    // group". See the `NamedGroupSourceLine` story below.
+    sources: [
+      {
+        kind: "direct_group", role: "stakeholder", via_project_id: null, via_project_name: null,
+        via_mode: null, via_group_id: "g-reviewers", via_group_name: "Reviewers",
+      },
+    ],
   },
   {
     user_id: "u-jordan",
@@ -26,8 +39,29 @@ const MEMBERS: EffectiveMember[] = [
     email: "jordan@example.com",
     effective_role: "member",
     sources: [
-      { kind: "direct_role", role: "member", via_project_id: null, via_project_name: null, via_mode: null },
-      { kind: "forward_inherited", role: "stakeholder", via_project_id: "p-parent", via_project_name: "Parent Project", via_mode: "mirror_all" },
+      {
+        kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+        via_mode: null, via_group_id: null, via_group_name: null,
+      },
+      {
+        kind: "forward_inherited", role: "stakeholder", via_project_id: "p-parent", via_project_name: "Parent Project",
+        via_mode: "mirror_all", via_group_id: null, via_group_name: null,
+      },
+    ],
+  },
+  {
+    user_id: "u-morgan",
+    display_name: "Morgan Casey",
+    email: "morgan@example.com",
+    effective_role: "member",
+    // `direct_org_group_role` (PR4/PR5) — an org group holding this role
+    // *directly*, distinct from `direct_group`/`direct_org_group`'s nested
+    // mechanisms above. See `NamedOrgGroupRoleSourceLine` below.
+    sources: [
+      {
+        kind: "direct_org_group_role", role: "member", via_project_id: null, via_project_name: null,
+        via_mode: null, via_group_id: "og-engineering", via_group_name: "Engineering",
+      },
     ],
   },
 ];
@@ -103,7 +137,12 @@ export const AtScalePaginated: Story = {
       display_name: `User ${String(i).padStart(2, "0")}`,
       email: `user${i}@example.com`,
       effective_role: "member",
-      sources: [{ kind: "direct_role", role: "member", via_project_id: null, via_project_name: null, via_mode: null }],
+      sources: [
+        {
+          kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+          via_mode: null, via_group_id: null, via_group_name: null,
+        },
+      ],
     })),
   },
   play: async ({ canvasElement }) => {
@@ -112,6 +151,42 @@ export const AtScalePaginated: Story = {
     await expect(canvas.getByRole("button", { name: /Load more/ })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: /Load more/ }));
     await expect(canvas.getAllByRole("row")).toHaveLength(41); // header + 40
+  },
+};
+
+/** A `direct_group` source names the actual granting `ProjectGroup`
+ * (`via_group_name`) in the Source column instead of the generic "Via
+ * group" — PR1 of the members/groups directory rework. Priya's fixture
+ * source carries `via_group_id`/`via_group_name` for the "Reviewers"
+ * group. */
+export const NamedGroupSourceLine: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Via group 'Reviewers'/)).toBeInTheDocument();
+  },
+};
+
+/** `direct_org_group_role` (PR4/PR5 of the members/groups directory rework
+ * plan) — an org group holding a role *directly* on this project, granted
+ * from the Members section's own "Add member" autocomplete (PR5). Distinct
+ * wording ("(direct)") from `direct_org_group`'s "Via nested org group"
+ * (a different mechanism — nesting inside a `ProjectGroup`), and — like
+ * every non-`direct_role` kind — checked-but-disabled with an explanatory
+ * title, never a silently-broken toggle (see
+ * `DisabledRoleWithExplanatoryTitle` below for that shared behaviour). */
+export const NamedOrgGroupRoleSourceLine: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Via group 'Engineering' \(direct\)/)).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Morgan Casey's roles" }));
+    const group = within(document.body).getByRole("group", { name: "Morgan Casey's roles" });
+    // Never a freely toggle-off-able direct grant from this row (the
+    // backing `OrgGroupProjectRole` belongs to the *group*, not this one
+    // user — see `isDirectRoleKind`'s own doc comment for why) — checked
+    // but disabled, same as every other non-`direct_role` kind.
+    const checkbox = within(group).getByRole("checkbox", { name: "Revoke Member from Morgan Casey" });
+    await expect(checkbox).toBeDisabled();
+    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("isn't a direct grant"));
   },
 };
 
@@ -199,6 +274,77 @@ export const WithAddControl: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("button", { name: "Add member…" })).toBeInTheDocument();
+  },
+};
+
+/** Per-row Actions column (PR6 of the members/groups directory rework
+ * plan) — hidden entirely when the caller doesn't supply either handler
+ * (every story above), so this and the following two stories opt in via
+ * `onRemoveAllAccess`/`onConvertToDirect` args. Alex's only source is a
+ * genuine `direct_role` grant, so "Remove all access" is offered but
+ * "Convert inherited access to direct roles" is not (nothing inherited to
+ * convert) — confirming the `ConfirmDialog` calls `onRemoveAllAccess`. */
+export const ActionsMenuOffersRemoveAllAccess: Story = {
+  args: {
+    invites: [],
+    members: [MEMBERS[0]],
+    onRemoveAllAccess: fn(),
+    onConvertToDirect: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Alex Morgan's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: /Remove all access/ })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: /Convert inherited access/ })).not.toBeInTheDocument();
+
+    await userEvent.click(within(menu).getByRole("menuitem", { name: /Remove all access/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove all access for Alex Morgan?" });
+    await expect(args.onRemoveAllAccess).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove access" }));
+    await expect(args.onRemoveAllAccess).toHaveBeenCalledWith("u-alex");
+  },
+};
+
+/** Jordan holds a `direct_role` (member) alongside a `forward_inherited`
+ * (stakeholder) source — mixed, so "Remove all access" is withheld (it
+ * would silently leave the inherited access behind while claiming to
+ * remove "all" of it), but "Convert inherited access to direct roles" is
+ * offered and, unlike the destructive action above, calls straight
+ * through with no confirm step. */
+export const ActionsMenuOffersConvertToDirect: Story = {
+  args: {
+    invites: [],
+    members: [MEMBERS[2]],
+    onRemoveAllAccess: fn(),
+    onConvertToDirect: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Jordan Lee's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: /Convert inherited access/ })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: /Remove all access/ })).not.toBeInTheDocument();
+
+    await userEvent.click(within(menu).getByRole("menuitem", { name: /Convert inherited access/ }));
+    await expect(args.onConvertToDirect).toHaveBeenCalledWith("u-jordan");
+  },
+};
+
+/** Priya's only source is `direct_group` — neither a genuine direct grant
+ * (so not safely "remove all"-able) nor an inherited one (nothing to
+ * convert) — so the Actions column renders no trigger at all for her row,
+ * rather than an empty, useless menu. */
+export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
+  args: {
+    invites: [],
+    members: [MEMBERS[1]],
+    onRemoveAllAccess: fn(),
+    onConvertToDirect: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Priya Shah's actions" })).not.toBeInTheDocument();
   },
 };
 

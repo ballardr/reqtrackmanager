@@ -233,13 +233,21 @@ class ProjectMemberSourceOut(BaseModel):
 class MemberSourceProvenanceOut(BaseModel):
     """One reason a user has a given effective role — see
     `services.rbac.get_effective_project_members_with_provenance`'s
-    docstring for exactly what `kind`/`via_project_id`/`via_mode` mean."""
+    docstring for exactly what `kind`/`via_project_id`/`via_mode` mean.
+
+    `via_group_id`/`via_group_name` are populated for the `"direct_group"`/
+    `"direct_org_group"`/`"direct_org_group_role"` kinds — the `ProjectGroup`
+    (for `direct_group`) or `OrgGroup` (for `direct_org_group`/
+    `direct_org_group_role`) that actually granted the role, so the UI can
+    name it instead of only saying "via group"."""
 
     kind: str
     role: ProjectRole
     via_project_id: UUID | None = None
     via_project_name: str | None = None
     via_mode: ProjectRoleInheritanceMode | None = None
+    via_group_id: UUID | None = None
+    via_group_name: str | None = None
 
 
 class EffectiveMemberOut(BaseModel):
@@ -374,22 +382,15 @@ class MoveDirection(BaseModel):
 
 
 class ProjectGroupCreate(BaseModel):
+    """Creates a bare project group with no role at all (PR7 of the
+    members/groups directory rework plan, docs/decisions.md) — a group used
+    to require a `role` up front (fixed for its whole lifetime, until Phase
+    5 made it editable); it's now created empty and a role is a separate,
+    explicit, independently-revocable grant added afterward via `POST
+    /{project_id}/groups/{group_id}/roles`, symmetric with how `OrgGroup`
+    (org groups) is already created bare."""
+
     name: str
-    role: ProjectRole
-
-
-class ProjectGroupUpdate(BaseModel):
-    """Changes a project group's granted role after creation (Phase 5,
-    2026-08 UX audit — project groups' role was previously fixed at
-    creation, making "add members first, assign a role later" impossible).
-    Modeled directly on `OrgGroupUpdate`'s shape; unlike that schema, this
-    group's role is the *only* thing it ever grants (no separate
-    idp-sync-target concept for `ProjectGroup`), so it's a single required
-    field rather than an optional set-or-clear one. See
-    `routers.projects.update_project_group` for the C-U-08 guard this
-    triggers when moving a group's role away from `PROJECT_MANAGER`."""
-
-    role: ProjectRole
 
 
 class ProjectGroupMemberAdd(BaseModel):
@@ -406,7 +407,12 @@ class ProjectGroupMemberAdd(BaseModel):
 class ProjectGroupOut(BaseModel):
     id: UUID
     name: str
-    role: ProjectRole
+    # `roles` (PR7) replaces the old single required `role` field — computed
+    # from `ProjectGroupRole`, may be empty (a freshly created group with no
+    # grant yet), and is not ordered/ranked; the frontend renders it as a
+    # `MultiSelectDropdown`, same pattern `ProjectMembersTable`'s own Role
+    # column already uses for a user's roles.
+    roles: list[ProjectRole]
     member_user_ids: list[UUID]
     member_org_group_ids: list[UUID]
     member_source_project_ids: list[UUID]
@@ -414,6 +420,30 @@ class ProjectGroupOut(BaseModel):
 
 class UserProjectRoleAssign(BaseModel):
     user_id: UUID
+    role: ProjectRole
+
+
+class OrgGroupProjectRoleAssign(BaseModel):
+    """Body for `POST /{project_id}/group-roles` — the group-level
+    counterpart to `UserProjectRoleAssign`, granting an organisation group a
+    project role directly (`OrgGroupProjectRole`) rather than nesting it
+    inside a `ProjectGroup`."""
+
+    org_group_id: UUID
+    role: ProjectRole
+
+
+class ProjectGroupRoleAssign(BaseModel):
+    """Body for `POST /{project_id}/groups/{group_id}/roles` (PR7) — grants
+    a project group one more role, directly, as its own independently-
+    revocable `ProjectGroupRole` row. No `org_group_id`/`project_group_id`
+    field needed here unlike `OrgGroupProjectRoleAssign`: the target group
+    is already named by the URL's own `{group_id}` path segment, and (unlike
+    an org group, which could belong to any project's organisation) a
+    `ProjectGroup` already belongs to exactly one project by construction —
+    no cross-tenant check is needed for this endpoint the way `assign_group_
+    project_role` needs one for `org_group_id`."""
+
     role: ProjectRole
 
 

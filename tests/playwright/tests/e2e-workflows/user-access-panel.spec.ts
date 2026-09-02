@@ -41,8 +41,18 @@ test.describe("view a user's access", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
+    // PR6 of the members/groups directory rework plan (docs/decisions.md)
+    // consolidated the Users table's previously-bare "View {name}'s access"
+    // button into the row's `ActionMenu` — reachable via its kebab trigger
+    // (`${display name}'s actions`), then the `menuitem` inside the
+    // `Popover` it opens (waiting for the menu itself before clicking an
+    // item, same pattern org-merge-import.spec.ts's own `ActionMenu` call
+    // site uses, since the popover repositions after mount).
     const row = page.locator("tr", { hasText: PERSONAS.orgAdminAlphaBeta.email });
-    await row.getByRole("button", { name: /'s access$/ }).click();
+    const menuTriggerName = `${PERSONAS.orgAdminAlphaBeta.name}'s actions`;
+    await row.getByRole("button", { name: menuTriggerName }).click();
+    await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+    await page.getByRole("menuitem", { name: /'s access$/ }).click();
 
     const panel = page.getByRole("dialog", { name: /'s access$/ });
     await expect(panel.getByText(PROJECT_NAMES.alpha1)).toBeVisible();

@@ -10,22 +10,35 @@ reference, in the case exercised here, or a nested org group).
 Runs the *real* migration, not a reimplementation of its logic: downgrades
 the live test database to revision 0018 (re-adding `project_groups.
 is_default`), seeds pre-migration-shaped rows directly via raw SQL against
-that shape (the project/user setup itself goes through the normal API, via
-the usual `client`/`admin_token`/`org_id` fixtures — only the `is_default`
-group rows need raw SQL, since that column no longer exists on the
-`ProjectGroup` model to insert through the ORM/API at all), then upgrades
-back to head — which runs 0019's actual conversion SQL — and asserts
-against the result via the ordinary API. Always upgrades back to head
-before returning, even on failure, so the shared session-scoped test
+that shape (the project/user setup itself goes through the normal API —
+only the `is_default` group rows need raw SQL, since that column no longer
+exists on the `ProjectGroup` model to insert through the ORM/API at all),
+then upgrades back to head — which runs 0019's actual conversion SQL — and
+asserts against the result via the ordinary API. Always upgrades back to
+head before returning, even on failure, so the shared session-scoped test
 database (`conftest.py`'s `_schema` fixture) is left in the state every
 other test in this suite expects (matching `Base.metadata`, per
 `test_schema_migrations_match_models.py`).
+
+The project/user setup must happen *before* entering the downgraded window,
+not inside it — a regression found while implementing PR7 of the members/
+groups directory rework plan (docs/decisions.md): `create_project`'s own
+manager-assignment fallback (`_ensure_project_has_a_manager`) unconditionally
+calls `get_effective_project_managers`, which (at head, from PR7 onward)
+queries the new `project_group_roles` table — a table that doesn't exist
+yet at revision 0018 (or anywhere below 0022). These two tests used to call
+`create_project` *inside* the downgraded window without issue, since 0018's
+own schema still had everything `create_project` needed at the time this
+file was written; PR7's own new table broke that assumption. See
+`test_project_group_role_migration.py`'s module docstring for the identical
+issue found there first, and the same `contextmanager`-based fix applied
+here.
 """
 
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
 from sqlalchemy import text
 
 from alembic import command
@@ -42,12 +55,14 @@ def _alembic_config() -> Config:
     return cfg
 
 
-@pytest.fixture
-def downgraded_to_0018():
+@contextmanager
+def _downgraded_to_0018():
     """Downgrades the live test database to revision 0018 (`project_groups.
-    is_default` exists again) so a test can seed pre-migration-shaped rows
-    directly, then always upgrades back to head — even on failure —
-    restoring the schema this suite's other tests expect."""
+    is_default` exists again) for the duration of the `with` block, then
+    always upgrades back to head afterward — even on failure — restoring
+    the schema every other test in this suite expects. Any project/org/user
+    setup needed by the caller must happen *before* entering this block —
+    see the module docstring for why."""
     command.downgrade(_alembic_config(), "0018")
     try:
         yield
@@ -55,7 +70,7 @@ def downgraded_to_0018():
         command.upgrade(_alembic_config(), "head")
 
 
-def test_plain_default_group_materializes_members_then_is_deleted(client, admin_token, org_id, downgraded_to_0018):
+def test_plain_default_group_materializes_members_then_is_deleted(client, admin_token, org_id):
     """A default group with only plain direct user members: every member
     gets a direct UserProjectRole grant with the group's own role, then the
     now-fully-materialized group itself is deleted (its ProjectGroupMember
@@ -65,7 +80,7 @@ def test_plain_default_group_materializes_members_then_is_deleted(client, admin_
     member_b = create_org_user(client, admin_token, org_id, "migrate-plain-b@example.com", role="member")
 
     group_id = uuid.uuid4()
-    with engine.begin() as conn:
+    with _downgraded_to_0018(), engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO project_groups (id, project_id, name, role, is_default, created_at, updated_at) "
@@ -82,8 +97,7 @@ def test_plain_default_group_materializes_members_then_is_deleted(client, admin_
                 {"id": str(uuid.uuid4()), "group_id": str(group_id), "user_id": member_id},
             )
 
-    command.upgrade(_alembic_config(), "head")
-
+    # Already back at head — the `with` block above ran the real upgrade.
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
     assert not any(g["id"] == str(group_id) for g in groups), "the plain default group must be deleted"
 
@@ -92,9 +106,7 @@ def test_plain_default_group_materializes_members_then_is_deleted(client, admin_
     assert "stakeholder" in roles_by_user.get(member_b, set()), "member_b must hold a direct stakeholder grant"
 
 
-def test_default_group_with_extra_composition_materializes_members_and_survives_demoted(
-    client, admin_token, org_id, downgraded_to_0018
-):
+def test_default_group_with_extra_composition_materializes_members_and_survives_demoted(client, admin_token, org_id):
     """A default group with composition beyond plain direct members (here:
     a cross-project member-source reference, mirroring `seed_demo_data.py`'s
     real "Stakeholders" group) — its direct user member still gets
@@ -110,7 +122,7 @@ def test_default_group_with_extra_composition_materializes_members_and_survives_
     solo_manager = create_org_user(client, admin_token, org_id, "migrate-extra-manager@example.com", role="member")
 
     group_id = uuid.uuid4()
-    with engine.begin() as conn:
+    with _downgraded_to_0018(), engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO project_groups (id, project_id, name, role, is_default, created_at, updated_at) "
@@ -133,12 +145,16 @@ def test_default_group_with_extra_composition_materializes_members_and_survives_
             {"id": str(uuid.uuid4()), "group_id": str(group_id), "source_project_id": referenced_project["id"]},
         )
 
-    command.upgrade(_alembic_config(), "head")
-
+    # Already back at head — the `with` block above ran the real upgrade.
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
     reloaded = next((g for g in groups if g["id"] == str(group_id)), None)
     assert reloaded is not None, "a group with extra composition must survive the migration, not be deleted"
-    assert reloaded["role"] == "project_manager"
+    # PR7 of the members/groups directory rework plan (docs/decisions.md):
+    # `role` was replaced by `roles` on `ProjectGroupOut` — the migrated
+    # group's pre-existing role now survives as exactly one grant in that
+    # list, backfilled by 0022 immediately after 0019's own conversion runs.
+    assert reloaded["roles"] == ["project_manager"]
+    assert "role" not in reloaded
     assert "is_default" not in reloaded
     assert solo_manager in reloaded["member_user_ids"], "the group's own composition is left intact"
     assert referenced_project["id"] in reloaded["member_source_project_ids"]

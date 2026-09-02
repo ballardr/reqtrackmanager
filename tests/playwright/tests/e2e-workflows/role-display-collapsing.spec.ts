@@ -59,12 +59,29 @@ test.describe("role display collapses to the effective highest tier", () => {
         [adminGroupName, "Project administrator"],
         [stakeholderGroupName, "Stakeholder"],
       ]) {
+        // PR7 of the members/groups directory rework plan (docs/decisions.md):
+        // "New group" no longer has a role picker — a group is created
+        // bare and a role is a separate grant, made afterward via the
+        // group's own row `MultiSelectDropdown`.
         await page.getByRole("button", { name: "New group" }).click();
         const dialog = page.getByRole("dialog", { name: "New group" });
         await dialog.getByPlaceholder("e.g. Reviewers").fill(groupName);
-        await dialog.getByLabel("Role").selectOption({ label: roleLabel });
         await dialog.getByRole("button", { name: "Create" }).click();
         await expect(dialog).not.toBeVisible();
+
+        const row = page.getByRole("button", { name: new RegExp(`^${groupName}`) }).locator("xpath=ancestor::tr[1]");
+        await row.getByRole("button", { name: `${groupName}'s roles` }).click();
+        const roleGroup = page.getByRole("group", { name: `${groupName}'s roles` });
+        // `.click()`, not `.check()`: the checkbox's own accessible name
+        // flips from "Grant X to Y" to "Revoke X from Y" the moment the
+        // toggle succeeds (`ProjectMembersTable`'s pre-existing pattern,
+        // reused by PR7's group-role `MultiSelectDropdown`), so
+        // `.check()`'s built-in re-verification against that same
+        // original locator can never resolve — verify via the `row`
+        // assertion below instead, a freshly resolved locator, the same
+        // working pattern project-admin-members.spec.ts already uses.
+        await roleGroup.getByRole("checkbox", { name: `Grant ${roleLabel} to ${groupName}` }).click();
+        await expect(row).toContainText(roleLabel);
 
         // Each group row opens a `SidePanel` (Phase 5, docs/decisions.md)
         // — scoped to this specific group's own panel (its accessible
@@ -111,9 +128,16 @@ test.describe("role display collapses to the effective highest tier", () => {
       await page.getByRole("button", { name: "New group" }).click();
       const dialog = page.getByRole("dialog", { name: "New group" });
       await dialog.getByPlaceholder("e.g. Reviewers").fill(managerGroupName);
-      await dialog.getByLabel("Role").selectOption({ label: "Project manager" });
       await dialog.getByRole("button", { name: "Create" }).click();
       await expect(dialog).not.toBeVisible();
+
+      const managerRow = page.getByRole("button", { name: new RegExp(`^${managerGroupName}`) }).locator("xpath=ancestor::tr[1]");
+      await managerRow.getByRole("button", { name: `${managerGroupName}'s roles` }).click();
+      // `.click()`, not `.check()` — see the identical comment above.
+      await page.getByRole("group", { name: `${managerGroupName}'s roles` })
+        .getByRole("checkbox", { name: `Grant Project manager to ${managerGroupName}` }).click();
+      await expect(managerRow).toContainText("Project manager");
+
       const managerGroupPanel = await openProjectGroupPanel(page, managerGroupName);
       await managerGroupPanel.getByPlaceholder("Type a name to add, or an email to invite…").fill(email);
       await page.getByRole("option", { name: new RegExp(email) }).click();
@@ -146,8 +170,18 @@ test.describe("role display collapses to the effective highest tier", () => {
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
 
+      // PR6 of the members/groups directory rework plan (docs/decisions.md)
+      // consolidated the Users table's previously-bare "View {name}'s
+      // access" button into the row's `ActionMenu` — reachable via its
+      // kebab trigger (`${display name}'s actions`), then the `menuitem`
+      // inside the `Popover` it opens (waiting for the menu itself before
+      // clicking an item, same pattern other `ActionMenu` call sites in
+      // this suite use, since the popover repositions after mount).
       const row = page.locator("tr", { hasText: email });
-      await row.getByRole("button", { name: /'s access$/ }).click();
+      const menuTriggerName = `E2E Role Collapse ${suffix}'s actions`;
+      await row.getByRole("button", { name: menuTriggerName }).click();
+      await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+      await page.getByRole("menuitem", { name: /'s access$/ }).click();
 
       const panel = page.getByRole("dialog", { name: /'s access$/ });
       // Collapsed by default: `project_manager` is the sole top tier, so

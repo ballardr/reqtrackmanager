@@ -28,7 +28,22 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       await expect(filterPanel).toBeVisible();
       await expect(table).toBeVisible();
       const panelBox = await filterPanel.boundingBox();
-      const tableBox = await table.boundingBox();
+      // Pre-existing bug found running the full suite together (unrelated
+      // to any of the follow-up UX batch's 7 PRs — this file and
+      // `DirectoryTable.tsx`/`ServerManagementPage.tsx` are all untouched
+      // by that batch): the server admin's Users table has enough columns
+      // that at the suite's default 1280px viewport it needs its own
+      // internal horizontal scroll (`DirectoryTable.tsx` wraps every
+      // `<table>` in an unnamed `overflow-x: auto` `<div>`). `<table>`'s
+      // own `boundingBox()` reports its full, unclipped *content* width
+      // (wider than the panel above it) rather than the visible width of
+      // that scroll wrapper — a false positive for "narrower than the
+      // panel" that has nothing to do with the actual page layout, which
+      // is correct (this table's own scroll wrapper is exactly as wide as
+      // the filter panel, confirmed live). Measuring the scroll wrapper
+      // (the table's immediate parent) instead of the table element
+      // itself matches what a viewer actually sees.
+      const tableBox = await table.locator("xpath=..").boundingBox();
       expect(panelBox).not.toBeNull();
       expect(tableBox).not.toBeNull();
       // Top layout: the panel sits above the table, not beside it — its
@@ -158,6 +173,31 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
         row.getByRole("button", { name: "Unban" }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toHaveCount(0);
+    });
+
+    await test.step("reactivate afterward — restoring this shared, read-only-reused persona to fully active, not just unbanned", async () => {
+      // `unban_orphaned_user` (backend/app/routers/system.py) deliberately
+      // does *not* also reactivate the account: unban and reactivate are a
+      // distinct pair of decisions by design ("may be granted org roles
+      // again" vs. "may log in again"), so this test's own ban step left
+      // the account genuinely deactivated even after the unban step above.
+      // Left that way, the orphan persona — reused *read-only* by
+      // two-factor-auth.spec.ts/org-login-2fa-handoff.spec.ts/this file
+      // itself specifically because it's supposed to be always available —
+      // can no longer log in at all on any later run in the same suite
+      // execution, and would fail this file's own very first step (it's
+      // deactivated, so it drops out of the default, non-"include
+      // deactivated" orphaned-accounts view) on a re-run against the same
+      // database. A real instance of this was found running the full
+      // suite together: this file's own docstring already promised
+      // "Always ends unbanned and active again," but this step was
+      // missing, so it never actually delivered the "active" half.
+      const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/reactivate") && r.request().method() === "POST"),
+        row.getByRole("button", { name: "Reactivate" }).click(),
+      ]);
+      await expect(row.getByText("Deactivated", { exact: true })).toHaveCount(0);
     });
   });
 });

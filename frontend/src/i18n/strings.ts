@@ -59,6 +59,16 @@ const en = {
     addExisting: (email: string, org: string) => `Add ${email} (existing account, not yet in this ${org})`,
     inviteNew: "Invite {email}",
     canInviteHint: "Not a member yet? Type their email to invite them.",
+    // PR5 of the members/groups directory rework plan — the visible badge
+    // distinguishing an org-group match from a user match in the same
+    // dropdown. Tightened from the original bare "Group" to "Org group"
+    // when PR7 added a second, similarly-named match kind below — bare
+    // "Group" would read as ambiguous next to "Project group".
+    groupBadge: "Org group",
+    // PR7 of the members/groups directory rework plan — the visible badge
+    // distinguishing a project-group match (local to this one project)
+    // from an org-group match (org-wide) in the same dropdown.
+    projectGroupBadge: "Project group",
   },
   signup: {
     title: "Create an account",
@@ -482,14 +492,40 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Reviewers",
     groupRole: "Role",
+    // PR7 of the members/groups directory rework plan — the Groups tab's
+    // per-row `MultiSelectDropdown` and the group's own `SidePanel` role
+    // editor share these two: the dropdown's accessible name/title, and its
+    // closed-state summary when the group holds no role at all yet.
+    groupRolesFor: (name: string) => `${name}'s roles`,
+    noRolesAssigned: "No roles assigned",
     // Column header for the `DirectoryTable` row-count column (Phase B,
     // follow-up UX batch, 2026-08-31) — distinct from `memberCount(n)`
     // below, which renders the actual "N member(s)" cell content.
     groupMembersColumn: "Members",
     groupCreated: "Group created",
+    // PR5 of the members/groups directory rework plan — the Groups tab's
+    // `DirectoryTable` now mixes two row kinds (a real `ProjectGroup` and a
+    // `ProjectMemberSource`, moved here from the Overview tab); this column
+    // and its two badge values are what tells them apart. "Project" (not
+    // "Org group") for a member-source row is deliberate — it names another
+    // whole {project} this one mirrors members *from*, not an org group —
+    // see docs/ux-style-guide.md's "Pattern: type-badged mixed rows in a
+    // single directory".
+    groupTypeColumn: "Type",
+    groupTypeBadgeGroup: "{Project} group",
+    groupTypeBadgeMemberSource: "{Project}",
     addMember: "Add member",
     addMemberPlaceholder: "Type a name or email to add…",
     addOrInviteMemberPlaceholder: "Type a name to add, or an email to invite…",
+    // PR7 of the members/groups directory rework plan: the "Add member"
+    // modal's autocomplete also matches this project's own groups
+    // (`UserAutocomplete`'s `projectGroups` prop) — picking one switches
+    // the same modal into this second step instead of granting a role
+    // directly, since a project group's roles are separate, possibly-zero,
+    // possibly-multiple grants unaffected by who joins it.
+    addMemberToGroupTitle: (groupName: string) => `Add to "${groupName}"`,
+    addMemberToGroupHint: (groupName: string) =>
+      `Adding someone here makes them a member of "${groupName}" — it does not grant a role by itself. The group's own role(s), if any, apply to everyone in it.`,
     externalAddedDirectly: (email: string, role: string, org: string) =>
       `${email} was added directly to the {project} with the '${role}' role (not to this specific group, since they weren't already an ${org} member).`,
     externalInvited: (email: string, role: string) =>
@@ -558,7 +594,6 @@ const en = {
     deleteGroup: "Delete group",
     deleteGroupTitle: (name: string) => `Delete "${name}"?`,
     deleteGroupMessage: "This removes the group and every membership under it. Direct roles and other groups' memberships are unaffected. This cannot be undone.",
-    groupUpdated: "Group updated",
     groupDeleted: "Group deleted",
     // member_source_project_ids groups (Phase 5) — extends the existing
     // `viaProjectMembers` line with a link to the referenced {project}'s
@@ -615,8 +650,19 @@ const en = {
     // user holds a given role through; see `MemberSourceProvenanceKind`'s
     // own doc comment for what each of the five direct kinds means.
     sourceDirectRole: "Direct",
-    sourceDirectGroup: "Via group",
-    sourceDirectOrgGroup: "Via nested org group",
+    // Parameterized on the granting group's name (`via_group_name`) so the
+    // Source column can say *which* group, not just "Via group" — see
+    // `ProjectMembersTable.tsx`'s `sourceLine` for the fallback used when a
+    // name is ever missing.
+    sourceDirectGroup: (groupName: string) => `Via group '${groupName}'`,
+    sourceDirectOrgGroup: (groupName: string) => `Via nested org group '${groupName}'`,
+    // `direct_org_group_role` (PR4/PR5 of the members/groups directory
+    // rework plan) — a genuinely different mechanism from
+    // `sourceDirectOrgGroup` above (nested inside a `ProjectGroup`): the
+    // org group holds this role directly, granted from the Members
+    // section's own "Add member" autocomplete (PR5). Distinct wording so
+    // the two don't read as the same thing.
+    sourceDirectOrgGroupRole: (groupName: string) => `Via group '${groupName}' (direct)`,
     sourceDirectProjectRef: "Via project reference",
     sourceDirectOrgWide: "Org-wide visibility",
     sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
@@ -631,6 +677,22 @@ const en = {
     // `PendingInvitesSection.tsx` — status badge + Resend button replace
     // the MultiSelectDropdown a real member row's Role cell would show.
     invitedSentOn: (date: string) => `Sent ${date}`,
+    // Per-row Actions column (PR6 of the members/groups directory rework
+    // plan, docs/decisions.md) — `ActionMenu` trigger name and its two
+    // conditionally-offered items; see `ProjectMembersTable.tsx`'s own
+    // eligibility rules for when each is shown.
+    actionsFor: (name: string) => `${name}'s actions`,
+    removeAllAccess: "Remove all access",
+    removeAllAccessConfirmTitle: (name: string) => `Remove all access for ${name}?`,
+    removeAllAccessConfirmMessage: (name: string) =>
+      `This revokes every direct role ${name} holds on this {project}. They'll need to be re-added to regain access.`,
+    removeAllAccessConfirmButton: "Remove access",
+    removeAllAccessSuccess: (name: string) => `Removed all access for ${name}.`,
+    convertToDirect: "Convert inherited access to direct roles",
+    // Mirrors the bulk `materializedCount` messaging (`strings.admin`),
+    // scoped to this one row's own outcome instead of a count.
+    convertToDirectSuccess: (name: string) => `Converted ${name}'s inherited access to a direct role.`,
+    convertToDirectNoOp: (name: string) => `${name} already holds an equal or higher direct role — nothing to convert.`,
   },
   serverSettings: {
     title: "Platform branding",
@@ -837,6 +899,25 @@ const en = {
     groupSyncUpdated: "Sync settings updated",
     resources: "Shared resources",
     resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
+    // Users table Actions column (PR6 of the members/groups directory
+    // rework plan, docs/decisions.md) — the two existing bare buttons
+    // (View access, lock/unlock display name) consolidated into one
+    // `ActionMenu`, plus two new actions: "Remove from {org}" (a genuinely
+    // new, access-mutating endpoint) and "Add to group" (pure UI
+    // reachability fix, `AddToGroupControl` — kept as its own small
+    // popover-triggering control next to the menu rather than folded into
+    // it, since it needs an anchored `Popover` of its own, not a single
+    // `onSelect` the kebab menu's plain-button items can express).
+    usersActionsFor: (name: string) => `${name}'s actions`,
+    removeFromOrg: (org: string) => `Remove from ${org}`,
+    removeFromOrgConfirmTitle: (name: string) => `Remove ${name} from this organisation?`,
+    removeFromOrgConfirmMessage: (name: string, org: string) =>
+      `This revokes ${name}'s role(s) and access to every project in this ${org}. They can be re-invited later.`,
+    removeFromOrgConfirmButton: "Remove",
+    removedFromOrgToast: (name: string) => `Removed ${name} from this organisation.`,
+    addToGroupFor: (name: string) => `Add ${name} to a group`,
+    addToGroupSelectLabel: "Group",
+    addToGroupSelectPlaceholder: "Choose a group…",
     lockDisplayName: "Lock display name",
     unlockDisplayName: "Unlock display name",
     viewAccess: (name: string) => `View ${name}'s access`,
@@ -1237,6 +1318,7 @@ const en = {
     loading: "Loading…",
     error: "Something went wrong.",
     cancel: "Cancel",
+    back: "Back",
     create: "Create",
     delete: "Delete",
     edit: "Edit",

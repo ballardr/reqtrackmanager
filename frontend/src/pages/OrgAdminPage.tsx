@@ -13,6 +13,7 @@ import type {
   ExternalUserPolicy,
   FileAsset,
   LinkTypeDefinition,
+  MaterializeResult,
   MergeConflict,
   OrgAdvancedSettings,
   OrgGroup,
@@ -39,6 +40,7 @@ import type {
 } from "../api/types";
 import { collapseProjectRoles, ORG_ROLE_LABEL, PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
@@ -159,6 +161,9 @@ export function OrgAdminPage() {
   const [usersTotal, setUsersTotal] = useState(0);
   const [userSearch, setUserSearch] = useState("");
   const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
+  // "Remove from {org}" (Users table Actions column, PR6) — the user
+  // pending confirmation in the `ConfirmDialog` below, or null when none.
+  const [confirmRemoveUser, setConfirmRemoveUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
   // "View access" panel (2026-08 UX audit reversal — see docs/decisions.md
@@ -306,6 +311,14 @@ export function OrgAdminPage() {
   const [manageUsersInvites, setManageUsersInvites] = useState<PendingInvite[]>([]);
   const [manageUsersResendingInviteId, setManageUsersResendingInviteId] = useState<string | null>(null);
   const [manageUsersAddRole, setManageUsersAddRole] = useState<ProjectRole>("member");
+  // Style guide "Pattern: modal dialog for entity create/rename" (Principle
+  // 3) — the inline add-member sub-form used to render permanently inside
+  // this outer "Manage users" Modal; it's now a button that opens a second,
+  // nested Modal (`useDialogA11y`'s own docstring explains why a nested
+  // Modal's Escape/focus handling is already safe here). The outer Modal
+  // remains the right container for "manage users for this project" as a
+  // whole — only the always-visible add sub-form within it is modal-ified.
+  const [manageUsersAddMemberModalOpen, setManageUsersAddMemberModalOpen] = useState(false);
 
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
@@ -741,6 +754,7 @@ export function OrgAdminPage() {
     setManageUsersProjectName("");
     setManageUsersMembers([]);
     setManageUsersInvites([]);
+    setManageUsersAddMemberModalOpen(false);
   }
 
   async function reloadManageUsersMembers() {
@@ -770,6 +784,64 @@ export function OrgAdminPage() {
     if (!manageUsersProjectId) return;
     await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role: manageUsersAddRole });
     await reloadManageUsersMembers();
+  }
+
+  /** The group branch of the same add-control (PR5 of the members/groups
+   * directory rework plan) — `UserAutocomplete`'s combined user-or-group
+   * autocomplete calls this instead of `addManageUsersMember` when the
+   * selected match is an org group, granting it `manageUsersAddRole`
+   * *directly* on `manageUsersProjectId` via PR4's new mechanism, the same
+   * pattern `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
+   * `ProjectGroup` wrapper is created, and nesting stays out of scope for
+   * this control — see that function's own docstring for the full
+   * rationale, shared verbatim here. */
+  async function addManageUsersGroupRole(orgGroupId: string) {
+    if (!manageUsersProjectId) return;
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role: manageUsersAddRole });
+    await reloadManageUsersMembers();
+  }
+
+  /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
+   * PR6 of the members/groups directory rework plan) — same treatment
+   * `ProjectAdminPage.tsx`'s own `removeAllProjectMemberAccess` uses,
+   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
+  async function removeAllManageUsersMemberAccess(userId: string) {
+    if (!manageUsersProjectId) return;
+    const member = manageUsersMembers.find((m) => m.user_id === userId);
+    if (!member) return;
+    try {
+      const roles = [...new Set(member.sources.map((s) => s.role))];
+      await Promise.all(
+        roles.map((role) => api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`))
+      );
+      showToast(strings.membersTable.removeAllAccessSuccess(member.display_name));
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
+   * roles" (Actions column, PR6) — same treatment
+   * `ProjectAdminPage.tsx`'s own `convertProjectMemberToDirect` uses,
+   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
+  async function convertManageUsersMemberToDirect(userId: string) {
+    if (!manageUsersProjectId) return;
+    const member = manageUsersMembers.find((m) => m.user_id === userId);
+    try {
+      const result = await api.post<MaterializeResult>(
+        `/api/v1/projects/${manageUsersProjectId}/materialize-inherited-access/${userId}`
+      );
+      const name = member?.display_name ?? "";
+      showToast(
+        result.created.length > 0
+          ? strings.membersTable.convertToDirectSuccess(name)
+          : strings.membersTable.convertToDirectNoOp(name)
+      );
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** The by-email counterpart, for a user outside this org entirely — same
@@ -1301,6 +1373,27 @@ export function OrgAdminPage() {
     reload();
   }
 
+  /** Users table Actions column, "Remove from {org}" (PR6 of the members/
+   * groups directory rework plan, docs/decisions.md) — the new admin-
+   * initiated `DELETE /{organization_id}/users/{user_id}/membership`
+   * endpoint. Confirmed via `ConfirmDialog` (`confirmRemoveUser` below)
+   * before this is ever called; not offered at all for the caller's own
+   * row (see the Actions column's own `ActionMenu` items, which route
+   * self-removal to the existing "Leave organisation" flow on
+   * `PreferencesPage.tsx` instead, matching the backend's own self-
+   * targeting guard on this endpoint). */
+  async function removeOrgUser(u: OrgUser) {
+    if (!orgId) return;
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/membership`);
+      setConfirmRemoveUser(null);
+      showToast(strings.orgAdmin.removedFromOrgToast(u.display_name));
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   const [exportingOrg, setExportingOrg] = useState(false);
 
   async function exportOrg() {
@@ -1593,28 +1686,47 @@ export function OrgAdminPage() {
       render: (row) => (row.kind === "invited" ? "" : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no),
     },
     {
+      // Users table Actions column (PR6 of the members/groups directory
+      // rework plan, docs/decisions.md) — the two previously-bare buttons
+      // (View access, lock/unlock display name) consolidated into one
+      // `ActionMenu`, plus "Remove from {org}" (new, access-mutating).
+      // "Add to group" sits as its own small control next to the menu,
+      // not inside it — `AddToGroupControl` needs its own anchored
+      // `Popover` trigger, which a plain `ActionMenu` item (a single
+      // `onSelect` callback) can't host.
       key: "actions", label: "",
       render: (row) => {
         if (row.kind === "invited") return null;
         const u = row.user;
+        const isSelf = u.user_id === user?.id;
         return (
           <div className="row" style={{ gap: "0.25rem" }}>
-            <button
-              className="btn"
-              onClick={() => openUserAccess(u)}
-              title={strings.orgAdmin.viewAccess(u.display_name)}
-              aria-label={strings.orgAdmin.viewAccess(u.display_name)}
-            >
-              <Eye size={14} />
-            </button>
-            <button
-              className="btn"
-              onClick={() => toggleDisplayNameLock(u)}
-              title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-              aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-            >
-              {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
-            </button>
+            <ActionMenu
+              triggerLabel={strings.orgAdmin.usersActionsFor(u.display_name)}
+              items={[
+                { label: strings.orgAdmin.viewAccess(u.display_name), icon: <Eye size={14} />, onSelect: () => openUserAccess(u) },
+                {
+                  label: u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName,
+                  icon: u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />,
+                  onSelect: () => toggleDisplayNameLock(u),
+                },
+                // Not offered on the caller's own row — self-removal has
+                // its own, already-guarded path ("Leave organisation" on
+                // Preferences), matching the backend's own self-targeting
+                // guard on this endpoint (see `remove_org_user`'s
+                // docstring).
+                ...(isSelf
+                  ? []
+                  : [
+                      {
+                        label: strings.orgAdmin.removeFromOrg(orgLabel),
+                        icon: <Trash2 size={14} />,
+                        onSelect: () => setConfirmRemoveUser(u),
+                      },
+                    ]),
+              ]}
+            />
+            <AddToGroupControl user={u} groups={allGroups} onAdd={addGroupMember} />
           </div>
         );
       },
@@ -2332,22 +2444,37 @@ export function OrgAdminPage() {
               // is the direct fix for "should show up in a similar way to
               // the project admin page," not a parallel reimplementation.
               <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
-                <ProjectMembersTable
-                  members={manageUsersMembers}
-                  invites={manageUsersInvites}
-                  onToggleRole={toggleManageUsersRole}
-                  onResendInvite={resendManageUsersInvite}
-                  resendingInviteId={manageUsersResendingInviteId}
-                  ariaLabel={strings.orgAdmin.manageUsers}
-                  addControl={
+                <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
+                    <Plus size={14} /> {strings.admin.addMember}
+                  </button>
+                  {/* No sibling "Add group" button (PR5 of the members/groups
+                      directory rework plan, corrected during PR5's own
+                      review): the autocomplete below is expanded to match
+                      org groups too — see UserAutocomplete's own module
+                      docstring. */}
+                </div>
+                {manageUsersAddMemberModalOpen && (
+                  <Modal title={strings.admin.addMember} onClose={() => setManageUsersAddMemberModalOpen(false)}>
                     <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
                       <UserAutocomplete
                         users={users}
                         placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                        onSelect={(userId) => addManageUsersMember(userId)}
+                        onSelect={(userId) => {
+                          addManageUsersMember(userId);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
+                        groups={allGroups}
+                        onSelectGroup={(groupId) => {
+                          addManageUsersGroupRole(groupId);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
                         organizationId={orgId}
                         projectId={manageUsersProjectId}
-                        onSelectExternal={(email) => addManageUsersExternalMember(email)}
+                        onSelectExternal={(email) => {
+                          addManageUsersExternalMember(email);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
                       />
                       <select
                         className="input"
@@ -2361,7 +2488,22 @@ export function OrgAdminPage() {
                         <option value="member">{PROJECT_ROLE_LABEL.member}</option>
                       </select>
                     </div>
-                  }
+                    <div className="row" style={{ justifyContent: "flex-end" }}>
+                      <button className="btn" onClick={() => setManageUsersAddMemberModalOpen(false)}>
+                        {strings.common.cancel}
+                      </button>
+                    </div>
+                  </Modal>
+                )}
+                <ProjectMembersTable
+                  members={manageUsersMembers}
+                  invites={manageUsersInvites}
+                  onToggleRole={toggleManageUsersRole}
+                  onResendInvite={resendManageUsersInvite}
+                  resendingInviteId={manageUsersResendingInviteId}
+                  onRemoveAllAccess={removeAllManageUsersMemberAccess}
+                  onConvertToDirect={convertManageUsersMemberToDirect}
+                  ariaLabel={strings.orgAdmin.manageUsers}
                 />
               </Modal>
             )}
@@ -3043,6 +3185,15 @@ export function OrgAdminPage() {
         )}
       </ResourceMenu>
 
+      {confirmRemoveUser && (
+        <ConfirmDialog
+          title={strings.orgAdmin.removeFromOrgConfirmTitle(confirmRemoveUser.display_name)}
+          message={strings.orgAdmin.removeFromOrgConfirmMessage(confirmRemoveUser.display_name, orgLabel)}
+          confirmLabel={strings.orgAdmin.removeFromOrgConfirmButton}
+          onConfirm={() => removeOrgUser(confirmRemoveUser)}
+          onCancel={() => setConfirmRemoveUser(null)}
+        />
+      )}
       {patToDescope && (
         <ConfirmDialog
           title={strings.orgAdmin.patDescopeTitle(orgLabel)}

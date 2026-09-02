@@ -123,9 +123,21 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
  * to it rather than the whole page — necessary once more than one group in
  * this run could plausibly match a page-wide selector for the same
  * add-member input/role text.
+ *
+ * Uses an exact-name match, not a `^groupName` prefix regex: PR7 of the
+ * follow-up UX batch (docs/decisions.md) added a per-row role
+ * `MultiSelectDropdown` to the Groups tab's own row (`ProjectAdminPage.tsx`),
+ * whose trigger button's accessible name is `"<group name>'s roles"` — a
+ * prefix match against the row-trigger button's exact `<group name>` text
+ * also matched that second button, a genuine two-element strict-mode
+ * violation found running the full suite together (not present when a
+ * group had no role-picker rendered, e.g. an isolated spec run seeded
+ * without this PR's own fixtures). The row-trigger button's own accessible
+ * name is exactly `groupName` with no trailing text, so `exact: true`
+ * disambiguates correctly without narrowing any real match.
  */
 export async function openProjectGroupPanel(page: Page, groupName: string) {
-  await page.getByRole("button", { name: new RegExp(`^${groupName}`) }).click();
+  await page.getByRole("button", { name: groupName, exact: true }).click();
   return page.getByRole("dialog", { name: `${groupName} details` });
 }
 
@@ -221,6 +233,18 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();
+  // Waits for the client-side route change (React Router, no full page
+  // reload) to actually land before returning — found as the root cause of
+  // a real, if rare, flake: without this, a caller that immediately
+  // asserts on the detail page's own content (e.g. its "Locked (approved)"
+  // badge) can catch a narrow transition window where the requirements
+  // *list* page (whose own row can carry an identically-worded "Locked
+  // (approved)" badge, RequirementsPage.tsx) hasn't fully unmounted yet —
+  // a genuine two-element strict-mode violation `expect().toBeVisible()`
+  // can't retry past, since ambiguity isn't a "not ready yet" condition.
+  // Unrelated to any of this repo's feature work; a pre-existing gap in
+  // this shared helper found running the full suite together.
+  await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor

@@ -31,11 +31,12 @@
  *   `onToggleRole`, which calls `POST`/`DELETE /roles`) when its *only*
  *   source is the `direct_role` provenance kind — a genuine, individually
  *   revocable `UserProjectRole` row. An option whose sources include any of
- *   the other four kinds (`direct_group`, `direct_org_group`,
- *   `direct_project_ref`, `direct_org_wide`) is shown checked-but-disabled
- *   with a `title` explaining why: `DELETE /{project_id}/roles/{user_id}/
- *   {role}` only ever deletes `UserProjectRole` rows, so offering it as if
- *   it worked for any other source would silently no-op while this table
+ *   the other five kinds (`direct_group`, `direct_org_group`,
+ *   `direct_org_group_role`, `direct_project_ref`, `direct_org_wide`) is
+ *   shown checked-but-disabled with a `title` explaining why: `DELETE
+ *   /{project_id}/roles/{user_id}/{role}` only ever deletes `UserProjectRole`
+ *   rows, so offering it as if it worked for any other source would
+ *   silently no-op while this table
  *   showed the role as removed. See `MemberSourceProvenanceKind`'s own doc
  *   comment (`api/types.ts`) for the full rationale — this is the exact
  *   fix the Phase D `kind` split exists to make possible.
@@ -69,14 +70,29 @@
  * `onToggleRole`/`onResendInvite`/`addControl` are the caller's own API
  * calls and composed control, same division of responsibility
  * `MemberRoleTable` already proved out.
+ * - Per-row Actions column (PR6 of the members/groups directory rework
+ *   plan, docs/decisions.md): "Remove all access" and "Convert inherited
+ *   access to direct roles", behind one `ActionMenu` per member row —
+ *   offered/hidden per-row per that PR's own eligibility rules (see
+ *   `allDirectRoleSourced`/`hasInheritedSource` below). `onRemoveAllAccess`/
+ *   `onConvertToDirect` are the caller's own API calls, same division of
+ *   responsibility as `onToggleRole` — this component only owns the Tier-1
+ *   `ConfirmDialog` in front of "Remove all access" (a real, destructive,
+ *   full revocation, not a single toggle); "Convert inherited access to
+ *   direct roles" is additive/non-destructive, so it calls straight
+ *   through with no confirm step, matching the bulk "Convert all inherited
+ *   access to direct roles" button's own (confirm-free) treatment on
+ *   `ProjectAdminPage.tsx`.
  */
-import { Send } from "lucide-react";
+import { Send, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { EffectiveMember, MemberSourceProvenance, PendingInvite, ProjectRole } from "../api/types";
 import { PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import type { Strings } from "../i18n/strings";
+import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
@@ -98,9 +114,17 @@ function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
     case "direct_role":
       return strings.membersTable.sourceDirectRole;
     case "direct_group":
-      return strings.membersTable.sourceDirectGroup;
+      return s.via_group_name
+        ? strings.membersTable.sourceDirectGroup(s.via_group_name)
+        : strings.membersTable.sourceDirectRole;
     case "direct_org_group":
-      return strings.membersTable.sourceDirectOrgGroup;
+      return s.via_group_name
+        ? strings.membersTable.sourceDirectOrgGroup(s.via_group_name)
+        : strings.membersTable.sourceDirectRole;
+    case "direct_org_group_role":
+      return s.via_group_name
+        ? strings.membersTable.sourceDirectOrgGroupRole(s.via_group_name)
+        : strings.membersTable.sourceDirectRole;
     case "direct_project_ref":
       return strings.membersTable.sourceDirectProjectRef;
     case "direct_org_wide":
@@ -124,6 +148,8 @@ export function ProjectMembersTable({
   onToggleRole,
   onResendInvite,
   resendingInviteId,
+  onRemoveAllAccess,
+  onConvertToDirect,
   addControl,
   ariaLabel,
 }: {
@@ -138,6 +164,22 @@ export function ProjectMembersTable({
   /** The invite currently being resent, if any — disables that row's
    * Resend button while the request is in flight. */
   resendingInviteId?: string | null;
+  /** Per-row "Remove all access" (Actions column, PR6) — called only after
+   * the built-in `ConfirmDialog` is confirmed, and only ever offered for a
+   * member whose sources are entirely `direct_role` (see
+   * `allDirectRoleSourced` below). The caller loops the actual per-role
+   * `DELETE /roles/{user_id}/{role}` calls itself, same division of
+   * responsibility as `onToggleRole`. Omit to hide the Actions column
+   * entirely (e.g. a future read-only rendering) — both current call sites
+   * always supply it. */
+  onRemoveAllAccess?: (userId: string) => void;
+  /** Per-row "Convert inherited access to direct roles" (Actions column,
+   * PR6) — called directly (no confirm step; additive, not destructive),
+   * only ever offered for a member with at least one `forward_inherited`/
+   * `member_source_inherited` source. The caller calls the new `POST
+   * /{project_id}/materialize-inherited-access/{user_id}` endpoint and
+   * refreshes `members` itself. Omit to hide the Actions column entirely. */
+  onConvertToDirect?: (userId: string) => void;
   /** Caller-composed "add a member" control (`UserAutocomplete` + a role
    * `<select>`) — differs slightly per call site, so this table only
    * provides the slot. Omit for a read-only rendering. */
@@ -151,6 +193,7 @@ export function ProjectMembersTable({
   const [showInvited, setShowInvited] = useState(true);
   const [sort, setSort] = useState<SortState<SortKey> | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<string | null>(null);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -290,11 +333,65 @@ export function ProjectMembersTable({
     },
   ];
 
+  if (onRemoveAllAccess || onConvertToDirect) {
+    columns.push({
+      key: "actions",
+      label: "",
+      render: (row) => {
+        if (row.kind === "invited") return null;
+        const member = row.member;
+        // "Remove all access" is only safe (and only offered) when every
+        // source this member holds is a genuine, individually-revocable
+        // `direct_role` row — the same "purely direct" test the Role
+        // `MultiSelectDropdown` above already applies per-option, just
+        // required across *all* of a member's held roles at once here:
+        // if even one role were group-/inheritance-sourced, looping the
+        // per-role DELETE over "currently-held direct roles" would leave
+        // that other access silently in place while claiming to remove
+        // "all" of it.
+        const allDirectRoleSourced = member.sources.length > 0 && member.sources.every((s) => s.kind === "direct_role");
+        const hasInheritedSource = member.sources.some(
+          (s) => s.kind === "forward_inherited" || s.kind === "member_source_inherited"
+        );
+        const items: ActionMenuItem[] = [];
+        if (onRemoveAllAccess && allDirectRoleSourced) {
+          items.push({
+            label: strings.membersTable.removeAllAccess,
+            icon: <Trash2 size={14} />,
+            onSelect: () => setConfirmRemoveUserId(member.user_id),
+          });
+        }
+        if (onConvertToDirect && hasInheritedSource) {
+          items.push({
+            label: strings.membersTable.convertToDirect,
+            icon: <Wand2 size={14} />,
+            onSelect: () => onConvertToDirect(member.user_id),
+          });
+        }
+        if (items.length === 0) return null;
+        return <ActionMenu triggerLabel={strings.membersTable.actionsFor(member.display_name)} items={items} />;
+      },
+    });
+  }
+
   const filtersActive = Boolean(needle) || Boolean(roleFilter) || !showInvited;
+  const confirmRemoveMember = confirmRemoveUserId ? members.find((m) => m.user_id === confirmRemoveUserId) : undefined;
 
   return (
     <div className="stack">
       {addControl}
+      {confirmRemoveMember && onRemoveAllAccess && (
+        <ConfirmDialog
+          title={strings.membersTable.removeAllAccessConfirmTitle(confirmRemoveMember.display_name)}
+          message={strings.membersTable.removeAllAccessConfirmMessage(confirmRemoveMember.display_name)}
+          confirmLabel={strings.membersTable.removeAllAccessConfirmButton}
+          onConfirm={() => {
+            onRemoveAllAccess(confirmRemoveMember.user_id);
+            setConfirmRemoveUserId(null);
+          }}
+          onCancel={() => setConfirmRemoveUserId(null)}
+        />
+      )}
       {/* `FilterPanel` renders as a full-width bar ABOVE the table
           (`layout="top"`), not the standard `.side-grid` side layout —
           this table has 4 columns (Name, Email, Role, Source) with a

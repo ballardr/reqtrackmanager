@@ -204,7 +204,7 @@ def test_scim_delete_group_audit_event_records_the_access_it_cascaded_away(clien
 
     project = create_project(client, admin_token, org_id, "SCIM Blast Radius Project")
     project_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "SCIM Blast Radius PG", "role": "stakeholder"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "SCIM Blast Radius PG"},
         headers=auth_headers(admin_token),
     ).json()
     pg_nest_resp = client.post(

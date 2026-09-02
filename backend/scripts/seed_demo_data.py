@@ -111,15 +111,29 @@ def add_member_source(
 
 
 def create_project_group(headers: dict, project_id: str, name: str, role: str) -> dict:
-    """Creates a project group explicitly. Projects no longer auto-create
-    any groups on creation (follow-up UX batch Phase C, 2026-08-31 removed
-    the four "standard" default groups — see docs/decisions.md), so any
-    group this script wants to demonstrate (e.g. a cross-project source
-    reference below) has to be created as its own explicit step now,
-    rather than reached by name via a pre-existing default."""
-    r = httpx.post(f"{BASE}/projects/{project_id}/groups", json={"name": name, "role": role}, headers=headers, timeout=30)
+    """Creates a project group explicitly, then grants it `role`. Projects
+    no longer auto-create any groups on creation (follow-up UX batch Phase
+    C, 2026-08-31 removed the four "standard" default groups — see
+    docs/decisions.md), so any group this script wants to demonstrate (e.g.
+    a cross-project source reference below) has to be created as its own
+    explicit step now, rather than reached by name via a pre-existing
+    default.
+
+    A group is created bare, with zero roles, and a role is a separate
+    grant since PR7 of the members/groups directory rework plan (docs/
+    decisions.md) — mirroring how `create_org_group` already creates an org
+    group bare. This helper still takes a single `role` (every group this
+    demo dataset seeds only ever needs one) and grants it via the new
+    per-group-role endpoint right after creation."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/groups", json={"name": name}, headers=headers, timeout=30)
     r.raise_for_status()
-    return r.json()
+    group = r.json()
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/groups/{group['id']}/roles", json={"role": role}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    group["roles"] = [role]
+    return group
 
 
 def add_project_group_source_reference(headers: dict, project_id: str, group_id: str, source_project_id: str) -> None:
