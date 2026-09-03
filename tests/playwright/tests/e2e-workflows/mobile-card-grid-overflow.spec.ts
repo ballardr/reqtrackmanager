@@ -66,6 +66,14 @@ test.describe("mobile: card/tile grids never overflow the viewport width", () =>
     await page.goto("/projects");
     const star = page.getByRole("button", { name: /favourite/i }).first();
     await star.click();
+    // ProjectListPage's toggleFavorite is an async PUT followed by a
+    // reload() — click() only waits for the click event to dispatch, not
+    // for that handler's promise to settle, so navigating right away can
+    // race the mutation (the goto below can even abort the in-flight
+    // request). Wait for the button's own accessible name to flip to the
+    // "remove" label, which only happens once reload() has re-fetched
+    // is_favorite as true, before leaving the page.
+    await expect(page.getByRole("button", { name: "Remove from favourites" }).first()).toBeVisible();
     // Layout's nav-rail "Favourites" link only appears once its own
     // `hasFavourites` probe re-fires on arrival at /projects or
     // /favourites — navigating directly is more reliable here than

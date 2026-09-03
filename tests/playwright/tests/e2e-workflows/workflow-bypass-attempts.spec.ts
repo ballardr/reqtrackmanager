@@ -127,6 +127,12 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByText(PROJECT_NAMES.alpha1).click();
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: targetReqName, exact: true }).click();
+      // Wait for the detail page's own content to land before reading its
+      // `<h1>` — a bare click + immediate textContent() read can catch the
+      // requirements list page's own `<h1>` (no em dash) during the
+      // client-side route transition, same race documented on
+      // `openRequirementByCode` in helpers.ts.
+      await expect(page.locator("h1")).toContainText("—");
       archivedCode = (await page.locator("h1").textContent())!.split(" — ")[0].trim();
       // Archiving a requirement now confirms first, via the shared
       // ConfirmDialog (2026-08 UX audit fix — see
@@ -152,6 +158,8 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText(newReqName)).toBeVisible();
       await page.getByText(newReqName).click();
+      // Same route-transition race as above.
+      await expect(page.locator("h1")).toContainText("—");
       newCode = (await page.locator("h1").textContent())!.split(" — ")[0].trim();
 
       expect(newCode).not.toBe(archivedCode);

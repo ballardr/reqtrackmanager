@@ -233,18 +233,23 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();
-  // Waits for the client-side route change (React Router, no full page
-  // reload) to actually land before returning — found as the root cause of
-  // a real, if rare, flake: without this, a caller that immediately
-  // asserts on the detail page's own content (e.g. its "Locked (approved)"
-  // badge) can catch a narrow transition window where the requirements
-  // *list* page (whose own row can carry an identically-worded "Locked
-  // (approved)" badge, RequirementsPage.tsx) hasn't fully unmounted yet —
-  // a genuine two-element strict-mode violation `expect().toBeVisible()`
-  // can't retry past, since ambiguity isn't a "not ready yet" condition.
-  // Unrelated to any of this repo's feature work; a pre-existing gap in
-  // this shared helper found running the full suite together.
+  // Waits for the detail page's own content to actually render before
+  // returning, not just for the URL to change. `waitForURL` alone was
+  // tried first and wasn't enough: the route's lazy chunk (or its own
+  // requirement fetch, RequirementDetailPage.tsx's `if (!requirement)
+  // return <Spinner />`) can still be in flight after the URL/history
+  // update lands, and under full-suite CI load that window is wide enough
+  // for a caller's very next assertion (e.g. the detail page's own "Locked
+  // (approved)" badge) to catch the requirements *list* page's own
+  // identically-worded row badge still mounted — a genuine two-element
+  // strict-mode violation `expect().toBeVisible()` can't retry past, since
+  // ambiguity isn't a "not ready yet" condition. The detail page's `<h1>`
+  // always renders as `"<code> — <name>"` (RequirementDetailPage.tsx) while
+  // the list page's own `<h1>` is just the (terminology-dependent) page
+  // title with no em dash, so waiting for the dash is a reliable,
+  // terminology-independent signal that the swap has actually happened.
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
+  await expect(page.locator("h1")).toContainText("—");
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor
