@@ -237,6 +237,57 @@ export const IncludeArchivedFilterShowsArchivedRequirement: Story = {
   },
 };
 
+/**
+ * C-G-11: completion is an independent overlay marker, not a status value —
+ * a completed requirement renders a distinct "Completed" badge alongside
+ * its (still-"Approved") status badge, and the "Completed" filter checkbox
+ * (separate from the Status `<select>`, which no longer offers "Completed"
+ * as an option at all) narrows the list via `is_completed=true`.
+ */
+export const CompletedBadgeAndFilterCheckbox: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      if (path.includes("is_completed=true")) {
+        return {
+          items: [
+            buildRequirement({
+              id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1",
+              target_stage_id: "s1", status: "approved", is_completed: true,
+              completed_at: "2026-02-01T09:00:00Z", completed_by: "user-1",
+            }),
+          ],
+          total: 1,
+        };
+      }
+      return {
+        items: [
+          buildRequirement({
+            id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1",
+            target_stage_id: "s1", status: "approved", is_completed: true,
+            completed_at: "2026-02-01T09:00:00Z", completed_by: "user-1",
+          }),
+          buildRequirement({ id: "r2", unique_code: "RPT-EXP-002", name: "Nightly export", component_id: "c2", category_id: "cat2", target_stage_id: "s1", status: "approved" }),
+        ],
+        total: 2,
+      };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await expect(canvas.getByText("Completed", { selector: "span.badge" })).toBeInTheDocument();
+    // The status filter select no longer offers "Completed" as an option.
+    const statusSelect = canvas.getByLabelText("Status") as HTMLSelectElement;
+    const optionLabels = Array.from(statusSelect.options).map((o) => o.textContent);
+    await expect(optionLabels).not.toContain("Completed");
+
+    await userEvent.click(canvas.getByLabelText("Completed"));
+    await waitFor(() => expect(canvas.queryByText("Nightly export")).not.toBeInTheDocument());
+    await expect(canvas.getByText("Reset password")).toBeInTheDocument();
+  },
+};
+
 export const EmptyState: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");

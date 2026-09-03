@@ -8,7 +8,7 @@ Use the dedicated dev/test stack, **not** the root `docker-compose.yml` (that on
 
 ```bash
 cd tests/container
-docker compose up --build
+docker compose up --build -d
 ```
 
 This starts Postgres (its own `reqtrack_test` database, isolated from any production instance), MinIO (S3-compatible file storage), MailHog (SMTP catcher), Keycloak (a real OIDC provider, for testing per-organisation SSO end-to-end), the backend, and the frontend. On first boot the backend automatically runs database migrations and creates a bootstrap **server admin** user and default organisation.
@@ -55,21 +55,21 @@ uvicorn app.main:app --reload --port 8000
 
 Migrations run automatically on startup. To run them manually: `alembic upgrade head` (from `backend/`).
 
-**Backend tests** must run against a `*_test`-suffixed database — `tests/conftest.py` refuses to start otherwise, since the suite drops and recreates the entire schema at the start of every run (running it against the wrong database would destroy real data):
+**Backend tests** run against their own dedicated `reqtrack_pytest_test` database, never `reqtrack_test` (the dev/demo database the stack above and Playwright use) — `backend/tests/conftest.py` unconditionally rewrites whatever `DATABASE_URL` it's given to that database name (same host/port/user/password, just a different name) before any test runs, and creates it automatically if it doesn't exist yet. This is deliberate: the suite drops and recreates the entire schema at the start of every session and truncates every table after every test, which used to make `reqtrack_test` unsafe to run pytest against while also using it for manual/demo testing (see `docs/decisions.md`) — pointing pytest at its own database removes that conflict entirely, regardless of what `DATABASE_URL` you pass it. `tests/conftest.py`'s own `*_test`-suffix guard still applies as a backstop (it refuses to start against a database not ending in `_test`).
 
 ```bash
-cd tests/container && docker compose up -d db   # provides reqtrack_test
+cd tests/container && docker compose up -d db   # provides both reqtrack_test and (auto-created) reqtrack_pytest_test
 cd ../../backend && source .venv/bin/activate
-DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -q
+DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -q   # actually runs against reqtrack_pytest_test
 ```
 
-Or run them inside the dev/test stack's own backend container, which already has `DATABASE_URL` pointed at `reqtrack_test`:
+Or run them inside the dev/test stack's own backend container:
 
 ```bash
 cd tests/container && docker compose exec backend pytest -q
 ```
 
-Note: every test truncates all tables, including the bootstrap admin user, so after a pytest run the dev/test stack's own backend/frontend will have no data left to browse — `docker compose restart backend` re-runs migrations and re-creates the bootstrap admin if you also want to use the UI or run Playwright afterward (Playwright itself doesn't need this if you haven't run pytest since the stack last started).
+Because pytest never touches `reqtrack_test`, running it doesn't disturb the dev/test stack's own manually-seeded data, demo data, or bootstrap admin user — no restart or reseed needed afterward, and it's safe to run pytest and use the UI/Playwright against the same running stack at the same time.
 
 **Linting** (N-E-04): `ruff` is configured in `backend/pyproject.toml` — `ruff check app` (or `tests`) from `backend/`. `B008` (function calls in argument defaults) is deliberately disabled since FastAPI's `Depends(...)` dependency-injection idiom is exactly that pattern.
 

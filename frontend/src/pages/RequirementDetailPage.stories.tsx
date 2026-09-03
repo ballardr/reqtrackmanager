@@ -239,17 +239,23 @@ export const ArchivedRequirementShowsRestoreButton: Story = {
   },
 };
 
-/** Once completed, a manager sees "Revert completion" instead of "Mark
- * completed" — mirrors the lifecycle diagram in
+/** Once completed (C-G-11: `is_completed` is an overlay on top of
+ * `approved`, not a separate status), a manager sees "Revert completion"
+ * instead of "Mark completed", plus a distinct "Completed" badge alongside
+ * the (still-"Approved") status badge — mirrors the lifecycle diagram in
  * help/02-requirement-lifecycle.md. */
 export const CompletedRequirementShowsRevert: Story = {
   beforeEach: () => {
-    mockRequirementDetailApis(["project_administrator"], { status: "completed" });
+    mockRequirementDetailApis(["project_administrator"], {
+      status: "approved", is_completed: true, completed_at: "2026-02-01T09:00:00Z", completed_by: "user-1",
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Revert completion" })).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Mark completed" })).not.toBeInTheDocument();
+    await expect(canvas.getByText("Status: Approved")).toBeInTheDocument();
+    await expect(canvas.getByText("Completed")).toBeInTheDocument();
   },
 };
 

@@ -23,7 +23,7 @@ from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.notification import NotificationType
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.project_status import ProjectStatusDefinition
@@ -53,6 +53,8 @@ from app.schemas.org import (
     OrgLoginInfoOut,
     OrgMergePreviewResult,
     OrgMergeResult,
+    OrgPendingInviteCreate,
+    OrgPendingInviteOut,
     OrgProjectSummaryOut,
     OrgRoleAssign,
     OrgSsoConfigOut,
@@ -74,7 +76,7 @@ from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.schemas.report import OrgReportDefaults
 from app.security import generate_scim_token, hash_password
-from app.services import engagement
+from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.definitions import (
     delete_definition_with_reassignment,
@@ -631,6 +633,159 @@ def list_org_users(
     return results
 
 
+def _org_pending_invite_out(invite: PendingInvite, db: Session) -> OrgPendingInviteOut:
+    """Shared status computation for the two endpoints below — mirrors
+    `routers/projects.py::_pending_invite_out` (status derived from
+    `expires_at` at read time, not stored), plus resolving `invited_by` to
+    a display name: the org-level Users table shows who sent each invite,
+    unlike the project-level table which doesn't surface that column
+    today."""
+    inviter = db.get(User, invite.invited_by)
+    return OrgPendingInviteOut(
+        id=invite.id,
+        email=invite.email,
+        status="pending" if invite.expires_at > datetime.now(UTC) else "expired",
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+        invited_by_display_name=inviter.display_name if inviter is not None else "?",
+    )
+
+
+def _get_org_only_pending_invite(db: Session, organization_id: UUID, invite_id: UUID) -> PendingInvite:
+    """Loads a `PendingInvite` and 404s unless it's an org-only invite
+    (`project_id IS NULL`) belonging to `organization_id` — mirrors
+    `routers/projects.py::_get_pending_invite_in_project`'s cross-boundary
+    guard. Without this, an org admin could pass a *project-scoped*
+    invite's id (or one belonging to a different organisation) and resend
+    it via this org-level endpoint, rotating its token and re-sending its
+    email outside the project-level gate that actually owns it."""
+    invite = db.get(PendingInvite, invite_id)
+    if invite is None or invite.organization_id != organization_id or invite.project_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite not found.")
+    return invite
+
+
+@router.get("/{organization_id}/pending-invites", response_model=list[OrgPendingInviteOut])
+def list_org_pending_invites(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists this organisation's outstanding (unaccepted) org-only
+    `PendingInvite`s, most recent first — `project_id IS NULL` only.
+    Project-scoped invites (created via a project's by-email add-user flow)
+    stay owned by `routers/projects.py::list_pending_project_invites` and
+    are never double-listed here (Phase A, follow-up UX batch;
+    docs/decisions.md).
+
+    `require_org_role(ORG_ADMIN)` — deliberately **no** server-admin
+    bypass. This previously reused `require_org_admin_or_server_admin`
+    (`create_org_user`'s dependency), which is documented in that
+    dependency's own docstring and in I-M-05's hardening-pass entry
+    (docs/decisions.md) as a single, narrow carve-out for bootstrapping the
+    *first* user of a brand-new org. Listing/creating/resending invites has
+    no such bootstrap need — the org already has an admin by the time
+    these are reachable — so letting an org-uninvolved server admin read
+    invitee PII and seed new members into an arbitrary organisation was a
+    real regression against I-M-05's "does not give access to data within
+    organisations" invariant, not a legitimate extension of it. Fixed as
+    part of a hardening pass (see decisions.md's I-M-05 entry addendum).
+    """
+    invites_list = db.scalars(
+        select(PendingInvite)
+        .where(
+            PendingInvite.organization_id == organization_id,
+            PendingInvite.project_id.is_(None),
+            PendingInvite.accepted_at.is_(None),
+        )
+        .order_by(PendingInvite.created_at.desc())
+    ).all()
+    return [_org_pending_invite_out(invite, db) for invite in invites_list]
+
+
+@router.post(
+    "/{organization_id}/pending-invites", response_model=OrgPendingInviteOut, status_code=status.HTTP_201_CREATED
+)
+def create_org_pending_invite(
+    organization_id: UUID,
+    payload: OrgPendingInviteCreate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Invites a new user into the organisation by email — the org-level
+    "Invite user" action (Phase A, follow-up UX batch), distinct from
+    `create_org_user`'s "New user" (an immediate password-based account).
+    The invitee sets their own display name/password at signup via the
+    emailed link and is granted `OrgRole.MEMBER` on redemption
+    (`services.invites.consume_pending_invites`); an admin can promote them
+    afterward via the existing role-grant control, same as any other user.
+
+    Thin wrapper over `services.invites.create_pending_invite` with
+    `project=None`/`project_role=None` (an org-only invite).
+
+    `org.sso_only` is rejected with 400, mirroring `create_org_user`'s own
+    guard for the same reason: there is no working native-signup path to
+    redeem a token against for an `sso_only` org (native login is blocked
+    outright once every one of a user's orgs requires SSO). Unlike
+    `assign_project_role_by_email`'s sso_only branch — which provisions a
+    project role immediately via `provision_sso_invite` because it already
+    knows which project/role to grant — a bare org-only "invite" has no
+    such target to provision ahead of a real SSO login, so a straight
+    reject (matching `create_org_user`'s existing message shape) is the
+    correct scope here rather than introducing a second, invite-shaped
+    response type for an immediate-provision outcome. An org admin who
+    needs to pre-add a specific person to an `sso_only` org can still do so
+    once that person's IdP group/role claim is configured to match on
+    first SSO login.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    if org.sso_only:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This organisation is SSO-only; email invites are not used — access is provisioned at SSO login.",
+        )
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
+    invite = invites.create_pending_invite(
+        db, email=email, organization=org, project=None, project_role=None, invited_by=current_user.id,
+    )
+    log_event(
+        db, entity_type="pending_invite", entity_id=invite.id, action="invited",
+        actor_id=current_user.id, organization_id=organization_id, detail={"email": email},
+    )
+    db.commit()
+    return _org_pending_invite_out(invite, db)
+
+
+@router.post("/{organization_id}/pending-invites/{invite_id}/resend", response_model=OrgPendingInviteOut)
+def resend_org_pending_invite(
+    organization_id: UUID, invite_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Rotates the invite's token/`expires_at` and re-sends the signup-link
+    email — the org-level counterpart to
+    `routers/projects.py::resend_pending_project_invite`, same behavior
+    (works whether the invite is still pending or already expired; only an
+    already-*accepted* invite is rejected, since there's nothing left to
+    resend once someone's redeemed it).
+    """
+    invite = _get_org_only_pending_invite(db, organization_id, invite_id)
+    if invite.accepted_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This invite has already been accepted.")
+    org = db.get(Organization, organization_id)
+    invites.resend_pending_invite(db, invite, organization=org, project=None)
+    log_event(
+        db, entity_type="pending_invite", entity_id=invite.id, action="invite_resent",
+        actor_id=current_user.id, organization_id=organization_id, detail={"email": invite.email},
+    )
+    db.commit()
+    return _org_pending_invite_out(invite, db)
+
+
 @router.get("/{organization_id}/users/{user_id}/access", response_model=UserAccessOut)
 def get_user_access(
     organization_id: UUID,
@@ -1070,6 +1225,138 @@ def leave_organization(
     db.commit()
 
 
+@router.delete("/{organization_id}/users/{user_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
+def remove_org_user(
+    organization_id: UUID,
+    user_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Admin-initiated counterpart to `leave_organization` above (PR6 of the
+    members/groups directory rework plan, docs/decisions.md — `OrgAdminPage
+    .tsx`'s Users table Actions column, "Remove from {org}"): an org admin
+    removes *another* user's membership in `organization_id`, rather than
+    the user removing their own. No prior admin-initiated removal endpoint
+    existed (`deactivate_org_user` below sets `is_active=False` on the
+    whole account, a cross-org lockout, not a per-org membership removal;
+    `archive_org_user` only hides an already-deactivated user from lists) —
+    this fills that specific gap: removing this org's `UserOrgRole` row(s)
+    without touching the account's standing in any other organisation.
+
+    Treated as access-mutating (identify -> verify -> remediate review,
+    docs/decisions.md), so it is deliberately built as a close mirror of
+    `leave_organization`'s own already-reviewed cleanup and guards, not a
+    bare `UserOrgRole` delete:
+
+    - **Self-targeting is blocked** (400) — same reasoning as
+      `deactivate_org_user`/`revoke_org_role`: an admin removing *their
+      own* org membership has its own, already-correct path
+      (`leave_organization`, which additionally lets a departing admin
+      reassign responsibilities before leaving) — this endpoint isn't a
+      second, less-guarded way to reach that same end state.
+    - **No separate last-admin count check** — same "by construction"
+      reasoning `revoke_org_role` already documents for itself, not
+      `leave_organization`'s reachable one: this endpoint requires the
+      *caller* to already hold `ORG_ADMIN` on `organization_id`
+      (`require_org_role` below), and self-targeting is blocked above, so
+      the caller is necessarily a *second*, distinct `ORG_ADMIN` still
+      present after `user_id`'s membership is removed — an organisation
+      can never reach zero admins through this endpoint, for any `user_id`
+      it's ever legal to call it with. (`leave_organization`'s own count
+      check is reachable precisely because there caller and target are the
+      *same* person — the case blocked here.)
+    - **Sole-project-manager guard**: refuses (409) if `user_id` is the
+      sole real manager of any project in this org — same check
+      `leave_organization` already applies to the leaving user, applied
+      here to the user being removed, so an admin can't accidentally
+      orphan a project of managers by removing someone through this
+      endpoint that `leave_organization` would have refused to let them
+      remove themselves as.
+    - **Cleanup**: every direct `UserProjectRole` and `ProjectGroupMember`
+      row for `user_id` across this org's projects, every `OrgGroupMember`
+      row for this org's groups, and subscriptions/favorites for this org's
+      projects — same shape `leave_organization` already performs for the
+      caller, applied here to `user_id`. This org's own `UserOrgRole` rows
+      are deleted last, after every dependent cleanup succeeds.
+    - Row-locks the organisation before the last-admin guard, and each
+      project in turn before that project's own sole-manager check
+      (`lock_organization_for_update`/`lock_project_for_update`) — same
+      ordering, and the same concurrent-removal race, `leave_organization`'s
+      own docstring describes.
+
+    A no-op (still 204) if `user_id` is not currently a member of
+    `organization_id` at all — removing a non-member has nothing to do,
+    matching `leave_organization`'s own "not a member" 404 being the only
+    case that actually errors instead (kept as a 404 here too, for the same
+    "you can't remove someone who isn't there" reason).
+    """
+    from app.models.enums import ProjectRole  # local import matching leave_organization's own convention
+    from app.services.rbac import lock_organization_for_update, lock_project_for_update
+
+    if user_id == current_user.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Use the leave-organisation action to remove your own membership."
+        )
+
+    lock_organization_for_update(db, organization_id)
+
+    roles = get_effective_org_roles(db, user_id, organization_id)
+    if not roles:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
+
+    projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
+    blocking_projects = []
+    for p in projects:
+        lock_project_for_update(db, p.id)
+        concrete_managers = get_effective_project_managers(db, p.id)
+        i_am_manager = user_id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
+            db, user_id, p.id
+        )
+        if i_am_manager and not (concrete_managers - {user_id}):
+            blocking_projects.append(p.name)
+    if blocking_projects:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This user is the sole manager of: " + ", ".join(blocking_projects) + ". Assign another manager first.",
+        )
+
+    project_ids = [p.id for p in projects]
+    if project_ids:
+        db.execute(
+            UserProjectRole.__table__.delete().where(
+                UserProjectRole.user_id == user_id, UserProjectRole.project_id.in_(project_ids)
+            )
+        )
+        db.execute(
+            ProjectGroupMember.__table__.delete().where(
+                ProjectGroupMember.user_id == user_id,
+                ProjectGroupMember.project_group_id.in_(
+                    select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
+                ),
+            )
+        )
+    db.execute(
+        OrgGroupMember.__table__.delete().where(
+            OrgGroupMember.user_id == user_id,
+            OrgGroupMember.org_group_id.in_(
+                select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
+            ),
+        )
+    )
+    engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, project_ids)
+
+    db.execute(
+        UserOrgRole.__table__.delete().where(
+            UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id
+        )
+    )
+    log_event(
+        db, entity_type="user_org_role", entity_id=user_id, action="removed_from_organization",
+        actor_id=current_user.id, organization_id=organization_id,
+    )
+    db.commit()
+
+
 @router.post("/{organization_id}/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_org_user(
     organization_id: UUID,
@@ -1255,6 +1542,7 @@ def list_org_groups(
     organization_id: UUID,
     response: Response,
     search: str | None = None,
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
@@ -1271,6 +1559,15 @@ def list_org_groups(
     unchanged), and when given, the pre-slice total is returned via
     `X-Total-Count`.
 
+    `order` (Phase B, follow-up UX batch, 2026-08-31 — `DirectoryTable`'s
+    Name column is this list's only sortable column, so there's no
+    separate `sort` param to pick a field the way `list_org_users` has;
+    only which direction to apply to the existing name order) defaults to
+    `asc` (unchanged pre-existing behaviour) — style guide "Pattern:
+    sortable column header"'s "already pages via limit/offset -> backend
+    sort/order params" branch, since a client-side sort of only the
+    currently-loaded page would misrepresent the true full-list order.
+
     `granted_org_role` (item 522) is masked to `None` for a non-admin
     caller — this endpoint is deliberately open to any org member (a
     `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
@@ -1285,7 +1582,8 @@ def list_org_groups(
     query = select(OrgGroup).where(OrgGroup.organization_id == organization_id)
     if search:
         query = query.where(OrgGroup.name.ilike(f"%{search}%"))
-    groups = db.scalars(query.order_by(OrgGroup.name)).all()
+    name_order = OrgGroup.name.desc() if order == "desc" else OrgGroup.name
+    groups = db.scalars(query.order_by(name_order)).all()
 
     response.headers["X-Total-Count"] = str(len(groups))
     if limit is not None:

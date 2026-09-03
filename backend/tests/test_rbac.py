@@ -1,11 +1,17 @@
 """Tests for role-based access control boundaries (C-U-01, C-U-03)."""
 
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models.audit import AuditEvent
+from app.models.organization import UserOrgRole
 from tests.conftest import (
     auth_headers,
     create_component_and_category,
     create_org_admin_in,
     create_org_user,
     create_project,
+    direct_project_roles,
     login,
 )
 
@@ -33,7 +39,10 @@ def test_project_creator_can_create_project(client, admin_token, org_id):
 
 
 def test_project_creator_becomes_project_manager(client, admin_token, org_id):
-    """The project creator is added to the Project Managers group (C-U-10)."""
+    """The project creator is granted a direct PROJECT_MANAGER role (C-U-10)
+    — no group is created at all (follow-up UX batch Phase C, 2026-08-31,
+    docs/decisions.md: the four auto-created "standard" project groups were
+    removed; a fresh project's initial manager grant is now always direct)."""
     create_org_user(client, admin_token, org_id, "creator2@example.com", role="project_creator")
     token = login(client, "creator2@example.com", "Password123!")
     project = client.post(
@@ -42,9 +51,10 @@ def test_project_creator_becomes_project_manager(client, admin_token, org_id):
     ).json()
 
     groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(token)).json()
-    manager_group = next(g for g in groups if g["role"] == "project_manager")
+    assert groups == []
+
     me = client.get("/api/v1/auth/me", headers=auth_headers(token)).json()
-    assert me["id"] in manager_group["member_user_ids"]
+    assert direct_project_roles(project["id"]).get(me["id"]) == {"project_manager"}
 
 
 def test_member_cannot_create_requirement(client, admin_token, org_id):
@@ -105,8 +115,13 @@ def test_org_admin_can_manage_group_membership_on_a_project_with_no_role(client,
     project = create_project(client, creator_token, org["id"], "Group Manage Project")
     target_id = create_org_user(client, admin_token, org["id"], "reach_target@example.com", role="member")
 
-    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(org_admin_token)).json()
-    member_group = next(g for g in groups if g["role"] == "member")
+    # No group is auto-created on project creation any more (follow-up UX
+    # batch Phase C, 2026-08-31) — create the member-role group this test
+    # needs explicitly.
+    member_group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Members"},
+        headers=auth_headers(creator_token),
+    ).json()
 
     add_resp = client.post(
         f"/api/v1/projects/{project['id']}/groups/{member_group['id']}/members",
@@ -173,9 +188,14 @@ def test_org_group_nested_in_project_group_grants_effective_role(client, admin_t
     )
 
     project_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Stakeholders Team", "role": "stakeholder"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Stakeholders Team"},
         headers=auth_headers(admin_token),
     ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/roles", json={"role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     nested = client.post(
         f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
         json={"org_group_id": org_group["id"]}, headers=auth_headers(admin_token),
@@ -260,6 +280,131 @@ def test_sole_org_admin_cannot_leave(client, admin_token):
     assert second_admin_id  # sanity: the second admin was actually created
 
 
+def test_org_admin_can_remove_another_user_from_org(client, admin_token, org_id):
+    """`DELETE /{organization_id}/users/{user_id}/membership` (PR6 of the
+    members/groups directory rework plan, docs/decisions.md) — the admin-
+    initiated counterpart to `leave_organization`, exercised on someone
+    *other* than the caller. Access is fully gone afterwards, and the
+    removal is audit logged."""
+    project = create_project(client, admin_token, org_id, "Remove User Project")
+    user_id = create_org_user(client, admin_token, org_id, "removable_user@example.com", role="member")
+    assert client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).status_code == 204
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/users/{user_id}/membership", headers=auth_headers(admin_token))
+    assert resp.status_code == 204, resp.text
+
+    token = login(client, "removable_user@example.com", "Password123!")
+    assert client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(token)).status_code == 403
+    orgs = client.get("/api/v1/orgs", headers=auth_headers(token)).json()
+    assert org_id not in [o["id"] for o in orgs]
+
+    db = SessionLocal()
+    try:
+        remaining = db.scalars(
+            select(UserOrgRole).where(UserOrgRole.user_id == user_id, UserOrgRole.organization_id == org_id)
+        ).all()
+        event = db.scalar(
+            select(AuditEvent).where(
+                AuditEvent.entity_id == user_id, AuditEvent.action == "removed_from_organization",
+                AuditEvent.organization_id == org_id,
+            )
+        )
+    finally:
+        db.close()
+    assert remaining == []
+    assert event is not None
+
+    # A second removal attempt has nothing left to remove.
+    resp2 = client.delete(f"/api/v1/orgs/{org_id}/users/{user_id}/membership", headers=auth_headers(admin_token))
+    assert resp2.status_code == 404
+
+
+def test_remove_org_user_blocks_self_targeting(client, admin_token):
+    """Same reasoning as `deactivate_org_user`/`revoke_org_role`'s own
+    self-targeting guards: removing your own membership has its own,
+    already-guarded path (`leave_organization`)."""
+    org, admin2_token = create_org_admin_in(client, admin_token, "Remove Self Org")
+    admin2_id = client.get("/api/v1/auth/me", headers=auth_headers(admin2_token)).json()["id"]
+
+    resp = client.delete(f"/api/v1/orgs/{org['id']}/users/{admin2_id}/membership", headers=auth_headers(admin2_token))
+    assert resp.status_code == 400
+
+
+def test_remove_org_user_cannot_zero_out_org_admins(client, admin_token):
+    """Pins the "by construction" reasoning in `remove_org_user`'s own
+    docstring, the same shape `revoke_org_role` already documents for
+    itself: the caller must already hold `ORG_ADMIN` on this org
+    (`require_org_role`), and self-targeting is blocked, so the caller is
+    necessarily a second, distinct admin who survives any removal they
+    perform on someone else — removing the org's *only other* admin must
+    succeed normally (there is no reachable state where it would leave
+    zero), and the caller's own admin role is confirmed intact afterwards."""
+    org, sole_other_admin_token = create_org_admin_in(client, admin_token, "Zero Admins Guard Org")
+    other_admin_id = client.get("/api/v1/auth/me", headers=auth_headers(sole_other_admin_token)).json()["id"]
+    co_admin_id = client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "zero_guard_co_admin@example.com", "display_name": "Co Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(sole_other_admin_token),
+    ).json()["user_id"]
+    co_admin_token = login(client, "zero_guard_co_admin@example.com", "Password123!")
+
+    resp = client.delete(
+        f"/api/v1/orgs/{org['id']}/users/{other_admin_id}/membership", headers=auth_headers(co_admin_token)
+    )
+    assert resp.status_code == 204, resp.text
+
+    # The caller's own admin role survives, untouched — they can still call
+    # an org_admin-only endpoint on this same org afterwards.
+    still_admin = client.get(f"/api/v1/orgs/{org['id']}/advanced-settings", headers=auth_headers(co_admin_token))
+    assert still_admin.status_code == 200, still_admin.text
+    assert co_admin_id  # sanity: the co-admin was actually created
+
+
+def test_remove_org_user_blocked_if_target_is_sole_project_manager(client, admin_token):
+    """Mirrors `test_sole_project_manager_cannot_leave_even_with_a_co_admin`
+    for the admin-initiated removal path — the target being removed, not
+    the caller, is the one who must not be the sole manager of any project
+    in this org."""
+    org, admin1_token = create_org_admin_in(client, admin_token, "Remove Sole PM Org")
+    admin1_id = client.get("/api/v1/auth/me", headers=auth_headers(admin1_token)).json()["id"]
+    project = create_project(client, admin1_token, org["id"], "Remove Sole PM Project")
+    # A genuine co-admin of this org (not `admin_token`, which has no
+    # membership here at all) so this is a real 409, not an unrelated 403.
+    co_admin_id = client.post(
+        f"/api/v1/orgs/{org['id']}/users",
+        json={"email": "co_admin_pm@example.com", "display_name": "Co Admin", "password": "Password123!", "role": "org_admin"},
+        headers=auth_headers(admin1_token),
+    ).json()["user_id"]
+    co_admin_token = login(client, "co_admin_pm@example.com", "Password123!")
+
+    resp = client.delete(
+        f"/api/v1/orgs/{org['id']}/users/{admin1_id}/membership", headers=auth_headers(co_admin_token)
+    )
+    assert resp.status_code == 409
+    assert project["name"] in resp.json()["detail"]
+    assert co_admin_id  # sanity: the co-admin was actually created
+
+
+def test_remove_org_user_requires_org_admin(client, admin_token, org_id):
+    create_org_user(client, admin_token, org_id, "remove_outsider@example.com", role="member")
+    outsider_token = login(client, "remove_outsider@example.com", "Password123!")
+    target_id = create_org_user(client, admin_token, org_id, "remove_target@example.com", role="member")
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/users/{target_id}/membership", headers=auth_headers(outsider_token))
+    assert resp.status_code == 403
+
+
+def test_remove_org_user_of_a_nonmember_is_404(client, admin_token, org_id):
+    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Not A Member Org")
+    outsider_id = create_org_user(client, other_admin_token, other_org["id"], "not_a_member@example.com", role="member")
+
+    resp = client.delete(f"/api/v1/orgs/{org_id}/users/{outsider_id}/membership", headers=auth_headers(admin_token))
+    assert resp.status_code == 404
+
+
 def test_org_admin_cannot_deactivate_own_account(client, admin_token):
     """Hardening-review regression: deactivating a user via this endpoint
     sets is_active=False on the whole account (locking them out of every
@@ -304,9 +449,14 @@ def test_sole_manager_via_nested_org_group_cannot_leave_and_loses_access_after(c
         json={"user_id": user_id}, headers=auth_headers(admin_token),
     )
     project_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "PM Team", "role": "project_manager"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "PM Team"},
         headers=auth_headers(admin_token),
     ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/roles", json={"role": "project_manager"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     nested = client.post(
         f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
         json={"org_group_id": org_group["id"]}, headers=auth_headers(admin_token),
@@ -349,9 +499,14 @@ def test_last_direct_manager_cannot_be_revoked_even_with_a_nested_group_backup(c
         json={"user_id": user_id}, headers=auth_headers(admin_token),
     )
     project_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Backup PM Team", "role": "project_manager"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Backup PM Team"},
         headers=auth_headers(admin_token),
     ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/roles", json={"role": "project_manager"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     client.post(
         f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
         json={"org_group_id": org_group["id"]}, headers=auth_headers(admin_token),

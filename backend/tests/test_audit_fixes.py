@@ -170,7 +170,7 @@ def test_project_group_changes_are_audit_logged(client, admin_token, org_id):
     member_id = create_org_user(client, admin_token, org_id, "group_member@example.com", role="member")
 
     group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Reviewers", "role": "stakeholder"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Reviewers"},
         headers=auth_headers(admin_token),
     ).json()
     client.post(
@@ -189,14 +189,39 @@ def test_project_group_changes_are_audit_logged(client, admin_token, org_id):
 
 def test_last_manager_guard_applies_to_group_based_removal(client, admin_token, org_id):
     """C-U-08: removing a project's only manager via group membership must
-    be blocked, the same as direct role revocation already is."""
+    be blocked, the same as direct role revocation already is.
+
+    A fresh project's creator now holds their initial manager role via a
+    direct grant, not group membership (C-U-10, follow-up UX batch Phase C,
+    2026-08-31 removed the auto-created default groups) — so this test
+    first builds a manager-role group with a *different* user as its sole
+    member, then revokes the creator's own direct grant, leaving that group
+    membership as the project's only remaining manager source, the
+    scenario this guard actually needs to cover."""
     project = create_project(client, admin_token, org_id)
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
-    groups = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token)).json()
-    manager_group = next(g for g in groups if g["role"] == "project_manager")
+    other_id = create_org_user(client, admin_token, org_id, "group-based-sole-manager@example.com", role="member")
+    group = client.post(
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers"},
+        headers=auth_headers(admin_token),
+    ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/roles", json={"role": "project_manager"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
+    added = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/members",
+        json={"user_id": other_id}, headers=auth_headers(admin_token),
+    )
+    assert added.status_code == 204, added.text
+    revoke = client.delete(
+        f"/api/v1/projects/{project['id']}/roles/{me['id']}/project_manager", headers=auth_headers(admin_token)
+    )
+    assert revoke.status_code == 204, revoke.text
 
     resp = client.delete(
-        f"/api/v1/projects/{project['id']}/groups/{manager_group['id']}/members/{me['id']}",
+        f"/api/v1/projects/{project['id']}/groups/{group['id']}/members/{other_id}",
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400

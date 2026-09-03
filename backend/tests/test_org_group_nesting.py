@@ -78,9 +78,14 @@ def test_transitive_nesting_grants_effective_project_role_through_a_chain(client
     )
 
     project_group = client.post(
-        f"/api/v1/projects/{project['id']}/groups", json={"name": "Chain Stakeholders", "role": "stakeholder"},
+        f"/api/v1/projects/{project['id']}/groups", json={"name": "Chain Stakeholders"},
         headers=auth_headers(admin_token),
     ).json()
+    grant_role = client.post(
+        f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/roles", json={"role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    )
+    assert grant_role.status_code == 204, grant_role.text
     nested = client.post(
         f"/api/v1/projects/{project['id']}/groups/{project_group['id']}/members",
         json={"org_group_id": group_a["id"]}, headers=auth_headers(admin_token),

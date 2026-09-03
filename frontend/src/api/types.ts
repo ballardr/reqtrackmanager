@@ -22,12 +22,15 @@ export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
   completed: "Implemented",
   archived: "Archived",
 };
-export type RequirementStatus = "draft" | "reviewed" | "approved" | "completed" | "archived";
+// C-G-11: completion is an overlay marker independent of lifecycle status
+// (`Requirement.is_completed`, below), not a `RequirementStatus` value —
+// see docs/decisions.md's entry on this rework. `"completed"` deliberately
+// does not appear here any more.
+export type RequirementStatus = "draft" | "reviewed" | "approved" | "archived";
 export const REQUIREMENT_STATUS_LABEL: Record<RequirementStatus, string> = {
   draft: "Draft",
   reviewed: "Reviewed",
   approved: "Approved",
-  completed: "Completed",
   archived: "Archived",
 };
 export type RequirementLevel = "requirement" | "recommended" | "optional";
@@ -81,9 +84,14 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
  * since they aren't ordered relative to each other. Otherwise `member` is
  * the floor. Deliberately NOT applied to `OrgRole` — that's a different,
  * unordered three-value enum with no defined precedence in the style
- * guide's pattern, unlike `ProjectRole`'s real four-tier structure — and
- * NOT applied to any access-audit view (e.g. Org Admin's "View access"
- * panel), which exists specifically to show the full, uncollapsed set.
+ * guide's pattern, unlike `ProjectRole`'s real four-tier structure.
+ *
+ * As of the 2026-08-30 reversal (docs/decisions.md), this IS now applied to
+ * access-audit views too — e.g. Org Admin's "View access" panel uses this
+ * as each project row's *default* display, with a per-row toggle revealing
+ * the full, uncollapsed set on demand, so audit detail stays reachable
+ * without being the default view. See `docs/ux-style-guide.md`'s "Pattern:
+ * role display" section for the current rule.
  */
 export function collapseProjectRoles(roles: ProjectRole[]): ProjectRole[] {
   if (roles.includes("project_manager")) return ["project_manager"];
@@ -152,6 +160,8 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   reordered: "reordered",
   completed: "completed",
   uncompleted: "reopened",
+  completion_cleared_by_review: "cleared completion (failed review)",
+  completion_cleared_via_change_request: "cleared completion via change request",
   granted: "granted",
   revoked: "revoked",
   member_added: "added a member",
@@ -364,6 +374,40 @@ export interface OutsideDomainUser {
  * value means. */
 export type AssignByEmailOutcome = "added" | "invited" | "sso_provisioned";
 
+/** A project's outstanding (not-yet-accepted) `PendingInvite` — see
+ * `PendingInviteOut`'s docstring in the backend schema. Standard
+ * (non-SSO) invite flow only (Phase 3, docs/decisions.md); `status` is
+ * computed server-side from `expires_at`, not stored. */
+export type PendingInviteStatus = "pending" | "expired";
+export const PENDING_INVITE_STATUS_LABEL: Record<PendingInviteStatus, string> = {
+  pending: "Pending",
+  expired: "Expired",
+};
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  role: ProjectRole;
+  status: PendingInviteStatus;
+  created_at: string;
+  expires_at: string;
+}
+
+/** An organisation's outstanding (not-yet-accepted) org-only `PendingInvite`
+ * — see `OrgPendingInviteOut`'s docstring in the backend schema. The
+ * org-level counterpart to `PendingInvite` above (Phase A, follow-up UX
+ * batch): `GET /orgs/{id}/pending-invites` only ever returns `project_id
+ * IS NULL` rows, and unlike the project-level shape this carries
+ * `invited_by_display_name` (surfaced in Org Admin's merged Users table). */
+export interface OrgPendingInvite {
+  id: string;
+  email: string;
+  status: PendingInviteStatus;
+  created_at: string;
+  expires_at: string;
+  invited_by_display_name: string;
+}
+
 export interface SystemUser {
   user_id: string;
   email: string;
@@ -483,12 +527,61 @@ export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceM
 };
 
 // Access provenance (decision 10, docs/decisions.md) — why a user has a
-// given effective role: direct (any of the four direct sources on this
-// exact project), forward-inherited (role_inheritance_mode, with
+// given effective role: one of six direct sources on this exact project
+// (split from a single collapsed "direct" kind in the follow-up UX batch's
+// Phase D, 2026-08-31, with `direct_org_group_role` added by PR4 of the
+// members/groups directory rework plan — see the backend's
+// `_direct_effective_project_roles_by_kind` docstring for the full
+// rationale), forward-inherited (role_inheritance_mode, with
 // via_project_name/via_mode naming the ancestor hop), or member-source-
-// inherited (always MEMBER; via_project_name intentionally omitted — see
-// the backend's get_effective_project_members_with_provenance docstring).
-export type MemberSourceProvenanceKind = "direct" | "forward_inherited" | "member_source_inherited";
+// inherited (via_project_name intentionally omitted for member_source —
+// see the backend's get_effective_project_members_with_provenance
+// docstring).
+//
+// `"direct_org_group_role"` (PR4) means an org group holds this role on the
+// project *directly* (its own `OrgGroupProjectRole` row) — distinct from
+// `"direct_org_group"`, which means the org group is nested inside a
+// `ProjectGroup` (C-U-12). Both are real mechanisms that coexist; only the
+// naming is easy to confuse.
+export type MemberSourceProvenanceKind =
+  | "direct_role"
+  | "direct_group"
+  | "direct_org_group"
+  | "direct_project_ref"
+  | "direct_org_wide"
+  | "direct_org_group_role"
+  | "forward_inherited"
+  | "member_source_inherited";
+
+/** True only for `"direct_role"` — the one provenance kind that's both a
+ * genuine, individually-revocable backing row (`UserProjectRole`, deleted
+ * via `DELETE /{project_id}/roles/{user_id}/{role}`) *and* scoped to a
+ * single user's own row, which is what every current caller of this
+ * function actually needs ("is it safe to let *this user's* row show a
+ * toggle-off that only ever affects this user").
+ *
+ * `"direct_org_group_role"` (PR4, `OrgGroupProjectRole`) is also a genuine,
+ * individually-revocable backing row — `DELETE /{project_id}/group-roles/
+ * {org_group_id}/{role}` deletes it outright, no silent no-op — but it is
+ * deliberately NOT included here. Same now for `"direct_group"` itself
+ * (PR7, `ProjectGroupRole`): a project group's role used to be a fixed,
+ * non-per-user field with no per-role delete endpoint at all; it's now
+ * also a genuine, individually-revocable row (`DELETE /{project_id}/
+ * groups/{group_id}/roles/{role}`), but for the identical blast-radius
+ * reason below it stays excluded from this predicate too. That row belongs
+ * to the *group's* grant,
+ * not to any one user: toggling it off from a single member's row in a
+ * per-user members table would revoke the role for every other member of
+ * that group too, which is a materially different, higher-blast-radius
+ * action than what this predicate's current callers assume "direct and
+ * revocable" means. A future group-row UI (tracked for a later PR) that
+ * wants to offer a real toggle for this kind should use its own predicate
+ * against the raw `"direct_org_group_role"` kind rather than extending this
+ * one — conflating the two would make a per-user toggle silently do
+ * group-wide damage. See docs/decisions.md's PR4 entry. */
+export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
+  return kind === "direct_role";
+}
 
 export interface MemberSourceProvenance {
   kind: MemberSourceProvenanceKind;
@@ -496,6 +589,13 @@ export interface MemberSourceProvenance {
   via_project_id: string | null;
   via_project_name: string | null;
   via_mode: ProjectRoleInheritanceMode | null;
+  /** Populated for `"direct_group"`/`"direct_org_group"`/
+   * `"direct_org_group_role"` — the `ProjectGroup` (for `direct_group`) or
+   * `OrgGroup` (for `direct_org_group`/`direct_org_group_role`) that
+   * actually granted the role, so the UI can name it instead of only
+   * saying "Via group". `null` for every other kind. */
+  via_group_id: string | null;
+  via_group_name: string | null;
 }
 
 export interface EffectiveMember {
@@ -558,6 +658,21 @@ export interface ProjectListItem extends Project {
   requirement_count: number;
   // Direct children, filtered to ones the caller can view (visibility
   // boundary — see `Project`'s note). No count of hidden ones either.
+  children: ProjectAncestor[];
+}
+
+/** The subset of `ProjectListItem`'s fields `ProjectHierarchyLabels` actually
+ * renders — `id`/`parent_project_id`/`parent_project_name`/`children`, no
+ * more. `ProjectListItem` itself already satisfies this shape structurally
+ * (`ProjectListPage`/`FavouritesPage` pass a `ProjectListItem` straight
+ * through, unchanged), and `ProjectOverviewPage` builds one of these
+ * directly from its single-`Project` GET response plus a `GET
+ * /{id}/children` call, since it has no `ProjectListItem` (list-only
+ * fields like `current_stage_name`/`my_roles`) of its own to reuse. */
+export interface ProjectHierarchySummary {
+  id: string;
+  parent_project_id: string | null;
+  parent_project_name?: string | null;
   children: ProjectAncestor[];
 }
 
@@ -625,8 +740,13 @@ export interface OrgProjectSummary {
 export interface ProjectGroup {
   id: string;
   name: string;
-  role: ProjectRole;
-  is_default: boolean;
+  /** PR7 of the members/groups directory rework plan: replaces the old
+   * single, required `role` field — a group is now created bare and may
+   * hold zero, one, or several independently-revocable roles at once,
+   * granted/revoked via `POST`/`DELETE /{project_id}/groups/{group_id}/
+   * roles`, the same "one row per role" shape `OrgGroupProjectRole` (PR4)
+   * already established for org groups. */
+  roles: ProjectRole[];
   member_user_ids: string[];
   member_org_group_ids: string[];
   /** Members defined as "the direct members of that other project" — see
@@ -671,6 +791,11 @@ export interface Requirement {
   creator_id: string;
   is_archived: boolean;
   is_locked: boolean;
+  // C-G-11 overlay marker, independent of `status` — see the note on
+  // `RequirementStatus` above.
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
   keywords: string[];
   custom_fields: Record<string, unknown>;
   created_at: string;

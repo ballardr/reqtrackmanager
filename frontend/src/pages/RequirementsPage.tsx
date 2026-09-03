@@ -40,7 +40,10 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 
 const PAGE_SIZE = 30;
 
-const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "completed", "archived"];
+// C-G-11: "completed" is no longer a `RequirementStatus` value — it's an
+// independent overlay marker (`Requirement.is_completed`), filtered via its
+// own `FilterCheckbox` below rather than a status option.
+const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "archived"];
 
 /**
  * Requirement browser (C-G-04: sorted by component/category), with search
@@ -93,6 +96,11 @@ export function RequirementsPage() {
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">(
     () => (searchParams.get("status") as RequirementStatus | "") || ""
   );
+  // C-G-11: completion is a separate overlay marker, not a status value —
+  // its own deep-linkable filter, same seed-from-URL treatment as
+  // `statusFilter`/`targetStageFilter` above (ProjectOverviewPage's
+  // "% complete" dashboard tile links here with `?completed=1`).
+  const [completedFilter, setCompletedFilter] = useState(() => searchParams.get("completed") === "1");
   const [targetStageFilter, setTargetStageFilter] = useState(() => searchParams.get("stage") || "");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
@@ -163,6 +171,7 @@ export function RequirementsPage() {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
+    if (completedFilter) params.set("is_completed", "true");
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
     if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
@@ -234,7 +243,10 @@ export function RequirementsPage() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, statusFilter, targetStageFilter, categoryFilter, hasCommentsOnly, onlyWatched, includeArchived, sort]);
+  }, [
+    projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
+    hasCommentsOnly, onlyWatched, includeArchived, sort,
+  ]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
   // (?new=1) — opened once, then the param is stripped so a later reload
@@ -262,10 +274,12 @@ export function RequirementsPage() {
   useEffect(() => {
     const status = searchParams.get("status");
     const stage = searchParams.get("stage");
-    if (!status && !stage) return;
+    const completed = searchParams.get("completed");
+    if (!status && !stage && !completed) return;
     setSearchParams((params) => {
       params.delete("status");
       params.delete("stage");
+      params.delete("completed");
       return params;
     }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1001,6 +1015,11 @@ export function RequirementsPage() {
                       <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
                         {REQUIREMENT_STATUS_LABEL[r.status]}
                       </FilterBadge>
+                      {/* C-G-11: rendered as its own badge, distinct from
+                          the status badge above (which stays "Approved"
+                          for a completed requirement) — completion is now
+                          an independent overlay, not a merged status. */}
+                      {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
                       {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                       {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
                     </div>
@@ -1071,6 +1090,7 @@ export function RequirementsPage() {
                           <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
                             {REQUIREMENT_STATUS_LABEL[r.status]}
                           </FilterBadge>
+                          {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
                           {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
                           {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
                           {badges(r)}
@@ -1145,6 +1165,10 @@ export function RequirementsPage() {
               ))}
             </select>
           </FilterField>
+          {/* C-G-11: completion is now an independent overlay marker, not a
+              status value — a separate checkbox alongside the Status
+              <select> above rather than one of its options. */}
+          <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
           <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
           <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
           <FilterCheckbox label={strings.requirements.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />

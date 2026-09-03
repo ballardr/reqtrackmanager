@@ -610,6 +610,23 @@ th:has(> .th-sort) {
   color: var(--color-primary);
 }
 
+/* `DirectoryTable`'s row-opening first-column control — a real <button>
+   (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
+   directory row that opens a side panel and one that navigates to a URL
+   read the same, matching this app's default `a { color: var(--color-
+   primary) }` link look rather than an inset button control. */
+.directory-table-row-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* Below 860px there isn't room for a full-width nav rail, a content
    column, and a 240px filter/activity sidebar side by side (confirmed:
    the page overflows past the viewport at 600px without this) — force the
@@ -664,6 +681,15 @@ th:has(> .th-sort) {
      view): 44px of overflow with `1fr`, 0px with `minmax(0, 1fr)`. */
   .side-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* On mobile the filter panel is always the second DOM child of
+     .side-grid (list/detail content first, filters second), so users had
+     to scroll past the entire list to reach it. Reorder it first in the
+     single-column mobile layout only — desktop's two-column grid position
+     is untouched since this rule lives inside the mobile-only breakpoint
+     above. */
+  .side-grid > .filter-panel {
+    order: -1;
   }
   .resource-menu {
     flex-direction: column;

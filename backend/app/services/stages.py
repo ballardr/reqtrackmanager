@@ -94,23 +94,23 @@ def complete_stage(db: Session, project: Project, stage: ProjectStage, actor: Us
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="completed", actor_id=actor.id, project_id=project.id)
 
     if cascade_to_requirements:
-        from app.services.requirements import apply_new_version, get_current_version
-
         targeting = db.scalars(
             select(Requirement)
             .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
             .where(
                 Requirement.project_id == project.id,
                 Requirement.is_archived.is_(False),
+                Requirement.is_completed.is_(False),
                 RequirementVersion.valid_to.is_(None),
                 RequirementVersion.target_stage_id == stage.id,
                 RequirementVersion.status == RequirementStatus.APPROVED,
             )
         ).all()
+        # Sets the completion overlay directly (C-G-11), same as
+        # `routers.requirements.complete_requirement` — cascading a stage
+        # completion doesn't change any requirement's content, so this must
+        # not create a new `RequirementVersion` for each one either.
         for requirement in targeting:
-            current = get_current_version(db, requirement.id)
-            apply_new_version(
-                db, requirement, current, actor,
-                status_value=RequirementStatus.COMPLETED,
-                change_note=f"Marked completed as part of {stage.name} completion.",
-            )
+            requirement.is_completed = True
+            requirement.completed_at = now
+            requirement.completed_by = actor.id

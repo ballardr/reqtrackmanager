@@ -13,10 +13,27 @@
 #     running on the same machine, since Compose scopes volumes and networks
 #     per project.
 #
+# `backend`'s DATABASE_URL below points this container's own long-running app
+# process (the dev/demo stack this stack is also used to manually run, and
+# the backend Playwright targets) at `reqtrack_test` on the `db` service.
+# `docker compose exec backend pytest -q` does NOT run against that same
+# `reqtrack_test` database, even though it execs into this same container:
+# `backend/tests/conftest.py` unconditionally rewrites DATABASE_URL's
+# database name to a second, pytest-only database (`reqtrack_pytest_test`,
+# created automatically on the same `db` server/container the first time
+# it's needed) before any test runs. This is deliberate — pytest's fixtures
+# drop/recreate the whole schema every session and truncate every table
+# after every test, which is safe for its own dedicated database but would
+# otherwise repeatedly destroy manually-seeded demo/dev data in
+# `reqtrack_test` every time `pytest` ran (see docs/decisions.md's entry on
+# this, and `backend/tests/conftest.py`'s own module docstring for the full
+# incident this fixes). `reqtrack_test` itself is left exclusively to this
+# container's own app process and to Playwright.
+#
 # Usage:
 #   cd tests/container && docker compose up --build -d
-#   docker compose exec backend pytest -q
-#   cd ../../tests/playwright && npx playwright test
+#   docker compose exec backend pytest -q   # runs against reqtrack_pytest_test, NOT reqtrack_test
+#   cd ../../tests/playwright && npx playwright test   # targets reqtrack_test via the backend service above
 services:
   db:
     image: postgres:16-alpine

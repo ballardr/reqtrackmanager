@@ -110,13 +110,30 @@ def add_member_source(
     r.raise_for_status()
 
 
-def get_project_group_id(headers: dict, project_id: str, group_name: str) -> str:
-    """Looks up a project group's id by its exact name — used to reach one
-    of the four default groups every project seeds (`DEFAULT_GROUPS` in
-    `routers/projects.py`) without hardcoding an id."""
-    r = httpx.get(f"{BASE}/projects/{project_id}/groups", headers=headers, timeout=30)
+def create_project_group(headers: dict, project_id: str, name: str, role: str) -> dict:
+    """Creates a project group explicitly, then grants it `role`. Projects
+    no longer auto-create any groups on creation (follow-up UX batch Phase
+    C, 2026-08-31 removed the four "standard" default groups — see
+    docs/decisions.md), so any group this script wants to demonstrate (e.g.
+    a cross-project source reference below) has to be created as its own
+    explicit step now, rather than reached by name via a pre-existing
+    default.
+
+    A group is created bare, with zero roles, and a role is a separate
+    grant since PR7 of the members/groups directory rework plan (docs/
+    decisions.md) — mirroring how `create_org_group` already creates an org
+    group bare. This helper still takes a single `role` (every group this
+    demo dataset seeds only ever needs one) and grants it via the new
+    per-group-role endpoint right after creation."""
+    r = httpx.post(f"{BASE}/projects/{project_id}/groups", json={"name": name}, headers=headers, timeout=30)
     r.raise_for_status()
-    return next(g["id"] for g in r.json() if g["name"] == group_name)
+    group = r.json()
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/groups/{group['id']}/roles", json={"role": role}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    group["roles"] = [role]
+    return group
 
 
 def add_project_group_source_reference(headers: dict, project_id: str, group_id: str, source_project_id: str) -> None:
@@ -247,9 +264,15 @@ def set_requirement_status(
     return r.json()
 
 
-def complete_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
+def complete_requirement(headers: dict, project_id: str, requirement_id: str) -> dict:
+    """Marks an already-approved requirement completed (C-G-11 overlay
+    marker) — returns the updated requirement so callers can refresh their
+    local copy's `is_completed`/`completed_at`/`completed_by` rather than
+    hand-patching a stale `status` field, now that completing no longer
+    changes `status` at all."""
     r = httpx.post(f"{BASE}/projects/{project_id}/requirements/{requirement_id}/complete", headers=headers, timeout=30)
     r.raise_for_status()
+    return r.json()
 
 
 def archive_requirement(headers: dict, project_id: str, requirement_id: str) -> None:
@@ -336,9 +359,10 @@ def create_add_action_change_request(
     action_title: str, action_description: str, action_type_id: str, reason: str, assignee_id: str | None = None,
 ) -> dict:
     """An ADD_ACTION change request (2026-08 UX audit roadmap item 514) —
-    only valid once `requirement_id` is already locked (APPROVED/COMPLETED);
-    see `create_change_request`'s sibling helpers, which each already
-    require the same, for a requirement to target with this."""
+    only valid once `requirement_id` is already locked (status APPROVED,
+    completed or not — C-G-11 completion no longer changes `status`); see
+    `create_change_request`'s sibling helpers, which each already require
+    the same, for a requirement to target with this."""
     body = {
         "kind": "add_action", "requirement_id": requirement_id, "reason": reason,
         "proposed_action_title": action_title, "proposed_action_description": action_description,
@@ -612,9 +636,12 @@ def seed_project(
                 reviewer_id = demo_admin_id
             target_status = "completed" if status_value == "complete" else status_value
             if target_status == "completed":
+                # C-G-11: completion is an overlay on top of "approved", not
+                # its own status — `req["status"]` correctly stays
+                # "approved" after this; `req["is_completed"]` is what now
+                # reflects the demo intent.
                 req = set_requirement_status(headers, project["id"], req, "approved")
-                complete_requirement(headers, project["id"], req["id"])
-                req["status"] = "completed"
+                req = complete_requirement(headers, project["id"], req["id"])
             else:
                 req = set_requirement_status(headers, project["id"], req, target_status, review_date=review_date, reviewer_id=reviewer_id)
         elif "review_in_days" in extra:
@@ -723,8 +750,9 @@ def main() -> None:
 
     print("Creating and linking requirement actions on Falcon-3 (review/test tasks)...")
     drone_action_types = {t["name"]: t for t in httpx.get(f"{BASE}/projects/{drone['id']}/action-types", headers=h_pm, timeout=30).json()}
-    # `remote_id_req` is seeded directly into "complete" status (DRONE_
-    # REQUIREMENTS, above) — already locked, so adding an action to it goes
+    # `remote_id_req` is seeded directly into "complete" (DRONE_REQUIREMENTS,
+    # above) — approved and marked completed (C-G-11), so already locked
+    # (status stays APPROVED throughout), so adding an action to it goes
     # through an ADD_ACTION change request (2026-08 UX audit roadmap item
     # 514) rather than the direct create-and-link call every other action
     # below still uses on its still-draft target requirement.
@@ -757,7 +785,7 @@ def main() -> None:
 
     print("Attaching files across Falcon-3 (direct requirement attachment + action attachment)...")
     # `preflight_req`, not `remote_id_req` — `remote_id_req` is seeded
-    # directly into "complete" status (DRONE_REQUIREMENTS, above) and is
+    # directly into "complete" (DRONE_REQUIREMENTS, above) and is
     # therefore locked from the moment it's created, so a *direct*
     # requirement-file upload against it always 409s ("must be added via a
     # change request", `routers/requirements.py`) — the same lock the
@@ -869,12 +897,13 @@ def main() -> None:
     # Platform project, so demo_stakeholder's real stakeholder role on Cloud
     # also reaches Falcon-3 without a second, duplicate direct grant there.
     add_member_source(h_pm, drone["id"], cloud["id"], mirror_mode="mirror_role", mirror_filter_role="stakeholder")
-    # Project-referencing group: Solstice Cloud Platform's own default
-    # "Stakeholders" group is defined as "Falcon-3's own direct members" —
-    # the second mechanism, reached from the group side rather than the
-    # project side.
-    cloud_stakeholders_group_id = get_project_group_id(h_pm, cloud["id"], "Stakeholders")
-    add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group_id, drone["id"])
+    # Project-referencing group: Solstice Cloud Platform gets its own
+    # explicit "Stakeholders" group (no default group exists to reach by
+    # name any more — Phase C, follow-up UX batch, 2026-08-31), defined as
+    # "Falcon-3's own direct members" — the second cross-project mechanism,
+    # reached from the group side rather than the project side.
+    cloud_stakeholders_group = create_project_group(h_pm, cloud["id"], "Stakeholders", "stakeholder")
+    add_project_group_source_reference(h_pm, cloud["id"], cloud_stakeholders_group["id"], drone["id"])
 
     cloud_components = {
         "API": create_component(h_pm, cloud["id"], "API", "API"),

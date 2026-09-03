@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: `Pattern: role display` (2026-08 UX audit roadmap row
@@ -18,8 +18,10 @@ import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, select
  * changing behaviour other specs depend on (e.g. a "stakeholder can't
  * archive" assertion elsewhere). The new user, its two throwaway project
  * groups, and its org membership are all uniquely named per run and never
- * referenced by any other spec, so leaving them behind afterward (no
- * delete-project-group endpoint exists to clean them up with) is harmless.
+ * referenced by any other spec, so leaving them behind afterward is
+ * harmless (a `DELETE .../groups/{id}` exists as of Phase 5,
+ * docs/decisions.md, but this spec doesn't need it — nothing else in the
+ * suite ever looks for a project's group *count*).
  */
 test.describe("role display collapses to the effective highest tier", () => {
   test("stacked administrator+stakeholder shows both; manager alone outranks a lower tier", async ({ page }) => {
@@ -57,23 +59,40 @@ test.describe("role display collapses to the effective highest tier", () => {
         [adminGroupName, "Project administrator"],
         [stakeholderGroupName, "Stakeholder"],
       ]) {
+        // PR7 of the members/groups directory rework plan (docs/decisions.md):
+        // "New group" no longer has a role picker — a group is created
+        // bare and a role is a separate grant, made afterward via the
+        // group's own row `MultiSelectDropdown`.
         await page.getByRole("button", { name: "New group" }).click();
         const dialog = page.getByRole("dialog", { name: "New group" });
         await dialog.getByPlaceholder("e.g. Reviewers").fill(groupName);
-        await dialog.getByLabel("Role").selectOption({ label: roleLabel });
         await dialog.getByRole("button", { name: "Create" }).click();
         await expect(dialog).not.toBeVisible();
 
-        await openGroupCard(page, groupName);
-        // Scoped to this specific group's own card (its title `<strong>`,
-        // two levels up reaches the whole `CollapsibleSection` card — same
-        // pattern org-group-nesting.spec.ts uses) — once more than one of
-        // this spec's groups has a member, a page-wide `li`/`getByText`
-        // match for the same email is ambiguous across them.
-        const groupCard = page.locator("strong", { hasText: groupName }).locator("xpath=../..");
-        await groupCard.getByPlaceholder("Type a name to add, or an email to invite…").fill(email);
+        const row = page.getByRole("button", { name: new RegExp(`^${groupName}`) }).locator("xpath=ancestor::tr[1]");
+        await row.getByRole("button", { name: `${groupName}'s roles` }).click();
+        const roleGroup = page.getByRole("group", { name: `${groupName}'s roles` });
+        // `.click()`, not `.check()`: the checkbox's own accessible name
+        // flips from "Grant X to Y" to "Revoke X from Y" the moment the
+        // toggle succeeds (`ProjectMembersTable`'s pre-existing pattern,
+        // reused by PR7's group-role `MultiSelectDropdown`), so
+        // `.check()`'s built-in re-verification against that same
+        // original locator can never resolve — verify via the `row`
+        // assertion below instead, a freshly resolved locator, the same
+        // working pattern project-admin-members.spec.ts already uses.
+        await roleGroup.getByRole("checkbox", { name: `Grant ${roleLabel} to ${groupName}` }).click();
+        await expect(row).toContainText(roleLabel);
+
+        // Each group row opens a `SidePanel` (Phase 5, docs/decisions.md)
+        // — scoped to this specific group's own panel (its accessible
+        // name is "<group> details"), since once more than one of this
+        // spec's groups has a member, a page-wide `li`/`getByText` match
+        // for the same email would be ambiguous across them.
+        const groupPanel = await openProjectGroupPanel(page, groupName);
+        await groupPanel.getByPlaceholder("Type a name to add, or an email to invite…").fill(email);
         await page.getByRole("option", { name: new RegExp(email) }).click();
-        await expect(groupCard.locator("li", { hasText: email })).toBeVisible();
+        await expect(groupPanel.locator("li", { hasText: email })).toBeVisible();
+        await page.getByRole("button", { name: "Close" }).click();
       }
     });
 
@@ -109,14 +128,21 @@ test.describe("role display collapses to the effective highest tier", () => {
       await page.getByRole("button", { name: "New group" }).click();
       const dialog = page.getByRole("dialog", { name: "New group" });
       await dialog.getByPlaceholder("e.g. Reviewers").fill(managerGroupName);
-      await dialog.getByLabel("Role").selectOption({ label: "Project manager" });
       await dialog.getByRole("button", { name: "Create" }).click();
       await expect(dialog).not.toBeVisible();
-      await openGroupCard(page, managerGroupName);
-      const managerGroupCard = page.locator("strong", { hasText: managerGroupName }).locator("xpath=../..");
-      await managerGroupCard.getByPlaceholder("Type a name to add, or an email to invite…").fill(email);
+
+      const managerRow = page.getByRole("button", { name: new RegExp(`^${managerGroupName}`) }).locator("xpath=ancestor::tr[1]");
+      await managerRow.getByRole("button", { name: `${managerGroupName}'s roles` }).click();
+      // `.click()`, not `.check()` — see the identical comment above.
+      await page.getByRole("group", { name: `${managerGroupName}'s roles` })
+        .getByRole("checkbox", { name: `Grant Project manager to ${managerGroupName}` }).click();
+      await expect(managerRow).toContainText("Project manager");
+
+      const managerGroupPanel = await openProjectGroupPanel(page, managerGroupName);
+      await managerGroupPanel.getByPlaceholder("Type a name to add, or an email to invite…").fill(email);
       await page.getByRole("option", { name: new RegExp(email) }).click();
-      await expect(managerGroupCard.locator("li", { hasText: email })).toBeVisible();
+      await expect(managerGroupPanel.locator("li", { hasText: email })).toBeVisible();
+      await page.getByRole("button", { name: "Close" }).click();
 
       await page.getByRole("button", { name: "Sign out" }).click();
       await page.waitForURL(/\/login$/);
@@ -129,7 +155,13 @@ test.describe("role display collapses to the effective highest tier", () => {
       await expect(gammaCard.getByText(/Stakeholder/)).toHaveCount(0);
     });
 
-    await test.step("Org Admin's 'View access' panel deliberately keeps showing every role uncollapsed", async () => {
+    await test.step("Org Admin's 'View access' panel shows the collapsed summary by default, with every role available via its expand toggle", async () => {
+      // 2026-08-30 reversal (see docs/decisions.md and docs/ux-style-guide
+      // .md's "Pattern: role display" section): this panel used to always
+      // show every held role uncollapsed; it now defaults to the same
+      // collapsed summary compact lists use, with a per-row "Show all N
+      // roles" toggle that reveals the full set on demand — the audit
+      // detail is still reachable, just not the default view.
       await page.getByRole("button", { name: "Sign out" }).click();
       await page.waitForURL(/\/login$/);
       await loginAs(page, PERSONAS.orgAdminGamma.email);
@@ -138,16 +170,43 @@ test.describe("role display collapses to the effective highest tier", () => {
       await selectOrgAdminGroup(page, "Users");
       await ensureExpanded(page, "Organisation users");
 
+      // PR6 of the members/groups directory rework plan (docs/decisions.md)
+      // consolidated the Users table's previously-bare "View {name}'s
+      // access" button into the row's `ActionMenu` — reachable via its
+      // kebab trigger (`${display name}'s actions`), then the `menuitem`
+      // inside the `Popover` it opens (waiting for the menu itself before
+      // clicking an item, same pattern other `ActionMenu` call sites in
+      // this suite use, since the popover repositions after mount).
       const row = page.locator("tr", { hasText: email });
-      await row.getByRole("button", { name: /'s access$/ }).click();
+      const menuTriggerName = `E2E Role Collapse ${suffix}'s actions`;
+      await row.getByRole("button", { name: menuTriggerName }).click();
+      await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
+      await page.getByRole("menuitem", { name: /'s access$/ }).click();
 
       const panel = page.getByRole("dialog", { name: /'s access$/ });
-      // Every held role for Gamma-1 shown side by side — no collapsing, per
-      // the style guide's own access-audit exception to `Pattern: role
-      // display`.
+      // Collapsed by default: `project_manager` is the sole top tier, so
+      // it alone shows, hiding the lower-tier `project_administrator`/
+      // `stakeholder`/`member` roles also held on Gamma-1 — held roles
+      // total 4, not 3: `_normalize` (`backend/app/services/rbac.py`)
+      // implicitly adds `project_administrator`+`stakeholder`+`member`
+      // alongside a directly-granted `project_manager`, on top of the two
+      // directly granted via the earlier admin/stakeholder groups.
+      await expect(panel.getByText("Project manager")).toBeVisible();
+      await expect(panel.getByText("Project administrator")).toHaveCount(0);
+      await expect(panel.getByText("Stakeholder")).toHaveCount(0);
+
+      const toggle = panel.getByRole("button", { name: "Show all 4 roles" });
+      await expect(toggle).toBeVisible();
+      await toggle.click();
+
+      // Expanded: every held role now visible.
       await expect(panel.getByText("Project manager")).toBeVisible();
       await expect(panel.getByText("Project administrator")).toBeVisible();
       await expect(panel.getByText("Stakeholder")).toBeVisible();
+      // `exact: true` — a bare "Member" substring-matches the panel's own
+      // "Not a member of any organisation group." empty-state copy above.
+      await expect(panel.getByText("Member", { exact: true })).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Show fewer" })).toBeVisible();
 
       await page.keyboard.press("Escape");
       await expect(panel).not.toBeVisible();

@@ -117,3 +117,66 @@ test("change request submitter cannot approve their own request; the project man
     await expect(page.getByRole("link", { name: proposedName })).toBeVisible();
   });
 });
+
+/**
+ * C-G-11: a MODIFY_REQUIREMENT change request against a currently-completed
+ * requirement gives the deciding project manager an explicit choice — plain
+ * "Approve" (keeps completion, today's default carry-forward behaviour,
+ * pinned separately by backend pytest) or "Approve and clear completion"
+ * (this test), which sends `clear_completion: true` and drops the
+ * requirement's `is_completed` overlay so it falls back onto the
+ * due-for-review path. Creates its own throwaway requirement (approved,
+ * then completed) rather than reusing seeded/shared data, per this repo's
+ * idempotent-test convention — completing a shared requirement would leak
+ * state into any other spec/run that asserts on it.
+ */
+test("a project manager sees and can use 'Approve and clear completion' on a CR targeting a completed requirement", async ({ page }) => {
+  const reqName = `E2E Completed Target ${Date.now()}`;
+  const proposedName = `${reqName} (revised)`;
+
+  await test.step("PM creates, approves, and completes a throwaway requirement", async () => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.getByText(PROJECT_NAMES.alpha1).click();
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    await page.getByRole("button", { name: "New requirement" }).click();
+    await page.getByPlaceholder("Name", { exact: true }).fill(reqName);
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await page.getByText(reqName).click();
+
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(page.getByText("Locked (approved)")).toBeVisible();
+    await page.getByRole("button", { name: "Mark completed" }).click();
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  });
+
+  await test.step("PM submits a modify-requirement change request against it", async () => {
+    await page.getByRole("link", { name: "Make change request" }).click();
+    const dialog = page.getByRole("dialog", { name: "New change request" });
+    await expect(dialog.getByRole("combobox").first()).toContainText(reqName);
+    const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
+    await nameCheckbox.check();
+    await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
+    await page.getByPlaceholder("Reason for change").fill("Substantive rework, needs re-verifying.");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByText(proposedName)).toBeVisible();
+    await page.getByText(proposedName).click();
+    await page.getByRole("button", { name: "Submit" }).click();
+    await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
+  });
+
+  await test.step("the decision view offers both plain Approve and Approve and clear completion", async () => {
+    await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
+    const clearCompletionButton = page.getByRole("button", { name: "Approve and clear completion" });
+    await expect(clearCompletionButton).toBeVisible();
+    await clearCompletionButton.click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+  });
+
+  await test.step("the requirement reflects the change and no longer shows as completed", async () => {
+    await page.getByRole("link", { name: "Requirements", exact: true }).click();
+    await page.getByRole("link", { name: proposedName }).click();
+    await expect(page.getByText("Status: Approved")).toBeVisible();
+    await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mark completed" })).toBeVisible();
+  });
+});

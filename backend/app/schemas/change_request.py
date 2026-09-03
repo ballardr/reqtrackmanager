@@ -122,6 +122,18 @@ class ChangeRequestOut(BaseModel):
 class ChangeRequestDecision(BaseModel):
     approve: bool
     note: str = ""
+    # Explicit approver choice (C-G-11), meaningful only when `approve` is
+    # True, the change request is `MODIFY_REQUIREMENT`-kind, and the target
+    # requirement currently has `is_completed=True` — a no-op, not an error,
+    # for any other combination (e.g. a `NEW_REQUIREMENT` change request, or
+    # a target that isn't currently completed). Deliberately opt-in rather
+    # than automatic: a plain "Approve" must keep leaving `is_completed`
+    # untouched (see `routers.change_requests.decide_change_request`'s
+    # `status_value=None` comment for why that carry-forward behaviour is
+    # itself deliberate, not a gap to close here) — this field is how an
+    # approver says a particular change is substantial enough that
+    # completion needs re-verifying, distinct from every other approval.
+    clear_completion: bool = False
 
 
 class ChangeRequestTaskCreate(BaseModel):

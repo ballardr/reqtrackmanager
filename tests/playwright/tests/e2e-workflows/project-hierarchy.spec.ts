@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openGroupCard, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, loginAs, openProjectGroupPanel, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Opens a project by name from the project list, forced to tile view. A
@@ -124,13 +124,21 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("Gamma-3 (the parent) lists Gamma-4 as a member source", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma3);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      // PR5 of the members/groups directory rework plan: "Member sources"
+      // moved from the Overview tab onto the Groups tab, rendering as a
+      // type-badged row in the same table as real project groups rather
+      // than a separate `<ul>` — no more `<Link>` on the row itself (the
+      // Groups tab's row-click affordance is reserved for real groups), so
+      // this now checks for the row's cell text instead of a link role.
+      await selectProjectAdminGroup(page, "Project groups");
       await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
-      await expect(page.getByRole("link", { name: PROJECT_NAMES.gamma4, exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: PROJECT_NAMES.gamma4, exact: true })).toBeVisible();
     });
 
     await test.step("Gamma-4 (the child) has no way to manage that relationship from its own page", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma4);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
+      await selectProjectAdminGroup(page, "Project groups");
       await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
       // Gamma-3's own name is expected to appear elsewhere on this page (the
       // "Parent project" field always shows the current parent plainly to
@@ -155,9 +163,14 @@ test.describe("hierarchical (parent/child) projects", () => {
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
-      await selectProjectAdminGroup(page, "Project groups");
-      await ensureExpanded(page, "Effective members");
-      await page.getByRole("button", { name: "Show members" }).click();
+      // Effective members moved onto its own "Members" section (Phase 5,
+      // docs/decisions.md) — the old combined "Project groups" tab no
+      // longer has it. Rebuilt again in Phase D (follow-up UX batch,
+      // 2026-08-31) onto the unified `ProjectMembersTable`, which renders
+      // immediately (no lazy "Show members" button/collapsed section any
+      // more — this is now the tab's primary content, not a secondary
+      // audit view).
+      await selectProjectAdminGroup(page, "Members");
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
       await expect(
@@ -214,6 +227,33 @@ test.describe("hierarchical (parent/child) projects", () => {
     const gamma1Id = await projectIdByName(PROJECT_NAMES.gamma1);
     const gamma2Id = await projectIdByName(PROJECT_NAMES.gamma2);
 
+    // No project auto-creates any group any more (follow-up UX batch Phase
+    // C, 2026-08-31) — Gamma-1 previously had a default "Members" group
+    // this test reused for its own project-referencing-group case; that no
+    // longer exists, so this test now maintains its own dedicated, fixed-
+    // name custom group instead (created idempotently — get-or-create, not
+    // always-create — so the defensive `cleanup()` below, and a fresh run
+    // after an earlier one failed mid-test, both still find the same group
+    // rather than accumulating duplicates).
+    const sourceRefGroupName = "E2E Gamma-1 Source Ref Group";
+    async function ensureSourceRefGroup(): Promise<{ id: string; name: string }> {
+      const groups: { id: string; name: string }[] = await page
+        .request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers: authHeaders })
+        .then((r) => r.json());
+      const existing = groups.find((g) => g.name === sourceRefGroupName);
+      if (existing) return existing;
+      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // no longer accepts a role — created bare, which is fine here since
+      // this test only exercises the group's project-reference UI, never
+      // its actual granted access.
+      return page
+        .request.post(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, {
+          headers: authHeaders, data: { name: sourceRefGroupName },
+        })
+        .then((r) => r.json());
+    }
+    const sourceRefGroup = await ensureSourceRefGroup();
+
     async function cleanup(): Promise<void> {
       await page.request.delete(
         `http://localhost:8000/api/v1/projects/${gamma1Id}/member-sources/${gamma2Id}`, { headers: authHeaders },
@@ -221,7 +261,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       const groups: { id: string; name: string; member_source_project_ids: string[] }[] = await page
         .request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}/groups`, { headers: authHeaders })
         .then((r) => r.json());
-      const membersGroup = groups.find((g) => g.name === "Members");
+      const membersGroup = groups.find((g) => g.name === sourceRefGroupName);
       if (membersGroup?.member_source_project_ids.includes(gamma2Id)) {
         await page.request.delete(
           `http://localhost:8000/api/v1/projects/${gamma1Id}/groups/${membersGroup.id}/members/${gamma2Id}`,
@@ -235,21 +275,43 @@ test.describe("hierarchical (parent/child) projects", () => {
       await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
         await openProjectByName(page, PROJECT_NAMES.gamma1);
         await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        // PR5: "Member sources" moved from the Overview tab onto the Groups
+        // tab, as a type-badged row in the same table as real project
+        // groups rather than a separate `<ul>` — the row is now a `<tr>`,
+        // not a `<li>`, has no `<Link>` on its name (read-only detail; a
+        // real group row keeps the click-to-open affordance instead), and
+        // carries two `.badge` spans (Type, then mode), not one.
+        await selectProjectAdminGroup(page, "Project groups");
         await expect(page.getByRole("heading", { name: "Member sources" })).toBeVisible();
         await page.getByRole("combobox", { name: "Source project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
         await page.getByRole("combobox", { name: "Mirror mode" }).selectOption({ label: "Mirror all roles" });
         await page.getByRole("button", { name: "Add", exact: true }).click();
-        const gamma2SourceRow = page.locator("li", { hasText: PROJECT_NAMES.gamma2 });
-        await expect(gamma2SourceRow.getByRole("link", { name: PROJECT_NAMES.gamma2, exact: true })).toBeVisible();
-        await expect(gamma2SourceRow.locator(".badge")).toHaveText("Mirror all roles");
+        const gamma2SourceRow = page.locator("tr", { hasText: PROJECT_NAMES.gamma2 });
+        await expect(gamma2SourceRow.getByRole("cell", { name: PROJECT_NAMES.gamma2, exact: true })).toBeVisible();
+        await expect(gamma2SourceRow.getByText("Project", { exact: true })).toBeVisible();
+        await expect(gamma2SourceRow.getByText("Mirror all roles", { exact: true })).toBeVisible();
       });
 
-      await test.step("Gamma-1's own default 'Members' group can also define a member as 'Gamma-2's members' directly (no new group created — there is no group-delete endpoint, so this reuses an existing default group to stay cleanly reversible)", async () => {
+      await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
         await selectProjectAdminGroup(page, "Project groups");
-        await openGroupCard(page, "Members");
-        await page.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
-        await page.getByRole("button", { name: "Reference another project's members…" }).click();
-        await expect(page.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+        const panel = await openProjectGroupPanel(page, sourceRefGroup.name);
+        await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
+        await panel.getByRole("button", { name: "Reference another project's members…" }).click();
+        await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
+        // Phase 5: the referenced-project line also links to that project's
+        // own new Members page now, with a "this is live" clarifying hint.
+        await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
+        // Scoped to the hint's own `<p>` element (`viaProjectMembersHint`,
+        // strings.ts), not a bare page-wide `getByText(/Live/)` — this org
+        // (Gamma) can independently accumulate other specs' own leftover,
+        // dynamically-named fixture projects (e.g. single-org-admin.spec.ts's
+        // "Gamma E2E Live {timestamp}", never cleaned up by design), which
+        // also render as `<option>`s in this same panel's "Referenced
+        // project" combobox — a bare substring match can incidentally
+        // resolve to one of those instead of this hint text, a real
+        // strict-mode violation found running the full suite together.
+        await expect(panel.locator("p", { hasText: "Live" })).toBeVisible();
+        await page.getByRole("button", { name: "Close" }).click();
       });
     } finally {
       await test.step("clean up: remove both additions so this shared fixture is left as found", cleanup);

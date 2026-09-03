@@ -24,7 +24,7 @@ organisation-resource files outside this project bundle's own file
 enumeration (`RequirementFile`/`CommentFile` attachments only) and is
 always imported as empty — re-attaching those is a manual follow-up.
 `ProjectGroupMember` rows are never recreated on import at all — only the
-group *structure* (name/role) is. Blindly re-granting membership by email
+group *structure* (name/roles) is. Blindly re-granting membership by email
 match would let an account with no prior relationship to the target
 organisation gain project access purely because its email happens to
 match, which is a privilege-escalation risk, not a convenience worth the
@@ -75,6 +75,7 @@ from app.models.project import (
     ProjectComponent,
     ProjectGroup,
     ProjectGroupMember,
+    ProjectGroupRole,
     ProjectStage,
     UserProjectRole,
 )
@@ -281,6 +282,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         user_ids.add(r.creator_id)
         if r.archived_by:
             user_ids.add(r.archived_by)
+        if r.completed_by:
+            user_ids.add(r.completed_by)
     for link in links:
         user_ids.add(link.created_by)
     for cr in change_requests:
@@ -350,6 +353,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "unique_code": r.unique_code, "component_prefix": component_prefix_by_id.get(r.component_id),
             "category_prefix": category_prefix, "creator_email": email(r.creator_id),
             "is_archived": r.is_archived, "archived_at": _j(r.archived_at), "archived_by_email": email(r.archived_by),
+            # C-G-11 overlay marker (`models.requirement.Requirement.is_completed`),
+            # round-tripped the same way as the sibling archive overlay above.
+            "is_completed": r.is_completed, "completed_at": _j(r.completed_at), "completed_by_email": email(r.completed_by),
             "versions": [serialize_requirement_version(v) for v in versions_by_req.get(r.id, [])],
             "keywords": keywords_by_req.get(r.id, []), "attachments": attachments_by_req.get(r.id, []),
         })
@@ -433,8 +439,11 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     groups_json = []
     for group in groups:
         members = db.scalars(select(ProjectGroupMember).where(ProjectGroupMember.project_group_id == group.id)).all()
+        group_roles = db.scalars(
+            select(ProjectGroupRole.role).where(ProjectGroupRole.project_group_id == group.id)
+        ).all()
         groups_json.append({
-            "name": group.name, "role": group.role.value, "is_default": group.is_default,
+            "name": group.name, "roles": [r.value for r in group_roles],
             "member_emails": [email(m.user_id) for m in members if m.user_id and email(m.user_id)],
         })
 
@@ -666,7 +675,25 @@ def apply_project_data(
     # project manager regardless (see the `get_effective_project_managers` fallback
     # below), matching the same guarantee `create_project` gives its caller.
     for g in data.get("groups", []):
-        db.add(ProjectGroup(project_id=project.id, name=g["name"], role=ProjectRole(g["role"]), is_default=g.get("is_default", False)))
+        # A bundle exported before Phase C (follow-up UX batch, 2026-08-31)
+        # may still carry an `"is_default"` key from the old format —
+        # ignored on import, same as any other retired field: `is_default`
+        # no longer exists on `ProjectGroup` at all, and re-creating a
+        # group from a bundle is always an ordinary, fully-manageable group
+        # regardless of what it originally was.
+        #
+        # `"roles"` (PR7, docs/decisions.md) replaced the old single
+        # required `"role"` key with a list — a group may now hold zero,
+        # one, or several roles. A bundle exported before PR7 still carries
+        # the old singular `"role"` key instead; read either shape so an
+        # older export can still be imported without losing its group's
+        # role, without needing to re-export it first.
+        new_group = ProjectGroup(project_id=project.id, name=g["name"])
+        db.add(new_group)
+        db.flush()
+        roles = g["roles"] if "roles" in g else ([g["role"]] if "role" in g else [])
+        for role_value in roles:
+            db.add(ProjectGroupRole(project_group_id=new_group.id, role=ProjectRole(role_value)))
 
     def import_file_ref(att: dict, uploaded_by_email_key: str) -> FileAsset | None:
         data_bytes = file_bytes_by_ref.get(att["file_ref"])
@@ -692,6 +719,8 @@ def apply_project_data(
             creator_id=users.resolve(r.get("creator_email"), required=True, context=f"Requirement {r['unique_code']} creator"),
             is_archived=r.get("is_archived", False), archived_at=_dt(r.get("archived_at")),
             archived_by=users.resolve(r.get("archived_by_email"), required=False, context=f"Requirement {r['unique_code']} archiver"),
+            is_completed=r.get("is_completed", False), completed_at=_dt(r.get("completed_at")),
+            completed_by=users.resolve(r.get("completed_by_email"), required=False, context=f"Requirement {r['unique_code']} completer"),
         )
         db.add(requirement)
         db.flush()

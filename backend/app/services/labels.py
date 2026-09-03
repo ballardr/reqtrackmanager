@@ -17,7 +17,6 @@ REQUIREMENT_STATUS_LABEL: dict[str, str] = {
     "draft": "Draft",
     "reviewed": "Reviewed",
     "approved": "Approved",
-    "completed": "Completed",
     "archived": "Archived",
 }
 

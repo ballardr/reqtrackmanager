@@ -83,6 +83,26 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await settled();
     });
 
+    await test.step("completed filter narrows the list independently of status (C-G-11)", async () => {
+      // "Completed" is no longer a status <select> option (it's the
+      // separate `Requirement.is_completed` overlay) — a dedicated filter
+      // checkbox alongside Status instead.
+      const statusOptionLabels = await page.getByLabel("Status").locator("option").allTextContents();
+      expect(statusOptionLabels).not.toContain("Completed");
+
+      // exact: true — getByLabel does substring matching by default, and a
+      // throwaway requirement left behind by change-request-approval-separation.spec.ts
+      // is literally named "E2E Completed Target ... (revised)"; its
+      // bulk-select row checkbox's accessible name contains that name, which
+      // otherwise collides with this filter checkbox's "Completed" label
+      // under strict mode whenever that spec has already run in the shared DB.
+      const completedFilterCheckbox = page.getByLabel("Completed", { exact: true });
+      await completedFilterCheckbox.check();
+      await expect(page.getByText(draftReqName)).toHaveCount(0);
+      await completedFilterCheckbox.uncheck();
+      await settled();
+    });
+
     await test.step("category filter narrows the list", async () => {
       const categorySelect = page.getByLabel("Category");
       const options = await categorySelect.locator("option").allTextContents();

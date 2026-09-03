@@ -215,7 +215,9 @@ export function ReportsPage() {
             <option value="draft">{REQUIREMENT_STATUS_LABEL.draft}</option>
             <option value="reviewed">{REQUIREMENT_STATUS_LABEL.reviewed}</option>
             <option value="approved">{REQUIREMENT_STATUS_LABEL.approved}</option>
-            <option value="completed">{REQUIREMENT_STATUS_LABEL.completed}</option>
+            {/* C-G-11: "completed" is no longer a `RequirementStatus` value
+                — it's the independent `Requirement.is_completed` overlay,
+                which this report filter doesn't cover. */}
             <option value="archived">{REQUIREMENT_STATUS_LABEL.archived}</option>
           </select>
           <input className="input" placeholder={strings.reports.keywordFilter} value={keyword} onChange={(e) => setKeyword(e.target.value)} />

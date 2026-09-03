@@ -8,6 +8,7 @@ organisation groups (C-U-01, C-U-04, C-U-05, C-U-08).
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -208,6 +209,37 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
+
+
+class OrgPendingInviteCreate(BaseModel):
+    """Creates an org-only invite (Phase A, follow-up UX batch —
+    docs/decisions.md): a `PendingInvite` with no `project_id`/
+    `project_role`, granting only organisation membership on redemption.
+    See `routers/orgs.py::create_org_pending_invite`."""
+
+    email: EmailStr
+
+
+class OrgPendingInviteOut(BaseModel):
+    """An organisation's outstanding (not-yet-accepted) org-only
+    `PendingInvite` — the org-level counterpart to `schemas.project.
+    PendingInviteOut`, listed separately since `GET .../pending-invites`
+    here only ever returns `project_id IS NULL` rows (project-scoped
+    invites stay owned by the project-level endpoint).
+
+    Unlike the project-level shape, this carries `invited_by_display_name`
+    (who sent it) — surfaced in Org Admin's merged Users table alongside
+    email/sent-date/status, per the Phase A UX ask. `status` is computed at
+    read time (`expires_at` vs. now), not stored, matching the project-level
+    endpoint's own behaviour.
+    """
+
+    id: UUID
+    email: str
+    status: Literal["pending", "expired"]
+    created_at: datetime
+    expires_at: datetime
+    invited_by_display_name: str
 
 
 class ExternalUserMatch(BaseModel):

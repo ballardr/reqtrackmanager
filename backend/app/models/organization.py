@@ -223,9 +223,25 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     """Platform-wide defaults for UI branding, lazily created as a single
-    row (`services/branding.py::get_server_settings`) rather than enforced
-    by a DB-level singleton constraint — the first read creates it with
-    built-in defaults if no row exists yet.
+    row (`services/branding.py::get_server_settings`) if no row exists yet.
+
+    True singleton semantics are enforced at the DB level via
+    `singleton_guard` (added in migration 0020, follow-up UX batch Phase D
+    — found incidentally while verifying that phase, not something it
+    otherwise touches): earlier revisions relied purely on application-level
+    "read then insert if absent" logic with no DB constraint backing it,
+    which is a classic TOCTOU race — two concurrent requests can both
+    observe "no row yet" and both insert, leaving two real rows with
+    independently-mutable, silently-diverging values (confirmed to happen
+    in practice under concurrent load, not just theoretically: found via a
+    live database with two genuinely different `server_settings` rows,
+    which explained several previously-unexplained flaky Playwright
+    failures around `signup_mode` specifically — `db.scalar(select(
+    ServerSettings))`'s "first row" is not deterministic once more than one
+    exists). `singleton_guard` is always `True`, `UNIQUE`, `NOT NULL` — a
+    second `INSERT` racing the first now fails with an `IntegrityError`
+    instead of silently succeeding as a duplicate, which
+    `get_server_settings` catches and re-reads from instead of re-raising.
 
     Falls back to for any org that hasn't set its own `accent_color_hex`/
     `header_title`/logo, and for pages that aren't scoped to a specific
@@ -271,10 +287,14 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             falls back to the built-in product name if left unset, same as
             `default_header_title`; the website/address have no built-in
             fallback and are simply omitted from the footer when unset.
+        singleton_guard: Always `True` — see class docstring. Not read or
+            written by any application code; its only job is being the
+            target of a `UNIQUE` constraint.
     """
 
     __tablename__ = "server_settings"
 
+    singleton_guard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, unique=True)
     accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
     default_logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

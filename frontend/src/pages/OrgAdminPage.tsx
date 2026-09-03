@@ -1,4 +1,4 @@
-import { Download, Eye, Lock, Pencil, Plus, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Eye, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -8,14 +8,18 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
+  AssignByEmailOutcome,
+  EffectiveMember,
   ExternalUserPolicy,
   FileAsset,
   LinkTypeDefinition,
+  MaterializeResult,
   MergeConflict,
   OrgAdvancedSettings,
   OrgGroup,
   OrgMergePreviewResult,
   OrgMergeResult,
+  OrgPendingInvite,
   OrgPersonalAccessToken,
   OrgProjectSummary,
   OrgReportDefaults,
@@ -24,8 +28,9 @@ import type {
   OrgUser,
   Organization,
   OutsideDomainUser,
-  ProjectGroup,
+  PendingInvite,
   ProjectListItem,
+  ProjectRole,
   ProjectStatusDefinition,
   ReportChapter,
   ReportTemplate,
@@ -33,23 +38,27 @@ import type {
   ScimTokenStatus,
   UserAccess,
 } from "../api/types";
-import { ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { collapseProjectRoles, ORG_ROLE_LABEL, PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
+import type { DirectoryColumn } from "../components/DirectoryTable";
+import { DirectoryTable } from "../components/DirectoryTable";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
+import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
-import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
+import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
-import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
@@ -87,6 +96,12 @@ type OrgAdminGroupKey =
   | "oauth-sso"
   | "email"
   | "security";
+
+/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
+ * — a real user or a not-yet-accepted org-only invite, merged client-side.
+ * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
+ * (Phase D) later applied one level down, for a project's own members. */
+type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "overview",
@@ -146,8 +161,18 @@ export function OrgAdminPage() {
   const [usersTotal, setUsersTotal] = useState(0);
   const [userSearch, setUserSearch] = useState("");
   const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
+  // "Remove from {org}" (Users table Actions column, PR6) — the user
+  // pending confirmation in the `ConfirmDialog` below, or null when none.
+  const [confirmRemoveUser, setConfirmRemoveUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
+  // "View access" panel (2026-08 UX audit reversal — see docs/decisions.md
+  // and docs/ux-style-guide.md's "Pattern: role display" section): each
+  // project row shows `collapseProjectRoles()`'s summary by default, with
+  // this per-project-id set tracking which rows the viewer has explicitly
+  // expanded to the full, uncollapsed role list. Reset whenever a new
+  // user's access is opened so expansion never leaks between users.
+  const [expandedAccessProjectIds, setExpandedAccessProjectIds] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<OrgGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
@@ -159,6 +184,26 @@ export function OrgAdminPage() {
   // the nested-group name resolution and the "add nested group" dropdown
   // both read from this instead.
   const [allGroups, setAllGroups] = useState<OrgGroup[]>([]);
+  // Org Groups table (Phase B, follow-up UX batch, 2026-08-31): replaces
+  // the old `CollapsibleSection`-of-`CollapsibleSection`s accordion with
+  // `DirectoryTable` + a per-row `SidePanel`, the same shape Project
+  // Groups already used before this phase also retrofitted it onto
+  // `DirectoryTable`. `list_org_groups` already pages via `limit`/`offset`,
+  // so Name sort is a backend-sorted refetch (its new `order` param) like
+  // Org Users' own table, not a client-side sort of only the loaded page —
+  // style guide "Pattern: sortable column header"'s "already paginated ->
+  // backend sort/order params" branch (Members has no natural order at
+  // all, so it stays unsorted rather than needing a param of its own).
+  type OrgGroupSortKey = "name";
+  const [groupSort, setGroupSort] = useState<SortState<OrgGroupSortKey> | null>(null);
+  const [openOrgGroupId, setOpenOrgGroupId] = useState<string | null>(null);
+  // Per-group SSO-sync enable/disable toggle (Phase B bug-fix pass) —
+  // `undefined` means "not yet touched this session," in which case the
+  // checkbox's displayed state derives from `idp_synced_group_name != null`
+  // instead. Unchecking clears both synced fields immediately via the same
+  // `PATCH` the "Save sync settings" button already uses (see
+  // `toggleGroupSync` below) — no backend schema change needed.
+  const [syncEnabledEdits, setSyncEnabledEdits] = useState<Record<string, boolean>>({});
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
 
@@ -191,7 +236,28 @@ export function OrgAdminPage() {
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
-  const [userFilter, setUserFilter] = useState<"" | "stale" | "no2fa" | "noaccess">("");
+  // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
+  // three access-review filters used to be a single-select "" | "stale" |
+  // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
+  // "stale AND no 2FA" couldn't be expressed even though the backend's
+  // `stale_since_days`/`has_2fa`/`has_project_access` params are fully
+  // independent) — migrated onto `FilterCheckbox`es inside the shared
+  // `FilterPanel`, one boolean each, now genuinely independent. `roleFilter`
+  // is new: `GET /orgs/{id}/users`'s existing `org_role` param had no
+  // frontend control wired up to it before this phase.
+  const [userFilterStale, setUserFilterStale] = useState(false);
+  const [userFilterNo2fa, setUserFilterNo2fa] = useState(false);
+  const [userFilterNoAccess, setUserFilterNoAccess] = useState(false);
+  const [userRoleFilter, setUserRoleFilter] = useState<OrgRole | "">("");
+  // Pending (unaccepted) org-only invites, merged into the Users table as
+  // `kind: "invited"` rows (Phase A) — fetched unpaginated (there are
+  // never many at once) alongside the paginated `users` list, and always
+  // rendered ahead of it regardless of the user rows' own sort/page state.
+  const [orgInvites, setOrgInvites] = useState<OrgPendingInvite[]>([]);
+  const [showInvitedUsers, setShowInvitedUsers] = useState(true);
+  const [resendingOrgInviteId, setResendingOrgInviteId] = useState<string | null>(null);
+  const [inviteUserModalOpen, setInviteUserModalOpen] = useState(false);
+  const [inviteUserEmail, setInviteUserEmail] = useState("");
   // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
   // `order`, same reasoning as the Requirements/Change Requests lists:
   // this table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`
@@ -228,8 +294,31 @@ export function OrgAdminPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-  const [expandedProjectGroups, setExpandedProjectGroups] = useState<ProjectGroup[]>([]);
+  // "Manage users" (Phase 5, docs/decisions.md; rebuilt again in Phase D,
+  // follow-up UX batch, 2026-08-31): the old inline expand-in-place
+  // (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
+  // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
+  // now a `Modal` wrapping the same `ProjectMembersTable`
+  // `ProjectAdminPage.tsx`'s own Members section uses — literally the same
+  // component, not a duplicate, worse reimplementation (the concrete
+  // complaint this phase fixes). `manageUsersProjectId` is which project's
+  // modal is open (`null` = closed); its effective-members/pending-invites
+  // are fetched fresh on open, the same two endpoints `ProjectAdminPage.tsx`
+  // itself uses.
+  const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
+  const [manageUsersProjectName, setManageUsersProjectName] = useState("");
+  const [manageUsersMembers, setManageUsersMembers] = useState<EffectiveMember[]>([]);
+  const [manageUsersInvites, setManageUsersInvites] = useState<PendingInvite[]>([]);
+  const [manageUsersResendingInviteId, setManageUsersResendingInviteId] = useState<string | null>(null);
+  const [manageUsersAddRole, setManageUsersAddRole] = useState<ProjectRole>("member");
+  // Style guide "Pattern: modal dialog for entity create/rename" (Principle
+  // 3) — the inline add-member sub-form used to render permanently inside
+  // this outer "Manage users" Modal; it's now a button that opens a second,
+  // nested Modal (`useDialogA11y`'s own docstring explains why a nested
+  // Modal's Escape/focus handling is already safe here). The outer Modal
+  // remains the right container for "manage users for this project" as a
+  // whole — only the always-visible add sub-form within it is modal-ified.
+  const [manageUsersAddMemberModalOpen, setManageUsersAddMemberModalOpen] = useState(false);
 
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
@@ -278,16 +367,28 @@ export function OrgAdminPage() {
   const USERS_PAGE_SIZE = 30;
   const GROUPS_PAGE_SIZE = 20;
 
+  interface UserFilters {
+    stale: boolean;
+    no2fa: boolean;
+    noAccess: boolean;
+    role: OrgRole | "";
+  }
+
+  function currentUserFilters(): UserFilters {
+    return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, role: userRoleFilter };
+  }
+
   async function loadUsers(
-    filter: typeof userFilter, search: string, offset: number, append: boolean, sort: typeof userSort = userSort
+    filters: UserFilters, search: string, offset: number, append: boolean, sort: typeof userSort = userSort
   ) {
     if (!orgId) return;
     function query(includeFilter: boolean) {
       const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE), offset: String(offset) });
       if (includeFilter) {
-        if (filter === "stale") params.set("stale_since_days", "180");
-        if (filter === "no2fa") params.set("has_2fa", "false");
-        if (filter === "noaccess") params.set("has_project_access", "false");
+        if (filters.stale) params.set("stale_since_days", "180");
+        if (filters.no2fa) params.set("has_2fa", "false");
+        if (filters.noAccess) params.set("has_project_access", "false");
+        if (filters.role) params.set("org_role", filters.role);
       }
       if (search) params.set("search", search);
       if (sort) {
@@ -313,10 +414,29 @@ export function OrgAdminPage() {
     }
   }
 
-  async function loadGroups(search: string, offset: number, append: boolean) {
+  /** Pending org-only invites (Phase A) — gated at org-admin/server-admin
+   * tier server-side (same as `create_org_user`), so a plain member simply
+   * sees none rather than an error; every other 403 still surfaces. */
+  async function loadOrgInvites() {
+    if (!orgId) return;
+    try {
+      setOrgInvites(await api.get<OrgPendingInvite[]>(`/api/v1/orgs/${orgId}/pending-invites`));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setOrgInvites([]);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  async function loadGroups(
+    search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort
+  ) {
     if (!orgId) return;
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
+    if (sort) params.set("order", sort.direction);
     const page = await api.getPage<OrgGroup>(`/api/v1/orgs/${orgId}/groups?${params.toString()}`);
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
     setGroupsTotal(page.total);
@@ -377,7 +497,7 @@ export function OrgAdminPage() {
     setReportTemplates(templates);
     setProjectStatuses(statuses);
     setLinkTypes(linkTypeList);
-    await Promise.all([loadUsers(userFilter, userSearch, 0, false), loadGroups(groupSearch, 0, false)]);
+    await Promise.all([loadUsers(currentUserFilters(), userSearch, 0, false), loadGroups(groupSearch, 0, false), loadOrgInvites()]);
 
     try {
       const a = await api.get<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`);
@@ -446,21 +566,28 @@ export function OrgAdminPage() {
     reload();
   }
 
-  function applyUserFilter(filter: typeof userFilter) {
-    const next = userFilter === filter ? "" : filter;
-    setUserFilter(next);
-    loadUsers(next, userSearch, 0, false);
+  /** Applies a partial filter change (one `FilterCheckbox`/`FilterField` at
+   * a time) on top of the other filters' current values, then reloads from
+   * offset 0 — same "merge onto current state" shape every other partial-
+   * filter-change handler in this codebase uses. */
+  function applyUserFilters(next: Partial<UserFilters>) {
+    const merged: UserFilters = { ...currentUserFilters(), ...next };
+    setUserFilterStale(merged.stale);
+    setUserFilterNo2fa(merged.no2fa);
+    setUserFilterNoAccess(merged.noAccess);
+    setUserRoleFilter(merged.role);
+    loadUsers(merged, userSearch, 0, false);
   }
 
   function handleUserSearchChange(value: string) {
     setUserSearch(value);
-    loadUsers(userFilter, value, 0, false);
+    loadUsers(currentUserFilters(), value, 0, false);
   }
 
   function applyUserSort(key: OrgUserSortKey) {
     const next = cycleSort(userSort, key);
     setUserSort(next);
-    loadUsers(userFilter, userSearch, 0, false, next);
+    loadUsers(currentUserFilters(), userSearch, 0, false, next);
   }
 
   function handleGroupSearchChange(value: string) {
@@ -468,16 +595,44 @@ export function OrgAdminPage() {
     loadGroups(value, 0, false);
   }
 
+  /** Backend-sorted refetch, same shape as `applyUserSort` — `list_org_
+   * groups` already pages via `limit`/`offset` (Phase 0/B design review:
+   * a client-side sort of only the currently-loaded page would misrepresent
+   * the true full-list order, style guide "Pattern: sortable column
+   * header"). */
+  function applyGroupSort(key: OrgGroupSortKey) {
+    const next = cycleSort(groupSort, key);
+    setGroupSort(next);
+    loadGroups(groupSearch, 0, false, next);
+  }
+
   async function openUserAccess(user: OrgUser) {
     if (!orgId) return;
     setViewingUser(user);
     setUserAccess(null);
     setUserAccessError(null);
+    setExpandedAccessProjectIds(new Set());
     try {
       setUserAccess(await api.get<UserAccess>(`/api/v1/orgs/${orgId}/users/${user.user_id}/access`));
     } catch (err) {
       setUserAccessError(err instanceof ApiError ? err.message : strings.common.error);
     }
+  }
+
+  /** Toggles one project row's roles between `collapseProjectRoles()`'s
+   * default summary and the full, uncollapsed set on the "View access"
+   * panel. See `expandedAccessProjectIds` above for why this is per-row,
+   * local, and reset on each new user rather than persisted. */
+  function toggleAccessProjectExpanded(projectId: string) {
+    setExpandedAccessProjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
   }
 
   async function toggleOutsideDomainUsers() {
@@ -578,25 +733,154 @@ export function OrgAdminPage() {
     reload();
   }
 
-  async function toggleExpandedProject(projectId: string) {
-    if (expandedProjectId === projectId) {
-      setExpandedProjectId(null);
-      return;
+  /** Opens the "Manage users" `Modal` for one project (Phase 5,
+   * docs/decisions.md; rebuilt in Phase D, follow-up UX batch, 2026-08-31)
+   * — fetches its effective-members + pending invites fresh every open,
+   * the same two calls `ProjectAdminPage.tsx`'s own Members section makes
+   * on its own `reload()`. */
+  async function openManageUsers(project: OrgProjectSummary) {
+    setManageUsersProjectId(project.id);
+    setManageUsersProjectName(project.name);
+    const [members, invites] = await Promise.all([
+      api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
+      api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
+    ]);
+    setManageUsersMembers(members);
+    setManageUsersInvites(invites);
+  }
+
+  function closeManageUsers() {
+    setManageUsersProjectId(null);
+    setManageUsersProjectName("");
+    setManageUsersMembers([]);
+    setManageUsersInvites([]);
+    setManageUsersAddMemberModalOpen(false);
+  }
+
+  async function reloadManageUsersMembers() {
+    if (!manageUsersProjectId) return;
+    setManageUsersMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${manageUsersProjectId}/effective-members`));
+  }
+
+  /** `ProjectMembersTable`'s own `onToggleRole` — only ever called for an
+   * option whose sole source is `direct_role` (see that component's
+   * docstring). Same "re-fetch just effective-members" treatment
+   * `ProjectAdminPage.tsx`'s own `toggleProjectMemberRole` uses. */
+  async function toggleManageUsersRole(userId: string, role: ProjectRole, checked: boolean) {
+    if (!manageUsersProjectId) return;
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`);
+      }
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
-    setExpandedProjectId(projectId);
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
   }
 
-  async function addExpandedProjectGroupMember(groupId: string, userId: string) {
-    if (!expandedProjectId) return;
-    await api.post(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members`, { user_id: userId });
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  async function addManageUsersMember(userId: string) {
+    if (!manageUsersProjectId) return;
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role: manageUsersAddRole });
+    await reloadManageUsersMembers();
   }
 
-  async function removeExpandedProjectGroupMember(groupId: string, userId: string) {
-    if (!expandedProjectId) return;
-    await api.delete(`/api/v1/projects/${expandedProjectId}/groups/${groupId}/members/${userId}`);
-    setExpandedProjectGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${expandedProjectId}/groups`));
+  /** The group branch of the same add-control (PR5 of the members/groups
+   * directory rework plan) — `UserAutocomplete`'s combined user-or-group
+   * autocomplete calls this instead of `addManageUsersMember` when the
+   * selected match is an org group, granting it `manageUsersAddRole`
+   * *directly* on `manageUsersProjectId` via PR4's new mechanism, the same
+   * pattern `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
+   * `ProjectGroup` wrapper is created, and nesting stays out of scope for
+   * this control — see that function's own docstring for the full
+   * rationale, shared verbatim here. */
+  async function addManageUsersGroupRole(orgGroupId: string) {
+    if (!manageUsersProjectId) return;
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role: manageUsersAddRole });
+    await reloadManageUsersMembers();
+  }
+
+  /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
+   * PR6 of the members/groups directory rework plan) — same treatment
+   * `ProjectAdminPage.tsx`'s own `removeAllProjectMemberAccess` uses,
+   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
+  async function removeAllManageUsersMemberAccess(userId: string) {
+    if (!manageUsersProjectId) return;
+    const member = manageUsersMembers.find((m) => m.user_id === userId);
+    if (!member) return;
+    try {
+      const roles = [...new Set(member.sources.map((s) => s.role))];
+      await Promise.all(
+        roles.map((role) => api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`))
+      );
+      showToast(strings.membersTable.removeAllAccessSuccess(member.display_name));
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
+   * roles" (Actions column, PR6) — same treatment
+   * `ProjectAdminPage.tsx`'s own `convertProjectMemberToDirect` uses,
+   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
+  async function convertManageUsersMemberToDirect(userId: string) {
+    if (!manageUsersProjectId) return;
+    const member = manageUsersMembers.find((m) => m.user_id === userId);
+    try {
+      const result = await api.post<MaterializeResult>(
+        `/api/v1/projects/${manageUsersProjectId}/materialize-inherited-access/${userId}`
+      );
+      const name = member?.display_name ?? "";
+      showToast(
+        result.created.length > 0
+          ? strings.membersTable.convertToDirectSuccess(name)
+          : strings.membersTable.convertToDirectNoOp(name)
+      );
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** The by-email counterpart, for a user outside this org entirely — same
+   * endpoint and outcome messaging `ProjectAdminPage.tsx`'s own
+   * `addExternalMember` uses, reused here via a `Toast` instead of that
+   * page's inline result banner (this Modal has no equivalent persistent
+   * banner slot). */
+  async function addManageUsersExternalMember(email: string) {
+    if (!manageUsersProjectId) return;
+    try {
+      const result = await api.post<{ outcome: AssignByEmailOutcome }>(
+        `/api/v1/projects/${manageUsersProjectId}/roles/by-email`,
+        { email, role: manageUsersAddRole },
+      );
+      const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
+        added: strings.admin.externalAddedDirectly,
+        invited: strings.admin.externalInvited,
+        sso_provisioned: strings.admin.externalSsoProvisioned,
+      };
+      showToast(messages[result.outcome](email, manageUsersAddRole, orgLabel));
+      await reloadManageUsersMembers();
+      setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : strings.admin.externalAddError, "error");
+    }
+  }
+
+  async function resendManageUsersInvite(invite: PendingInvite) {
+    if (!manageUsersProjectId) return;
+    setManageUsersResendingInviteId(invite.id);
+    try {
+      await api.post(`/api/v1/projects/${manageUsersProjectId}/pending-invites/${invite.id}/resend`);
+      showToast(strings.admin.resendInviteSuccess(invite.email));
+      setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.admin.resendInviteError), "error");
+    } finally {
+      setManageUsersResendingInviteId(null);
+    }
   }
 
   async function addProjectStatus(name: string) {
@@ -725,6 +1009,36 @@ export function OrgAdminPage() {
     }
   }
 
+  /** "Invite user" (Phase A) — the org-level counterpart to `createUser`
+   * above: emails a sign-up link instead of setting a password immediately.
+   * Only refreshes `orgInvites` (not the whole page, matching `grantOrgRole`/
+   * `revokeOrgRole`'s own reasoning above) since nothing else on the page
+   * changes as a result. */
+  async function inviteOrgUser() {
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/pending-invites`, { email: inviteUserEmail });
+      setInviteUserEmail("");
+      setInviteUserModalOpen(false);
+      showToast(strings.orgAdmin.inviteSent);
+      await loadOrgInvites();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function resendOrgInvite(invite: OrgPendingInvite) {
+    setResendingOrgInviteId(invite.id);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/pending-invites/${invite.id}/resend`);
+      showToast(strings.admin.resendInviteSuccess(invite.email));
+      await loadOrgInvites();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.admin.resendInviteError), "error");
+    } finally {
+      setResendingOrgInviteId(null);
+    }
+  }
+
   // Updates just the affected row's own `roles` array in local state on
   // success, rather than calling the page-wide `reload()` every other
   // mutation on this page uses. `reload()` re-fetches ~10 endpoints
@@ -826,9 +1140,25 @@ export function OrgAdminPage() {
         delete next[groupId];
         return next;
       });
+      // Principle 7 (feedback on every mutation) — this save previously had
+      // no success feedback at all, relying only on the inline error state
+      // below for the failure path.
+      showToast(strings.orgAdmin.groupSyncUpdated);
       reload();
     } catch (err) {
       setIdpSyncErrors((prev) => ({ ...prev, [groupId]: err instanceof ApiError ? err.message : strings.common.error }));
+    }
+  }
+
+  /** The SSO-sync enable/disable checkbox (Phase B bug-fix pass,
+   * 2026-08-31): checking it just reveals the name/role fields for editing
+   * (no request until "Save sync settings" is clicked) — unchecking clears
+   * both fields immediately via the same `PATCH` the Save button uses,
+   * since there's nothing left to edit once sync is off. */
+  async function toggleGroupSync(groupId: string, enabled: boolean) {
+    setSyncEnabledEdits((prev) => ({ ...prev, [groupId]: enabled }));
+    if (!enabled) {
+      await saveIdpSync(groupId, "", "");
     }
   }
 
@@ -1043,6 +1373,27 @@ export function OrgAdminPage() {
     reload();
   }
 
+  /** Users table Actions column, "Remove from {org}" (PR6 of the members/
+   * groups directory rework plan, docs/decisions.md) — the new admin-
+   * initiated `DELETE /{organization_id}/users/{user_id}/membership`
+   * endpoint. Confirmed via `ConfirmDialog` (`confirmRemoveUser` below)
+   * before this is ever called; not offered at all for the caller's own
+   * row (see the Actions column's own `ActionMenu` items, which route
+   * self-removal to the existing "Leave organisation" flow on
+   * `PreferencesPage.tsx` instead, matching the backend's own self-
+   * targeting guard on this endpoint). */
+  async function removeOrgUser(u: OrgUser) {
+    if (!orgId) return;
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/membership`);
+      setConfirmRemoveUser(null);
+      showToast(strings.orgAdmin.removedFromOrgToast(u.display_name));
+      reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   const [exportingOrg, setExportingOrg] = useState(false);
 
   async function exportOrg() {
@@ -1220,6 +1571,179 @@ export function OrgAdminPage() {
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
   ];
 
+  // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
+  // org-only invites are merged client-side into the same `DirectoryTable`
+  // as real users, `kind: "user" | "invited"` — the same union-row pattern
+  // `MemberRoleTable` established. Invited rows aren't part of `users`'
+  // own server-side sort/pagination (they come from a separate, unpaginated
+  // endpoint), so they're always rendered ahead of the sorted/paginated
+  // user rows rather than interleaved into that sort order. Search does
+  // apply (client-side, against the invite's email) since it's the same
+  // search box; the other access-review filters (stale/no-2FA/no-project-
+  // access/role) don't apply to an account that doesn't exist yet, so
+  // invited rows are unaffected by them — only "Show invited" hides them.
+  const filteredOrgInvites = showInvitedUsers
+    ? orgInvites.filter((invite) => !userSearch || invite.email.toLowerCase().includes(userSearch.toLowerCase()))
+    : [];
+  const usersRows: UsersRow[] = [
+    ...filteredOrgInvites.map((invite): UsersRow => ({ kind: "invited", invite })),
+    ...users.map((u): UsersRow => ({ kind: "user", user: u })),
+  ];
+  const usersColumns: DirectoryColumn<UsersRow>[] = [
+    {
+      key: "email", label: strings.orgAdmin.email, sortable: true,
+      render: (row) => (row.kind === "user" ? row.user.email : row.invite.email),
+    },
+    {
+      // Repurposed for an invited row: there's no display name yet (the
+      // invitee sets it at signup), so this shows who sent the invite
+      // instead — the closest equivalent "identity" fact available.
+      key: "display_name", label: strings.orgAdmin.name, sortable: true,
+      render: (row) =>
+        row.kind === "user" ? (
+          row.user.display_name
+        ) : (
+          <span className="text-muted">{strings.orgAdmin.invitedBy(row.invite.invited_by_display_name)}</span>
+        ),
+    },
+    {
+      key: "roles", label: strings.orgAdmin.roles,
+      render: (row) => {
+        if (row.kind === "invited") return <span className="text-muted">—</span>;
+        const u = row.user;
+        return (
+          <MultiSelectDropdown
+            triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
+            emptyLabel={strings.orgAdmin.noRoles}
+            options={(["member", "project_creator", "org_admin"] as const).map((role) => {
+              const checked = u.roles.includes(role);
+              // A user can never revoke their own org role via this
+              // control — mirrors the backend's self-targeting block
+              // on the revoke endpoint (an org can never reach zero
+              // admins through here, by construction). Granting a
+              // role to oneself is still allowed, matching the
+              // backend, so only the "uncheck" direction is disabled.
+              const disabled = checked && u.user_id === user?.id;
+              return {
+                value: role,
+                label: ORG_ROLE_LABEL[role],
+                checked,
+                disabled,
+                title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
+                optionLabel: checked
+                  ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
+                  : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
+                onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
+              };
+            })}
+          />
+        );
+      },
+    },
+    {
+      key: "status", label: strings.orgAdmin.status,
+      render: (row) => {
+        if (row.kind === "invited") {
+          const invite = row.invite;
+          return (
+            <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+              <span className="badge">{PENDING_INVITE_STATUS_LABEL[invite.status]}</span>
+              <button
+                className="btn"
+                disabled={resendingOrgInviteId === invite.id}
+                onClick={() => resendOrgInvite(invite)}
+                title={strings.admin.resendInviteAria(invite.email)}
+                aria-label={strings.admin.resendInviteAria(invite.email)}
+              >
+                <Send size={14} /> {strings.admin.resendInvite}
+              </button>
+            </div>
+          );
+        }
+        const u = row.user;
+        if (u.is_archived) return strings.orgAdmin.statusArchived;
+        if (!u.is_active) return strings.orgAdmin.statusDeactivated;
+        return <span title={strings.orgAdmin.statusActiveHint}>{strings.orgAdmin.statusActive}</span>;
+      },
+    },
+    {
+      // Repurposed for an invited row: shows when the invite was sent
+      // rather than a last-login date, which doesn't exist yet.
+      key: "last_login_at", label: strings.orgAdmin.lastLogin, sortable: true,
+      render: (row) => {
+        if (row.kind === "invited") {
+          return (
+            <span className="text-muted">
+              {strings.orgAdmin.invitedSentOn(new Date(row.invite.created_at).toLocaleDateString())}
+            </span>
+          );
+        }
+        return row.user.last_login_at ? new Date(row.user.last_login_at).toLocaleDateString() : strings.orgAdmin.never;
+      },
+    },
+    {
+      key: "2fa", label: strings.orgAdmin.twoFactor,
+      render: (row) => (row.kind === "invited" ? "" : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no),
+    },
+    {
+      // Users table Actions column (PR6 of the members/groups directory
+      // rework plan, docs/decisions.md) — the two previously-bare buttons
+      // (View access, lock/unlock display name) consolidated into one
+      // `ActionMenu`, plus "Remove from {org}" (new, access-mutating).
+      // "Add to group" sits as its own small control next to the menu,
+      // not inside it — `AddToGroupControl` needs its own anchored
+      // `Popover` trigger, which a plain `ActionMenu` item (a single
+      // `onSelect` callback) can't host.
+      key: "actions", label: "",
+      render: (row) => {
+        if (row.kind === "invited") return null;
+        const u = row.user;
+        const isSelf = u.user_id === user?.id;
+        return (
+          <div className="row" style={{ gap: "0.25rem" }}>
+            <ActionMenu
+              triggerLabel={strings.orgAdmin.usersActionsFor(u.display_name)}
+              items={[
+                { label: strings.orgAdmin.viewAccess(u.display_name), icon: <Eye size={14} />, onSelect: () => openUserAccess(u) },
+                {
+                  label: u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName,
+                  icon: u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />,
+                  onSelect: () => toggleDisplayNameLock(u),
+                },
+                // Not offered on the caller's own row — self-removal has
+                // its own, already-guarded path ("Leave organisation" on
+                // Preferences), matching the backend's own self-targeting
+                // guard on this endpoint (see `remove_org_user`'s
+                // docstring).
+                ...(isSelf
+                  ? []
+                  : [
+                      {
+                        label: strings.orgAdmin.removeFromOrg(orgLabel),
+                        icon: <Trash2 size={14} />,
+                        onSelect: () => setConfirmRemoveUser(u),
+                      },
+                    ]),
+              ]}
+            />
+            <AddToGroupControl user={u} groups={allGroups} onAdd={addGroupMember} />
+          </div>
+        );
+      },
+    },
+  ];
+
+  // Org Groups `DirectoryTable` (Phase B, follow-up UX batch, 2026-08-31) —
+  // `groups` itself is already sorted server-side (`applyGroupSort`/
+  // `loadGroups`'s `order` param), no client-side re-sort needed.
+  const orgGroupColumns: DirectoryColumn<OrgGroup>[] = [
+    { key: "name", label: strings.orgAdmin.name, sortable: true, render: (g) => g.name },
+    {
+      key: "members", label: strings.orgAdmin.groupMembersColumn,
+      render: (g) => strings.admin.memberCount(g.member_user_ids.length),
+    },
+  ];
+
   return (
     <div className="stack">
       <ResourceMenu
@@ -1389,33 +1913,22 @@ export function OrgAdminPage() {
         {activeGroup === "users" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <input
-                  className="input"
-                  style={{ maxWidth: 320 }}
-                  placeholder={strings.orgAdmin.searchUsers}
-                  value={userSearch}
-                  onChange={(e) => handleUserSearchChange(e.target.value)}
-                />
-                <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
-                  <Plus size={14} /> {strings.orgAdmin.newUser}
-                </button>
-              </div>
-              <div className="row">
-                <button className={`btn${userFilter === "stale" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("stale")}>
-                  {strings.orgAdmin.filterStale}
-                </button>
-                <button className={`btn${userFilter === "no2fa" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("no2fa")}>
-                  {strings.orgAdmin.filterNo2fa}
-                </button>
-                <button className={`btn${userFilter === "noaccess" ? " btn-primary" : ""}`} onClick={() => applyUserFilter("noaccess")}>
-                  {strings.orgAdmin.filterNoProjectAccess}
-                </button>
-                {userFilter && (
-                  <button className="btn" onClick={() => applyUserFilter("")}>
-                    {strings.orgAdmin.filterClear}
-                  </button>
-                )}
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                <div className="stack" style={{ gap: "0.25rem" }}>
+                  <div className="row" style={{ gap: "0.5rem" }}>
+                    <button className="btn" onClick={() => setInviteUserModalOpen(true)}>
+                      <Send size={14} /> {strings.orgAdmin.inviteUser}
+                    </button>
+                    <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
+                      <Plus size={14} /> {strings.orgAdmin.newUser}
+                    </button>
+                  </div>
+                  {/* "New user" (immediate password account) vs. "Invite
+                      user" (email sign-up link) — distinct, both-legitimate
+                      flows (docs/decisions.md) that read as ambiguous
+                      without this hint. */}
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.newUserVsInviteHint}</span>
+                </div>
                 {advanced?.auto_accept_email_domain && (
                   <button
                     className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
@@ -1454,86 +1967,75 @@ export function OrgAdminPage() {
                   )}
                 </div>
               )}
-              <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <SortableHeader label={strings.orgAdmin.email} sortKey="email" sort={userSort} onSort={applyUserSort} />
-                    <SortableHeader label={strings.orgAdmin.name} sortKey="display_name" sort={userSort} onSort={applyUserSort} />
-                    <th>{strings.orgAdmin.roles}</th>
-                    <th>{strings.orgAdmin.status}</th>
-                    <SortableHeader label={strings.orgAdmin.lastLogin} sortKey="last_login_at" sort={userSort} onSort={applyUserSort} />
-                    <th>{strings.orgAdmin.twoFactor}</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.user_id}>
-                      <td>{u.email}</td>
-                      <td>{u.display_name}</td>
-                      <td>
-                        <MultiSelectDropdown
-                          triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
-                          emptyLabel={strings.orgAdmin.noRoles}
-                          options={(["member", "project_creator", "org_admin"] as const).map((role) => {
-                            const checked = u.roles.includes(role);
-                            // A user can never revoke their own org role via this
-                            // control — mirrors the backend's self-targeting block
-                            // on the revoke endpoint (an org can never reach zero
-                            // admins through here, by construction). Granting a
-                            // role to oneself is still allowed, matching the
-                            // backend, so only the "uncheck" direction is disabled.
-                            const disabled = checked && u.user_id === user?.id;
-                            return {
-                              value: role,
-                              label: ORG_ROLE_LABEL[role],
-                              checked,
-                              disabled,
-                              title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
-                              optionLabel: checked
-                                ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
-                                : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
-                              onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
-                            };
-                          })}
-                        />
-                      </td>
-                      <td>
-                        {u.is_archived
-                          ? strings.orgAdmin.statusArchived
-                          : u.is_active
-                            ? strings.orgAdmin.statusActive
-                            : strings.orgAdmin.statusDeactivated}
-                      </td>
-                      <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : strings.orgAdmin.never}</td>
-                      <td>{u.is_2fa_enabled ? strings.common.yes : strings.common.no}</td>
-                      <td>
-                        <div className="row" style={{ gap: "0.25rem" }}>
-                          <button
-                            className="btn"
-                            onClick={() => openUserAccess(u)}
-                            title={strings.orgAdmin.viewAccess(u.display_name)}
-                            aria-label={strings.orgAdmin.viewAccess(u.display_name)}
-                          >
-                            <Eye size={14} />
-                          </button>
-                          <button
-                            className="btn"
-                            onClick={() => toggleDisplayNameLock(u)}
-                            title={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                            aria-label={u.display_name_locked ? strings.orgAdmin.unlockDisplayName : strings.orgAdmin.lockDisplayName}
-                          >
-                            {u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+              {/* Rebuilt on the shared `DirectoryTable` (Phase 0), with
+                  `FilterPanel` as a full-width bar ABOVE the table rather
+                  than the standard `.side-grid` side layout every other
+                  list page uses (2026-08-31, Phase A, follow-up UX batch;
+                  moved to `layout="top"` in a later follow-up fix — see
+                  docs/decisions.md and docs/ux-style-guide.md's "Pattern:
+                  filter panel placement — side vs. top"). This table has 6
+                  columns (Email, Name, Role, Last login, 2FA, Actions) —
+                  wide enough that a 240px side sidebar visibly crowded it. */}
+              <div className="stack">
+                <FilterPanel
+                  layout="top"
+                  sectionKey="orgAdminUsersFilters"
+                  search={userSearch}
+                  onSearchChange={handleUserSearchChange}
+                  searchPlaceholder={strings.orgAdmin.searchUsers}
+                >
+                  {/* `strings.orgAdmin.orgRole` — distinct label text from
+                      the "New user" modal's own "Role" field, deliberately:
+                      that modal renders via a portal to `document.body`
+                      while this page stays mounted behind it, so an
+                      unscoped `getByLabel("Role")` while both are visible
+                      would otherwise be ambiguous. */}
+                  <FilterField label={strings.orgAdmin.orgRole(orgLabelCap)}>
+                    <select
+                      className="input"
+                      value={userRoleFilter}
+                      onChange={(e) => applyUserFilters({ role: e.target.value as OrgRole | "" })}
+                    >
+                      <option value="">{strings.orgAdmin.allRoles}</option>
+                      <option value="member">{ORG_ROLE_LABEL.member}</option>
+                      <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                      <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
+                    </select>
+                  </FilterField>
+                  <FilterCheckbox
+                    label={strings.orgAdmin.filterStale}
+                    checked={userFilterStale}
+                    onChange={(checked) => applyUserFilters({ stale: checked })}
+                  />
+                  <FilterCheckbox
+                    label={strings.orgAdmin.filterNo2fa}
+                    checked={userFilterNo2fa}
+                    onChange={(checked) => applyUserFilters({ no2fa: checked })}
+                  />
+                  <FilterCheckbox
+                    label={strings.orgAdmin.filterNoProjectAccess}
+                    checked={userFilterNoAccess}
+                    onChange={(checked) => applyUserFilters({ noAccess: checked })}
+                  />
+                  <FilterCheckbox
+                    label={strings.orgAdmin.filterShowInvited}
+                    checked={showInvitedUsers}
+                    onChange={setShowInvitedUsers}
+                  />
+                </FilterPanel>
+                <DirectoryTable
+                  ariaLabel={strings.orgAdmin.users(orgLabelCap)}
+                  columns={usersColumns}
+                  rows={usersRows}
+                  rowKey={(row) => (row.kind === "user" ? `user-${row.user.user_id}` : `invited-${row.invite.id}`)}
+                  sort={userSort}
+                  onSort={(key) => applyUserSort(key as OrgUserSortKey)}
+                  total={usersTotal + filteredOrgInvites.length}
+                  onLoadMore={() => loadUsers(currentUserFilters(), userSearch, users.length, true)}
+                  emptyState={<p className="text-muted">{strings.orgAdmin.noUsersFound}</p>}
+                />
               </div>
-              <LoadMoreButton loaded={users.length} total={usersTotal} onClick={() => loadUsers(userFilter, userSearch, users.length, true)} />
             </CollapsibleSection>
 
             {newUserModalOpen && (
@@ -1582,6 +2084,32 @@ export function OrgAdminPage() {
               </Modal>
             )}
 
+            {inviteUserModalOpen && (
+              <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
+                <div className="stack">
+                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.orgAdmin.email}
+                    <input
+                      className="input"
+                      type="email"
+                      autoFocus
+                      value={inviteUserEmail}
+                      onChange={(e) => setInviteUserEmail(e.target.value)}
+                    />
+                  </label>
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="btn" onClick={() => setInviteUserModalOpen(false)}>
+                      {strings.common.cancel}
+                    </button>
+                    <button className="btn btn-primary" onClick={inviteOrgUser} disabled={!inviteUserEmail}>
+                      {strings.orgAdmin.sendInvite}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+            )}
+
             {viewingUser && (
               <SidePanel title={strings.orgAdmin.userAccessTitle(viewingUser.display_name)} onClose={() => setViewingUser(null)}>
                 {userAccessError && <div style={{ color: "var(--color-danger)" }}>{userAccessError}</div>}
@@ -1605,21 +2133,39 @@ export function OrgAdminPage() {
                       {userAccess.projects.length === 0 ? (
                         <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoProjects}</p>
                       ) : (
-                        userAccess.projects.map((p) => (
-                          <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
-                            <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
-                            <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap" }}>
-                              {p.roles.map((r) => (
-                                <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
-                              ))}
-                            </div>
-                            {p.project_groups.length > 0 && (
-                              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                                {strings.orgAdmin.userAccessProjectGroups}: {p.project_groups.map((g) => g.name).join(", ")}
+                        userAccess.projects.map((p) => {
+                          const isExpanded = expandedAccessProjectIds.has(p.project_id);
+                          const collapsedRoles = collapseProjectRoles(p.roles);
+                          const canExpand = collapsedRoles.length < p.roles.length;
+                          const shownRoles = isExpanded ? p.roles : collapsedRoles;
+                          return (
+                            <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
+                              <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
+                              <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                                {shownRoles.map((r) => (
+                                  <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
+                                ))}
+                                {canExpand && (
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                                    onClick={() => toggleAccessProjectExpanded(p.project_id)}
+                                  >
+                                    {isExpanded
+                                      ? strings.orgAdmin.userAccessShowFewerRoles
+                                      : strings.orgAdmin.userAccessShowAllRoles(p.roles.length)}
+                                  </button>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        ))
+                              {p.project_groups.length > 0 && (
+                                <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                                  {strings.orgAdmin.userAccessProjectGroups}: {p.project_groups.map((g) => g.name).join(", ")}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -1632,13 +2178,6 @@ export function OrgAdminPage() {
         {activeGroup === "groups" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)}>
-              <input
-                className="input"
-                style={{ maxWidth: 320 }}
-                placeholder={strings.orgAdmin.searchGroups}
-                value={groupSearch}
-                onChange={(e) => handleGroupSearchChange(e.target.value)}
-              />
               <button
                 className="btn btn-primary"
                 style={{ alignSelf: "flex-start" }}
@@ -1676,27 +2215,71 @@ export function OrgAdminPage() {
                   </div>
                 </Modal>
               )}
-              {groups.map((g) => {
-                const memberIds = new Set(g.member_user_ids);
-                const members = users.filter((u) => memberIds.has(u.user_id));
-                const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
-                const nestedGroupIds = new Set(g.member_org_group_ids);
-                // Resolved against `allGroups` (every group in the org,
-                // unpaginated), not the paginated/searched `groups` above —
-                // a nested group's name, or a candidate to nest, can easily
-                // fall outside whatever page/search the Groups list itself
-                // is currently showing (2026-08 UX audit "Directories at
-                // scale").
-                const nestedGroups = allGroups.filter((og) => nestedGroupIds.has(og.id));
-                const nestableGroups = allGroups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
-                return (
-                  <CollapsibleSection
-                    key={g.id}
-                    sectionKey={`orgAdmin.group.${g.id}`}
-                    variant="plain"
-                    defaultCollapsed
-                    title={`${g.name} (${strings.admin.memberCount(g.member_user_ids.length)})`}
-                  >
+
+              {/* Rebuilt on the shared `DirectoryTable` (Phase 0) inside the
+                  standard `.side-grid` + `FilterPanel` layout, replacing the
+                  old `CollapsibleSection`-of-`CollapsibleSection`s accordion
+                  that rendered every group's full member list open and
+                  inline, unconditionally (2026-08-31, Phase B, follow-up UX
+                  batch — see docs/decisions.md). Each row now opens a
+                  `SidePanel` instead — style guide "Pattern: entity detail
+                  panel." */}
+              <div className="side-grid">
+                <div className="stack">
+                  <DirectoryTable
+                    ariaLabel={strings.orgAdmin.groups(orgLabelCap)}
+                    columns={orgGroupColumns}
+                    rows={groups}
+                    rowKey={(row) => row.id}
+                    sort={groupSort}
+                    onSort={(key) => applyGroupSort(key as OrgGroupSortKey)}
+                    total={groupsTotal}
+                    onLoadMore={() => loadGroups(groupSearch, groups.length, true)}
+                    onRowClick={(row) => setOpenOrgGroupId(row.id)}
+                    emptyState={<p className="text-muted">{strings.orgAdmin.noGroupsFound}</p>}
+                  />
+                </div>
+                <FilterPanel
+                  sectionKey="orgAdminGroupsFilters"
+                  search={groupSearch}
+                  onSearchChange={handleGroupSearchChange}
+                  searchPlaceholder={strings.orgAdmin.searchGroups}
+                >
+                  {/* No dedicated filter fields beyond search exist for
+                      Groups today — `FilterPanel` is still the right shell
+                      (consistent chrome/mobile-collapse with every other
+                      directory), it just has nothing besides the header
+                      search box to offer here. */}
+                  {null}
+                </FilterPanel>
+              </div>
+            </CollapsibleSection>
+
+            {openOrgGroupId && (() => {
+              const g = groups.find((x) => x.id === openOrgGroupId);
+              if (!g) return null;
+              const memberIds = new Set(g.member_user_ids);
+              const members = users.filter((u) => memberIds.has(u.user_id));
+              const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
+              const nestedGroupIds = new Set(g.member_org_group_ids);
+              // Resolved against `allGroups` (every group in the org,
+              // unpaginated), not the paginated/searched `groups` above —
+              // a nested group's name, or a candidate to nest, can easily
+              // fall outside whatever page/search the Groups list itself
+              // is currently showing (2026-08 UX audit "Directories at
+              // scale").
+              const nestedGroups = allGroups.filter((og) => nestedGroupIds.has(og.id));
+              const nestableGroups = allGroups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
+              // SSO-sync gating (2026-08-31 bug-fix pass): the name input,
+              // role select, and Save action all sit behind this same
+              // check now — previously only the role select was gated, so
+              // the name field (and the ability to "save" a sync config)
+              // was visible even with no SSO configured for the org at all.
+              const ssoConfigured = !!(ssoConfig?.oidc_issuer_url && ssoConfig?.oidc_client_id);
+              const syncEnabled = syncEnabledEdits[g.id] ?? g.idp_synced_group_name != null;
+              return (
+                <SidePanel title={strings.orgAdmin.groupDetails(g.name)} onClose={() => setOpenOrgGroupId(null)}>
+                  <div className="stack">
                     {members.length > 0 && (
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                         {members.map((u) => (
@@ -1768,56 +2351,68 @@ export function OrgAdminPage() {
                       </div>
                     )}
                     {nestErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{nestErrors[g.id]}</div>}
-                    <label className="row" style={{ gap: "0.25rem" }}>
-                      {strings.orgAdmin.idpSyncedGroupName}
-                      <input
-                        className="input"
-                        placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
-                        value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
-                        onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                      />
-                    </label>
-                    {/* Granting a role via this group's own SSO sync claim
-                        (2026-08 UX audit roadmap item 522) only makes sense
-                        once SSO is actually configured for this org —
-                        gated on the issuer/client ID actually being set,
-                        not merely on the settings payload having loaded. */}
-                    {ssoConfig?.oidc_issuer_url && ssoConfig?.oidc_client_id ? (
-                      <label className="row" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.grantedOrgRole}
-                        <select
-                          className="input"
-                          value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
-                          onChange={(e) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: e.target.value as OrgRole | "" }))}
-                        >
-                          <option value="">{strings.orgAdmin.grantedOrgRoleNone}</option>
-                          <option value="member">{ORG_ROLE_LABEL.member}</option>
-                          <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                          <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                        </select>
-                      </label>
+
+                    {/* SSO sync sub-section — fully gated on `ssoConfigured`
+                        (bug fix, see comment above): with no SSO configured,
+                        only the muted hint renders, nothing else. */}
+                    {ssoConfigured ? (
+                      <div className="stack" style={{ gap: "0.5rem" }}>
+                        <label className="row" style={{ gap: "0.4rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={syncEnabled}
+                            onChange={(e) => toggleGroupSync(g.id, e.target.checked)}
+                          />
+                          {strings.orgAdmin.syncFromSso}
+                        </label>
+                        {syncEnabled && (
+                          <>
+                            <label className="row" style={{ gap: "0.25rem" }}>
+                              {strings.orgAdmin.idpSyncedGroupName}
+                              <input
+                                className="input"
+                                placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
+                                value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
+                                onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                              />
+                            </label>
+                            <label className="row" style={{ gap: "0.25rem" }}>
+                              {strings.orgAdmin.grantedOrgRole}
+                              <select
+                                className="input"
+                                value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
+                                onChange={(e) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: e.target.value as OrgRole | "" }))}
+                              >
+                                <option value="">{strings.orgAdmin.grantedOrgRoleNone}</option>
+                                <option value="member">{ORG_ROLE_LABEL.member}</option>
+                                <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
+                                <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
+                              </select>
+                            </label>
+                            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.grantedOrgRoleHint}</span>
+                            <button
+                              className="btn" style={{ alignSelf: "flex-start" }}
+                              onClick={() =>
+                                saveIdpSync(
+                                  g.id,
+                                  idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "",
+                                  grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""
+                                )
+                              }
+                            >
+                              {strings.orgAdmin.saveIdpSync}
+                            </button>
+                            {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.ssoNotConfiguredHint(orgLabel)}</span>
                     )}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.grantedOrgRoleHint}</span>
-                    <button
-                      className="btn" style={{ alignSelf: "flex-start" }}
-                      onClick={() =>
-                        saveIdpSync(
-                          g.id,
-                          idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? "",
-                          grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""
-                        )
-                      }
-                    >
-                      {strings.orgAdmin.saveIdpSync}
-                    </button>
-                    {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
-                  </CollapsibleSection>
-                );
-              })}
-              <LoadMoreButton loaded={groups.length} total={groupsTotal} onClick={() => loadGroups(groupSearch, groups.length, true)} />
-            </CollapsibleSection>
+                  </div>
+                </SidePanel>
+              );
+            })()}
           </div>
         )}
 
@@ -1833,53 +2428,84 @@ export function OrgAdminPage() {
                         {p.name}
                         {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
                       </span>
-                      <button className="btn" onClick={() => toggleExpandedProject(p.id)}>
-                        {expandedProjectId === p.id ? strings.common.cancel : strings.orgAdmin.manageUsers}
+                      <button className="btn" onClick={() => openManageUsers(p)}>
+                        {strings.orgAdmin.manageUsers}
                       </button>
                     </div>
-                    {expandedProjectId === p.id && (
-                      <div className="stack" style={{ paddingLeft: "1rem" }}>
-                        {expandedProjectGroups.map((g) => {
-                          const memberIds = new Set(g.member_user_ids);
-                          const members = users.filter((u) => memberIds.has(u.user_id));
-                          const nonMembers = users.filter((u) => !memberIds.has(u.user_id));
-                          return (
-                            <div key={g.id} className="stack">
-                              <span>
-                                {g.name} <span className="badge">{PROJECT_ROLE_LABEL[g.role]}</span>
-                              </span>
-                              {members.length > 0 && (
-                                <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                                  {members.map((u) => (
-                                    <li key={u.user_id} style={{ listStyle: "disc" }}>
-                                      <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
-                                        <span>{u.display_name} <span className="text-muted">({u.email})</span></span>
-                                        <button
-                                          className="btn"
-                                          title={strings.admin.removeMember(u.display_name)}
-                                          aria-label={strings.admin.removeMember(u.display_name)}
-                                          onClick={() => removeExpandedProjectGroupMember(g.id, u.user_id)}
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              <UserAutocomplete
-                                users={nonMembers}
-                                placeholder={strings.admin.addMemberPlaceholder}
-                                onSelect={(userId) => addExpandedProjectGroupMember(g.id, userId)}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 ))}
               </CollapsibleSection>
+            )}
+
+            {manageUsersProjectId && (
+              // Phase 5 (docs/decisions.md; rebuilt in Phase D, follow-up UX
+              // batch, 2026-08-31): the same `ProjectMembersTable`
+              // `ProjectAdminPage.tsx`'s own Members section renders — this
+              // is the direct fix for "should show up in a similar way to
+              // the project admin page," not a parallel reimplementation.
+              <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
+                <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
+                    <Plus size={14} /> {strings.admin.addMember}
+                  </button>
+                  {/* No sibling "Add group" button (PR5 of the members/groups
+                      directory rework plan, corrected during PR5's own
+                      review): the autocomplete below is expanded to match
+                      org groups too — see UserAutocomplete's own module
+                      docstring. */}
+                </div>
+                {manageUsersAddMemberModalOpen && (
+                  <Modal title={strings.admin.addMember} onClose={() => setManageUsersAddMemberModalOpen(false)}>
+                    <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                      <UserAutocomplete
+                        users={users}
+                        placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                        onSelect={(userId) => {
+                          addManageUsersMember(userId);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
+                        groups={allGroups}
+                        onSelectGroup={(groupId) => {
+                          addManageUsersGroupRole(groupId);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
+                        organizationId={orgId}
+                        projectId={manageUsersProjectId}
+                        onSelectExternal={(email) => {
+                          addManageUsersExternalMember(email);
+                          setManageUsersAddMemberModalOpen(false);
+                        }}
+                      />
+                      <select
+                        className="input"
+                        aria-label={strings.membersTable.addRoleSelectLabel}
+                        value={manageUsersAddRole}
+                        onChange={(e) => setManageUsersAddRole(e.target.value as ProjectRole)}
+                      >
+                        <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                        <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                        <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                        <option value="member">{PROJECT_ROLE_LABEL.member}</option>
+                      </select>
+                    </div>
+                    <div className="row" style={{ justifyContent: "flex-end" }}>
+                      <button className="btn" onClick={() => setManageUsersAddMemberModalOpen(false)}>
+                        {strings.common.cancel}
+                      </button>
+                    </div>
+                  </Modal>
+                )}
+                <ProjectMembersTable
+                  members={manageUsersMembers}
+                  invites={manageUsersInvites}
+                  onToggleRole={toggleManageUsersRole}
+                  onResendInvite={resendManageUsersInvite}
+                  resendingInviteId={manageUsersResendingInviteId}
+                  onRemoveAllAccess={removeAllManageUsersMemberAccess}
+                  onConvertToDirect={convertManageUsersMemberToDirect}
+                  ariaLabel={strings.orgAdmin.manageUsers}
+                />
+              </Modal>
             )}
 
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
@@ -2559,6 +3185,15 @@ export function OrgAdminPage() {
         )}
       </ResourceMenu>
 
+      {confirmRemoveUser && (
+        <ConfirmDialog
+          title={strings.orgAdmin.removeFromOrgConfirmTitle(confirmRemoveUser.display_name)}
+          message={strings.orgAdmin.removeFromOrgConfirmMessage(confirmRemoveUser.display_name, orgLabel)}
+          confirmLabel={strings.orgAdmin.removeFromOrgConfirmButton}
+          onConfirm={() => removeOrgUser(confirmRemoveUser)}
+          onCancel={() => setConfirmRemoveUser(null)}
+        />
+      )}
       {patToDescope && (
         <ConfirmDialog
           title={strings.orgAdmin.patDescopeTitle(orgLabel)}

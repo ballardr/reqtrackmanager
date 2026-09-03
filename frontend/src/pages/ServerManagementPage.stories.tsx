@@ -53,8 +53,14 @@ export const AccessReviewOrphanedAccounts: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("None")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Grant server admin" })).toBeInTheDocument();
+
+    // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab
+    // instead of separate always-visible buttons — style guide "Pattern:
+    // action menu", same "OrgAdminPage.tsx" consolidation applied here.
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Grant server admin" })).toBeInTheDocument();
   },
 };
 
@@ -73,14 +79,17 @@ export const AccessReviewShowsGroups: Story = {
 export const AccessReviewBannedAndAdminBadges: Story = {
   beforeEach: () =>
     mockServerManagementApis([
-      systemUser({ user_id: "u1", email: "banned@example.com", is_banned: true, is_active: false }),
-      systemUser({ user_id: "u2", email: "admin@example.com", is_server_admin: true }),
+      systemUser({ user_id: "u1", email: "banned@example.com", display_name: "Banned User", is_banned: true, is_active: false }),
+      systemUser({ user_id: "u2", email: "admin@example.com", display_name: "Admin User", is_server_admin: true }),
     ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
     await expect(canvas.getByText("Server admin")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Revoke server admin" })).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Revoke server admin" })).toBeInTheDocument();
   },
 };
 
@@ -95,7 +104,9 @@ export const AccessReviewGrantServerAdmin: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Grant server admin" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "Grant server admin" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Grant server admin to this user?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Grant server admin" }));
@@ -115,7 +126,9 @@ export const AccessReviewDeactivateCancelled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Deactivate" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const actionsMenu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "Deactivate" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Deactivate this account?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -153,6 +166,74 @@ export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
     // The first page's row is still there — appended, not replaced.
     await expect(canvas.getByText("first@example.com")).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase E (follow-up UX batch, 2026-08-31) — Access Review moved onto the
+ * shared `DirectoryTable` + `FilterPanel` layout (Org Admin's Users table
+ * is the direct composition template). Pins that the pre-existing "view"/
+ * "includeDeactivated" filters still behave identically now that they're a
+ * `FilterField`/`FilterCheckbox` instead of a bare `<select>`/checkbox row,
+ * and that the new search box narrows the request via the new backend
+ * `search` param. */
+export const AccessReviewFilterPanelSearchAndFilters: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/system/branding")) return SERVER_SETTINGS;
+      if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockImplementation(async (path: string) => {
+      if (!path.includes("/system/users")) throw new Error(`unmocked path: ${path}`);
+      return { items: [systemUser({ email: "orphan@example.com" })], total: 1 };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+
+    // "Show" (view) is now a `FilterField` <select> — same accessible name
+    // and options as the old bare <select> it replaced.
+    await expect(canvas.getByLabelText("Show")).toBeInTheDocument();
+    // "includeDeactivated" is now a `FilterCheckbox` — same accessible name.
+    await expect(canvas.getByLabelText("Include deactivated accounts")).toBeInTheDocument();
+
+    const search = canvas.getByPlaceholderText("Search by name or email");
+    await userEvent.type(search, "orphan");
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("search=orphan"))
+    );
+
+    // Follow-up UX fix: this table's columns (Email, Name, Last login,
+    // Created, Organizations, Groups, Actions) crowded the old
+    // `.side-grid` sidebar, so its `FilterPanel` now renders `layout="top"`
+    // (a full-width bar above the table) instead — see
+    // docs/ux-style-guide.md's "Pattern: filter panel placement — side vs.
+    // top".
+    await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
+  },
+};
+
+/** Column-header sorting (Phase E) — Email/Name/Last login/Created are
+ * sortable via `DirectoryTable`'s `SortableHeader`, backed by
+ * `list_system_users`'s new `sort`/`order` params (mirrors `list_org_
+ * users`'s pre-existing contract) so the full filtered result re-sorts
+ * correctly, not just the currently loaded page. */
+export const AccessReviewSortByEmail: Story = {
+  beforeEach: () => mockServerManagementApis([systemUser({ user_id: "u1", email: "orphan@example.com" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(/sort=email&order=asc/))
+    );
+
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await waitFor(() =>
+      expect(api.getPage).toHaveBeenLastCalledWith(expect.stringMatching(/sort=email&order=desc/))
+    );
   },
 };
 

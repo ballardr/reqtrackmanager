@@ -4,9 +4,15 @@ external_user_policy`, and its two provisioning paths: a `PendingInvite`
 redeemed at native signup for a regular org, and immediate provisioning
 (`services.invites.provision_sso_invite`) for an `sso_only` org — see
 `services/invites.py` and docs/decisions.md's "Self-signup, invites, and
-SSO" entry."""
+SSO" entry.
+
+Also covers Phase 3 ("resend a pending invite", docs/decisions.md): listing
+a project's pending invites (`GET .../pending-invites`) and resending one
+(`POST .../pending-invites/{id}/resend`)."""
 
 import time
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock, patch
 
 from sqlalchemy import select
 
@@ -16,10 +22,11 @@ from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.routers.orgs import _looks_like_email
+from app.services import invites as invites_module
 from app.services.definitions import get_default_project_status_id, seed_project_statuses
 from app.services.invites import consume_pending_invites, create_pending_invite, provision_sso_invite
 from app.services.oidc_provisioning import find_or_provision_user
-from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 
 def _set_policy(client, token, org_id, policy, domain=None):
@@ -298,6 +305,274 @@ def test_expired_or_wrong_invite_token_is_rejected_at_signup(client, admin_token
         },
     )
     assert resp.status_code == 400
+
+
+# --- Phase 3: list + resend pending invites (docs/decisions.md) ------------
+
+
+def test_list_pending_invites_computes_pending_and_expired_status(client, admin_token):
+    org, org_admin_token = create_org_admin_in(client, admin_token, "PendingListOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "pending@pendinglist.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/pending-invites", headers=auth_headers(org_admin_token))
+    assert resp.status_code == 200, resp.text
+    listed = resp.json()
+    assert len(listed) == 1
+    assert listed[0]["email"] == "pending@pendinglist.example.com"
+    assert listed[0]["role"] == "member"
+    assert listed[0]["status"] == "pending"
+
+    # An expired invite is still listed (not dropped) — resending an
+    # already-expired one is exactly the case this feature exists for.
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(email="pending@pendinglist.example.com").one()
+        invite.expires_at = datetime.now(UTC) - timedelta(days=1)
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/pending-invites", headers=auth_headers(org_admin_token))
+    assert resp.json()[0]["status"] == "expired"
+
+
+def test_list_pending_invites_excludes_already_accepted(client, admin_token):
+    org, org_admin_token = create_org_admin_in(client, admin_token, "PendingAcceptedOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "willaccept@pendingaccepted.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(email="willaccept@pendingaccepted.example.com").one()
+        token = invite.token
+    finally:
+        db.close()
+
+    client.put("/api/v1/system/signup-config", json={"signup_mode": "always_on"}, headers=auth_headers(admin_token))
+    resp = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "willaccept@pendingaccepted.example.com", "password": "Password123!",
+            "display_name": "Will Accept", "invite_token": token,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/pending-invites", headers=auth_headers(org_admin_token))
+    assert resp.json() == []
+
+
+def test_resend_pending_invite_rotates_token_and_resends_email(client, admin_token):
+    """Pins the two core Phase 3 guarantees: the old token stops working and
+    the new one redeems normally (rotation, not reuse), and `send_email` is
+    actually invoked again (mocked/captured, the same
+    `patch.object(<module>, "send_email", ...)` style
+    `test_org_rename_and_test_email.py` already uses for the other
+    email-sending endpoints in this codebase)."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "ResendOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "resend@resend.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(email="resend@resend.example.com").one()
+        invite_id = str(invite.id)
+        old_token = invite.token
+    finally:
+        db.close()
+
+    with patch.object(invites_module, "send_email", new=Mock()) as mock_send:
+        resp = client.post(
+            f"/api/v1/projects/{project['id']}/pending-invites/{invite_id}/resend",
+            headers=auth_headers(org_admin_token),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "pending"
+    mock_send.assert_called_once()
+    assert mock_send.call_args.args[0] == "resend@resend.example.com"
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(id=invite_id).one()
+        new_token = invite.token
+        assert new_token != old_token
+    finally:
+        db.close()
+
+    client.put("/api/v1/system/signup-config", json={"signup_mode": "always_on"}, headers=auth_headers(admin_token))
+
+    # The stale (pre-resend) token no longer redeems.
+    resp = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "resend@resend.example.com", "password": "Password123!", "display_name": "Resend Test",
+            "invite_token": old_token,
+        },
+    )
+    assert resp.status_code == 400
+
+    # The freshly rotated token does.
+    resp = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "resend@resend.example.com", "password": "Password123!", "display_name": "Resend Test",
+            "invite_token": new_token,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_resend_pending_invite_works_on_an_already_expired_invite(client, admin_token):
+    org, org_admin_token = create_org_admin_in(client, admin_token, "ResendExpiredOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "expiredresend@resend.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(email="expiredresend@resend.example.com").one()
+        invite_id = str(invite.id)
+        invite.expires_at = datetime.now(UTC) - timedelta(days=1)
+        db.commit()
+    finally:
+        db.close()
+
+    with patch.object(invites_module, "send_email", new=Mock()) as mock_send:
+        resp = client.post(
+            f"/api/v1/projects/{project['id']}/pending-invites/{invite_id}/resend",
+            headers=auth_headers(org_admin_token),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "pending"
+    mock_send.assert_called_once()
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(id=invite_id).one()
+        assert invite.expires_at > datetime.now(UTC)
+    finally:
+        db.close()
+
+
+def test_resend_pending_invite_rejects_an_already_accepted_invite(client, admin_token):
+    org, org_admin_token = create_org_admin_in(client, admin_token, "ResendAcceptedOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "acceptedresend@resend.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        invite = db.query(PendingInvite).filter_by(email="acceptedresend@resend.example.com").one()
+        invite_id = str(invite.id)
+        token = invite.token
+    finally:
+        db.close()
+
+    client.put("/api/v1/system/signup-config", json={"signup_mode": "always_on"}, headers=auth_headers(admin_token))
+    client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "acceptedresend@resend.example.com", "password": "Password123!",
+            "display_name": "Accepted Resend", "invite_token": token,
+        },
+    )
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/pending-invites/{invite_id}/resend",
+        headers=auth_headers(org_admin_token),
+    )
+    assert resp.status_code == 409
+
+
+def test_resend_pending_invite_404s_for_an_invite_belonging_to_a_different_project(client, admin_token):
+    """Cross-project boundary check (`_get_pending_invite_in_project`,
+    mirroring `_get_group_in_project`'s existing guard) — a manager of
+    project B must not be able to resend project A's invite by guessing its
+    id, even though `require_project_manage` alone would let them manage
+    *some* project."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "ResendCrossProjectOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project_a = create_project(client, org_admin_token, org["id"])
+    project_b = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project_a['id']}/roles/by-email",
+        json={"email": "crossproject@resend.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+
+    db = SessionLocal()
+    try:
+        invite_id = str(db.query(PendingInvite).filter_by(email="crossproject@resend.example.com").one().id)
+    finally:
+        db.close()
+
+    resp = client.post(
+        f"/api/v1/projects/{project_b['id']}/pending-invites/{invite_id}/resend",
+        headers=auth_headers(org_admin_token),
+    )
+    assert resp.status_code == 404
+
+
+def test_pending_invites_endpoints_are_gated_at_project_manage_tier(client, admin_token):
+    """Same gate as `assign_project_role_by_email`
+    (`require_project_manage`) — a plain project member (below that tier)
+    is rejected on both new endpoints."""
+    org, org_admin_token = create_org_admin_in(client, admin_token, "PendingGateOrg")
+    _set_policy(client, org_admin_token, org["id"], "anyone")
+    project = create_project(client, org_admin_token, org["id"])
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles/by-email",
+        json={"email": "gatecheck@resend.example.com", "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+    db = SessionLocal()
+    try:
+        invite_id = str(db.query(PendingInvite).filter_by(email="gatecheck@resend.example.com").one().id)
+    finally:
+        db.close()
+
+    member_id = create_org_user(client, org_admin_token, org["id"], "belowgate@pendinggate.example.com", role="member")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles",
+        json={"user_id": member_id, "role": "member"},
+        headers=auth_headers(org_admin_token),
+    )
+    member_token = login(client, "belowgate@pendinggate.example.com", "Password123!")
+
+    resp = client.get(f"/api/v1/projects/{project['id']}/pending-invites", headers=auth_headers(member_token))
+    assert resp.status_code == 403
+
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/pending-invites/{invite_id}/resend",
+        headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 403
 
 
 def test_assign_by_email_provisions_immediately_for_sso_only_org(client, admin_token):

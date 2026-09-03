@@ -278,6 +278,74 @@ def test_system_users_group_names_include_direct_and_inherited_membership(client
     assert "Access Review Parent" in by_id[user_id]["group_names"]
 
 
+def test_system_users_search_matches_name_or_email_case_insensitively(client, admin_token, org_id):
+    """Phase E (follow-up UX batch, 2026-08-31): `search` on `/system/users`
+    reuses `list_org_users`'s exact matching approach (`test_org_users_
+    search_and_paginate` in `test_pagination.py` is its org-scoped
+    equivalent) — substring, case-insensitive, against display name or
+    email. `create_org_user`'s display name is always the email's local
+    part, so a shared fragment matches both users via either field."""
+    create_org_user(client, admin_token, org_id, "aaron.searchtarget@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "zoe.searchtarget@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "unrelated_user@example.com", role="member")
+
+    by_name = client.get("/api/v1/system/users?search=AARON.search", headers=auth_headers(admin_token))
+    assert by_name.status_code == 200
+    assert [u["email"] for u in by_name.json()] == ["aaron.searchtarget@example.com"]
+
+    by_shared_fragment = client.get("/api/v1/system/users?search=searchtarget", headers=auth_headers(admin_token))
+    assert {u["email"] for u in by_shared_fragment.json()} == {
+        "aaron.searchtarget@example.com", "zoe.searchtarget@example.com",
+    }
+    assert "unrelated_user@example.com" not in {u["email"] for u in by_shared_fragment.json()}
+
+
+def test_system_users_search_combines_with_view_and_active_filters(client, admin_token, org_id):
+    """`search` must AND with, not override, the existing access-review
+    filters the frontend's "view"/"includeDeactivated" controls map to
+    (`no_org_membership` for the "orphaned" view, `is_active` for
+    `includeDeactivated` unchecked)."""
+    orphan_id = _make_orphaned_user(client, admin_token, org_id, "combo_orphan_target@example.com")
+    create_org_user(client, admin_token, org_id, "combo_member_target@example.com", role="member")
+
+    # A member of the org (not orphaned) is excluded by no_org_membership=true
+    # even though its email matches the search term.
+    resp = client.get(
+        "/api/v1/system/users?no_org_membership=true&search=combo", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    assert {u["email"] for u in resp.json()} == {"combo_orphan_target@example.com"}
+
+    # `includeDeactivated` unchecked maps to `is_active=true` — combined with
+    # search, a deactivated match is excluded while an active one still shows.
+    client.post(f"/api/v1/system/users/{orphan_id}/deactivate", headers=auth_headers(admin_token))
+    resp = client.get("/api/v1/system/users?is_active=true&search=combo", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    emails = {u["email"] for u in resp.json()}
+    assert "combo_orphan_target@example.com" not in emails
+    assert "combo_member_target@example.com" in emails
+
+
+def test_system_users_sort_by_email_and_created_at(client, admin_token, org_id):
+    """`sort`/`order` (Phase E) — necessary for `DirectoryTable`'s sortable
+    Email/Name/Last login/Created columns to re-sort the *full* filtered
+    result, not just the currently loaded page, mirroring `list_org_users`'
+    own `sort`/`order` contract exactly."""
+    create_org_user(client, admin_token, org_id, "aaron.sorttarget@example.com", role="member")
+    create_org_user(client, admin_token, org_id, "zoe.sorttarget@example.com", role="member")
+
+    ascending = client.get(
+        "/api/v1/system/users?search=sorttarget&sort=email&order=asc", headers=auth_headers(admin_token)
+    )
+    assert ascending.status_code == 200
+    assert [u["email"] for u in ascending.json()] == ["aaron.sorttarget@example.com", "zoe.sorttarget@example.com"]
+
+    descending = client.get(
+        "/api/v1/system/users?search=sorttarget&sort=email&order=desc", headers=auth_headers(admin_token)
+    ).json()
+    assert [u["email"] for u in descending] == ["zoe.sorttarget@example.com", "aaron.sorttarget@example.com"]
+
+
 def test_cannot_revoke_the_deployment_last_active_server_admin(client, admin_token, org_id):
     """Hardening-review finding: revoking the sole remaining active server
     admin would be an unrecoverable lockout — nobody left with the

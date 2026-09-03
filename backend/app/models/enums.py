@@ -101,12 +101,19 @@ class RequirementLevel(str, enum.Enum):
 
 
 class RequirementStatus(str, enum.Enum):
-    """Lifecycle states for a requirement (C-G-11)."""
+    """Lifecycle states for a requirement (C-G-11).
+
+    `COMPLETED` deliberately does not exist here (removed; see migration
+    0018 and docs/decisions.md) — C-G-11 is explicit that completion is
+    "independently of lifecycle state," an overlay marker rather than a
+    lifecycle status, so it lives on `Requirement.is_completed`/
+    `completed_at`/`completed_by` instead, layered on top of `APPROVED`
+    rather than replacing it.
+    """
 
     DRAFT = "draft"
     REVIEWED = "reviewed"
     APPROVED = "approved"
-    COMPLETED = "completed"
     ARCHIVED = "archived"
 
 

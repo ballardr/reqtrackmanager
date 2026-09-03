@@ -251,12 +251,51 @@ class ProjectCategory(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
-    """A named group that grants one of the four fixed project roles (C-U-11).
+    """A named group that may hold zero, one, or several of the four fixed
+    project roles (C-U-11), each an independent, revocable grant.
 
     Ossa (v1) uses a fixed role vocabulary (ProjectRole) rather than
     customisable permissions, so a group's purpose is simply to bulk-assign
-    one of those roles to many users (and, via nested org groups, whole
-    organisational teams, C-U-12).
+    role(s) to many users (and, via nested org groups, whole organisational
+    teams, C-U-12).
+
+    A group's role used to be a single, required field fixed at creation
+    (`role: Mapped[ProjectRole]`, directly on this table). The members/
+    groups directory rework plan's PR7 (docs/decisions.md) replaced that
+    with `ProjectGroupRole`, a separate grant table — a group can now hold
+    zero, one, or several roles simultaneously, each its own independently-
+    revocable row, mirroring the shape `OrgGroupProjectRole` (PR4) already
+    established for org groups and `UserProjectRole` established for
+    individual users ("one row per role," never an array/JSON column). A
+    migration (`alembic/versions/0022_...py`) backfilled exactly one
+    `ProjectGroupRole` row per group's pre-existing `role` value before
+    dropping the column, so no group lost its role in the transition. See
+    `services.rbac`'s module docstring (source 2's `direct_group`
+    provenance, now resolved by joining this new table instead of reading a
+    scalar) and PR7's identify/verify/remediate entry in docs/decisions.md
+    for the full review, including every C-U-08 "must retain a manager"
+    guard site updated to check `ProjectGroupRole` instead.
+
+    Every group is now an ordinary, user-created group (follow-up UX batch
+    Phase C, 2026-08-31) — there is no longer a notion of a project
+    automatically seeding "standard" groups on creation. Prior to this
+    phase, `create_project`'s non-template path auto-created four groups
+    per project (`is_default=True`) and the creator's initial
+    `PROJECT_MANAGER` grant went through membership in one of them; that
+    made bulk-group scaffolding, not a direct grant, the *only* way a fresh
+    project ever got its first manager, and those four groups could never
+    be deleted. The creator's initial manager role is now always a direct
+    `UserProjectRole` grant instead (the same fallback the template-clone
+    path already used when a cloned project ended up with no manager) — see
+    `routers.projects.create_project` and docs/decisions.md's entry on this
+    migration. `is_default` (and every group-count/deletability special
+    case built on it) was removed entirely as part of the same change; a
+    data migration (`alembic/versions/0019_...py`) converted every
+    pre-existing `is_default=True` group's direct user members into direct
+    grants and either deleted the group (if it had no other composition) or
+    demoted it to an ordinary group (if it did — e.g. a nested org group or
+    a cross-project member reference), so no group anywhere in the schema
+    still carries any special protection based on how it was created.
     """
 
     __tablename__ = "project_groups"
@@ -264,8 +303,6 @@ class ProjectGroup(UUIDPKMixin, TimestampMixin, Base):
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
-    role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ProjectGroupMember(UUIDPKMixin, TimestampMixin, Base):
@@ -319,6 +356,89 @@ class UserProjectRole(UUIDPKMixin, TimestampMixin, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
+
+
+class OrgGroupProjectRole(UUIDPKMixin, TimestampMixin, Base):
+    """A direct (non-nested) project role assignment for an organisation
+    group — the group-level counterpart to `UserProjectRole`: the group
+    itself holds the role as its own, independently-revocable record,
+    rather than needing to be nested inside a `ProjectGroup`
+    (`ProjectGroupMember.org_group_id`, C-U-12) to grant one.
+
+    This coexists with, and does not replace, the nesting mechanism —
+    nesting stays the way to bundle several groups/users under one named
+    role; this is a genuinely separate, additive grant path added to let a
+    single org group hold a role on a project directly, the same way a
+    single user already can via `UserProjectRole`. See `docs/decisions.md`'s
+    identify/verify/remediate entry for this table (recorded when PR4 of
+    the members/groups directory rework plan landed) and
+    `services.rbac`'s module docstring (the new numbered source describing
+    how this resolves into effective project roles, including forward and
+    member-source inheritance cascading it the same way a user's own direct
+    role already cascades).
+
+    Both FKs `ondelete="CASCADE"`: `org_group_id` mirrors
+    `ProjectGroupMember.org_group_id`'s own cascade (deleting an org group
+    removes every grant that referenced it, not just its `OrgGroupMember`
+    rows); `project_id` mirrors `UserProjectRole.project_id`'s own cascade
+    (deleting a project takes its role grants with it).
+    """
+
+    __tablename__ = "org_group_project_roles"
+    __table_args__ = (UniqueConstraint("org_group_id", "project_id", "role"),)
+
+    # `index=True` on both FKs: pre-existing gap found while implementing
+    # PR7 (this repo's own `test_schema_migrations_match_models.py` failed
+    # against this table too) — migration 0021 already creates
+    # `ix_org_group_project_roles_org_group_id`/`_project_id` explicitly,
+    # but the model classes never declared the matching `index=True`, so
+    # `Base.metadata` didn't know about them and Alembic's own autogenerate
+    # diff flagged both as "to be removed." Fixed here rather than left
+    # alongside PR7's own new table with the identical gap.
+    org_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
+
+
+class ProjectGroupRole(UUIDPKMixin, TimestampMixin, Base):
+    """One role a `ProjectGroup` holds — the project-group-level counterpart
+    to `UserProjectRole`/`OrgGroupProjectRole`: a `ProjectGroup` used to
+    carry a single, required `role` fixed at creation (a scalar column on
+    that table); it now instead holds zero, one, or several independently-
+    revocable roles, one row per role here, the same "one row per role, not
+    an array column" shape those other two direct-grant tables already use.
+
+    Added by the members/groups directory rework plan's PR7 (docs/
+    decisions.md) — mirrors `OrgGroupProjectRole` (PR4) almost exactly, just
+    scoped to a `ProjectGroup` instead of an `OrgGroup`. Unlike
+    `OrgGroupProjectRole`, no separate `project_id` column is needed here:
+    a `ProjectGroup` already belongs to exactly one project by construction
+    (`ProjectGroup.project_id`), so `project_group_id` alone is enough to
+    resolve which project a row's role applies to.
+
+    `ondelete="CASCADE"`: deleting a project group takes its role grants
+    with it, mirroring `ProjectGroupMember.project_group_id`'s own cascade
+    — a role grant has no independent meaning once the group itself is
+    gone. See `docs/decisions.md`'s identify/verify/remediate entry for
+    this table (PR7) for the full security review, including every C-U-08
+    "must retain a manager" guard site updated to check this table instead
+    of the old scalar `ProjectGroup.role`, and the backfill migration
+    (`alembic/versions/0022_...py`) that converted every pre-existing
+    group's single `role` into exactly one row here before dropping the
+    column.
+    """
+
+    __tablename__ = "project_group_roles"
+    __table_args__ = (UniqueConstraint("project_group_id", "role"),)
+
+    project_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_groups.id", ondelete="CASCADE"), index=True
+    )
     role: Mapped[ProjectRole] = mapped_column(str_enum(ProjectRole))
 
 

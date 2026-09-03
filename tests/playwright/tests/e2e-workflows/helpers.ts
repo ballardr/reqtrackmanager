@@ -79,23 +79,66 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
- * Same idea as `ensureExpanded`, for one org/project group's own card in
- * Org Admin's Groups section or Project Admin's Groups tab (2026-08 UX
- * audit "Directories at scale") — each group now renders collapsed by
- * default behind its own `CollapsibleSection`, so its member list,
- * "add member" input, and nesting picker are all unreachable until
- * expanded. Unlike `ensureExpanded`'s exact `"<title> section"` match,
- * each group's title combines its name with a dynamic member count (and,
- * for project groups, its role), so this matches by the group's name as a
- * substring instead. Also persists server-side per user across
- * runs/specs sharing a persona, same caveat as `ensureExpanded` — hence
- * the same idempotent "only click if collapsed" guard.
+ * Opens one org group's `SidePanel` on Org Admin's Groups section
+ * (`DirectoryTable`, Phase B, follow-up UX batch, 2026-08-31 — replaces the
+ * pre-Phase-B always-expanded `CollapsibleSection` accordion this helper
+ * used to open a card in instead). A `SidePanel` has no expand/collapse
+ * state to race, so this isn't guarded the idempotent way `ensureExpanded`
+ * is — clicking the row again while its own panel is already open is a
+ * harmless no-op re-render, not a toggle-shut.
+ *
+ * Returns the panel's own `dialog` locator (its accessible name is
+ * `"<group name> details"`), so callers scope every subsequent interaction
+ * to it rather than the whole page.
  */
-export async function openGroupCard(page: Page, groupName: string): Promise<void> {
-  const toggle = page.getByRole("button", { name: new RegExp(`^${groupName}`) });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
-    await toggle.click();
-  }
+export async function openOrgGroupPanel(page: Page, groupName: string) {
+  await page.getByRole("button", { name: new RegExp(`^${groupName}`) }).click();
+  return page.getByRole("dialog", { name: `${groupName} details` });
+}
+
+/**
+ * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
+ * section — a `DirectoryTable` row (Phase B, follow-up UX batch,
+ * 2026-08-31; before that, Phase 5's own `<button>`-row list, docs/
+ * decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
+ * not `rowHref` — found during Phase B verification, not assumed: at the
+ * time, every standard project auto-seeded a default group literally named
+ * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — removed in Phase C,
+ * 2026-08-31, but the finding that motivated `onRowClick` stands
+ * regardless), the exact same accessible name as this page's own
+ * `ResourceMenu` "Members" nav link, so a `rowHref` `<Link>` row would
+ * collide with it (two `role="link"` elements sharing one accessible name
+ * on the same page — a real ambiguity, not just a Playwright artifact, and
+ * one any project could still hit today with a manually-named custom
+ * group). The existing `?openGroup=` deep link is unaffected
+ * either way — it's handled by `ProjectAdminPage.tsx`'s own
+ * `useSearchParams` effect, which `onRowClick`'s `setOpenGroupId` call
+ * feeds into identically. A `SidePanel` has no expand/collapse state to
+ * race the way a `CollapsibleSection` does, so this isn't guarded the same
+ * idempotent way `ensureExpanded` is — clicking the row again while its own
+ * panel is already open is a harmless no-op re-render, not a toggle-shut.
+ *
+ * Returns the panel's own `dialog` locator (its accessible name is
+ * `"<group name> details"`), so callers scope every subsequent interaction
+ * to it rather than the whole page — necessary once more than one group in
+ * this run could plausibly match a page-wide selector for the same
+ * add-member input/role text.
+ *
+ * Uses an exact-name match, not a `^groupName` prefix regex: PR7 of the
+ * follow-up UX batch (docs/decisions.md) added a per-row role
+ * `MultiSelectDropdown` to the Groups tab's own row (`ProjectAdminPage.tsx`),
+ * whose trigger button's accessible name is `"<group name>'s roles"` — a
+ * prefix match against the row-trigger button's exact `<group name>` text
+ * also matched that second button, a genuine two-element strict-mode
+ * violation found running the full suite together (not present when a
+ * group had no role-picker rendered, e.g. an isolated spec run seeded
+ * without this PR's own fixtures). The row-trigger button's own accessible
+ * name is exactly `groupName` with no trailing text, so `exact: true`
+ * disambiguates correctly without narrowing any real match.
+ */
+export async function openProjectGroupPanel(page: Page, groupName: string) {
+  await page.getByRole("button", { name: groupName, exact: true }).click();
+  return page.getByRole("dialog", { name: `${groupName} details` });
 }
 
 /**
@@ -190,6 +233,23 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();
+  // Waits for the detail page's own content to actually render before
+  // returning, not just for the URL to change. `waitForURL` alone was
+  // tried first and wasn't enough: the route's lazy chunk (or its own
+  // requirement fetch, RequirementDetailPage.tsx's `if (!requirement)
+  // return <Spinner />`) can still be in flight after the URL/history
+  // update lands, and under full-suite CI load that window is wide enough
+  // for a caller's very next assertion (e.g. the detail page's own "Locked
+  // (approved)" badge) to catch the requirements *list* page's own
+  // identically-worded row badge still mounted — a genuine two-element
+  // strict-mode violation `expect().toBeVisible()` can't retry past, since
+  // ambiguity isn't a "not ready yet" condition. The detail page's `<h1>`
+  // always renders as `"<code> — <name>"` (RequirementDetailPage.tsx) while
+  // the list page's own `<h1>` is just the (terminology-dependent) page
+  // title with no em dash, so waiting for the dash is a reliable,
+  // terminology-independent signal that the swap has actually happened.
+  await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
+  await expect(page.locator("h1")).toContainText("—");
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor

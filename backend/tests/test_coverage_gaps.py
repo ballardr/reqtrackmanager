@@ -144,6 +144,27 @@ def test_project_metrics_reflects_requirement_and_change_request_counts(client, 
     assert metrics["change_requests_proposed"] == 0
 
 
+def test_project_metrics_completed_percent_reflects_is_completed_flag(client, admin_token, org_id):
+    """C-G-11: the U-P-05 "percentage of requirements completed" metric
+    reads `Requirement.is_completed` directly, not
+    `RequirementVersion.status == 'completed'` (which no longer exists as a
+    value at all) — pins that it tracks the overlay marker correctly."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    first = _create_requirement(client, admin_token, project["id"], component_id, category_id, "First requirement")
+    _create_requirement(client, admin_token, project["id"], component_id, category_id, "Second requirement")
+
+    client.post(f"/api/v1/projects/{project['id']}/requirements/{first['id']}/approve", headers=auth_headers(admin_token))
+    complete_resp = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{first['id']}/complete", headers=auth_headers(admin_token)
+    )
+    assert complete_resp.status_code == 200, complete_resp.text
+
+    metrics = client.get(f"/api/v1/projects/{project['id']}/metrics", headers=auth_headers(admin_token)).json()
+    assert metrics["requirement_count"] == 2
+    assert metrics["requirement_completed_percent"] == 50.0
+
+
 def test_org_role_grant_success_and_notification(client, admin_token, org_id):
     user_id = create_org_user(client, admin_token, org_id, "role_grant_target@example.com", role="member")
 
@@ -224,7 +245,7 @@ def test_deactivating_last_project_manager_falls_back_to_acting_admin(client, ad
     never leave the project without one — the acting org admin is assigned
     as a fallback manager. The project is created by the soon-to-be-deactivated
     user (not the admin), so the admin isn't already a manager via the
-    default "Project Managers" group the creator is auto-added to."""
+    direct PROJECT_MANAGER grant the creator receives (C-U-10)."""
     manager_id = create_org_user(client, admin_token, org_id, "sole_manager@example.com", role="project_creator")
     manager_token = login(client, "sole_manager@example.com", "Password123!")
     project = create_project(client, manager_token, org_id, name="Solely Managed Project")

@@ -188,3 +188,71 @@ test("FilterPanel's filter body starts collapsed below the mobile breakpoint, wi
     data: { ui_preferences: { "section_collapsed:requirementsFilters": true } },
   });
 });
+
+/**
+ * `.side-grid` always renders `FilterPanel` as its second DOM child (main
+ * list/table first, filters second) on every page that uses it — fine on
+ * desktop's two-column layout, but on the single-column mobile collapse
+ * (`@media (max-width: 860px)`, `theme.css`) that put filters visually
+ * *after* the entire list, forcing a scroll past everything to reach them.
+ * Fixed with a mobile-only `order: -1` on `.side-grid > .filter-panel`
+ * (`theme.css`), which doesn't move the DOM, only the rendered position —
+ * these tests assert the rendered (visual) top position, not DOM order.
+ */
+test.describe("FilterPanel renders first on narrow viewports, unaffected on desktop", () => {
+  test("Requirements page", async ({ page }) => {
+    await page.setViewportSize({ width: 400, height: 900 });
+    await loginAsDemoAdminAndOpenRequirements(page);
+
+    const mainColumn = page.locator(".side-grid > div").first();
+    const filterPanel = filterPanelLocator(page);
+    await expect(filterPanel).toBeVisible();
+    await expect(mainColumn).toBeVisible();
+
+    const filterBoxMobile = await filterPanel.boundingBox();
+    const mainBoxMobile = await mainColumn.boundingBox();
+    expect(filterBoxMobile).not.toBeNull();
+    expect(mainBoxMobile).not.toBeNull();
+    // Filter panel's rendered top must sit above (a smaller `y` than) the
+    // main list column's top on a narrow viewport.
+    expect(filterBoxMobile!.y).toBeLessThan(mainBoxMobile!.y);
+
+    // Widening past the 860px breakpoint must restore the untouched desktop
+    // layout: side-by-side, not stacked-with-filters-first.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(filterPanel).toBeVisible();
+    const filterBoxDesktop = await filterPanel.boundingBox();
+    const mainBoxDesktop = await mainColumn.boundingBox();
+    expect(filterBoxDesktop).not.toBeNull();
+    expect(mainBoxDesktop).not.toBeNull();
+    // Same row (not reordered above), and to the right of the main column.
+    expect(Math.abs(filterBoxDesktop!.y - mainBoxDesktop!.y)).toBeLessThan(5);
+    expect(filterBoxDesktop!.x).toBeGreaterThan(mainBoxDesktop!.x);
+  });
+
+  test("Change Requests page", async ({ page }) => {
+    await page.setViewportSize({ width: 400, height: 900 });
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(DEMO_ADMIN_EMAIL);
+    await page.getByLabel("Password").fill(DEMO_ADMIN_PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL(/\/projects(\/|$)/);
+
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Solstice Cloud Platform" }).first().click();
+    await page.getByRole("link", { name: "Change requests", exact: true }).click();
+    await page.waitForURL(/\/change-requests$/);
+    await expect(page.getByText("Loading…")).toBeHidden();
+
+    const mainColumn = page.locator(".side-grid > div").first();
+    const filterPanel = filterPanelLocator(page);
+    await expect(filterPanel).toBeVisible();
+    await expect(mainColumn).toBeVisible();
+
+    const filterBoxMobile = await filterPanel.boundingBox();
+    const mainBoxMobile = await mainColumn.boundingBox();
+    expect(filterBoxMobile).not.toBeNull();
+    expect(mainBoxMobile).not.toBeNull();
+    expect(filterBoxMobile!.y).toBeLessThan(mainBoxMobile!.y);
+  });
+});

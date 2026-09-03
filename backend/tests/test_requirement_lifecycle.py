@@ -189,15 +189,15 @@ def test_create_change_request_rejects_a_still_draft_requirement(client, admin_t
     assert resp.status_code == 400, resp.text
 
 
-def test_decide_change_request_preserves_completed_status_instead_of_reverting_to_approved(client, admin_token, org_id):
+def test_decide_change_request_plain_approve_preserves_completed_overlay(client, admin_token, org_id):
     """Regression test for the bug found alongside the requirement-approval
     gap: `decide_change_request` used to force a MODIFY_REQUIREMENT change
     request's target back to `RequirementStatus.APPROVED` unconditionally,
-    silently reverting an already-`COMPLETED` requirement. With the new
-    locked-requirement guard on change-request creation, the requirement's
-    status at decision time is always one of the two locked statuses
-    (`approved`/`completed`) — approving the change request must carry that
-    forward, not force it back down to `approved`."""
+    silently reverting an already-completed requirement's status. Now that
+    completion is `Requirement.is_completed` (C-G-11), a plain "Approve"
+    decision must still leave that overlay exactly as it was — the
+    documented, tested default carry-forward behaviour (distinct from the
+    opt-in `clear_completion=True` path, covered separately below)."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
@@ -209,7 +209,8 @@ def test_decide_change_request_preserves_completed_status_instead_of_reverting_t
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/complete", headers=auth_headers(admin_token)
     )
     assert complete_resp.status_code == 200, complete_resp.text
-    assert complete_resp.json()["status"] == "completed"
+    assert complete_resp.json()["status"] == "approved"
+    assert complete_resp.json()["is_completed"] is True
 
     cr = client.post(
         f"/api/v1/projects/{project['id']}/change-requests",
@@ -230,7 +231,96 @@ def test_decide_change_request_preserves_completed_status_instead_of_reverting_t
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
     ).json()
     assert updated["reasoning"] == "Refined while completed"
-    assert updated["status"] == "completed"
+    assert updated["status"] == "approved"
+    assert updated["is_completed"] is True
+
+
+def test_decide_change_request_with_clear_completion_clears_the_overlay(client, admin_token, org_id):
+    """The opt-in counterpart to the plain-Approve carry-forward test above:
+    `clear_completion=True` on a MODIFY_REQUIREMENT decision against a
+    completed requirement is the approver's explicit choice that this
+    change is substantial enough to need re-verifying — clears
+    `is_completed`/`completed_at`/`completed_by` as a distinct step, logged
+    distinctly from the version-applied event."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    client.post(f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token))
+    client.post(f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/complete", headers=auth_headers(admin_token))
+
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["reasoning"], "proposed_reasoning": "Substantial rework", "reason": "found a real gap",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
+    decision = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
+        json={"approve": True, "note": "", "clear_completion": True}, headers=auth_headers(admin_token),
+    )
+    assert decision.status_code == 200, decision.text
+
+    updated = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    ).json()
+    assert updated["is_completed"] is False
+    assert updated["completed_at"] is None
+    assert updated["completed_by"] is None
+
+
+def test_clear_completion_is_a_no_op_on_a_non_completed_requirement(client, admin_token, org_id):
+    """`clear_completion=True` on a decision whose target isn't currently
+    completed does nothing extra — not an error, not an unexpected state
+    change (it's already not completed, so there's nothing to clear)."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+    client.post(f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/approve", headers=auth_headers(admin_token))
+
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "modify_requirement", "requirement_id": requirement["id"],
+            "changed_fields": ["reasoning"], "proposed_reasoning": "Minor tweak", "reason": "clarify",
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
+    decision = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
+        json={"approve": True, "note": "", "clear_completion": True}, headers=auth_headers(admin_token),
+    )
+    assert decision.status_code == 200, decision.text
+
+    updated = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    ).json()
+    assert updated["is_completed"] is False
+
+
+def test_clear_completion_is_a_no_op_on_a_new_requirement_kind_change_request(client, admin_token, org_id):
+    """`clear_completion` is only meaningful for MODIFY_REQUIREMENT change
+    requests — passing it on a NEW_REQUIREMENT decision is a harmless no-op,
+    not an error."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    cr = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests",
+        json={
+            "kind": "new_requirement", "proposed_name": "Brand new requirement", "reason": "gap found",
+            "proposed_component_id": component_id, "proposed_category_id": category_id,
+        },
+        headers=auth_headers(admin_token),
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/submit", headers=auth_headers(admin_token))
+    decision = client.post(
+        f"/api/v1/projects/{project['id']}/change-requests/{cr['id']}/decide",
+        json={"approve": True, "note": "", "clear_completion": True}, headers=auth_headers(admin_token),
+    )
+    assert decision.status_code == 200, decision.text
 
 
 def test_change_request_modifies_locked_requirement_and_is_logged(client, admin_token, org_id):
@@ -379,6 +469,35 @@ def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, a
     imported = next(r for r in listed if r["name"] == "Ship the widget")
     assert imported["level"] == "recommended"
     assert imported["target_stage_id"] == stages[0]["id"]
+
+
+def test_list_requirements_filters_by_is_completed(client, admin_token, org_id):
+    """C-G-11: `is_completed` is its own list-endpoint query param,
+    independent of `status` — the requirements list's "Completed" filter
+    checkbox in the frontend relies on this."""
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    completed_req = _create_requirement(client, admin_token, project["id"], component_id, category_id, "Completed one")
+    _create_requirement(client, admin_token, project["id"], component_id, category_id, "Not completed")
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{completed_req['id']}/approve", headers=auth_headers(admin_token)
+    )
+    client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{completed_req['id']}/complete", headers=auth_headers(admin_token)
+    )
+
+    completed_only = client.get(
+        f"/api/v1/projects/{project['id']}/requirements?is_completed=true", headers=auth_headers(admin_token)
+    ).json()
+    assert [r["id"] for r in completed_only] == [completed_req["id"]]
+
+    not_completed_only = client.get(
+        f"/api/v1/projects/{project['id']}/requirements?is_completed=false", headers=auth_headers(admin_token)
+    ).json()
+    assert completed_req["id"] not in [r["id"] for r in not_completed_only]
+
+    unfiltered = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
+    assert len(unfiltered) == 2
 
 
 def test_target_stage_and_level_persist_through_create_update_and_change_request(client, admin_token, org_id):

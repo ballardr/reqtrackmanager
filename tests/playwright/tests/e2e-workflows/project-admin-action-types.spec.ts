@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's requirement-action types (Review, Test, ...)
@@ -12,10 +12,21 @@ import { loginAs, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./hel
  * explicit reassignment target; and once only one type remains, its delete
  * control is disabled outright rather than offered and rejected.
  *
- * Uses Beta-1 (not touched by any other admin-list spec in this suite), and
- * creates its own action there to exercise the "in use" path, rather than
- * touching Alpha-1's fixed Review/Test action fixtures that
- * requirement-actions.spec.ts and requirement-links.spec.ts depend on.
+ * Creates its own dedicated, per-run project (via the UI, dynamically
+ * timestamp-suffixed) rather than running this test's own destructive
+ * "reduce down to exactly one remaining type" sequence against a shared
+ * seeded project — this test permanently deletes one of its project's two
+ * default action types (Review, reassigning its one use to Test) to reach
+ * that "only one left" state, and never restores it, so running it twice
+ * back-to-back against the same project (e.g. Beta-1, or any other shared
+ * fixture another spec also depends on) would find "Review" already gone
+ * on the second run — the exact non-idempotent-fixture-consumption failure
+ * mode this repo's own testing conventions call out. Every new project
+ * auto-seeds its own fresh Review/Test pair (`definitions.py`'s
+ * `DEFAULT_ACTION_TYPES`), so a fresh project per run sidesteps this
+ * entirely without needing to fabricate throwaway type names of its own —
+ * left behind afterward, harmless, matching this suite's own established
+ * per-run-project convention (see role-display-collapsing.spec.ts).
  */
 
 /** Action type/status/link-type names render as editable `<input>` value
@@ -31,8 +42,17 @@ function inputWithValue(page: Page, value: string) {
 
 test.describe("project admin: action types", () => {
   test("add, rename, delete-unused, delete-in-use-with-reassignment, and last-remaining-blocked", async ({ page }) => {
+    const projectName = `E2E Action Types ${Date.now()}`;
+
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByText(PROJECT_NAMES.beta1).click();
+    await page.goto("/projects");
+    await test.step("create a dedicated project for this run — see the module docstring for why this test doesn't reuse a shared seeded project", async () => {
+      await page.getByRole("button", { name: "New project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name", { exact: true }).fill(projectName);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
+    });
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
     // Action types now lives inside the merged "Fields & actions" tab
     // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5), alongside
