@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
-from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole, SignupMode
+from app.models.enums import ExternalUserPolicy, ModuleEntitlementPolicy, OrgRole, ProjectRole, SignupMode
 
 
 class Organization(UUIDPKMixin, TimestampMixin, Base):
@@ -290,6 +290,10 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         singleton_guard: Always `True` — see class docstring. Not read or
             written by any application code; its only job is being the
             target of a `UNIQUE` constraint.
+        default_module_entitlement_policy: Deployment-wide default module
+            entitlement (`ModuleEntitlementPolicy`; see its docstring in
+            `models/enums.py`), used by Phase 1's entitlement resolution
+            when an organisation has no explicit override row.
     """
 
     __tablename__ = "server_settings"
@@ -313,6 +317,17 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
     org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Module system (compliance-module-plan.md Phase 0/1): the deployment-
+    # wide default an organisation's module entitlement falls back to when
+    # no `organization_module_entitlements` override row exists for it —
+    # same "override falls back to platform default" shape as
+    # accent_color_hex/header_title above, just resolved by Phase 1's
+    # entitlement service rather than `services/branding.py`. OPEN suits a
+    # self-hosted/open-source deployment with no licensing tiers; CLOSED
+    # suits a future commercial/SaaS posture of the same codebase.
+    default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
+        str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
+    )
 
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):

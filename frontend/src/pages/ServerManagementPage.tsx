@@ -1,15 +1,17 @@
-import { Ban, ShieldMinus, ShieldPlus, Upload, UserCheck, UserX } from "lucide-react";
+import { Ban, Upload, UserCheck, UserX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
-import type { BulkRevokeResult, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { cycleSort, type SortState } from "../components/SortableHeader";
@@ -24,7 +26,13 @@ const PAGE_SIZE = 30;
 
 type ReviewView = "orphaned" | "server_admins" | "all";
 
-type AccessReviewConfirmKind = "deactivate" | "ban" | "grantServerAdmin" | "revokeServerAdmin";
+type AccessReviewConfirmKind =
+  | "deactivate"
+  | "ban"
+  | "grantServerAdmin"
+  | "revokeServerAdmin"
+  | "grantModuleAdministrator"
+  | "revokeModuleAdministrator";
 
 /** Sortable columns of the Access Review `DirectoryTable` (Phase E,
  * follow-up UX batch, 2026-08-31) — mirrors `list_org_users`'s own
@@ -128,6 +136,14 @@ function AccessReviewTab() {
     setConfirmAction({ kind: "revokeServerAdmin", userId });
   }
 
+  function grantModuleAdministrator(userId: string) {
+    setConfirmAction({ kind: "grantModuleAdministrator", userId });
+  }
+
+  function revokeModuleAdministrator(userId: string) {
+    setConfirmAction({ kind: "revokeModuleAdministrator", userId });
+  }
+
   function confirmPendingAction() {
     if (!confirmAction) return;
     const { kind, userId } = confirmAction;
@@ -149,6 +165,18 @@ function AccessReviewTab() {
         runAction(
           () => api.put(`/api/v1/system/users/${userId}/server-admin`, { is_server_admin: false }),
           strings.system.revokedServerAdminToast
+        );
+        break;
+      case "grantModuleAdministrator":
+        runAction(
+          () => api.post(`/api/v1/system/users/${userId}/server-roles`, { role: "module_administrator" }),
+          strings.system.grantedModuleAdministratorToast
+        );
+        break;
+      case "revokeModuleAdministrator":
+        runAction(
+          () => api.delete(`/api/v1/system/users/${userId}/server-roles/module_administrator`),
+          strings.system.revokedModuleAdministratorToast
         );
         break;
     }
@@ -177,6 +205,16 @@ function AccessReviewTab() {
       message: strings.system.revokeServerAdminConfirm,
       confirmLabel: strings.system.revokeServerAdmin,
     },
+    grantModuleAdministrator: {
+      title: strings.system.grantModuleAdministratorTitle,
+      message: strings.system.grantModuleAdministratorConfirm,
+      confirmLabel: strings.system.grantModuleAdministrator,
+    },
+    revokeModuleAdministrator: {
+      title: strings.system.revokeModuleAdministratorTitle,
+      message: strings.system.revokeModuleAdministratorConfirm,
+      confirmLabel: strings.system.revokeModuleAdministrator,
+    },
   };
 
   // Rebuilt on the shared `DirectoryTable` (Phase 0) inside the standard
@@ -189,6 +227,44 @@ function AccessReviewTab() {
   const usersColumns: DirectoryColumn<SystemUser>[] = [
     { key: "email", label: strings.system.email, sortable: true, render: (u) => u.email },
     { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
+    {
+      // Module system Phase 0 (docs/compliance-module-plan.md): server-tier
+      // roles rendered through the same `MultiSelectDropdown` + `DirectoryTable`
+      // combination `OrgAdminPage.tsx`'s Users table already established for
+      // org roles — settled during planning as the single most-corrected
+      // point across that plan's design history, not a bespoke grant/revoke
+      // pair. Unlike Org Admin's roles column, each toggle here goes through
+      // the existing Tier-1 `ConfirmDialog` this tab already used for
+      // grant/revoke server admin — granting cross-tenant power warrants the
+      // extra confirmation step even though granting an org role doesn't.
+      // Rendered for every row regardless of `has_org_membership` (I-M-08:
+      // a server admin can hold an organisation of their own) — incidentally
+      // fixes the previous `ActionMenu`-based grant/revoke, which had been
+      // wrongly scoped to org-less accounts only alongside deactivate/ban.
+      key: "server_roles", label: strings.system.serverRoles,
+      render: (u) => (
+        <MultiSelectDropdown
+          triggerLabel={strings.system.serverRolesFor(u.display_name)}
+          emptyLabel={strings.system.noServerRoles}
+          options={(["server_admin", "module_administrator"] as ServerRole[]).map((role) => {
+            const checked = role === "server_admin" ? u.is_server_admin : u.is_module_administrator;
+            const roleLabel = SERVER_ROLE_LABEL[role];
+            return {
+              value: role,
+              label: roleLabel,
+              checked,
+              optionLabel: checked
+                ? strings.system.revokeServerRole(roleLabel, u.display_name)
+                : strings.system.grantServerRole(roleLabel, u.display_name),
+              onToggle: () =>
+                role === "server_admin"
+                  ? (checked ? revokeServerAdmin(u.user_id) : grantServerAdmin(u.user_id))
+                  : (checked ? revokeModuleAdministrator(u.user_id) : grantModuleAdministrator(u.user_id)),
+            };
+          })}
+        />
+      ),
+    },
     {
       // Comma-joined names have no natural order — not sortable, per style
       // guide "Pattern: sortable column header".
@@ -214,17 +290,22 @@ function AccessReviewTab() {
     },
     {
       // Consolidated behind one `ActionMenu` (style guide "Pattern: action
-      // menu") — up to three secondary, non-primary actions (deactivate/
-      // reactivate, ban/unban, grant/revoke server admin) previously sat
-      // side by side as separate always-visible buttons on the same row,
-      // the exact "two-or-more secondary actions" shape the pattern exists
-      // for. Status badges stay outside the menu, visible at a glance.
+      // menu") — deactivate/reactivate and ban/unban, the two secondary,
+      // non-primary actions genuinely scoped to org-less accounts (see
+      // `has_org_membership` gate below), previously sat side by side as
+      // separate always-visible buttons on the same row. Grant/revoke
+      // server admin moved to the new "Server roles" `MultiSelectDropdown`
+      // column above (module system Phase 0) — it belongs to every row,
+      // not just org-less ones, unlike this menu's two remaining actions.
+      // The old standalone "Server admin" badge was dropped in the same
+      // move: its closed-state summary text already shows the same fact,
+      // so a separate badge would just duplicate it. Banned/deactivated
+      // badges stay outside the menu, visible at a glance.
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
           {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
           {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
-          {u.is_server_admin && <span className="text-muted">{strings.system.serverAdminBadge}</span>}
           {!u.has_org_membership && (
             <ActionMenu
               triggerLabel={strings.system.usersActionsFor(u.display_name)}
@@ -235,9 +316,6 @@ function AccessReviewTab() {
                 u.is_banned
                   ? { label: strings.system.unban, icon: <Ban size={14} />, onSelect: () => unban(u.user_id) }
                   : { label: strings.system.ban, icon: <Ban size={14} />, onSelect: () => ban(u.user_id) },
-                u.is_server_admin
-                  ? { label: strings.system.revokeServerAdmin, icon: <ShieldMinus size={14} />, onSelect: () => revokeServerAdmin(u.user_id) }
-                  : { label: strings.system.grantServerAdmin, icon: <ShieldPlus size={14} />, onSelect: () => grantServerAdmin(u.user_id) },
               ]}
             />
           )}

@@ -7,6 +7,13 @@
 
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
+// Module system (compliance-module-plan.md Phase 0). `server_admin` mirrors
+// `User.is_server_admin` for display purposes only — see `ServerRole`'s
+// backend docstring — it is never granted/revoked through the
+// `/server-roles` endpoints this type also describes, only through the
+// existing `/server-admin` boolean endpoint.
+export type ServerRole = "server_admin" | "module_administrator";
+export type ModuleEntitlementPolicy = "open" | "closed";
 export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
 // Hierarchical projects: forward (parent -> child) RBAC-cascade mode — see
 // backend/app/models/enums.py::ProjectRoleInheritanceMode and
@@ -71,6 +78,10 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   org_admin: "Org admin",
   project_creator: "Project creator",
   member: "Member",
+};
+export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
+  server_admin: "Server admin",
+  module_administrator: "Module administrator",
 };
 
 /**
@@ -418,6 +429,7 @@ export interface SystemUser {
   is_2fa_enabled: boolean;
   created_at: string;
   is_server_admin: boolean;
+  is_module_administrator: boolean;
   has_org_membership: boolean;
   organization_count: number;
   organization_names: string[];

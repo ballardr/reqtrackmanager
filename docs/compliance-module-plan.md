@@ -1,0 +1,336 @@
+# Compliance Module + Modular Feature System — Implementation Plan
+
+This document is the persistent, session-resumable implementation plan for the Compliance Module and the generic modular-feature-system infrastructure it's built on. It is designed to be read cold, by a Claude Code session with no memory of prior sessions.
+
+**If you are starting a session against this plan, read "Status / Resume Here" and "How to Resume a Session" below first, before reading anything else in this file.**
+
+---
+
+## Status / Resume Here
+
+**Last updated:** 2026-09-04 (Phase 0 complete).
+
+**Overall progress:** 1 / 16 phases complete.
+
+| # | Phase | Status |
+|---|-------|--------|
+| 0 | Server-level RBAC extension | [x] Complete |
+| 1 | Module registry & backend plugin loading | [ ] Not started |
+| 2 | Module-contributed RBAC | [ ] Not started |
+| 3 | Frontend module integration (2-tier) | [ ] Not started |
+| 4 | Module-contributed MCP tools | [ ] Not started |
+| 5 | Compliance data model (as a module) | [ ] Not started |
+| 6 | Standards management API | [ ] Not started |
+| 7 | Project Compliance assignment & assessment | [ ] Not started |
+| 8 | Evidence | [ ] Not started |
+| 9 | Approval / sign-off workflow | [ ] Not started |
+| 10 | Scheduled reviews + notifications | [ ] Not started |
+| 11 | Cross-standard mapping + version impact | [ ] Not started |
+| 12 | Frontend — Compliance Manager surfaces | [ ] Not started |
+| 13 | Frontend — Project Compliance view | [ ] Not started |
+| 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
+| 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
+
+**Next phase to pick up:** Phase 1.
+
+**Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
+- Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
+- `ServerRole` enum + `UserServerRole` grant table (not a second boolean) — settled.
+- Server/module-contributed roles render through the *existing* `DirectoryTable` + `MultiSelectDropdown` components, never a bespoke table — settled, and the single most load-bearing piece of feedback behind this plan (see "Design History" below).
+- Compliance's own roles (`compliance_manager`, `compliance_officer`) are **module-contributed roles**, not new `OrgRole`/`ProjectRole` enum values — settled.
+- Third-party module UI is two-tier: Tier A (installed at build time, full native component reuse) is the primary/recommended path and the one Compliance itself uses; Tier B (remote iframe + Host UI Bridge) exists for genuinely-dynamic, not-installed modules — settled.
+- Modules can also register their own **MCP server tools** (Phase 4) — declarative, single-REST-call mappings merged into `mcp-server/`'s existing tool set; approval-type actions are hard-excluded, mirroring the existing write-mode/approval-exclusion design already documented in `docs/mcp-server.md` — settled. **Self-reviewed and hardened before build** (see "SOC2 / Security Planning" below): `mutates` is derived from HTTP method, not self-declared; `is_approval_action` is sourced from the real backend route's own metadata, not the module's manifest entry; a declared tool's `path_template` must fall inside that module's own registered router prefix (mechanically enforced); the manifest endpoint requires authentication and is fetched lazily/cached, never at an unauthenticated boot-time call.
+- `mcp-server` stays a **separately-published, independently-deployable image** (its standalone/remote-client deployment mode — Copilot Studio etc. — is real and documented, not theoretical) — no shared-base-image merge with the backend for V1, since the declarative MCP-tools mechanism needs zero module code inside `mcp-server`'s own image. Revisit only if/when the deferred "custom (non-declarative) MCP tool logic" capability is ever built — settled, see Phase 4.
+- **Third-party module discovery (entry points / `EXTRA_MODULES_PATH`) is gated behind a deployment-level opt-in, default off** (`ALLOW_EXTERNAL_MODULES`, mirroring `MCP_WRITES_ENABLED`'s existing precedent) — first-party `INSTALLED_MODULES` always load (already reviewed, in-repo code); anything else requires the deployment operator to explicitly turn it on. Directly ties to this repo's already-documented, still-open CC6.8 gap ("no automated dependency/vulnerability scanning") — see "SOC2 / Security Planning" below — settled.
+- Explicitly **out of scope** for this plan (documented, not silently dropped): sandboxing/security review of arbitrary untrusted third-party *code execution*; automatic third-party DB migrations; module-role inheritance through groups/project hierarchy (V1 is direct grants only); custom (non-declarative) MCP tool logic. Each is called out again in its phase below.
+
+**Instructions for whoever picks up the next phase:** implement exactly one phase, leave the repo passing its tests and in a clean state, add a `docs/decisions.md` entry for that phase, then come back to this file and (a) tick its checkbox, (b) update "Last updated" and "Next phase to pick up", (c) add one or two sentences under a new "Phase N notes" subsection below the phase's own detailed spec if anything deviated from what was planned (only if it deviated — don't restate the spec). Do not start a second phase in the same session unless explicitly asked.
+
+---
+
+## How to Resume a Session
+
+1. Read this "Status / Resume Here" section (above) to find the next phase.
+2. Read that phase's detailed spec later in this document (module-system phases 0–4 have full specs inline below; compliance phases 5–15 reference `docs/Compliance_Module_Requirements.md` section numbers — go read the cited sections there for the authoritative requirement text).
+3. Before writing code, per this repo's standing `CLAUDE.md` rules: check `docs/solution-architecture.md` and `docs/decisions.md` for anything that's changed since this plan was written; check `docs/ux-style-guide.md` for any frontend work; check `docs/soc2/policies/` if the phase touches auth/RBAC/secrets/audit/logging/multi-tenant isolation (most module-system phases do) — and read this plan's own "SOC2 / Security Planning" section first if the phase is 0, 1, 2, or 4, since it lists concrete policy-doc edits those phases must make, not just a general reminder to consult them; check `docs/mcp-server.md` if the phase touches Phase 4's MCP tool mechanism.
+4. Implement the phase. Add tests. Add a `docs/decisions.md` entry.
+5. Update the Status table above and stop — do not cascade into the next phase automatically.
+
+---
+
+## Context
+
+`docs/Compliance_Module_Requirements.md` specifies a large Compliance Module (33 sections — standards, versioning, project assessment, evidence, approvals, scheduled reviews, cross-standard mapping; not optional per its own §30). This is the **first of four planned major uplifts** — Compliance, a Decisions Record system, Pain Points collection, and a better Traceability system — and needed a generic, org-level module enable/disable system to sit on, since building that four separate times would be wasteful and inconsistent.
+
+### Design history (why this plan looks the way it does)
+
+The module-system design went through four rounds of correction before initial approval, plus one addition since. Recorded here in full so a future session understands *why*, and doesn't simplify the design back toward something that already got rejected, or drop something added afterward:
+
+1. **First draft**: a simple per-org boolean toggle table + static Python module registry. **Rejected** — too limited for the stated business/product ambitions.
+2. **Second draft**: added two-tier server-entitlement × org-enablement gating, a first-party module-package convention, and Python entry-point-based third-party backend discovery. **Rejected** on three points: (a) the new server-level role needed to be reviewed against how the app *already* displays roles in the UI, not built as a bespoke section; (b) third-party UI needed to be feasible, not just documented as a future gap; (c) modules needed to be able to register their own RBAC roles, not have Compliance's roles hardcoded onto the core `OrgRole`/`ProjectRole` enums.
+3. **Third draft**: added `ServerRole`/`UserServerRole`, a generic module-role registration mechanism, and an iframe + narrow-postMessage-action-set third-party UI design. **Rejected** on one point: third-party modules must be able to use the app's **actual shared components** (Toast, modals, etc.), not just a thin, isolated message contract — an isolated iframe with `navigate`/`toast`/`resize` messages doesn't deliver genuine UI consistency.
+4. **Fourth draft**: resolved the tension between "isolate untrusted code" and "let it use real shared components" with a two-tier frontend model — Tier A (installed at build time, direct component imports, full consistency, the tier Compliance itself uses) as the primary path, and Tier B (remote iframe, but with a *Host UI Bridge* that renders real host `Toast`/`ConfirmDialog` components via RPC rather than reimplementing them) for the genuinely-dynamic case. **Approved.**
+5. **Addendum (same day, after approval)**: identified — not a correction of something wrong, a genuinely new requirement noticed after the plan was signed off — that modules should also be able to register their own **MCP server tools** (`mcp-server/`), not just REST endpoints, RBAC roles, and frontend UI. Added as Phase 4, described in full below. The user separately confirmed it's acceptable for this to require its own deployment/build stage (e.g. restarting or rebuilding the `mcp-server` container alongside a frontend/backend redeploy) if the mechanism needs it — see Phase 4's "Deployment note."
+
+### What this means practically
+
+This is not "one module plus a small on/off switch" — it's real platform infrastructure that a future first-party (and eventually third-party) module ecosystem sits on. The module-system phases (0–4) are proportionately larger than a typical feature and deserve their own careful implementation, not a rush to get to the Compliance-specific work.
+
+---
+
+## SOC2 / Security Planning
+
+This repo's `CLAUDE.md` requires consulting `docs/soc2/policies/` before any change touching authentication, authorization/RBAC, secrets, audit trails, multi-tenant isolation, or third-party/vendor integrations — this plan touches **every one of those categories**, more than a typical feature does, because plugin loading is inherently a new code-and-trust boundary. This section is the concrete plan for that, read alongside the actual policy docs (`docs/soc2/policies/access-control-policy.md`, `vendor-and-subprocessor-management-policy.md`, `change-management-and-secure-development-policy.md`) and the control matrix (`docs/soc2/trust-services-criteria-mapping.md`).
+
+**Existing, already-relevant context found by reading those docs directly (not assumed):**
+- `trust-services-criteria-mapping.md`'s CC6.8 ("prevents or detects and acts upon unauthorized/malicious software") is **already an open 🔴 gap** — "no automated dependency/container vulnerability scanning exists." A plugin-loading system that pip-installs third-party packages into the deployment materially raises the stakes of that already-open gap; this plan does not get to treat it as a pre-existing, someone-else's-problem gap once Phase 1 ships.
+- `access-control-policy.md`'s Authorization section documents exactly **three** independent scopes today (server administrator / organization role / project role) as the definitive access model, with a role-resolution diagram an auditor is meant to be able to follow end-to-end. Phases 0 and 2 add two more (server module role, module-contributed role) — this is a real, auditable change to that model, not an implementation detail invisible to the policy doc.
+- `vendor-and-subprocessor-management-policy.md` already has precedent for exactly this shape of reasoning (§6, on a customer connecting a third-party AI platform to `mcp-server`: "the Company's control ends at X; what happens beyond that is the customer's own decision to document") — a third-party *module* is a different risk shape from a classic subprocessor (it runs *inside* the deployment's own trust boundary once installed, rather than being an external service data is sent to), so it needs its own clause, not a forced fit into the existing subprocessor language.
+- `change-management-and-secure-development-policy.md` already states "dependencies are pinned, not left floating" as a standing principle — this must extend to any module package a deployment operator adds, exactly the same way.
+
+**Concrete actions this plan commits to (not just "will consult the policy"):**
+1. **`access-control-policy.md`'s Authorization section gets a new subsection** (added as part of Phase 0/2, not deferred to Phase 15) documenting the two new scopes precisely: `ServerRole.MODULE_ADMINISTRATOR` (server tier, narrower than `SERVER_ADMIN`) and module-contributed roles (`user_module_roles`, direct-grant-only, explicitly noted as *not* participating in the existing group/hierarchy inheritance the diagram in that policy shows for core roles — a real, documented difference in how these roles resolve, not an oversight). The role-resolution diagram gets a note pointing to this distinction rather than being silently left to look like it covers every role type.
+2. **`vendor-and-subprocessor-management-policy.md` gets a new policy point** (added as part of Phase 1) for "installed third-party modules/plugins": distinct from a subprocessor because it's code execution inside the deployment's own boundary, not an external data-processing relationship; states the trust boundary is "was deliberately installed by the deployment operator" (matching Phase 1's existing framing); requires module packages to be version-pinned (matching the existing "dependencies are pinned" principle); and recommends the same due-diligence-before-installing practice §2 already asks for subprocessors, applied to a module's own code/reputation before an operator enables `ALLOW_EXTERNAL_MODULES` and installs one.
+3. **Third-party module discovery defaults off** (`ALLOW_EXTERNAL_MODULES=false`, Phase 1) — a deliberate, explicit mitigation for CC6.8's already-open gap, mirroring `MCP_WRITES_ENABLED`'s existing "off by default, deliberate opt-in" precedent in this exact codebase. First-party `INSTALLED_MODULES` (reviewed, in-repo, covered by this project's normal change-management process) are unaffected and always load.
+4. **Phase 1 and Phase 4 each require a full identify→verify→remediate pass**, recorded in `docs/decisions.md` per the change-management policy's standing practice — not just "add tests." These are the two phases that open genuinely new trust boundaries (code loading; an AI-drivable proxy surface into backend endpoints).
+5. **Phase 4's own design was self-reviewed during planning and found three real gaps, fixed in the design before any code is written** — recorded here as this session's own identify→verify→remediate cycle, per this repo's standing "fix, don't defer, found issues" rule:
+   - *Found*: `mutates` and `is_approval_action` were designed as fields the module itself declares on its manifest entry — a malicious or buggy module could simply lie (`is_approval_action: false` on a tool that actually approves something), defeating the intended protection entirely.
+   - *Fixed*: `mutates` is now derived mechanically from the HTTP method (not self-declared — nothing to lie about). `is_approval_action` is now sourced from the *actual backend route's own metadata* (a marker the endpoint's own author sets, reviewed the same way the endpoint itself is reviewed) rather than the module's manifest entry — the manifest builder cross-references a declared tool's `path_template` to the real route object and reads the flag from there.
+   - *Found*: a declared `path_template` had no constraint tying it to the declaring module's own endpoints — a module could declare a tool that proxies to *any* backend path, including ones it doesn't own (e.g. a compliance-module tool secretly wired to an org-deletion endpoint).
+   - *Fixed*: the manifest builder now rejects (excludes + logs) any entry whose `path_template` doesn't fall under that module's own registered router prefix — mechanically enforced, not trusted from self-declaration.
+   - *Found*: the manifest endpoint (`GET /api/v1/system/modules/mcp-tools`) was designed to be fetched once at `mcp-server`'s process boot, before any specific user's token exists to authenticate the call with — meaning it would have to be either unauthenticated (new attack-surface/reconnaissance exposure) or use some new, undesigned service credential.
+   - *Fixed*: the endpoint requires normal bearer-token authentication like every other backend endpoint (no exemption). `mcp-server` fetches/refreshes it lazily, authenticated with whichever session's own token first triggers a refresh within a TTL window, cached in-process — never an unauthenticated call. See Phase 4 below for the full design.
+   - **Honesty note, not overclaimed**: these fixes give a *mechanical* guarantee for tools pointing at core/first-party endpoints (path-scoping is enforced regardless of what a module claims; `is_approval_action` is read from code we ourselves reviewed). For a **third-party module's own endpoints**, the guarantee is bounded by the same trust boundary Phase 1 already established — "was deliberately installed" — since a malicious third-party module could mislabel its own route's own metadata too. This is exactly why third-party discovery defaults off (action 3 above), not a gap this mechanism alone can close.
+
+---
+
+## Reused Existing Patterns (confirmed by direct exploration of this codebase — reuse these, do not duplicate)
+
+- **Role display consistency** (the single most-corrected point across the design history): `ServerManagementPage.tsx`'s `AccessReviewTab` (~line 35) already has a `DirectoryTable`-based user roster with `is_server_admin` filtering and `grantServerAdmin`/`revokeServerAdmin` actions (Tier-1 `ConfirmDialog`). `OrgAdminPage.tsx`'s Users table already renders multi-valued roles via `MultiSelectDropdown` (`frontend/src/components/MultiSelectDropdown.tsx`) — a closed dropdown of checkboxes, each with its own accessible `optionLabel`, built on `Popover` for positioning/focus-trap. **Every new role surface in this plan (server roles in Phase 0, module-contributed roles in Phase 2) must render through this exact `DirectoryTable` + `MultiSelectDropdown` combination** — not a new bespoke table, not a pair of grant/revoke buttons.
+- **CSP is already deliberately restrictive**: `backend/app/main.py` (~lines 147–159) sets `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`, with an explicit comment that embedding frames would need deliberate tuning. This governs *others* framing this app; it says nothing about this app framing something else (`frame-src`, currently unset). Phase 3's Tier B design adds an explicit `frame-src` allowlist rather than leaving it open, consistent with the existing posture.
+- **`mcp-server/` is a single-file FastMCP app with an established, principled tool pattern**: `mcp-server/server.py` (~1185 lines) defines every tool as an `@mcp.tool`-decorated async function calling a shared `_call_backend(method, path, params=, json=)` helper (~line 201), which forwards the caller's own bearer token (`_forward_auth_header()`) and translates backend HTTP errors into typed Python exceptions (`PermissionError`, `LookupError`, `ValueError`, `RuntimeError`) — **this server holds no credentials and performs no authorization of its own** (`docs/mcp-server.md`'s "Authentication model" section, ~line 50). Fifteen read tools are always registered; two write tools (`create_requirement`/`update_requirement`) exist only when `MCP_WRITES_ENABLED=true` (~line 575's `if MCP_WRITES_ENABLED:` block) — and even in write mode, **no tool can approve, decide, or otherwise change workflow state**, a boundary enforced by never exposing the capability as a tool at all, not by relying on the backend's (correct, but insufficient for this specific concern) RBAC (`docs/mcp-server.md` ~line 44). Phase 4 extends this exact pattern to module-contributed tools rather than inventing a second one.
+- **Org/project RBAC today**: fixed `OrgRole`/`ProjectRole` enums (`backend/app/models/enums.py`) granted via `UserOrgRole`/`UserProjectRole`. Compliance's own roles do **not** extend these enums — see Phase 2/5.
+- **Server-level access today**: `User.is_server_admin: bool` (`backend/app/models/user.py:136`), `require_server_admin` (`backend/app/services/rbac.py:1682`), ~15 call sites across `backend/app/routers/system.py`. Left untouched by Phase 0 — the new server role is additive.
+- **Override-falls-back-to-platform-default shape**: `Organization.accent_color_hex`/`header_title` fall back to `ServerSettings` platform defaults (`backend/app/services/branding.py`) — same shape reused for module entitlement falling back to the deployment's default policy.
+- **PAT scoping precedent**: `backend/app/services/pats.py` — org/project-scoped bearer credentials. The Phase 3 Tier B iframe token conceptually mirrors this scoping model but is a short-lived signed token minted transparently per session (reusing `backend/app/security.py`'s existing JWT infra), not a stored/user-managed PAT row.
+- **Versioning/baseline**: `Requirement`/`RequirementVersion` + `Baseline`/`BaselineItem` (`backend/app/models/requirement.py`, `backend/app/services/baseline.py::create_baseline_for_stage`) — the Ossa v1 identity-row + versioned-child-row shape. Compliance Standard versions (Phase 5) and Project Compliance Requirement history (Phase 7) reuse this shape.
+- **Attachments/evidence**: `FileAsset` (`backend/app/models/file.py`) is entity-agnostic; ownership is a join-table-per-owner-type (`RequirementFile`, `RequirementActionFile`, `CommentFile`, each unique on `(owner_id, file_id)`). Evidence (Phase 8) gets its own join table on this exact convention, via `backend/app/services/files.py::upload_file`.
+- **Audit**: `backend/app/services/audit.py::log_event(...)` — every module-admin and compliance mutation must log through this (a standing SOC 2 policy requirement in this repo's `CLAUDE.md`, not just a nicety).
+- **Notifications**: `backend/app/services/notifications.py::notify(...)` + `NotificationType` enum (`backend/app/models/notification.py`). Digest batching (`send_daily_digests`) needs no per-type wiring — confirmed generic. New types need label-map entries in `frontend/src/i18n/strings.ts`; note a **pre-existing drift** where `frontend/src/api/types.ts`'s raw union type is missing two values `strings.ts` already has (`requirement_review_due`, `stage_review_auto_approved`) — fix this in passing when Phase 10 touches this area.
+- **Scheduler**: `backend/app/services/scheduler.py` (APScheduler via FastAPI lifespan) — new jobs follow the existing `_run_review_reminders`/`_run_stage_auto_approval` pattern.
+- **Org admin toggle pattern**: `PUT /{organization_id}/advanced-settings` + `OrgAdvancedSettingsUpdate/Out` schema pair (`backend/app/routers/orgs.py`, `backend/app/schemas/org.py`) + `OrgAdminPage.tsx` state/PUT — reused shape for the Modules admin section (Phase 1).
+- **Bundle export**: `backend/app/services/project_export.py`/`org_export.py` zip-bundle pattern — compliance data must be added to both (Phase 15) so backup/offboarding/migration keeps working.
+
+---
+
+## Module System Design (Phases 0–4)
+
+### Phase 0 — Server-Level RBAC Extension
+
+**Satisfies:** the "new server level role" requirement from the design-history feedback; foundation for Phase 1's entitlement management.
+
+- New `ServerRole` enum (`backend/app/models/enums.py`, mirrors `OrgRole`): `SERVER_ADMIN`, `MODULE_ADMINISTRATOR`.
+- New `server_roles` table, model `UserServerRole` (`id, user_id FK, role, granted_at, granted_by FK`), unique `(user_id, role)` — mirrors `UserOrgRole`'s shape.
+- `User.is_server_admin` is **left completely untouched** — zero regression to ~15 existing `require_server_admin` call sites. It remains the sole source of truth for `SERVER_ADMIN`-equivalent power; it is not migrated into `UserServerRole` rows.
+- New dependency `require_server_role(ServerRole.MODULE_ADMINISTRATOR)` in `backend/app/services/rbac.py` (same shape as `require_project_manage`): passes if `current_user.is_server_admin` (implicit full power) **or** a matching `UserServerRole` grant exists.
+- Only a full `SERVER_ADMIN` may grant/revoke `MODULE_ADMINISTRATOR` (standard privilege-escalation-safe pattern — a narrower role can never grant itself or others a role).
+- `ServerSettings` (`backend/app/models/organization.py:224`) gains `default_module_entitlement_policy: Enum("open", "closed")`, default `"open"` — a genuine per-deployment setting: a self-hosted open-source deployment likely wants everything open by default; a future commercial/SaaS posture of the same codebase can flip it closed and grant entitlements explicitly. Editable by `SERVER_ADMIN` or `MODULE_ADMINISTRATOR`, following the existing `/system/branding`-style settings endpoint pattern.
+- **UI**: `ServerManagementPage.tsx`'s `AccessReviewTab` roster gains a `MultiSelectDropdown` "Server Roles" column (options: Server Admin, Module Administrator) that **replaces** the current single `grantServerAdmin`/`revokeServerAdmin` action-pair, mirroring `OrgAdminPage.tsx`'s Roles column exactly. Toggling either checkbox goes through the existing Tier-1 `ConfirmDialog` pattern this tab already uses.
+- Tests: RBAC dependency behaviour (grant/revoke, escalation prevention), `ServerSettings` field, UI story/e2e for the new column.
+- `docs/decisions.md` entry on completion.
+
+#### Phase 0 notes (completed 2026-09-04)
+
+Implemented as specified, with a few decisions the spec above left implicit — recorded here so a future session doesn't need to re-derive them:
+- `UserServerRole` lives in a new `backend/app/models/server_role.py`, not folded into `models/organization.py` (where `UserOrgRole` lives) — this is server-wide infrastructure, not an org concept.
+- The grant endpoint (`POST /system/users/{id}/server-roles`) explicitly rejects `role: "server_admin"` with 400 — `SERVER_ADMIN` exists in the `ServerRole` enum for composition/reference only (see its docstring) and must never become a second, driftable source of truth alongside `is_server_admin`.
+- Test coverage landed as `backend/tests/test_module_system_rbac.py` (new file) rather than extending `test_access_review.py` — this is module-system infrastructure, not an access-review feature, even though it touches the same `/system/users` roster.
+- No frontend surface was built for `default_module_entitlement_policy` itself (only the `MODULE_ADMINISTRATOR`-gated API) — Phase 1's "Modules" admin UI is the natural, non-redundant home for a control over this setting, per the "settled" design history; building a one-off toggle now would just be relocated later.
+- Incidentally fixed while touching `AccessReviewTab`: the old `ActionMenu`'s grant/revoke-server-admin item was wrongly scoped to org-less accounts only (bundled under the same `!has_org_membership` guard as deactivate/ban) — contradicting this feature's own prior decisions-log entry that it should work "for everyone." Moving grant/revoke into the new column (rendered for every row) fixes this as a side effect. The old standalone "Server admin" badge was also removed as redundant once the new column's closed-state summary started showing the same fact.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 0" entry for the full account, and `docs/soc2/policies/access-control-policy.md`'s Authorization section item 4 for the SOC 2 policy update this phase committed to.
+
+### Phase 1 — Two-Tier Module Gating + Backend Plugin Loading
+
+**Satisfies:** the two-tier entitlement/enablement requirement and the "core code shouldn't need much modification per module" goal.
+
+**Entitlement (server tier — the licensing/plan lever):**
+`organization_module_entitlements` table (`org_id, module_key, entitled: bool, updated_at, updated_by`) — explicit override rows only. Effective entitlement = the row if one exists, else `ServerSettings.default_module_entitlement_policy == "open"`. Managed by `SERVER_ADMIN` or `MODULE_ADMINISTRATOR` (Phase 0's new role).
+
+**Enablement (org tier — the day-to-day switch):**
+`organization_modules` table (`org_id, module_key, enabled: bool, updated_at, updated_by`) — org admin's own choice among entitled modules; no row = registry `default_enabled`. Effective enabled = `entitled(org, key) AND (org_row.enabled if present else registry.default_enabled)`.
+
+Org Admin's Modules UI shows non-entitled modules **greyed out with an explanatory note** rather than hidden entirely (visibility helps future upsell; the toggle itself stays disabled).
+
+**Registry + plugin loading:**
+- `backend/app/modules/` — first-party module packages live here, each with a `module.py` exposing a `ModuleDefinition`: `key, name, description, version, default_enabled, implemented, get_router() -> APIRouter | None`, notification-type contributions, and — filled in by Phases 2/3/4 — RBAC role declarations, a frontend manifest, and MCP tool declarations.
+- `backend/app/modules/registry.py` builds the merged registry at process startup from three sources:
+  1. Static `INSTALLED_MODULES` list — first-party, explicit, reviewed, in-repo. **Always loads**, regardless of the flag below.
+  2. `importlib.metadata.entry_points(group="reqtrackmanager.modules")` — the standard Python plugin-discovery idiom (the same one pytest and Flask extensions use), so any package deliberately pip-installed into the deployment's image is picked up automatically at startup.
+  3. An optional `EXTRA_MODULES_PATH` env var scanning a local directory — for a self-hosted admin adding a custom module without publishing a package.
+- **Sources 2 and 3 are gated behind `ALLOW_EXTERNAL_MODULES` (default `false`)** — a deployment-level opt-in, mirroring `MCP_WRITES_ENABLED`'s existing off-by-default precedent in this codebase. This is a direct, deliberate mitigation for `docs/soc2/trust-services-criteria-mapping.md`'s already-open CC6.8 gap ("no automated dependency/container vulnerability scanning") — see "SOC2 / Security Planning" above: a plugin-loading mechanism that pip-installs and auto-runs third-party code makes that pre-existing gap materially riskier, so it doesn't ship silently-on-by-default. When `false`, the registry only ever contains `INSTALLED_MODULES`; sources 2/3 are not even scanned (not just filtered afterward).
+- Every module the registry actually loads (source 1, or 2/3 when enabled) is logged at startup with its key/version/source — a structured log line, not silently absorbed — so there's an operational record of what code entered the trust boundary on this run, feeding CC7.2 (monitoring for anomalies) rather than only CC6.8.
+- `require_module_enabled(module_key)` dependency (mirrors `require_project_view`) — returns **404**, not 403, on a disabled/non-entitled module, matching the requirement that disabled functionality "should not be presented."
+- `backend/app/main.py` mounts every discovered module's router behind this dependency in a loop at startup — adding a first-party module means a new package plus one line in `INSTALLED_MODULES`, not scattered edits across core routers.
+- **Explicit, deliberate scope boundaries** (state these plainly in code comments/docs where relevant, don't let a future session "helpfully" build them without a fresh review):
+  - *Sandboxing / security review of untrusted third-party code execution* is out of scope. The trust boundary is "was deliberately pip-installed into this deployment's image by the operator, with `ALLOW_EXTERNAL_MODULES` explicitly turned on" — the same boundary any Python plugin ecosystem relies on, now with an explicit opt-in gate rather than being always-on.
+  - *Automatic third-party DB migrations* are out of scope. Running arbitrary third-party SQL against a production database is itself a security-review-shaped question. Only first-party modules ship real Alembic migrations, added to the core chain by a reviewed PR — this requires one model-import line in `backend/alembic/env.py` per first-party module, an acknowledged minimal and unavoidable touch point given how Alembic autogenerate works.
+- This introduces a new code-loading trust boundary. Phase 1 must include a SOC 2 identify→verify→remediate pass (per this repo's `CLAUDE.md` change-management policy) recorded in `docs/decisions.md`, **and the concrete policy-doc edits listed in "SOC2 / Security Planning" above** (a new `vendor-and-subprocessor-management-policy.md` clause for installed modules, an `access-control-policy.md` subsection once Phase 2's role tier exists) — not just a generic "consulted the policy" note.
+- `docs/solution-architecture.md` gains a "Modular Feature System" section describing this.
+- Tests: entitlement/enablement effective-value resolution (all four combinations), `require_module_enabled` 404 behaviour, registry merge logic (with a fake entry-point-registered test module), `ALLOW_EXTERNAL_MODULES=false` actually prevents sources 2/3 from being scanned at all (not just from being used), Server/Org Admin UI.
+
+### Phase 2 — Module-Contributed RBAC
+
+**Satisfies:** "modules should be able to register their own RBAC entitlements" — this reverses an earlier draft's decision to give Compliance two new core `OrgRole`/`ProjectRole` enum values.
+
+- `ModuleDefinition.roles: list[ModuleRoleDefinition]` — each entry declares `role_key, name, description, scope` (`"org"` or `"project"`).
+- `module_role_definitions` table, synced from the registry at startup (`module_key, role_key, name, description, scope`).
+- `user_module_roles` table (`user_id, module_key, role_key, org_id, project_id (nullable, per scope), granted_at, granted_by`) — grant table, same shape family as `UserOrgRole`/`UserProjectRole`.
+- **V1 is direct grants only** — no group-membership or project-hierarchy inheritance for module roles yet. This is a deliberate, explicitly-flagged scope boundary: generically inheriting module roles through `OrgGroup`/`ProjectGroup`/`parent_project_id` the way core roles do is a materially larger piece of work (the core RBAC resolution engine, `services/rbac.py`, has grown substantial complexity doing exactly this for core roles over several past uplifts) and deserves its own dedicated review rather than being bundled in here.
+- `require_module_role(module_key, role_key)` — generic dependency in `services/rbac.py`, same call shape as `require_project_manage`. **Composes with existing admin overrides by design, not left for a later phase to discover**: passes if the caller holds the specific module-role grant, **or** `current_user.is_server_admin`, **or** (for an org-scoped module role) `OrgRole.ORG_ADMIN` on that org, **or** (for a project-scoped module role) `ProjectRole.PROJECT_MANAGER` on that project — mirroring the existing principle that a higher-tier admin already retains full access without needing every narrower role explicitly granted too (`docs/Compliance_Module_Requirements.md` §3/§26 requires exactly this for Compliance specifically; making it a `require_module_role` default rather than a compliance-specific special case means every future module gets the same override for free).
+- **UI**: `ProjectMembersTable.tsx`'s and `OrgAdminPage.tsx`'s existing `MultiSelectDropdown` Roles column is extended to merge core roles with any *currently-enabled* module's registered roles for the relevant scope — e.g. "Compliance Officer (Compliance)" appears as an option alongside "Project Manager"/"Stakeholder" in the same dropdown, same checkbox styling, same `optionLabel` accessibility pattern. Under the hood, toggling a module role calls a `user_module_roles`-backed endpoint; toggling a core role keeps calling the existing `UserProjectRole`/`UserOrgRole` endpoints. The component and its visual/interaction contract do not change — this is the concrete mechanism that satisfies the "consistent with other user tables" correction, applied to module roles specifically (Phase 0 already applied it to server roles).
+- Tests: grant/revoke, `require_module_role` behaviour, effective-roles resolution excludes a role from a since-disabled module, UI merge behaviour (story + e2e).
+
+### Phase 3 — Frontend Module Integration (Two-Tier)
+
+**Satisfies:** "third party modules should be able to use core components... so their interfaces are consistent with the main UI" — the specific, final correction. Mirrors the two-tier split Phase 1 already established on the backend (deliberately-installed vs. dynamically-discovered).
+
+**Tier A — Installed module (primary path).** A module — first-party or a third-party npm package — ships default-exported route components plus a nav manifest, added to `frontend/src/modules/registry.ts` the same way a first-party module is. Because it's compiled into the same bundle, it **directly imports and uses every real shared component**: `Toast` via `useToast()`, `ConfirmDialog`, `Modal`, `SidePanel`, `DirectoryTable`, `FilterPanel`, form inputs — genuinely part of the app, not a lookalike. The trust model matches the backend's installed-package tier exactly: "an operator deliberately included this at deploy time," not arbitrary code executing at request time from an unreviewed remote origin. **This is the tier Compliance itself uses** (Phases 12–14) — it's the mechanism getting proven for real, not left theoretical.
+
+**Tier B — Remote/dynamically-loaded module.** For a module genuinely not installed into the deployment (e.g. an org admin configuring an external tool's URL at runtime, no build step), a new `<ModuleFrame>` host component renders it in a sandboxed `<iframe>`, but with a **Host UI Bridge** — the iframe's own page body is isolated, but every piece of shared *chrome* is requested over `postMessage` and rendered by the real host components, so it still feels native for what matters most:
+- `{type:"toast", message, variant}` → the host's real `ToastContext.showToast()`.
+- `{type:"confirm", title, message, tier}` → the host's real `ConfirmDialog`; the reply carries the user's choice back to the iframe.
+- `{type:"init", context:{orgId, projectId?, user, theme, cssTokens, apiBaseUrl, token}}` sent host→iframe on load. `cssTokens` are the app's actual design tokens (accent colour, fonts, spacing scale) so even the module's own iframe-local markup can visually approximate the host even without literal component reuse. `token` is a short-lived (~15 min, refreshed before expiry) signed JWT scoped to `(module_key, org_id, project_id?, user_id)`, minted server-side and checked by `require_module_enabled`/`require_module_role` exactly like any other request — the remote module's code never sees the user's real session token.
+- The `iframe` carries a `sandbox` attribute; CSP gains an explicit `frame-src` **allowlist** populated only from registered, admin-trusted module origins (never a wildcard) — mirrors how OIDC issuer URLs are configured (explicit per-module opt-in), consistent with `main.py`'s existing deliberately-restrictive CSP posture.
+
+Both tiers are built in this phase (the registry convention and the bridge). No actual third-party module ships as part of this plan — none is required by `Compliance_Module_Requirements.md`, and building one would be scope creep. Tests: Tier A registry loading + a fixture module exercising real shared-component imports; Tier B bridge message contract (toast/confirm round-trip), token minting/scoping, CSP header generation from the allowlist.
+
+### Phase 4 — Module-Contributed MCP Tools
+
+**Satisfies:** the design-history addendum — modules should be able to register their own `mcp-server/` tools, not just REST endpoints/RBAC roles/frontend UI, using the same pattern `mcp-server/server.py` already establishes (see "Reused Existing Patterns" above) rather than a second one. **This design was hardened during planning itself** — see "SOC2 / Security Planning" above for the three gaps found and fixed before any code exists; what follows is the fixed design, not the original one.
+
+- `ModuleDefinition.mcp_tools: list[McpToolDefinition]` — each entry declares `name` (a short local name; the manifest builder prefixes it with the module key, e.g. a compliance module declaring local name `list_standards` becomes tool `compliance_list_standards` — **not self-chosen as a full global name**, so one module can never claim or collide with another module's or core's tool name), `description`, `method` (`"GET"`/`"POST"`/`"PUT"`), `path_template` (e.g. `/api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}` — see "Org/project scoping" below for why `{organization_id}` is always in the path, never implicit), `params` (name/type/required/description, and whether each maps to a path placeholder, query param, or JSON body field). **`mutates` and `is_approval_action` are deliberately *not* fields the module declares** — see below.
+- **Org/project scoping — no implicit "current org," no cross-org aggregation.** Every module tool's `path_template` names an explicit `{organization_id}` or `{project_id}` path placeholder, mapped to a required tool parameter — mirroring this app's own existing REST convention (every org-scoped endpoint is `/{organization_id}/...`, e.g. `orgs.py`'s report-template endpoints) and the existing hand-written tools' own shape (`get_project(project_id)`, `list_requirements(project_id)` always name one specific resource, never "everything across every project/org I'm in"). This is what makes multi-org, mixed-enablement callers work correctly with zero special-casing: `require_module_enabled` is checked against the *one* org/project actually named in the call, so the same session can successfully call `compliance_list_standards(organization_id=A)` (module enabled there) and get a clean `LookupError` from `compliance_list_standards(organization_id=B)` (module disabled there) — exactly the existing per-resource access model, not a new one. An AI wanting to enumerate across a caller's orgs calls the existing `list_organizations()` tool first, then chooses which org(s) to call module tools against — that composition happens at the AI/client orchestration level, the normal way MCP tool use works, not inside `mcp-server` or the manifest mechanism. The manifest itself stays **unpersonalized** either way: `compliance_list_standards` is listed for every session regardless of whether any of that caller's orgs actually have compliance enabled, exactly like `list_projects` is listed today even for a caller with zero project access anywhere — tool *existence* has never implied access in this design, only per-call enforcement does.
+- New backend endpoint `GET /api/v1/system/modules/mcp-tools`, gated by normal bearer-token authentication (`get_current_user` — no exemption; this is not a new unauthenticated surface), builds the manifest as follows, all in the manifest-builder itself so nothing here depends on a module telling the truth about itself:
+  - `mutates` is derived mechanically from `method` (`GET` → `False`, everything else → `True`) — nothing for a module to misdeclare.
+  - `path_template` is checked against the declaring module's own `get_router()` mount prefix; any entry whose path falls **outside** that module's own namespace is **excluded and logged as a rejected manifest entry** — a module cannot declare a tool that proxies to an unrelated (and possibly far more sensitive) endpoint it doesn't own, regardless of what it claims in its own manifest.
+  - `is_approval_action` is **read from the real backend route's own metadata** (a marker its own author sets on that endpoint — e.g. an `openapi_extra` flag or shared dependency, reviewed via this project's normal code review the same as the endpoint itself), resolved by looking up the actual route object behind `path_template` — never taken from the module's manifest entry directly. Any entry resolving to `is_approval_action: true` is **excluded from the manifest entirely**, mirroring the existing, explicit product principle in `docs/mcp-server.md` (~line 44) that approval must stay attributably human and is excluded at the tool surface, not left to RBAC (or, here, to a module's own say-so).
+  - **Honesty note**: this gives a mechanical guarantee for tools resolving to core/first-party endpoints, since we control and review both the endpoint and its metadata. For a third-party module's *own* endpoints, this reduces to the same "was deliberately installed" trust boundary Phase 1 already established (`ALLOW_EXTERNAL_MODULES`) — a malicious third-party module could still mislabel its own route's own metadata. Not a gap unique to this phase; the existing Phase 1 mitigation (opt-in, off by default) is what actually bounds it.
+- Per-call *access* is still fully enforced by the normal `require_module_enabled`/`require_module_role` checks on the real endpoint each tool proxies to — the same pass-through-403/404 model every existing tool already relies on (a tool being listed doesn't mean every caller can use it, exactly like `list_projects` today).
+- `mcp-server/server.py` fetches this manifest **lazily and authenticated** — not at an unauthenticated process-boot call. On first use in a refresh window (e.g. every 10 minutes), whichever connecting session's own already-presented bearer token is on hand is used to fetch/refresh the manifest once; the result is cached in-process and reused across sessions until the next refresh. This keeps the fetch itself inside the same "always presents a real caller's token" model every other request in this server already follows — there is no new credential, service account, or unauthenticated code path. For each manifest entry, a small `_register_declarative_tool(spec)` factory builds an async function that calls the existing `_call_backend(spec.method, path, params=..., json=...)` exactly the way every hand-written tool already does, translating the response the same way. Entries with `mutates: True` are only registered when `MCP_WRITES_ENABLED` is true, mirroring the existing `if MCP_WRITES_ENABLED:` block (`server.py:575`) applied generically rather than per-tool.
+- **Packaging**: no shared-image work is needed for this design — `mcp-server` never needs a module's Python package installed into its own image, since every declarative tool is a plain HTTP proxy call. `mcp-server/Dockerfile` and its independent published image are unchanged; it keeps its documented standalone/remote-client deployment mode (Copilot Studio etc.) intact. Revisit only if/when the "custom (non-declarative) MCP tool logic" scope boundary below is ever un-deferred.
+- **Deployment note**: because the manifest is refresh-cached rather than instantaneous, a newly-enabled module's tools become visible to a given `mcp-server` process within one refresh window, not necessarily immediately — acceptable per the requirements this serves (no requirement calls for real-time tool-list updates). If a deployment wants a newly-registered module's tools available immediately, restarting `mcp-server` forces an immediate refetch; no other coordination with the backend or frontend image is needed.
+- **Explicit scope boundary**, consistent with the rest of this plan's pattern of flagging rather than silently building: V1 supports **declarative single-REST-call tool mappings only**. A module needing genuinely custom tool logic (multi-call composition, non-trivial response shaping) would require shipping real code into the `mcp-server` process — reopening the same "third-party code running inside a process that handles real user bearer tokens" trust question already deferred for the backend's own plugin loading (Phase 1), *and* reopening the packaging question this phase just concluded it doesn't need to answer yet. Not built now, for both reasons.
+- `docs/mcp-server.md` gains a section describing this mechanism (Phase 15 finalizes it with whatever compliance tools actually shipped).
+- Tests: manifest endpoint requires authentication (401 with no token); manifest builder excludes an entry whose `path_template` falls outside the declaring module's own router prefix, and logs the rejection; manifest builder derives `is_approval_action` from route metadata, not a test module's manifest entry, and excludes it regardless of what that entry claims; mutating entries excluded from registration when `MCP_WRITES_ENABLED` is false; a fixture module's declarative tool round-trips through `_call_backend` correctly (path/query/body param mapping); a tool's registered name is always module-key-prefixed even if the module tried to override it; existing hand-written tools unaffected.
+
+---
+
+## Compliance Module Phases (5–15)
+
+Each phase below cites the `Compliance_Module_Requirements.md` section(s) it satisfies — go read those sections for the authoritative requirement text before implementing; this table is a build plan, not a restatement of the spec.
+
+Three sections of the requirements doc are satisfied collectively rather than by one phase, noted here so they aren't mistaken for gaps: **§24 (Compliance Lifecycle)** is the end-to-end sequence Phases 5–11 implement in order (create standard → define requirements/actions → publish → assign to project → applicability → actions → evidence → assess → approve → ongoing review/revalidation) — there is no separate "lifecycle" entity to build. **§30 (Future-Proofing)** lists approval/sign-off, hierarchical applicability, notifications, scheduled reviews, evidence expiry/revalidation, and cross-standard mapping as *not optional* — this plan already treats every one of them as a core phase (9, 7, 10, 10, 8, 11 respectively), not a deferred extra. **§33 (Implementation Guidance)** is the "inspect existing mechanisms before adding new ones" instruction this plan's own "Reused Existing Patterns" section and "How to Resume a Session" step 3 already operationalise.
+
+### Phase 5 — Compliance Data Model (as a module)
+
+**Satisfies:** §2 (Standards), §5 (Requirements), §6 (Required Actions), §25 (Data Model Principles), §31 (Architectural Principles).
+
+- `backend/app/modules/compliance/module.py` — the `ModuleDefinition` for `key="compliance"`, `default_enabled=True` (per §1's "enabled by default"), `implemented=True`, registering `compliance_manager` (org-scoped) and `compliance_officer` (project-scoped) via Phase 2's module-role mechanism — **no `OrgRole`/`ProjectRole` enum edits**.
+- New enums: compliance status (Not Started/In Progress/Compliant/Non-Compliant/Blocked/Pending Review/Rejected — §10), applicability (Applicable/Not Applicable — §9), approval state (Not Assessed/Assessed/Pending Approval/Approved/Rejected/Requires Re-assessment — §12).
+- Models (all under `backend/app/modules/compliance/models.py`, this module's own Alembic migration added to the core chain per Phase 1's rule): `ComplianceStandard`, `ComplianceStandardVersion` (versioned, following the `Requirement`/`RequirementVersion` identity+history shape — §4), `ComplianceRequirement` (self-referential parent/child for hierarchy — §5, §9's hierarchical applicability), `ComplianceRequiredAction`, `ComplianceActionTypeDefinition` (extensible action types, project- or org-scoped vocabulary — §6, mirroring `ActionTypeDefinition`'s existing scoping pattern).
+- Tests: model-level only this phase (relationships, hierarchy self-reference, migration up/down).
+
+### Phase 6 — Standards Management API
+
+**Satisfies:** §2, §3 (Ownership/Permissions), §4 (Versioning — publish/retire lifecycle), §26 (Security and Permissions, org-admin/compliance-manager split).
+
+- Full CRUD for standards, versions, requirements (hierarchical), required actions.
+- Publish/retire version lifecycle — a published version's requirements become immutable; changes require a new version (§4's "must not silently alter historical compliance assessment").
+- Every mutating endpoint gated by `require_module_role("compliance", "compliance_manager")` (org admins retain full access per §3, already implicit via `is_server_admin`/`OrgRole.ORG_ADMIN`'s existing override behaviour — confirm this composition explicitly in tests).
+- Every mutation logged via `services/audit.py::log_event`.
+- Declare read-only Phase 4 MCP tools for this surface, each taking `organization_id` as a required parameter per Phase 4's scoping rule (never implicit/aggregate): `compliance_list_standards(organization_id)`, `compliance_get_standard_version(organization_id, standard_id, version_id)`, `compliance_list_requirements(organization_id, standard_id, version_id)`. No mutating tool for publish/retire — keep the MCP surface read-only here, matching the existing project's cautious default of adding write tools narrowly and deliberately (`docs/mcp-server.md`'s write-mode design) rather than by default.
+
+### Phase 7 — Project Compliance Assignment & Assessment
+
+**Satisfies:** §7 (Applying Compliance to a Project), §8 (Project Compliance Requirements), §9 (Applicability incl. hierarchical inheritance/override), §10 (Compliance Status), §11 (Project Compliance Permissions), §16 (Rationale/Auditability), §20 (Overall Status calculation — define and document the exact rule per §20's explicit requirement), §26 (Security and Permissions, project-manager/compliance-officer split).
+
+- `ProjectCompliance` (project ↔ standard version assignment) and `ProjectComplianceRequirement` (project-specific assessment per requirement) models + API.
+- Hierarchical applicability: parent Not Applicable ⇒ children default Not Applicable, with explicit, audited, authorised override per child (§9) — UI must distinguish explicit/inherited/overridden (deferred to Phase 13, but the data model must carry enough to support it now: an `applicability_source` discriminator, not just a resolved boolean).
+- Mandatory justification enforced at the API layer for Not Applicable and Non-Compliant (§9, §16 — "must not simply mean... ignored").
+- Gated by `require_module_role("compliance", "compliance_officer")` for assigned projects, plus existing `ProjectRole.PROJECT_MANAGER`.
+- Declare read-only Phase 4 MCP tools, each taking `project_id` as a required parameter (resolves the owning org implicitly the same way `get_project(project_id)` already does today — no separate `organization_id` needed once a project is named): `compliance_get_project_status(project_id)` (overall status + counts per §20), `compliance_list_non_compliant_requirements(project_id)`.
+
+### Phase 8 — Evidence
+
+**Satisfies:** §13 (Evidence), §14 (Expiry Dates), §15 (Validity/Revalidation).
+
+- Evidence model + `compliance_evidence_files` join table via `services/files.py::upload_file` (the established join-table-per-owner-type convention).
+- Multi-requirement/multi-action linkage (§13's "single piece of evidence... support multiple compliance requirements").
+- Expiry date, revalidation history (append-only, never overwrites — §15's explicit "must not overwrite the historical record").
+- Valid/expiring/expired identification — a queryable derived state, not a stored one that can drift.
+- Declare a read-only Phase 4 MCP tool: `compliance_list_expiring_evidence(project_id)`.
+
+### Phase 9 — Approval / Sign-off Workflow
+
+**Satisfies:** §12 (Formal Approval/Sign-off), §16 (Auditability), §27 (re-assessment triggers).
+
+- State machine per §12: Not Assessed → Assessed → Pending Approval → Approved/Rejected → Requires Re-assessment.
+- Full approval history (who assessed, who approved, timestamps, previous/current state).
+- Auto-invalidation: a material change to evidence (expiry) or the underlying requirement (standard version change) flags the approval as requiring re-assessment rather than silently remaining "Approved" (§15, §27).
+- MCP tools: a read-only `compliance_list_pending_approvals(project_id)` tool is fine (mirrors the existing `list_project_reviews_due(project_id)` shape). **The approve/reject/sign-off action itself must never be declared as an MCP tool** — mark it `is_approval_action: true` if it's ever tempting to add one, so Phase 4's manifest-builder exclusion catches it even if a future session forgets why. This mirrors `docs/mcp-server.md`'s existing, explicit rule that ReqTrackManager's core approval workflow is deliberately excluded from the tool surface for the same reason (accountable-human-decision, not an RBAC question).
+
+### Phase 10 — Scheduled Reviews + Notifications
+
+**Satisfies:** §17 (Scheduled Compliance Reviews), §18 (Notifications and Reminders), §28 (Scheduled Processing).
+
+- `ComplianceReview` model (frequency, next-due date, owner, status, history, outcome).
+- New APScheduler jobs (`services/scheduler.py` pattern): evidence-expiry sweep, review due/overdue sweep, required-action due/overdue sweep, pending-approval sweep.
+- New `NotificationType` members for every event listed in §18; label-map entries in `frontend/src/i18n/strings.ts` (fix the pre-existing `types.ts` union drift noted above while here).
+
+### Phase 11 — Cross-Standard Mapping + Version Impact
+
+**Satisfies:** §19 (Cross-Standard Requirement Mapping), §27 (Version Changes and Impact Assessment).
+
+- Mapping model with a configurable/extensible relationship-type vocabulary (Equivalent/Satisfies/Derived From/Related To/Overlaps/Conflicts With — §19), navigable from both requirements, auditable.
+- Version diff: identify added/removed/modified/replaced/re-mapped requirements between two versions of a standard (§27).
+- Explicit, user-triggered project migration action to adopt a newer standard version — never silent (§4, §27).
+
+### Phase 12 — Frontend: Compliance Manager Surfaces
+
+**Satisfies:** UI portions of §2–§6, §19 — org-level standards/versions/requirements/required-actions/cross-mapping management.
+
+- Built as a **Tier A installed module** (`frontend/src/modules/compliance/`) per Phase 3 — direct reuse of `DirectoryTable`, `FilterPanel`, `Modal`, `SidePanel`, form components.
+- Storybook coverage + Playwright e2e per this repo's standing testing requirements.
+- Consult `docs/ux-style-guide.md` before building any new UI pattern shape (confirmation tiers, settings hierarchy, etc.) — do not invent a bespoke pattern where an existing shared one applies.
+
+### Phase 13 — Frontend: Project Compliance View
+
+**Satisfies:** §21 (Project Compliance View), UI portions of §7–§10, §12, §13.
+
+- Assign standards, applicability tree with visually distinct explicit/inherited/overridden states (§9's explicit UI requirement), assessment, evidence, approval/sign-off.
+- Storybook + Playwright.
+
+### Phase 14 — Frontend: Org Compliance View + Dashboard
+
+**Satisfies:** §22 (Organisation Compliance View), §23 (Compliance Dashboard).
+
+- Cross-project compliance table with the filters §22 lists explicitly, drill-down (not aggregate-only, per §22/§23's explicit requirement), dashboard widgets.
+- Storybook + Playwright.
+
+### Phase 15 — Reporting, Export, Seed Data, Docs Close-Out
+
+**Satisfies:** §29 (Reporting and Export), plus this repo's standing testing/documentation requirements.
+
+- Extend `services/project_export.py`/`org_export.py` bundles to include compliance data (standards are org-level like `ReportTemplate`; project compliance is project-level like requirements).
+- PDF/CSV report integration alongside existing report generation.
+- Update **both** `backend/scripts/seed_demo_data.py` and `backend/scripts/seed_e2e_dataset.py` with a compliance section (per this repo's standing rule that both must stay in sync with new features).
+- Write `docs/compliance-module.md` — a user/admin-facing reference doc, matching the style of `docs/mcp-server.md`/`docs/enterprise-integration.md`.
+- Finalize `docs/mcp-server.md`'s Phase 4 section with the actual compliance tools shipped (`compliance_list_standards(organization_id)`, `compliance_get_standard_version(organization_id, standard_id, version_id)`, `compliance_list_requirements(organization_id, standard_id, version_id)`, `compliance_get_project_status(project_id)`, `compliance_list_non_compliant_requirements(project_id)`, `compliance_list_expiring_evidence(project_id)`, `compliance_list_pending_approvals(project_id)` — update this list if any phase's actual tool names/params ended up differing), matching that doc's existing tool-table format.
+- Final SOC 2 identify→verify→remediate pass (this phase touches RBAC, audit, attachments, multi-tenant data — all policy-consultation triggers per `CLAUDE.md`).
+- Walk every line of `Compliance_Module_Requirements.md` §32 (Acceptance Criteria) off against what was actually built; fix any gap found rather than deferring it (per this repo's standing "fix, don't defer, found issues" rule).
+
+---
+
+## Verification (for this planning session)
+
+This document should be internally consistent: phase order has no forward references, every `Compliance_Module_Requirements.md` section §1–§33 maps to at least one phase above, and the design decisions and additions (role-display reuse, module-contributed RBAC, two-tier third-party UI with real component reuse, module-contributed MCP tools with hard-enforced approval exclusion) are reflected as concrete implementation specs, not just mentioned in passing.

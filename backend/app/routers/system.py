@@ -4,10 +4,18 @@ Module: routers.system
 System management endpoints that are not scoped to any single organisation
 (I-M-06): granting or revoking the server admin role itself on another
 user, the system-wide user access-review directory (C-A-13), platform-wide
-UI branding defaults, and the server-wide public self-signup mode. Most of
-this router is server-admin only; the branding GET and `GET /signup-config`
-are exceptions — both entirely unauthenticated, since the plain `/login`
-page and the signup form itself both need them before any session exists.
+UI branding defaults, the server-wide public self-signup mode, and (module
+system Phase 0, docs/compliance-module-plan.md) server-tier role grants
+(`UserServerRole`) plus the deployment-wide default module entitlement
+policy. Most of this router is server-admin only; the branding GET and
+`GET /signup-config` are exceptions — both entirely unauthenticated, since
+the plain `/login` page and the signup form itself both need them before
+any session exists. The module-entitlement-policy endpoints and server-role
+grant/revoke are the one place this router's gating isn't uniformly
+`require_server_admin`: entitlement-policy read/write also accepts the new
+narrower `MODULE_ADMINISTRATOR` role (`require_server_role`), while
+granting/revoking that role itself stays server-admin-only (a narrower role
+can never grant itself or others a role).
 """
 
 from __future__ import annotations
@@ -23,8 +31,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import SignupMode
+from app.models.enums import ModuleEntitlementPolicy, ServerRole, SignupMode
 from app.models.organization import Organization, OrgGroup, UserOrgRole
+from app.models.server_role import UserServerRole
 from app.models.user import User
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.email import TestEmailRequest
@@ -37,7 +46,7 @@ from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
-from app.services.rbac import get_user_org_group_ids, require_server_admin
+from app.services.rbac import get_user_org_group_ids, require_server_admin, require_server_role
 from app.version import APP_VERSION, BUILD_DATE, GIT_SHA
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
@@ -101,10 +110,35 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
+    is_module_administrator: bool
     has_org_membership: bool
     organization_count: int
     organization_names: list[str]
     group_names: list[str]
+
+
+class ServerRoleAssign(BaseModel):
+    """Payload for granting/revoking a server-tier role (module system
+    Phase 0) via `POST /users/{user_id}/server-roles`.
+
+    Attributes:
+        role: The server role to grant. `ServerRole.SERVER_ADMIN` is
+            rejected here (400) — that tier is granted exclusively via
+            `PUT /users/{user_id}/server-admin`'s `is_server_admin` boolean,
+            never as a `UserServerRole` row (see `ServerRole`'s docstring).
+    """
+
+    role: ServerRole
+
+
+class ModuleEntitlementPolicyOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    default_module_entitlement_policy: ModuleEntitlementPolicy
+
+
+class ModuleEntitlementPolicyUpdate(BaseModel):
+    default_module_entitlement_policy: ModuleEntitlementPolicy
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -154,6 +188,67 @@ def set_server_admin(
         actor_id=current_user.id,
     )
     db.commit()
+
+
+@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT)
+def grant_server_role(
+    user_id: UUID,
+    payload: ServerRoleAssign,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Grants a server-tier role (module system Phase 0) to a user.
+
+    Server-admin only (`require_server_admin`, no `MODULE_ADMINISTRATOR`
+    fallback) — a narrower role can never grant itself or others a role,
+    the same privilege-escalation-safe pattern `assign_org_role` follows
+    for `ORG_ADMIN`.
+
+    Raises:
+        HTTPException: 404 if `user_id` doesn't exist; 400 if `payload.role`
+            is `SERVER_ADMIN` (granted exclusively via the `is_server_admin`
+            boolean and its own endpoint above, never as a row here).
+    """
+    if payload.role == ServerRole.SERVER_ADMIN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Server admin is granted via PUT /users/{user_id}/server-admin, not this endpoint.",
+        )
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    existing = db.scalar(
+        select(UserServerRole).where(UserServerRole.user_id == user_id, UserServerRole.role == payload.role)
+    )
+    if existing is None:
+        db.add(UserServerRole(user_id=user_id, role=payload.role, granted_by=current_user.id))
+        log_event(
+            db, entity_type="user_server_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, detail={"role": payload.role.value},
+        )
+        db.commit()
+
+
+@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_server_role(
+    user_id: UUID,
+    role: ServerRole,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Revokes a server-tier role (module system Phase 0) from a user.
+    No-op if the user doesn't currently hold `role`. Server-admin only —
+    see `grant_server_role`."""
+    existing = db.scalar(
+        select(UserServerRole).where(UserServerRole.user_id == user_id, UserServerRole.role == role)
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_server_role", entity_id=user_id, action="revoked",
+            actor_id=current_user.id, detail={"role": role.value},
+        )
+        db.commit()
 
 
 @router.get("/users", response_model=list[SystemUserOut])
@@ -252,6 +347,15 @@ def list_system_users(
     if limit is not None:
         users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
+    module_admin_ids: set[UUID] = set()
+    if user_ids:
+        module_admin_ids = set(
+            db.scalars(
+                select(UserServerRole.user_id).where(
+                    UserServerRole.user_id.in_(user_ids), UserServerRole.role == ServerRole.MODULE_ADMINISTRATOR
+                )
+            ).all()
+        )
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:
         for user_id, organization_id in db.execute(
@@ -285,7 +389,8 @@ def list_system_users(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, has_org_membership=u.id in org_ids_by_user,
+            is_server_admin=u.is_server_admin, is_module_administrator=u.id in module_admin_ids,
+            has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
             group_names=group_names_by_user.get(u.id, []),
@@ -573,6 +678,48 @@ async def upload_branding_login_background(
     db.commit()
     db.refresh(settings)
     return settings
+
+
+# --- Module entitlement policy (module system Phase 0/1) --------------------
+
+
+@router.get("/module-entitlement-policy", response_model=ModuleEntitlementPolicyOut)
+def get_module_entitlement_policy(
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Returns the deployment-wide default module entitlement policy
+    (`ServerSettings.default_module_entitlement_policy`) — the value
+    Phase 1's entitlement resolution falls back to when an organisation has
+    no explicit `organization_module_entitlements` override row.
+
+    Gated the same as the PUT below (`SERVER_ADMIN` or
+    `MODULE_ADMINISTRATOR`), unlike `/branding`'s unauthenticated GET: this
+    has no unauthenticated consumer, so it stays behind the same admin gate
+    as any other module-management setting.
+    """
+    return get_server_settings(db)
+
+
+@router.put("/module-entitlement-policy", response_model=ModuleEntitlementPolicyOut)
+def update_module_entitlement_policy(
+    payload: ModuleEntitlementPolicyUpdate,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Sets the deployment-wide default module entitlement policy.
+    `SERVER_ADMIN` or `MODULE_ADMINISTRATOR` may call this — the one
+    genuinely per-deployment lever Phase 0 introduces alongside the new
+    role itself."""
+    server_settings = get_server_settings(db)
+    server_settings.default_module_entitlement_policy = payload.default_module_entitlement_policy
+    log_event(
+        db, entity_type="system", entity_id="platform", action="module_entitlement_policy_updated",
+        actor_id=current_user.id, detail={"default_module_entitlement_policy": payload.default_module_entitlement_policy.value},
+    )
+    db.commit()
+    db.refresh(server_settings)
+    return server_settings
 
 
 # --- Public self-signup mode -------------------------------------------------

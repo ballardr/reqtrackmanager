@@ -10,7 +10,8 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
   return {
     user_id: "u1", email: "orphan@example.com", display_name: "Orphan User", is_active: true,
     is_banned: false, last_login_at: "2026-02-01T09:00:00Z", is_2fa_enabled: false,
-    created_at: "2026-01-01T09:00:00Z", is_server_admin: false, has_org_membership: false,
+    created_at: "2026-01-01T09:00:00Z", is_server_admin: false, is_module_administrator: false,
+    has_org_membership: false,
     organization_count: 0, organization_names: [], group_names: [],
     ...overrides,
   };
@@ -54,13 +55,17 @@ export const AccessReviewOrphanedAccounts: Story = {
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("None")).toBeInTheDocument();
 
-    // Deactivate/ban/grant-admin now sit behind one `ActionMenu` kebab
-    // instead of separate always-visible buttons — style guide "Pattern:
-    // action menu", same "OrgAdminPage.tsx" consolidation applied here.
+    // Deactivate/ban now sit behind one `ActionMenu` kebab instead of
+    // separate always-visible buttons — style guide "Pattern: action menu",
+    // same "OrgAdminPage.tsx" consolidation applied here. Grant/revoke
+    // server admin moved to the "Server roles" `MultiSelectDropdown` column
+    // (module system Phase 0) — see `AccessReviewGrantServerAdmin` below.
     await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
-    await expect(within(menu).getByRole("menuitem", { name: "Grant server admin" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Orphan User's server roles" })).toHaveTextContent(
+      "No server roles"
+    );
   },
 };
 
@@ -85,17 +90,26 @@ export const AccessReviewBannedAndAdminBadges: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
-    await expect(canvas.getByText("Server admin")).toBeInTheDocument();
+    // The old standalone "Server admin" badge was dropped once the "Server
+    // roles" dropdown's own closed-state summary started showing the same
+    // fact (module system Phase 0) — asserted here instead.
+    await expect(canvas.getByRole("button", { name: "Admin User's server roles" })).toHaveTextContent("Server admin");
 
-    await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
-    const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
-    await expect(within(menu).getByRole("menuitem", { name: "Revoke server admin" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Admin User's server roles" }));
+    const rolesPopover = within(document.body).getByRole("group", { name: "Admin User's server roles" });
+    await expect(
+      within(rolesPopover).getByRole("checkbox", { name: "Revoke Server admin from Admin User" })
+    ).toBeChecked();
   },
 };
 
 /** Granting server admin opens the shared `ConfirmDialog` (sixth-pass audit
  * — this used to fire via `window.confirm`), then shows a success toast
- * once the role change completes. */
+ * once the role change completes. Module system Phase 0 (docs/compliance-
+ * module-plan.md): grant/revoke now lives in the "Server roles"
+ * `MultiSelectDropdown` column instead of the `ActionMenu`, mirroring
+ * `OrgAdminPage.tsx`'s own roles column — but, unlike that column, still
+ * confirms via `ConfirmDialog` first, since this grant is cross-tenant. */
 export const AccessReviewGrantServerAdmin: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);
@@ -104,15 +118,42 @@ export const AccessReviewGrantServerAdmin: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
-    const actionsMenu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
-    await userEvent.click(within(actionsMenu).getByRole("menuitem", { name: "Grant server admin" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's server roles" }));
+    const rolesPopover = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await userEvent.click(within(rolesPopover).getByRole("checkbox", { name: "Grant Server admin to Orphan User" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Grant server admin to this user?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Grant server admin" }));
 
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/users/u1/server-admin", { is_server_admin: true }));
     await expect(within(document.body).getByText("Server admin granted")).toBeInTheDocument();
+  },
+};
+
+/** Module system Phase 0: granting `MODULE_ADMINISTRATOR` follows the exact
+ * same dropdown-then-`ConfirmDialog` flow as server admin above, via the
+ * new `/server-roles` grant endpoint rather than `/server-admin`. */
+export const AccessReviewGrantModuleAdministrator: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's server roles" }));
+    const rolesPopover = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await userEvent.click(
+      within(rolesPopover).getByRole("checkbox", { name: "Grant Module administrator to Orphan User" })
+    );
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Grant module administrator to this user?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Grant module administrator" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/system/users/u1/server-roles", { role: "module_administrator" })
+    );
+    await expect(within(document.body).getByText("Module administrator granted")).toBeInTheDocument();
   },
 };
 

@@ -138,7 +138,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import OrgRole, ProjectRole, ProjectRoleInheritanceMode, ProjectVisibility
+from app.models.enums import OrgRole, ProjectRole, ProjectRoleInheritanceMode, ProjectVisibility, ServerRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import (
     OrgGroupProjectRole,
@@ -149,6 +149,7 @@ from app.models.project import (
     ProjectMemberSource,
     UserProjectRole,
 )
+from app.models.server_role import UserServerRole
 from app.models.user import User
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
@@ -1694,6 +1695,42 @@ def require_server_admin(request: Request, current_user: User = Depends(get_curr
     if not current_user.is_server_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Server admin permission required.")
     return current_user
+
+
+def require_server_role(*allowed: ServerRole):
+    """FastAPI dependency factory requiring one of the given server-tier
+    roles (module system Phase 0), granted via `UserServerRole`.
+
+    Composes with `User.is_server_admin` by design, not left for a later
+    phase to discover: a genuine server admin always passes, regardless of
+    which specific `allowed` roles were requested — the same "a higher tier
+    already retains full access without needing every narrower role
+    explicitly granted too" principle `require_org_role`'s own callers rely
+    on for `ORG_ADMIN`, and the one Phase 2's `require_module_role` will
+    extend to module-contributed roles. `ServerRole.SERVER_ADMIN` itself is
+    never checked against a `UserServerRole` row — see that enum member's
+    docstring for why `is_server_admin` remains its sole source of truth.
+
+    Unlike `require_server_admin`, this has no PAT carve-out of its own:
+    PATs are already blocked from every server-admin-tier action by
+    `require_server_admin`, and nothing in this module system yet exposes a
+    PAT-reachable endpoint gated by this dependency — revisit if one does.
+    """
+
+    def _dependency(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
+        """See the enclosing `require_server_role` factory's docstring."""
+        if current_user.is_server_admin:
+            return current_user
+        granted = set(
+            db.scalars(
+                select(UserServerRole.role).where(UserServerRole.user_id == current_user.id)
+            ).all()
+        )
+        if not granted & set(allowed):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient server permissions.")
+        return current_user
+
+    return _dependency
 
 
 def require_org_role(*allowed: OrgRole):

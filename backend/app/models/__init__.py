@@ -54,6 +54,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_action import RequirementAction, RequirementActionLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.server_role import UserServerRole
 from app.models.user import User
 
 __all__ = [
@@ -105,5 +106,6 @@ __all__ = [
     "RequirementActionLink",
     "RequirementReview",
     "RequirementVersion",
+    "UserServerRole",
     "User",
 ]
