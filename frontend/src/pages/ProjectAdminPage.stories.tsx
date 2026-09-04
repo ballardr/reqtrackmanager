@@ -8,6 +8,7 @@ import type {
   Component,
   CustomFieldDefinition,
   EffectiveMember,
+  ModuleRoleDefinition,
   OrgGroup,
   PendingInvite,
   ProjectGroup,
@@ -60,6 +61,7 @@ function mockProjectAdminApis(
     effectiveMembers?: EffectiveMember[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
+    moduleRoles?: ModuleRoleDefinition[];
   } = {}
 ) {
   const groupsForThisStory = overrides.groups ?? groups;
@@ -98,6 +100,11 @@ function mockProjectAdminApis(
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
     if (path.includes("/member-sources")) return overrides.memberSources ?? [];
+    // Module system Phase 2: fetched inside the same `reload()` alongside
+    // effective-members/pending-invites above — must be mocked, or that
+    // Members section's own module-role fetch throws as unmocked and
+    // rejects `reload()`'s own `Promise.all`.
+    if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
     if (path.includes("/effective-members")) return overrides.effectiveMembers ?? [];
     if (path.includes(`/projects/${PROJECT_ID}/children`)) return overrides.children ?? [];
     if (path.startsWith("/api/v1/projects?")) return overrides.orgProjects ?? [];
@@ -576,10 +583,12 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
           sources: [
             { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all", via_group_id: null, via_group_name: null },
           ],
+          module_roles: [],
         },
         {
           user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
           sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          module_roles: [],
         },
       ],
     }),
@@ -634,6 +643,7 @@ export const MembersTabAddMemberModalOpen: Story = {
         {
           user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
           sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          module_roles: [],
         },
       ],
     });
@@ -749,6 +759,7 @@ export const MembersTabToggleDirectRoleOff: Story = {
         {
           user_id: "u1", display_name: "Alex Morgan", email: "alex@example.com", effective_role: "stakeholder",
           sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          module_roles: [],
         },
       ],
     });
@@ -1102,10 +1113,12 @@ export const MembersTabSearchFilters: Story = {
         {
           user_id: "u1", display_name: "Priya Shah", email: "priya@example.com", effective_role: "project_manager",
           sources: [{ kind: "direct_role", role: "project_manager", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          module_roles: [],
         },
         {
           user_id: "u2", display_name: "Sam Lee", email: "sam@example.com", effective_role: "stakeholder",
           sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          module_roles: [],
         },
       ],
     }),
@@ -1130,6 +1143,7 @@ export const MaterializeButtonConvertsInheritedAccess: Story = {
           sources: [
             { kind: "forward_inherited", role: "project_manager", via_project_id: "parent-1", via_project_name: "Platform", via_mode: "mirror_all", via_group_id: null, via_group_name: null },
           ],
+          module_roles: [],
         },
       ],
     });

@@ -23,6 +23,7 @@ from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.file import FileAsset, RequirementFile
 from app.models.module import OrganizationModuleEnablement
+from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.pat import PersonalAccessToken
@@ -31,7 +32,7 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import RequirementLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
-from app.modules.registry import get_module_registry, is_module_enabled, is_module_entitled
+from app.modules.registry import get_module_registry, is_module_enabled, is_module_entitled, list_enabled_module_roles
 from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
@@ -40,6 +41,9 @@ from app.schemas.org import (
     DisplayNameLockUpdate,
     ExternalUserMatch,
     MergeConflictOut,
+    ModuleRoleAssign,
+    ModuleRoleDefinitionOut,
+    ModuleRoleGrantOut,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrganizationCreate,
@@ -600,6 +604,28 @@ def list_org_users(
             )
         by_user[user.id].roles.append(role)
 
+    # Module system Phase 2: attach each returned user's org-scoped
+    # module-contributed role grants, filtered to currently-*enabled*
+    # modules only (`list_enabled_module_roles`) — a grant for a
+    # since-disabled module is simply omitted here, never deleted from
+    # `user_module_roles` (see `ModuleRoleGrantOut`'s own docstring for the
+    # full "filter, don't delete" rationale). Computed once per request,
+    # not once per user, since it only depends on `organization_id`.
+    enabled_org_role_keys = {
+        (module_key, role.role_key) for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    }
+    if by_user and enabled_org_role_keys:
+        module_role_rows = db.execute(
+            select(UserModuleRole.user_id, UserModuleRole.module_key, UserModuleRole.role_key).where(
+                UserModuleRole.organization_id == organization_id,
+                UserModuleRole.project_id.is_(None),
+                UserModuleRole.user_id.in_(by_user.keys()),
+            )
+        ).all()
+        for user_id, module_key, role_key in module_role_rows:
+            if (module_key, role_key) in enabled_org_role_keys:
+                by_user[user_id].module_roles.append(ModuleRoleGrantOut(module_key=module_key, role_key=role_key))
+
     results = list(by_user.values())
     if is_active is not None:
         results = [r for r in results if r.is_active == is_active]
@@ -1100,6 +1126,134 @@ def revoke_org_role(
         log_event(
             db, entity_type="user_org_role", entity_id=user_id, action="revoked", actor_id=current_user.id,
             organization_id=organization_id, detail={"role": role.value},
+        )
+        db.commit()
+
+
+# --- Module-contributed roles (module system Phase 2) -----------------------
+
+
+@router.get("/{organization_id}/module-roles", response_model=list[ModuleRoleDefinitionOut])
+def list_org_module_roles(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """Lists the org-scoped module-contributed roles currently available to
+    grant in this organisation — i.e. declared by a module that is
+    currently effectively enabled here (module system Phase 2). Same
+    "any org member can see what role options exist" gate as `list_org_
+    users` (C-A-13's own filters are the only part of that endpoint
+    actually restricted to admins; the option list itself isn't
+    sensitive), since this is exactly what the frontend's Roles dropdown
+    needs to render its option list alongside the fixed `OrgRole` values.
+    """
+    return [
+        ModuleRoleDefinitionOut(module_key=module_key, role_key=role.role_key, name=role.name, description=role.description)
+        for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    ]
+
+
+@router.post("/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+def assign_org_module_role(
+    organization_id: UUID,
+    user_id: UUID,
+    payload: ModuleRoleAssign,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Grants an org-scoped module-contributed role to a user (module
+    system Phase 2) — the module-role counterpart to `assign_org_role`,
+    same `ORG_ADMIN`-only gate (an org admin already implicitly holds
+    every org-scoped module role via `require_module_role`'s own override,
+    so it's consistent that org admin is also who explicitly grants/
+    revokes the row).
+
+    400s if `(payload.module_key, payload.role_key)` doesn't name a real
+    `scope="org"` role of a *currently-enabled* module for this
+    organisation — this is what naturally makes a disabled module's roles
+    ungrantable, and also catches a typo'd role key, using the same
+    `list_enabled_module_roles` lookup `list_org_module_roles` above
+    exposes as the frontend's own option list.
+    """
+    target = db.get(User, user_id)
+    if target is not None and target.is_banned:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
+        )
+    valid = any(
+        module_key == payload.module_key and role.role_key == payload.role_key
+        for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    )
+    if not valid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This module role does not exist, is not org-scoped, or its module is not currently enabled for this organisation.",
+        )
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == payload.module_key,
+            UserModuleRole.role_key == payload.role_key,
+            UserModuleRole.organization_id == organization_id,
+            UserModuleRole.project_id.is_(None),
+        )
+    )
+    if existing is None:
+        db.add(
+            UserModuleRole(
+                user_id=user_id, module_key=payload.module_key, role_key=payload.role_key,
+                organization_id=organization_id, granted_by=current_user.id,
+            )
+        )
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, organization_id=organization_id,
+            detail={"module_key": payload.module_key, "role_key": payload.role_key},
+        )
+        granted_user = db.get(User, user_id)
+        if granted_user is not None:
+            notify(
+                db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
+                title="Organisation permission granted",
+                body=f"You were granted the '{payload.role_key}' role in an organisation.",
+                actor_id=current_user.id,
+            )
+        db.commit()
+
+
+@router.delete(
+    "/{organization_id}/users/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
+)
+def revoke_org_module_role(
+    organization_id: UUID,
+    user_id: UUID,
+    module_key: str,
+    role_key: str,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Revokes an org-scoped module-contributed role grant — `assign_org_
+    module_role`'s counterpart, same no-op-if-absent shape as `revoke_org_
+    role`. Unlike `revoke_org_role`, no self-targeting guard is needed: an
+    org can never reach "zero admins" through a module-role revoke, since
+    module roles carry no admin-tier significance of their own (an
+    `ORG_ADMIN` retains full access to every org-scoped module role
+    regardless of this table's contents — see `require_module_role`)."""
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == module_key,
+            UserModuleRole.role_key == role_key,
+            UserModuleRole.organization_id == organization_id,
+            UserModuleRole.project_id.is_(None),
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="revoked", actor_id=current_user.id,
+            organization_id=organization_id, detail={"module_key": module_key, "role_key": role_key},
         )
         db.commit()
 

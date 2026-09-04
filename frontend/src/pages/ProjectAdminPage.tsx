@@ -13,6 +13,7 @@ import type {
   CustomFieldType,
   EffectiveMember,
   MaterializeResult,
+  ModuleRoleDefinition,
   OrgGroup,
   OrgUser,
   PendingInvite,
@@ -213,6 +214,13 @@ export function ProjectAdminPage() {
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
   const [materializing, setMaterializing] = useState(false);
+  // Module system Phase 2: project-scoped module-contributed role
+  // definitions currently available to grant on this project, fed into
+  // `ProjectMembersTable`'s Role column alongside the four core
+  // `ProjectRole` options. `[]` before `reload()`'s own fetch resolves,
+  // which also correctly renders as "no module roles" for a deployment
+  // with none registered yet (no module has any roles until Phase 5).
+  const [availableModuleRoles, setAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
 
   // --- Members section (Phase D, follow-up UX batch, 2026-08-31) --------
   // `ProjectMembersTable`'s two data sources — effective members (with
@@ -380,6 +388,10 @@ export function ProjectAdminPage() {
     setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
     await reloadEffectiveMembers();
     await reloadPendingInvites();
+    // Module system Phase 2 — same "fetched alongside the rest of this
+    // page's own reload()" treatment every other Members-section data
+    // source above gets.
+    setAvailableModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`));
   }
 
   async function reloadEffectiveMembers() {
@@ -859,6 +871,25 @@ export function ProjectAdminPage() {
         await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role });
       } else {
         await api.delete(`/api/v1/projects/${projectId}/roles/${userId}/${role}`);
+      }
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2)
+   * — same "re-fetch just effective-members" treatment `toggleProjectMemberRole`
+   * above uses, always freely callable (no purelyDirect-style guard,
+   * since module roles are direct-grant-only). */
+  async function toggleProjectMemberModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
+    try {
+      if (grant) {
+        await api.post(`/api/v1/projects/${projectId}/members/${userId}/module-roles`, {
+          module_key: moduleKey, role_key: roleKey,
+        });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/members/${userId}/module-roles/${moduleKey}/${roleKey}`);
       }
       await reloadEffectiveMembers();
     } catch (err) {
@@ -1910,6 +1941,8 @@ export function ProjectAdminPage() {
               onRemoveAllAccess={removeAllProjectMemberAccess}
               onConvertToDirect={convertProjectMemberToDirect}
               ariaLabel={strings.admin.membersNav}
+              availableModuleRoles={availableModuleRoles}
+              onToggleModuleRole={toggleProjectMemberModuleRole}
             />
           )}
           {externalAddResult && (

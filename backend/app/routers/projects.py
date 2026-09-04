@@ -32,6 +32,7 @@ from app.models.enums import (
     StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.project import (
@@ -52,8 +53,10 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
+from app.modules.registry import list_enabled_module_roles
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
+from app.schemas.org import ModuleRoleAssign, ModuleRoleDefinitionOut, ModuleRoleGrantOut
 from app.schemas.project import (
     AssignByEmailOut,
     CategoryCreate,
@@ -1434,6 +1437,27 @@ def get_effective_members(
             project_name_cache[pid] = p.name if p is not None else ""
         return project_name_cache[pid] or None
 
+    # Module system Phase 2: this project's module-contributed role grants,
+    # filtered to currently-*enabled* modules only (see `ModuleRoleGrantOut`'s
+    # docstring for the "filter, don't delete" rationale) — computed once
+    # for the whole response, then attached per member below.
+    enabled_project_role_keys = {
+        (module_key, role.role_key)
+        for module_key, role in list_enabled_module_roles(db, project.organization_id, "project")
+    }
+    module_roles_by_user: dict[UUID, list[ModuleRoleGrantOut]] = {}
+    if enabled_project_role_keys:
+        module_role_rows = db.execute(
+            select(UserModuleRole.user_id, UserModuleRole.module_key, UserModuleRole.role_key).where(
+                UserModuleRole.project_id == project_id
+            )
+        ).all()
+        for user_id, module_key, role_key in module_role_rows:
+            if (module_key, role_key) in enabled_project_role_keys:
+                module_roles_by_user.setdefault(user_id, []).append(
+                    ModuleRoleGrantOut(module_key=module_key, role_key=role_key)
+                )
+
     out: list[EffectiveMemberOut] = []
     for user_id, entries in provenance.items():
         user = db.get(User, user_id)
@@ -1461,6 +1485,7 @@ def get_effective_members(
                     }
                     for e in entries
                 ],
+                module_roles=module_roles_by_user.get(user_id, []),
             )
         )
 
@@ -3132,6 +3157,134 @@ def revoke_project_role(
     if not get_effective_project_roles(db, user_id, project.id):
         engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, [project.id])
     db.commit()
+
+
+# --- Module-contributed roles (module system Phase 2) -----------------------
+
+
+@router.get("/{project_id}/module-roles", response_model=list[ModuleRoleDefinitionOut])
+def list_project_module_roles(
+    project_id: UUID,
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists the project-scoped module-contributed roles currently
+    available to grant on this project — i.e. declared by a module that is
+    currently effectively enabled for the project's owning organisation
+    (module system Phase 2).
+
+    Gated by `require_project_view_or_manage`, the same dependency
+    `list_project_groups` uses: this exposes role/group *structure*
+    (which role options exist) rather than requirement/change-request
+    *content*, so either a genuine project role or org-admin-level
+    project-settings-management capability is enough — matching that
+    dependency's own documented purpose.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return [
+        ModuleRoleDefinitionOut(module_key=module_key, role_key=role.role_key, name=role.name, description=role.description)
+        for module_key, role in list_enabled_module_roles(db, project.organization_id, "project")
+    ]
+
+
+@router.post("/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+def assign_project_module_role(
+    project_id: UUID,
+    user_id: UUID,
+    payload: ModuleRoleAssign,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Grants a project-scoped module-contributed role to a user (module
+    system Phase 2) — the module-role counterpart to `assign_project_role`,
+    same `require_project_manage` gate (a project manager already
+    implicitly holds every project-scoped module role via `require_module_
+    role`'s own override, so it's consistent that a project manager is
+    also who explicitly grants/revokes the row).
+
+    400s if `(payload.module_key, payload.role_key)` doesn't name a real
+    `scope="project"` role of a currently-enabled module for this
+    project's organisation — same "ungrantable when disabled, catches a
+    typo" reasoning as `assign_org_module_role`.
+    """
+    valid = any(
+        module_key == payload.module_key and role.role_key == payload.role_key
+        for module_key, role in list_enabled_module_roles(db, project.organization_id, "project")
+    )
+    if not valid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This module role does not exist, is not project-scoped, or its module is not currently enabled for this project's organisation.",
+        )
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == payload.module_key,
+            UserModuleRole.role_key == payload.role_key,
+            UserModuleRole.project_id == project.id,
+        )
+    )
+    if existing is None:
+        db.add(
+            UserModuleRole(
+                user_id=user_id, module_key=payload.module_key, role_key=payload.role_key,
+                organization_id=project.organization_id, project_id=project.id, granted_by=current_user.id,
+            )
+        )
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, project_id=project.id,
+            detail={"module_key": payload.module_key, "role_key": payload.role_key},
+        )
+        granted_user = db.get(User, user_id)
+        if granted_user is not None:
+            notify(
+                db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
+                title=f"You were granted a permission on {project.name}",
+                body=f"You were granted the '{payload.role_key}' role.",
+                project_id=project.id, actor_id=current_user.id,
+            )
+        db.commit()
+
+
+@router.delete(
+    "/{project_id}/members/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
+)
+def revoke_project_module_role(
+    project_id: UUID,
+    user_id: UUID,
+    module_key: str,
+    role_key: str,
+    project: Project = Depends(require_project_manage),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Revokes a project-scoped module-contributed role grant —
+    `assign_project_module_role`'s counterpart, mirroring `revoke_project_
+    role`'s shape minus its "last manager" guard, which is meaningless for
+    module roles (they carry no admin-tier significance of their own — a
+    `PROJECT_MANAGER` retains full access to every project-scoped module
+    role regardless of this table's contents, see `require_module_role`).
+    No-op if the user doesn't currently hold the grant."""
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == module_key,
+            UserModuleRole.role_key == role_key,
+            UserModuleRole.project_id == project.id,
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="revoked",
+            actor_id=current_user.id, project_id=project.id,
+            detail={"module_key": module_key, "role_key": role_key},
+        )
+        db.commit()
 
 
 @router.delete("/{project_id}/group-roles/{org_group_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)

@@ -139,6 +139,7 @@ from sqlalchemy.orm import Session, aliased
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import OrgRole, ProjectRole, ProjectRoleInheritanceMode, ProjectVisibility, ServerRole
+from app.models.module_role import UserModuleRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import (
     OrgGroupProjectRole,
@@ -151,7 +152,7 @@ from app.models.project import (
 )
 from app.models.server_role import UserServerRole
 from app.models.user import User
-from app.modules.registry import is_module_enabled
+from app.modules.registry import get_module, is_module_enabled
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
 # walks below — matches `_ORG_GROUP_CLOSURE_ITERATION_CAP`'s own rationale:
@@ -1987,3 +1988,149 @@ def require_project_module_enabled(module_key: str):
         return current_user
 
     return _dependency
+
+
+def _has_module_role_grant(
+    db: Session,
+    user_id: UUID,
+    module_key: str,
+    role_key: str,
+    *,
+    organization_id: UUID | None = None,
+    project_id: UUID | None = None,
+) -> bool:
+    """Returns whether `user_id` holds a direct `UserModuleRole` grant for
+    `(module_key, role_key)`, optionally scoped to a specific
+    `organization_id`/`project_id` (module system Phase 2).
+
+    Direct-grant lookup only — no group/hierarchy inheritance, matching
+    `UserModuleRole`'s own documented V1 scope boundary (see that model's
+    docstring). `organization_id`/`project_id` are applied as equality
+    filters only when given; `require_module_role`'s own callers always
+    supply exactly one of them, matching the role's declared scope.
+    """
+    query = select(UserModuleRole.id).where(
+        UserModuleRole.user_id == user_id,
+        UserModuleRole.module_key == module_key,
+        UserModuleRole.role_key == role_key,
+    )
+    if organization_id is not None:
+        query = query.where(UserModuleRole.organization_id == organization_id)
+    if project_id is not None:
+        query = query.where(UserModuleRole.project_id == project_id)
+    return db.scalar(query) is not None
+
+
+def require_module_role(module_key: str, role_key: str):
+    """FastAPI dependency factory requiring a specific module-contributed
+    role, granted via `UserModuleRole` (module system Phase 2).
+
+    Resolves the role's declared `scope` (`"org"` or `"project"`) once, at
+    construction time — i.e. when a module's own router calls this factory
+    at import time, the same "factory called at router-definition time, not
+    at request time" convention `require_server_role`/`require_org_role`/
+    `require_org_module_enabled` etc. all already follow. If `module_key`
+    isn't registered, or is registered but declares no role with this
+    `role_key`, this raises `ValueError` **immediately, at construction
+    time** — a router wiring a nonexistent module/role is a code-time
+    contract violation to catch during development/import, not something
+    that should silently 500 on a live request.
+
+    Depending on the resolved `scope`, the returned dependency is shaped
+    exactly like `require_org_module_enabled`'s (`"org"`) or `require_
+    project_module_enabled`'s (`"project"`) own inner dependency — same
+    path parameter (`organization_id`/`project_id`), same `check_pat_scope`/
+    `_require_org_active`/`_require_org_2fa` calls, and the same
+    **404-not-403** response when the module is disabled/non-entitled for
+    that org (see `require_org_module_enabled`'s own docstring for the
+    full "disabled/non-entitled functionality should not be presented,
+    indistinguishable from not existing" rationale — it applies identically
+    here).
+
+    Once the module-enabled check passes, the caller is authorized if
+    **any** of the following hold — composed by design, not left for a
+    later phase to discover, mirroring the same "a higher-tier admin
+    already retains full access without needing every narrower role
+    explicitly granted too" principle `require_server_role`/`require_org_
+    role` already rely on for `SERVER_ADMIN`/`ORG_ADMIN`:
+      - `current_user.is_server_admin` (always, at every scope).
+      - For `scope == "org"`: `OrgRole.ORG_ADMIN` among the caller's
+        effective roles on `organization_id`.
+      - For `scope == "project"`: `ProjectRole.PROJECT_MANAGER` among the
+        caller's effective roles on `project_id`.
+      - The caller holds the specific `(module_key, role_key)`
+        `UserModuleRole` grant itself (`_has_module_role_grant`), scoped
+        to `organization_id`/`project_id` as appropriate.
+    Otherwise, 403.
+
+    This is generic module-system infrastructure with **no real caller
+    yet** — the same position `require_org_module_enabled`/`require_
+    project_module_enabled` were left in after Phase 1, until Phase 5
+    registers the first module (Compliance) that actually declares roles
+    and wires its own router's endpoints behind this. It is not dead code;
+    it is the mechanism every future module's own RBAC gating will use,
+    proven here against `tests/test_module_contributed_roles.py`'s fixture
+    module in the absence of a real one yet.
+    """
+    definition = get_module(module_key)
+    if definition is None:
+        raise ValueError(f"require_module_role: no module registered with key {module_key!r}.")
+    role = next((r for r in definition.roles if r.role_key == role_key), None)
+    if role is None:
+        raise ValueError(
+            f"require_module_role: module {module_key!r} declares no role with key {role_key!r}."
+        )
+    scope = role.scope
+
+    if scope == "org":
+
+        def _org_dependency(
+            organization_id: UUID,
+            request: Request,
+            current_user: User = Depends(get_current_user),
+            db: Session = Depends(get_db),
+        ) -> User:
+            """See the enclosing `require_module_role` factory's docstring
+            (org-scoped branch)."""
+            check_pat_scope(request, organization_id)
+            _require_org_active(db, organization_id)
+            _require_org_2fa(db, organization_id, current_user)
+            if not is_module_enabled(db, organization_id, module_key):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+            if current_user.is_server_admin:
+                return current_user
+            if OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id):
+                return current_user
+            if _has_module_role_grant(
+                db, current_user.id, module_key, role_key, organization_id=organization_id
+            ):
+                return current_user
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+        return _org_dependency
+
+    def _project_dependency(
+        project_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        """See the enclosing `require_module_role` factory's docstring
+        (project-scoped branch)."""
+        check_pat_scope_for_project(request, db, project_id)
+        organization_id = _project_organization_id(db, project_id)
+        if organization_id is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
+        if not is_module_enabled(db, organization_id, module_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        if current_user.is_server_admin:
+            return current_user
+        if ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id):
+            return current_user
+        if _has_module_role_grant(db, current_user.id, module_key, role_key, project_id=project_id):
+            return current_user
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+    return _project_dependency

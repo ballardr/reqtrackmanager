@@ -57,6 +57,23 @@
  *   inheritance, which this client-side hint can't see) — see that guard's
  *   own docstring (`routers/projects.py::revoke_project_role`).
  *
+ * - Module system Phase 2: the Role column's `MultiSelectDropdown` also
+ *   merges in `availableModuleRoles` (already filtered to project scope by
+ *   the caller), one option per module-contributed role — checked from a
+ *   member's own `module_roles`, toggled via `onToggleModuleRole`. Unlike
+ *   the core-role options above, a module-role option is **never**
+ *   subjected to the `purelyDirect`/inherited-disabled treatment: V1
+ *   module roles are direct-grant-only with no group/hierarchy
+ *   inheritance concept at all (a deliberate scope boundary — see
+ *   `docs/compliance-module-plan.md`'s Phase 2 spec), so every module-role
+ *   option is always freely togglable. Its `label` renders the role
+ *   definition's own `name` directly — not a `MODULE_ROLE_LABEL`-style
+ *   frontend lookup map — since it is already human-readable data returned
+ *   by the API (set server-side by the module's own author), not a raw
+ *   closed-enum wire value the frontend itself defines (contrast
+ *   `PROJECT_ROLE_LABEL` above, which *does* need a lookup because
+ *   `ProjectRole` is such an enum).
+ *
  * Does not fetch or mutate any data itself, matching `MemberRoleTable`'s
  * own contract: `members`/`invites` are caller-supplied, already loaded in
  * full (small enough to load whole and search/filter/paginate client-side
@@ -87,7 +104,7 @@
 import { Send, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { EffectiveMember, MemberSourceProvenance, PendingInvite, ProjectRole } from "../api/types";
+import type { EffectiveMember, MemberSourceProvenance, ModuleRoleDefinition, PendingInvite, ProjectRole } from "../api/types";
 import { PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import type { Strings } from "../i18n/strings";
@@ -152,6 +169,8 @@ export function ProjectMembersTable({
   onConvertToDirect,
   addControl,
   ariaLabel,
+  availableModuleRoles = [],
+  onToggleModuleRole,
 }: {
   members: EffectiveMember[];
   invites: PendingInvite[];
@@ -186,6 +205,21 @@ export function ProjectMembersTable({
   addControl?: ReactNode;
   /** Accessible name for the table itself. */
   ariaLabel: string;
+  /** Project-scoped module-contributed role definitions available to
+   * grant on this project (module system Phase 2) — already filtered to
+   * currently-enabled modules by the caller (`GET /{project_id}/module-
+   * roles`). Defaults to `[]`, the real-world default today since no
+   * module has any roles registered until Phase 5 — the Role column's
+   * `MultiSelectDropdown` then shows only the four core `ProjectRole`
+   * options, unchanged from before this phase. */
+  availableModuleRoles?: ModuleRoleDefinition[];
+  /** Grants/revokes one module-contributed role on a member — always
+   * freely callable (no `purelyDirect`-style disabling), since module
+   * roles are direct-grant-only with no inherited-source state to guard
+   * against (see the module docstring). Required only when
+   * `availableModuleRoles` is non-empty in practice; typed optional so
+   * existing call sites with nothing to pass don't need a no-op stub. */
+  onToggleModuleRole?: (userId: string, moduleKey: string, roleKey: string, grant: boolean) => void;
 }) {
   const strings = useStrings();
   const [search, setSearch] = useState("");
@@ -281,30 +315,51 @@ export function ProjectMembersTable({
           <MultiSelectDropdown
             triggerLabel={strings.membersTable.rolesFor(member.display_name)}
             emptyLabel={strings.membersTable.noRoles}
-            options={PROJECT_ROLES.map((role) => {
-              const sourcesForRole = member.sources.filter((s) => s.role === role);
-              const checked = sourcesForRole.length > 0;
-              const kinds = new Set(sourcesForRole.map((s) => s.kind));
-              const purelyDirect = checked && kinds.size === 1 && kinds.has("direct_role");
-              const isLastManager = purelyDirect && role === "project_manager" && directRoleManagerCount <= 1;
-              const disabled = checked && (!purelyDirect || isLastManager);
-              const title = !disabled
-                ? undefined
-                : !purelyDirect
-                  ? strings.membersTable.roleNotDirectlyRevocable
-                  : strings.membersTable.cannotRemoveLastManager;
-              return {
-                value: role,
-                label: PROJECT_ROLE_LABEL[role],
-                checked,
-                disabled,
-                title,
-                optionLabel: checked
-                  ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], member.display_name)
-                  : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], member.display_name),
-                onToggle: () => onToggleRole(member.user_id, role, !checked),
-              };
-            })}
+            options={[
+              ...PROJECT_ROLES.map((role) => {
+                const sourcesForRole = member.sources.filter((s) => s.role === role);
+                const checked = sourcesForRole.length > 0;
+                const kinds = new Set(sourcesForRole.map((s) => s.kind));
+                const purelyDirect = checked && kinds.size === 1 && kinds.has("direct_role");
+                const isLastManager = purelyDirect && role === "project_manager" && directRoleManagerCount <= 1;
+                const disabled = checked && (!purelyDirect || isLastManager);
+                const title = !disabled
+                  ? undefined
+                  : !purelyDirect
+                    ? strings.membersTable.roleNotDirectlyRevocable
+                    : strings.membersTable.cannotRemoveLastManager;
+                return {
+                  value: role,
+                  label: PROJECT_ROLE_LABEL[role],
+                  checked,
+                  disabled,
+                  title,
+                  optionLabel: checked
+                    ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], member.display_name)
+                    : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], member.display_name),
+                  onToggle: () => onToggleRole(member.user_id, role, !checked),
+                };
+              }),
+              // Module system Phase 2: merged in alongside the core roles
+              // above, same dropdown/checkbox styling and optionLabel
+              // pattern — never disabled (see this component's own
+              // docstring for why module roles skip the purelyDirect
+              // check entirely).
+              ...availableModuleRoles.map((d) => {
+                const checked = member.module_roles.some(
+                  (g) => g.module_key === d.module_key && g.role_key === d.role_key
+                );
+                return {
+                  value: `${d.module_key}:${d.role_key}`,
+                  label: d.name,
+                  checked,
+                  optionLabel: checked
+                    ? strings.membersTable.revokeRole(d.name, member.display_name)
+                    : strings.membersTable.grantRole(d.name, member.display_name),
+                  onToggle: () => onToggleModuleRole?.(member.user_id, d.module_key, d.role_key, !checked),
+                };
+              }),
+            ]}
           />
         );
       },

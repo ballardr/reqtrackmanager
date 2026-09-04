@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -18,7 +18,7 @@ const org: Organization = {
 const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
   is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: "2026-02-01T09:00:00Z",
-  is_2fa_enabled: true,
+  is_2fa_enabled: true, module_roles: [],
 };
 
 const advanced: OrgAdvancedSettings = {
@@ -41,7 +41,7 @@ function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
-  modules?: OrgModule[];
+  modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -65,6 +65,14 @@ function mockOrgAdminApis(overrides: {
     // as `/advanced-settings` above — must be mocked here or every story
     // that doesn't override it would otherwise throw on the "unmocked
     // path" fallback below and fail `reload()` as a whole.
+    // Module system Phase 2: same "must be mocked or reload() throws"
+    // reasoning as `/modules` just above — fetched in the same block.
+    // Checked first since both `/modules` and `/module-roles` would
+    // otherwise need careful ordering; they don't actually collide
+    // (`"/module-roles".includes("/modules")` is false — no trailing "s"
+    // right after "module"), but checking the more specific path first
+    // keeps this robust against that changing.
+    if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
     if (path.includes("/modules")) return overrides.modules ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
@@ -239,7 +247,7 @@ export const NewUserModalRoleSelect: Story = {
 const secondOrgUser: OrgUser = {
   user_id: "user-2", email: "jordan@example.com", display_name: "Jordan Lee", is_active: true,
   is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null,
-  is_2fa_enabled: false,
+  is_2fa_enabled: false, module_roles: [],
 };
 
 export const UsersSectionGrantAndRevokeRole: Story = {
@@ -270,6 +278,65 @@ export const UsersSectionGrantAndRevokeRole: Story = {
     await userEvent.click(within(jordanRoles).getByRole("checkbox", { name: "Revoke Project creator from Jordan Lee" }));
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/roles/project_creator`)
+    );
+  },
+};
+
+/** Module system Phase 2: the Users table's Roles dropdown merges in
+ * org-scoped module-contributed role options alongside the three fixed
+ * `OrgRole` ones — label is `"<role name> (<module name>)"` (the plan's
+ * own worked example), resolved from the already-fetched `modules` list.
+ * Jordan holds one grant (checked, revoke path); Alex doesn't hold the
+ * other (unchecked, grant path). Every other story on this page implicitly
+ * covers the opposite, real-world-default "zero available module roles"
+ * case (`mockOrgAdminApis`'s `moduleRoles` override simply isn't passed,
+ * so it defaults to `[]`) — that's the actual current state of a
+ * deployment with no module registered yet (no module has any roles until
+ * Phase 5). */
+export const UsersSectionModuleRoleGrantAndRevoke: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      users: [orgUser, { ...secondOrgUser, module_roles: [{ module_key: "compliance", role_key: "compliance_manager" }] }],
+      modules: [
+        {
+          module_key: "compliance", name: "Compliance", description: "Compliance tracking.", version: "1.0.0",
+          implemented: true, entitled: true, enabled: true, default_enabled: true,
+        },
+      ],
+      moduleRoles: [
+        { module_key: "compliance", role_key: "compliance_manager", name: "Compliance Manager", description: "Manages standards." },
+        { module_key: "compliance", role_key: "compliance_officer", name: "Compliance Officer", description: "Assesses projects." },
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await expect(within(alexRoles).getByText("Compliance Manager (Compliance)")).toBeInTheDocument();
+    await userEvent.click(
+      within(alexRoles).getByRole("checkbox", { name: "Grant Compliance Officer (Compliance) to Alex Morgan" })
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/module-roles`, {
+        module_key: "compliance", role_key: "compliance_officer",
+      })
+    );
+
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's roles" }));
+    const jordanRoles = within(document.body).getByRole("group", { name: "Jordan Lee's roles" });
+    await userEvent.click(
+      within(jordanRoles).getByRole("checkbox", { name: "Revoke Compliance Manager (Compliance) from Jordan Lee" })
+    );
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/users/user-2/module-roles/compliance/compliance_manager`
+      )
     );
   },
 };
@@ -1452,6 +1519,14 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
     if (path === "/api/v1/projects/proj-1/effective-members") return effectiveMembers;
     if (path === "/api/v1/projects/proj-1/pending-invites") return pendingInvites;
+    // Module system Phase 2: `openManageUsers` fetches this alongside
+    // effective-members/pending-invites — must be mocked or that
+    // `Promise.all` rejects and the modal never opens. No story here
+    // exercises a non-empty module-role option list (that's covered by
+    // `ProjectMembersTable.stories.tsx`'s own `ModuleRolesAvailable` story
+    // instead); this modal's own stories only need the real-world-default
+    // empty case to not break.
+    if (path === "/api/v1/projects/proj-1/module-roles") return [];
     if (path.includes("/project-statuses")) return [];
     if (path.includes("/link-types")) return [];
     // Phase A's org-only pending-invites list (follow-up UX batch) — no
@@ -1464,6 +1539,13 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
+    // Module system Phase 2: the org-scoped page-level `reload()` also
+    // fetches this — must be mocked here too (this function fully
+    // replaces `mockOrgAdminApis`'s own `api.get` mock via a second
+    // `spyOn`, not layers on top of it), or that unrelated fetch rejects
+    // as an unhandled promise. The project-scoped one for the modal
+    // itself is handled by its own exact-match branch above.
+    if (path.includes("/module-roles")) return [];
     if (path.includes("/modules")) return [];
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };

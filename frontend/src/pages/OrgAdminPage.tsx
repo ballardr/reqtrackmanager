@@ -15,6 +15,7 @@ import type {
   LinkTypeDefinition,
   MaterializeResult,
   MergeConflict,
+  ModuleRoleDefinition,
   OrgAdvancedSettings,
   OrgGroup,
   OrgModule,
@@ -246,6 +247,19 @@ export function OrgAdminPage() {
   // which also correctly renders as "no modules" for a deployment with
   // none registered yet (there are zero implemented modules until Phase 5).
   const [modules, setModules] = useState<OrgModule[]>([]);
+  // Module system Phase 2: org-scoped module-contributed role definitions
+  // currently available to grant in this org, fed into the Users table's
+  // Roles column `MultiSelectDropdown` alongside the three fixed `OrgRole`
+  // options. Fetched in the same block as `modules` above (both non-admin-
+  // hidden, both need this org's own module registry state) — `[]` before
+  // that resolves, which also correctly renders as "no module roles" for a
+  // deployment with none registered yet (no module has any roles until
+  // Phase 5).
+  const [availableOrgModuleRoles, setAvailableOrgModuleRoles] = useState<ModuleRoleDefinition[]>([]);
+  // Same, but project-scoped — for the "manage users" modal's own
+  // `ProjectMembersTable`, keyed by whichever project that modal currently
+  // has open (see `openManageUsers` below).
+  const [manageUsersAvailableModuleRoles, setManageUsersAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
   // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
@@ -530,6 +544,7 @@ export function OrgAdminPage() {
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
       setModules(await api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`));
+      setAvailableOrgModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/orgs/${orgId}/module-roles`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
@@ -752,10 +767,16 @@ export function OrgAdminPage() {
   async function openManageUsers(project: OrgProjectSummary) {
     setManageUsersProjectId(project.id);
     setManageUsersProjectName(project.name);
-    const [members, invites] = await Promise.all([
+    const [members, invites, moduleRoles] = await Promise.all([
       api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
       api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
+      // Module system Phase 2: this project's own available project-scoped
+      // module roles — fetched fresh per open, same as `members`/`invites`
+      // above, since a different project can have a different owning org
+      // (and therefore a different set of currently-enabled modules).
+      api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${project.id}/module-roles`),
     ]);
+    setManageUsersAvailableModuleRoles(moduleRoles);
     setManageUsersMembers(members);
     setManageUsersInvites(invites);
   }
@@ -765,6 +786,7 @@ export function OrgAdminPage() {
     setManageUsersProjectName("");
     setManageUsersMembers([]);
     setManageUsersInvites([]);
+    setManageUsersAvailableModuleRoles([]);
     setManageUsersAddMemberModalOpen(false);
   }
 
@@ -784,6 +806,27 @@ export function OrgAdminPage() {
         await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
       } else {
         await api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`);
+      }
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2),
+   * scoped to `manageUsersProjectId` — same "re-fetch just effective-
+   * members" treatment `toggleManageUsersRole` above uses. */
+  async function toggleManageUsersModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
+    if (!manageUsersProjectId) return;
+    try {
+      if (grant) {
+        await api.post(`/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles`, {
+          module_key: moduleKey, role_key: roleKey,
+        });
+      } else {
+        await api.delete(
+          `/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles/${moduleKey}/${roleKey}`
+        );
       }
       await reloadManageUsersMembers();
     } catch (err) {
@@ -1077,6 +1120,44 @@ export function OrgAdminPage() {
       await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles/${role}`);
       setUsers((prev) =>
         prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: x.roles.filter((r) => r !== role) } : x))
+      );
+      showToast(strings.orgAdmin.roleRevoked);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // Module system Phase 2: same single-row local-state patch as
+  // `grantOrgRole`/`revokeOrgRole` above, for the same reasoning (a
+  // single grant/revoke only ever changes this one row's own module-role
+  // set, so a full `reload()` would refresh nothing else it needs).
+  async function grantModuleRole(u: OrgUser, moduleKey: string, roleKey: string) {
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/module-roles`, {
+        module_key: moduleKey, role_key: roleKey,
+      });
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, module_roles: [...x.module_roles, { module_key: moduleKey, role_key: roleKey }] }
+            : x
+        )
+      );
+      showToast(strings.orgAdmin.roleGranted);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeModuleRole(u: OrgUser, moduleKey: string, roleKey: string) {
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/module-roles/${moduleKey}/${roleKey}`);
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, module_roles: x.module_roles.filter((g) => !(g.module_key === moduleKey && g.role_key === roleKey)) }
+            : x
+        )
       );
       showToast(strings.orgAdmin.roleRevoked);
     } catch (err) {
@@ -1616,6 +1697,16 @@ export function OrgAdminPage() {
     ...filteredOrgInvites.map((invite): UsersRow => ({ kind: "invited", invite })),
     ...users.map((u): UsersRow => ({ kind: "user", user: u })),
   ];
+  // Module system Phase 2: resolves a module role definition's own
+  // `module_key` to that module's display `name` (from the already-fetched
+  // `modules` list), for the Roles column option label "<role name>
+  // (<module name>)" — falls back to the raw key only if `modules` hasn't
+  // resolved yet or somehow doesn't include it (shouldn't happen in
+  // practice, since a role is only ever "available" for a module that's
+  // both registered and currently enabled).
+  function moduleDisplayNameFor(moduleKey: string): string {
+    return modules.find((m) => m.module_key === moduleKey)?.name ?? moduleKey;
+  }
   const usersColumns: DirectoryColumn<UsersRow>[] = [
     {
       key: "email", label: strings.orgAdmin.email, sortable: true,
@@ -1642,27 +1733,51 @@ export function OrgAdminPage() {
           <MultiSelectDropdown
             triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
             emptyLabel={strings.orgAdmin.noRoles}
-            options={(["member", "project_creator", "org_admin"] as const).map((role) => {
-              const checked = u.roles.includes(role);
-              // A user can never revoke their own org role via this
-              // control — mirrors the backend's self-targeting block
-              // on the revoke endpoint (an org can never reach zero
-              // admins through here, by construction). Granting a
-              // role to oneself is still allowed, matching the
-              // backend, so only the "uncheck" direction is disabled.
-              const disabled = checked && u.user_id === user?.id;
-              return {
-                value: role,
-                label: ORG_ROLE_LABEL[role],
-                checked,
-                disabled,
-                title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
-                optionLabel: checked
-                  ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
-                  : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
-                onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
-              };
-            })}
+            options={[
+              ...(["member", "project_creator", "org_admin"] as const).map((role) => {
+                const checked = u.roles.includes(role);
+                // A user can never revoke their own org role via this
+                // control — mirrors the backend's self-targeting block
+                // on the revoke endpoint (an org can never reach zero
+                // admins through here, by construction). Granting a
+                // role to oneself is still allowed, matching the
+                // backend, so only the "uncheck" direction is disabled.
+                const disabled = checked && u.user_id === user?.id;
+                return {
+                  value: role,
+                  label: ORG_ROLE_LABEL[role],
+                  checked,
+                  disabled,
+                  title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
+                  optionLabel: checked
+                    ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
+                    : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
+                  onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
+                };
+              }),
+              // Module system Phase 2: merged in alongside the three core
+              // roles above — same dropdown, never disabled (module roles
+              // carry no "own row" self-targeting restriction the way
+              // ORG_ADMIN does). Label renders the role definition's own
+              // `name` directly (already human-readable API data, not a
+              // raw closed-enum wire value), plus the owning module's
+              // display name for context, per the plan's own worked
+              // example ("Compliance Officer (Compliance)").
+              ...availableOrgModuleRoles.map((d) => {
+                const checked = u.module_roles.some((g) => g.module_key === d.module_key && g.role_key === d.role_key);
+                const label = `${d.name} (${moduleDisplayNameFor(d.module_key)})`;
+                return {
+                  value: `${d.module_key}:${d.role_key}`,
+                  label,
+                  checked,
+                  optionLabel: checked
+                    ? strings.orgAdmin.revokeRole(label, u.display_name)
+                    : strings.orgAdmin.grantRole(label, u.display_name),
+                  onToggle: () =>
+                    checked ? revokeModuleRole(u, d.module_key, d.role_key) : grantModuleRole(u, d.module_key, d.role_key),
+                };
+              }),
+            ]}
           />
         );
       },
@@ -2531,6 +2646,8 @@ export function OrgAdminPage() {
                   onRemoveAllAccess={removeAllManageUsersMemberAccess}
                   onConvertToDirect={convertManageUsersMemberToDirect}
                   ariaLabel={strings.orgAdmin.manageUsers}
+                  availableModuleRoles={manageUsersAvailableModuleRoles}
+                  onToggleModuleRole={toggleManageUsersModuleRole}
                 />
               </Modal>
             )}

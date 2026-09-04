@@ -221,6 +221,59 @@ class OrgModuleEnablementUpdate(BaseModel):
     enabled: bool
 
 
+class ModuleRoleDefinitionOut(BaseModel):
+    """One available module-contributed role (module system Phase 2,
+    `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+    only roles of a *currently effectively-enabled* module are ever
+    returned (`app.modules.registry.list_enabled_module_roles`), so a role
+    belonging to a disabled/non-entitled module simply doesn't appear
+    here, mirroring `OrgModuleOut`'s neighbouring "the frontend just
+    renders what's returned" shape rather than the modules list's own
+    "included but greyed out" one — there is no partial/disabled state to
+    represent for a role option, only present-or-absent.
+
+    Defined once here rather than duplicated in `schemas/project.py`,
+    following the existing precedent of `orgs.py` importing a schema
+    defined in `schemas/project.py` (`MoveDirection`) for a shape needed
+    by more than one router — `routers/projects.py` imports this one from
+    here instead.
+    """
+
+    module_key: str
+    role_key: str
+    name: str
+    description: str
+
+
+class ModuleRoleGrantOut(BaseModel):
+    """One `UserModuleRole` grant, as surfaced on `OrgUserOut.module_roles`/
+    `EffectiveMemberOut.module_roles` (module system Phase 2) — deliberately
+    minimal (just enough for the frontend to match it against a
+    `ModuleRoleDefinitionOut` option's `module_key`/`role_key`), unlike
+    `ModuleRoleDefinitionOut` which also carries the display `name`/
+    `description` a *list of available roles* needs to render but a
+    *held-grant marker* on a user row does not (the frontend already has
+    the matching `ModuleRoleDefinitionOut` loaded to render from). See
+    `ModuleRoleDefinitionOut`'s own docstring for why this lives here
+    rather than in `schemas/project.py`.
+    """
+
+    module_key: str
+    role_key: str
+
+
+class ModuleRoleAssign(BaseModel):
+    """Body for `POST /orgs/{organization_id}/users/{user_id}/module-roles`
+    and `POST /projects/{project_id}/members/{user_id}/module-roles` — the
+    affected user is always the `{user_id}` path parameter (mirroring
+    `assign_org_role`'s own "URL, not body, is authoritative" convention),
+    so unlike `OrgRoleAssign`/`UserProjectRoleAssign` this body carries no
+    `user_id` field at all."""
+
+    module_key: str
+    role_key: str
+
+
 class OrgUserCreate(BaseModel):
     """Creates a brand-new user directly within an organisation."""
 
@@ -240,6 +293,12 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
+    # Module system Phase 2: this user's org-scoped module-contributed role
+    # grants, filtered to currently-enabled modules only (see
+    # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s
+    # population of this field) — a grant for a since-disabled module is
+    # simply omitted here, not deleted from `user_module_roles`.
+    module_roles: list[ModuleRoleGrantOut] = []
 
 
 class OrgPendingInviteCreate(BaseModel):

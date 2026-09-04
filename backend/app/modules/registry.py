@@ -52,6 +52,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter
 from sqlalchemy import select
@@ -62,6 +63,52 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "reqtrackmanager.modules"
+
+
+@dataclass(frozen=True)
+class ModuleRoleDefinition:
+    """Declares one module-contributed RBAC role (compliance-module-plan.md
+    Phase 2) — a module's own analogue of a fixed `OrgRole`/`ProjectRole`
+    enum member, without extending either enum (the design-history
+    correction Phase 2 exists to satisfy: "modules should be able to
+    register their own RBAC entitlements", not have their roles hardcoded
+    onto the core enums).
+
+    Every `ModuleDefinition.roles` entry is one of these. At process
+    startup, `sync_module_role_definitions` mirrors the live set of these
+    into the `module_role_definitions` table so a grant's display name/
+    description stays resolvable even across a module being temporarily
+    unregistered (see that function's own docstring); at request time,
+    `app.services.rbac.require_module_role(module_key, role_key)` resolves
+    a role's `scope` by reading it directly from here (the in-process
+    registry), not from the database mirror.
+
+    Attributes:
+        role_key: Stable identifier for this role, unique within its
+            module (e.g. `"compliance_manager"`) — used as the `role_key`
+            column value in `UserModuleRole`/`ModuleRoleDefinitionRow`, so
+            it must never change once a deployment has grants keyed on it.
+        name: Human-readable display name shown in admin UIs (e.g.
+            "Compliance Manager") — rendered directly by the frontend, not
+            looked up through a frontend label map, since it is data
+            returned by the API rather than a frontend-known closed enum.
+        description: Short human-readable description of what the role is
+            for, shown alongside `name` in admin UIs.
+        scope: Either `"org"` (an organisation-scoped role, granted via
+            `UserModuleRole` with `project_id IS NULL`) or `"project"` (a
+            project-scoped role, granted with a specific `project_id`).
+            Determines which `require_module_role` composition applies
+            (`OrgRole.ORG_ADMIN` override for `"org"`, `ProjectRole.
+            PROJECT_MANAGER` override for `"project"`) and which of the
+            two "available module roles" read endpoints
+            (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-
+            roles`) lists it.
+    """
+
+    role_key: str
+    name: str
+    description: str
+    scope: Literal["org", "project"]
 
 
 @dataclass(frozen=True)
@@ -100,10 +147,12 @@ class ModuleDefinition:
             import-time work, and so a module with genuinely no router
             (e.g. one that only contributes MCP tools, Phase 4) can return
             `None` without needing a dummy empty router.
-        roles: Module-contributed RBAC role declarations — placeholder,
-            filled in by Phase 2 (`ModuleRoleDefinition` entries). Left as
-            an empty tuple until then so this dataclass's shape doesn't
-            need a breaking change when Phase 2 lands.
+        roles: Module-contributed RBAC role declarations (module system
+            Phase 2) — each a `ModuleRoleDefinition`. Synced into the
+            `module_role_definitions` table at startup by
+            `sync_module_role_definitions` and surfaced to callers of
+            `list_enabled_module_roles`. Empty tuple for a module that
+            contributes no roles of its own.
         frontend_manifest: Module-contributed frontend integration
             manifest — placeholder, filled in by Phase 3. `None` until
             then.
@@ -119,7 +168,7 @@ class ModuleDefinition:
     default_enabled: bool
     implemented: bool
     get_router: Callable[[], APIRouter | None]
-    roles: tuple = field(default=())
+    roles: tuple[ModuleRoleDefinition, ...] = field(default=())
     frontend_manifest: object | None = None
     mcp_tools: tuple = field(default=())
 
@@ -404,3 +453,109 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     if override is not None:
         return override.enabled
     return definition.default_enabled
+
+
+def sync_module_role_definitions(db: Session) -> None:
+    """Mirrors every currently-registered module's `ModuleRoleDefinition`
+    entries into the `module_role_definitions` table (module system
+    Phase 2), upserting on `(module_key, role_key)`.
+
+    Called once at process startup, right after `run_bootstrap` in
+    `app.main`'s `lifespan` — the same "self-heal at every process start"
+    pattern `run_migrations`/`run_bootstrap` already establish there, so a
+    freshly-registered module's roles are queryable/grantable immediately
+    without a separate seed step.
+
+    For each `(module_key, role_key)` pair declared by the live registry,
+    an existing row has its `name`/`description`/`scope` updated in place;
+    a missing one is inserted. **Rows are never deleted for a module or
+    role no longer present in the live registry** — this table is a
+    deliberately append-only mirror, not a strict reflection of
+    `get_module_registry()`'s current contents. The reasoning is the same
+    "don't silently drop historical display data" philosophy this plan
+    applies elsewhere (see Phase 8's evidence-revalidation history, which
+    "must not overwrite the historical record"): a `UserModuleRole` grant
+    made while a module was registered must stay resolvable to a real
+    display name/description even if that module is later removed from
+    `INSTALLED_MODULES` (a deployment downgrade, a third-party module
+    uninstalled, ...) — an orphaned grant with no definition row to join
+    against would otherwise render as a bare, meaningless role key in any
+    admin UI or audit-log detail that looks it up. `list_enabled_module_
+    roles` (the function that actually decides which roles are *offered*/
+    *displayed as currently grantable*) filters by live registry
+    membership and current org enablement separately — this function's own
+    job is purely "keep the mirror caught up," not "decide what's active."
+
+    Args:
+        db: An active database session. Commits once at the end (mirrors
+            `run_bootstrap`'s own single-commit-per-call shape); callers
+            should not assume anything about the transaction state
+            beforehand.
+    """
+    # Deferred import: `app.models.module_role` doesn't import this
+    # module, but importing it eagerly at the top of this file would still
+    # be an unnecessary coupling for a registry module whose other
+    # functions don't need it (same rationale `is_module_entitled`/
+    # `is_module_enabled` already use for their own deferred imports).
+    from app.models.module_role import ModuleRoleDefinitionRow
+
+    for definition in get_module_registry().values():
+        for role in definition.roles:
+            existing = db.scalar(
+                select(ModuleRoleDefinitionRow).where(
+                    ModuleRoleDefinitionRow.module_key == definition.key,
+                    ModuleRoleDefinitionRow.role_key == role.role_key,
+                )
+            )
+            if existing is None:
+                db.add(
+                    ModuleRoleDefinitionRow(
+                        module_key=definition.key, role_key=role.role_key,
+                        name=role.name, description=role.description, scope=role.scope,
+                    )
+                )
+            else:
+                existing.name = role.name
+                existing.description = role.description
+                existing.scope = role.scope
+    db.commit()
+
+
+def list_enabled_module_roles(
+    db: Session, organization_id: uuid.UUID, scope: Literal["org", "project"]
+) -> list[tuple[str, ModuleRoleDefinition]]:
+    """Lists `(module_key, ModuleRoleDefinition)` pairs for every role of
+    the given `scope`, declared by a module that is currently *effectively
+    enabled* (`is_module_enabled`) for `organization_id` (module system
+    Phase 2).
+
+    This is what backs the "available module roles" read endpoints
+    (`GET /orgs/{id}/module-roles`, `GET /projects/{id}/module-roles`) and
+    the enabled-modules-only filtering `list_org_users`/`GET .../effective-
+    members` apply to a user's existing `module_roles` grants — a role
+    whose module has since been disabled for this organisation is excluded
+    from both the option list and any already-held grant's display, even
+    though the underlying `UserModuleRole` row is left untouched (see
+    `sync_module_role_definitions`'s docstring for the same "filter, don't
+    delete" principle applied one layer up, at the definition-mirror
+    level).
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve module enablement
+            against.
+        scope: `"org"` or `"project"` — only roles declared with this
+            scope are returned.
+
+    Returns:
+        A list of `(module_key, ModuleRoleDefinition)` tuples, one per
+        matching role, in registry iteration order.
+    """
+    result: list[tuple[str, ModuleRoleDefinition]] = []
+    for definition in get_module_registry().values():
+        if not is_module_enabled(db, organization_id, definition.key):
+            continue
+        for role in definition.roles:
+            if role.scope == scope:
+                result.append((definition.key, role))
+    return result

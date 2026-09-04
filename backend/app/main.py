@@ -24,7 +24,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.metrics import http_request_duration_seconds, http_requests_total
 from app.migrations import run_migrations
-from app.modules.registry import get_module_registry
+from app.modules.registry import get_module_registry, sync_module_role_definitions
 from app.routers import (
     action_types,
     actions,
@@ -57,15 +57,23 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Applies pending migrations, runs the server-admin bootstrap, captures
-    the event loop for pub/sub, and starts the disk-usage monitor (I-M-11)
-    — every process start self-heals the schema rather than requiring a
-    manual migration step first."""
+    """Applies pending migrations, runs the server-admin bootstrap, syncs
+    the module-contributed RBAC role registry mirror (module system
+    Phase 2), captures the event loop for pub/sub, and starts the
+    disk-usage monitor (I-M-11) — every process start self-heals the
+    schema rather than requiring a manual migration step first."""
     run_migrations()
     pubsub.set_event_loop(asyncio.get_event_loop())
     db = SessionLocal()
     try:
         run_bootstrap(db)
+        # Module system Phase 2: keeps `module_role_definitions` caught up
+        # with whatever the live registry currently declares, the same
+        # "self-heal at every process start" pattern `run_bootstrap` itself
+        # follows. See `sync_module_role_definitions`'s own docstring for
+        # why this never deletes a row for a module/role no longer
+        # registered.
+        sync_module_role_definitions(db)
     finally:
         db.close()
     disk_monitor_task = asyncio.create_task(run_disk_monitor_loop())

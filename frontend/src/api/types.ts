@@ -350,6 +350,33 @@ export interface ProjectFile {
   comment_id: string | null;
 }
 
+/** One available module-contributed role (module system Phase 2,
+ * `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+ * only roles of a currently effectively-enabled module are ever returned,
+ * so a role belonging to a disabled/non-entitled module simply isn't in
+ * this list. `name`/`description` are data returned by the API (set
+ * server-side by the module's own author), not a frontend-known closed
+ * enum — render `name` directly, do not build a `MODULE_ROLE_LABEL`-style
+ * lookup map for it (see `docs/ux-style-guide.md` Principle 12's label-map
+ * rule, which applies to raw *enum* values the frontend itself defines,
+ * not to already-human-readable API data like this). */
+export interface ModuleRoleDefinition {
+  module_key: string;
+  role_key: string;
+  name: string;
+  description: string;
+}
+
+/** One held `UserModuleRole` grant, as surfaced on `OrgUser.module_roles`/
+ * `EffectiveMember.module_roles` — deliberately minimal (just enough to
+ * match against a `ModuleRoleDefinition` option's `module_key`/`role_key`);
+ * the caller already has the matching `ModuleRoleDefinition` loaded to
+ * render `name`/`description` from. */
+export interface ModuleRoleGrant {
+  module_key: string;
+  role_key: string;
+}
+
 export interface OrgUser {
   user_id: string;
   email: string;
@@ -360,6 +387,10 @@ export interface OrgUser {
   display_name_locked: boolean;
   last_login_at: string | null;
   is_2fa_enabled: boolean;
+  /** This user's org-scoped module-contributed role grants, filtered to
+   * currently-enabled modules only (module system Phase 2) — a grant for
+   * a since-disabled module is simply omitted, not a sign it was revoked. */
+  module_roles: ModuleRoleGrant[];
 }
 
 /** A search result for an email not (yet) a member of the searched org —
@@ -616,6 +647,10 @@ export interface EffectiveMember {
   email: string;
   effective_role: ProjectRole;
   sources: MemberSourceProvenance[];
+  /** This user's project-scoped module-contributed role grants, filtered
+   * to currently-enabled modules only (module system Phase 2) — same
+   * "filter, don't delete" rule `OrgUser.module_roles` documents. */
+  module_roles: ModuleRoleGrant[];
 }
 
 export interface MaterializeResult {

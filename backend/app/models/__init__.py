@@ -18,6 +18,7 @@ from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
+from app.models.module_role import ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
     Organization,
@@ -110,5 +111,7 @@ __all__ = [
     "UserServerRole",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
+    "ModuleRoleDefinitionRow",
+    "UserModuleRole",
     "User",
 ]

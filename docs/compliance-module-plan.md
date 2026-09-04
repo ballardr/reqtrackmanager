@@ -8,15 +8,15 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-04 (Phase 1 complete).
+**Last updated:** 2026-09-05 (Phase 2 complete).
 
-**Overall progress:** 2 / 16 phases complete.
+**Overall progress:** 3 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Server-level RBAC extension | [x] Complete |
 | 1 | Module registry & backend plugin loading | [x] Complete |
-| 2 | Module-contributed RBAC | [ ] Not started |
+| 2 | Module-contributed RBAC | [x] Complete |
 | 3 | Frontend module integration (2-tier) | [ ] Not started |
 | 4 | Module-contributed MCP tools | [ ] Not started |
 | 5 | Compliance data model (as a module) | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 2.
+**Next phase to pick up:** Phase 3.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -201,6 +201,17 @@ Implemented as specified, with a few judgment calls the spec above left implicit
 - `require_module_role(module_key, role_key)` — generic dependency in `services/rbac.py`, same call shape as `require_project_manage`. **Composes with existing admin overrides by design, not left for a later phase to discover**: passes if the caller holds the specific module-role grant, **or** `current_user.is_server_admin`, **or** (for an org-scoped module role) `OrgRole.ORG_ADMIN` on that org, **or** (for a project-scoped module role) `ProjectRole.PROJECT_MANAGER` on that project — mirroring the existing principle that a higher-tier admin already retains full access without needing every narrower role explicitly granted too (`docs/Compliance_Module_Requirements.md` §3/§26 requires exactly this for Compliance specifically; making it a `require_module_role` default rather than a compliance-specific special case means every future module gets the same override for free).
 - **UI**: `ProjectMembersTable.tsx`'s and `OrgAdminPage.tsx`'s existing `MultiSelectDropdown` Roles column is extended to merge core roles with any *currently-enabled* module's registered roles for the relevant scope — e.g. "Compliance Officer (Compliance)" appears as an option alongside "Project Manager"/"Stakeholder" in the same dropdown, same checkbox styling, same `optionLabel` accessibility pattern. Under the hood, toggling a module role calls a `user_module_roles`-backed endpoint; toggling a core role keeps calling the existing `UserProjectRole`/`UserOrgRole` endpoints. The component and its visual/interaction contract do not change — this is the concrete mechanism that satisfies the "consistent with other user tables" correction, applied to module roles specifically (Phase 0 already applied it to server roles).
 - Tests: grant/revoke, `require_module_role` behaviour, effective-roles resolution excludes a role from a since-disabled module, UI merge behaviour (story + e2e).
+
+#### Phase 2 notes (completed 2026-09-05)
+
+Implemented as specified, with a few judgment calls the spec above left open — recorded here so a future session doesn't need to re-derive them:
+- `ModuleRoleGrantOut` (the minimal `{module_key, role_key}` shape both `OrgUserOut.module_roles` and `EffectiveMemberOut.module_roles` need) and `ModuleRoleDefinitionOut` (the fuller `{module_key, role_key, name, description}` shape the two "available module roles" read endpoints return) both landed in `schemas/org.py`, imported into `schemas/project.py` from there — the reverse direction of the existing precedent `orgs.py` already set by importing `MoveDirection` from `schemas/project.py`. Chosen over a new `schemas/module_role.py` since this plan's own Phase 1 notes already established that this codebase adds a new shared-schemas module only when a phase's own needs don't fit an existing file's convention; a two-router shared shape reusing an existing cross-import precedent didn't meet that bar.
+- The project-scoped read endpoint (`GET /projects/{project_id}/module-roles`) is gated by `require_project_view_or_manage` — confirmed against that dependency's own docstring and `list_project_groups`'s identical gate (both expose role/group *structure*, not requirement/change-request *content*), exactly the fit the spec's own open question anticipated.
+- `ModuleRoleDefinitionRow.description` uses `Text`, not a bounded `String(n)`, matching this codebase's existing convention for other free-text description columns (`RequirementAction.description`, `ChangeRequestTask.description`) — the spec asked for "generous length" without picking a number, and this codebase's own precedent is not to pick one at all for prose fields.
+- `assign_org_module_role`/`assign_project_module_role` send a `NotificationType.PERMISSION_GRANTED` notification on grant, mirroring `assign_org_role`/`assign_project_role`'s own notification exactly (title/body text adapted to name the module role instead of the core role) — the spec flagged this as optional ("if you find it trivial to mirror"); it was, so it's included for parity rather than leaving module-role grants silently unnotified next to core-role grants that aren't.
+- `ProjectMembersTable.tsx`'s module-role options render `d.name` directly (no owning-module-name suffix), unlike `OrgAdminPage.tsx`'s Users table, which renders `"${d.name} (${moduleDisplayNameFor(d.module_key)})"` per the spec's own worked example. The spec only worked that parenthetical example out for the org-admin surface; reproducing it in `ProjectMembersTable` would need a second prop (a module-key→display-name map) purely for a disambiguation need no module with roles exists yet to exercise. If a future module's role names turn out to collide across modules within one project's dropdown, revisit by threading that map through the same way `moduleDisplayNameFor` already works in `OrgAdminPage.tsx`.
+- `ProjectMembersTable.tsx`'s "Remove all access" action loops only the member's `sources` (core roles); it does not also revoke that member's module-role grants. Not called out explicitly in the spec, and left as-is — "all access" here has meant "every direct core-role grant" since Phase D, and folding module-role revocation in silently would be a scope/behaviour change to an existing, already-shipped action rather than something this phase's own spec asked for. Flagged here rather than left undiscoverable.
+- Playwright coverage (`tests/playwright/tests/e2e-workflows/module-contributed-roles.spec.ts`, new) follows Phase 1's own precedent exactly: no real module exists to interact with yet, so this spec confirms only that both surfaces' Roles dropdowns still render their unchanged fixed option set and still grant/revoke a core role correctly with the new (empty) `GET .../module-roles` fetch wired in — interactive module-role-option coverage lives at the Storybook level instead (`ProjectMembersTable.stories.tsx`'s `ModuleRolesAvailable`, `OrgAdminPage.stories.tsx`'s `UsersSectionModuleRoleGrantAndRevoke`). Authored and statically reviewed (`playwright test --list` confirms both tests parse and are discovered) but **not run against a live `tests/container` stack** in this session — see the phase's own close-out entry in `docs/decisions.md` for why.
 
 ### Phase 3 — Frontend Module Integration (Two-Tier)
 
