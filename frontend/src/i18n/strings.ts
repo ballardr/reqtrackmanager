@@ -775,6 +775,11 @@ const en = {
     groupOauthSso: "OAuth/SSO",
     groupEmail: "Email",
     groupSecurity: "Security",
+    // Module system Phase 1 (compliance-module-plan.md) — a new top-level
+    // group rather than folded into "Security", since it's a distinct
+    // day-to-day admin surface (enabling/disabling optional feature
+    // modules) rather than an authentication/access-policy setting.
+    groupModules: "Modules",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
@@ -941,6 +946,16 @@ const en = {
     // (see `pats` below) rather than getting a heading of its own.
     smtpEmailTitle: "SMTP & email",
     securityTitle: "Security",
+    // Module system Phase 1: the org admin's "Modules" section (enable/
+    // disable a feature module among those the org is entitled to).
+    modulesTitle: "Modules",
+    modulesDescription: "Enable or disable optional feature modules for this organisation. A module greyed out below isn't available on your current plan.",
+    modulesEmpty: "No modules are registered on this deployment yet.",
+    moduleNotEntitledHint: "Not available on this organisation's current plan. Contact your server administrator to request access.",
+    moduleNotImplementedHint: "Not yet available in this version of the application.",
+    moduleEnabledToast: (name: string) => `${name} enabled`,
+    moduleDisabledToast: (name: string) => `${name} disabled`,
+    moduleToggleLabel: (name: string) => `Enable ${name}`,
     smtpHost: "SMTP host",
     smtpPort: "SMTP port",
     smtpUsername: "SMTP username",

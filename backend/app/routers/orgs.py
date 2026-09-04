@@ -22,6 +22,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.file import FileAsset, RequirementFile
+from app.models.module import OrganizationModuleEnablement
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.pat import PersonalAccessToken
@@ -30,6 +31,7 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import RequirementLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.modules.registry import get_module_registry, is_module_enabled, is_module_entitled
 from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
@@ -53,6 +55,8 @@ from app.schemas.org import (
     OrgLoginInfoOut,
     OrgMergePreviewResult,
     OrgMergeResult,
+    OrgModuleEnablementUpdate,
+    OrgModuleOut,
     OrgPendingInviteCreate,
     OrgPendingInviteOut,
     OrgProjectSummaryOut,
@@ -2060,6 +2064,93 @@ def update_advanced_settings(
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
+    )
+
+
+# --- Modules (module system Phase 1) -----------------------------------------
+
+
+@router.get("/{organization_id}/modules", response_model=list[OrgModuleOut])
+def list_org_modules(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module with this organisation's effective
+    entitlement/enablement state (module system Phase 1).
+
+    Non-entitled modules are included, not filtered out: the Modules admin
+    UI shows them greyed out with an explanatory note rather than hiding
+    them entirely (visibility helps future upsell; the toggle itself stays
+    disabled) — the frontend does the graying, this endpoint just reports
+    the truth.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    result: list[OrgModuleOut] = []
+    for definition in get_module_registry().values():
+        entitled = is_module_entitled(db, organization_id, definition.key)
+        enabled = is_module_enabled(db, organization_id, definition.key)
+        result.append(
+            OrgModuleOut(
+                module_key=definition.key, name=definition.name, description=definition.description,
+                version=definition.version, implemented=definition.implemented,
+                entitled=entitled, enabled=enabled, default_enabled=definition.default_enabled,
+            )
+        )
+    return result
+
+
+@router.put("/{organization_id}/modules/{module_key}", response_model=OrgModuleOut)
+def update_org_module_enablement(
+    organization_id: UUID, module_key: str, payload: OrgModuleEnablementUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets this organisation's own explicit enable/disable choice for one
+    module (module system Phase 1) — the org-tier "day-to-day switch"
+    among modules the organisation is entitled to.
+
+    404s on an unregistered `module_key`, matching how every other
+    org-scoped resource lookup in this router responds to a bogus id.
+    403s with a clear message if the organisation isn't entitled to the
+    module at all: an org admin cannot self-enable a non-entitled module
+    by toggling this endpoint — entitlement is a server-tier lever
+    (`PUT /system/orgs/{organization_id}/module-entitlements/{module_key}`),
+    strictly above what this endpoint can touch.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    if not is_module_entitled(db, organization_id, module_key):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This module is not entitled for this organisation.")
+
+    row = db.scalar(
+        select(OrganizationModuleEnablement).where(
+            OrganizationModuleEnablement.organization_id == organization_id,
+            OrganizationModuleEnablement.module_key == module_key,
+        )
+    )
+    if row is None:
+        row = OrganizationModuleEnablement(organization_id=organization_id, module_key=module_key)
+        db.add(row)
+    row.enabled = payload.enabled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
+        action="module.enablement_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": module_key, "enabled": payload.enabled},
+    )
+    db.commit()
+    db.refresh(row)
+    return OrgModuleOut(
+        module_key=definition.key, name=definition.name, description=definition.description,
+        version=definition.version, implemented=definition.implemented,
+        entitled=True, enabled=row.enabled, default_enabled=definition.default_enabled,
     )
 
 

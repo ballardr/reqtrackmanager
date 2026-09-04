@@ -190,6 +190,37 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_relaxed_child_project_creation: bool = True
 
 
+class OrgModuleOut(BaseModel):
+    """A single module's state as seen by an org admin (module system
+    Phase 1) — combines the registry's static description with this
+    organisation's own effective entitlement/enablement, computed by
+    `app.modules.registry.is_module_entitled`/`is_module_enabled`.
+
+    Non-entitled modules are included in this response, not filtered out:
+    per the plan, the org admin's Modules UI shows them greyed out with an
+    explanatory note rather than hiding them entirely — the frontend does
+    the graying, not this schema/endpoint.
+    """
+
+    module_key: str
+    name: str
+    description: str
+    version: str
+    implemented: bool
+    entitled: bool
+    enabled: bool
+    default_enabled: bool
+
+
+class OrgModuleEnablementUpdate(BaseModel):
+    """Sets an organisation's own explicit enable/disable choice for one
+    module. Rejected (403) by the endpoint if the organisation isn't
+    entitled to the module at all — see `routers.orgs.
+    update_org_module_enablement`."""
+
+    enabled: bool
+
+
 class OrgUserCreate(BaseModel):
     """Creates a brand-new user directly within an organisation."""
 

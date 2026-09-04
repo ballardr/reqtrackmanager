@@ -151,6 +151,7 @@ from app.models.project import (
 )
 from app.models.server_role import UserServerRole
 from app.models.user import User
+from app.modules.registry import is_module_enabled
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
 # walks below — matches `_ORG_GROUP_CLOSURE_ITERATION_CAP`'s own rationale:
@@ -1911,3 +1912,78 @@ def require_project_manage(
     if not can_manage_project_settings(db, current_user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")
     return project
+
+
+def require_org_module_enabled(module_key: str):
+    """FastAPI dependency factory requiring `module_key` to be effectively
+    enabled (entitled AND enabled — `app.modules.registry.is_module_enabled`)
+    for the org named by the `organization_id` path parameter, for a caller
+    who is otherwise a member of that organisation (module system Phase 1).
+
+    Expects an `organization_id` path parameter, same as `require_org_role`.
+
+    Deliberately returns **404, not 403**, when the module is disabled or
+    not entitled — compliance-module-plan.md Phase 1 is explicit that
+    disabled/non-entitled functionality "should not be presented," which
+    this codebase treats the same way it already treats a project a caller
+    has no role on (`require_project_view`'s sibling 403) or a genuinely
+    nonexistent resource: here, specifically 404, so a disabled module's
+    endpoints are indistinguishable from endpoints that don't exist at all,
+    rather than leaking their existence via a 403.
+
+    No first-party module router is wired behind this yet (none exists
+    until Phase 5) — this is infrastructure a module's own router uses
+    internally once it has one, not something applied at the `app.main`
+    mount-loop level (see `app.modules.registry`'s module docstring).
+    """
+
+    def _dependency(
+        organization_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        """See the enclosing `require_org_module_enabled` factory's docstring."""
+        check_pat_scope(request, organization_id)
+        _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
+        if not get_effective_org_roles(db, current_user.id, organization_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        if not is_module_enabled(db, organization_id, module_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        return current_user
+
+    return _dependency
+
+
+def require_project_module_enabled(module_key: str):
+    """FastAPI dependency factory requiring `module_key` to be effectively
+    enabled for the organisation owning the project named by the
+    `project_id` path parameter, for a caller who is otherwise a member of
+    that project (module system Phase 1). Project-scoped sibling of
+    `require_org_module_enabled` — see that factory's docstring for the
+    404-not-403 rationale, which applies identically here.
+
+    Expects a `project_id` path parameter, same as `require_project_view`.
+    """
+
+    def _dependency(
+        project_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        """See the enclosing `require_project_module_enabled` factory's docstring."""
+        check_pat_scope_for_project(request, db, project_id)
+        organization_id = _project_organization_id(db, project_id)
+        if organization_id is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
+        if not get_effective_project_roles(db, current_user.id, project_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        if not is_module_enabled(db, organization_id, module_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        return current_user
+
+    return _dependency

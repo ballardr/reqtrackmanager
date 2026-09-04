@@ -1142,6 +1142,24 @@ export interface OrgAdvancedSettings {
   allow_relaxed_child_project_creation: boolean;
 }
 
+/** One module's state as seen by an org admin (module system Phase 1,
+ * `GET`/`PUT /orgs/{id}/modules[/{module_key}]`) — the registry's static
+ * description plus this organisation's own effective entitlement/
+ * enablement. `enabled` is already the *effective* value (entitled AND
+ * enabled) computed server-side; a non-entitled module is still included
+ * in the response rather than filtered out, so the Modules admin UI can
+ * grey it out with an explanatory note instead of hiding it entirely. */
+export interface OrgModule {
+  module_key: string;
+  name: string;
+  description: string;
+  version: string;
+  implemented: boolean;
+  entitled: boolean;
+  enabled: boolean;
+  default_enabled: boolean;
+}
+
 export interface PersonalAccessTokenOrgRef {
   id: string;
   name: string;

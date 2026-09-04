@@ -32,9 +32,11 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import ModuleEntitlementPolicy, ServerRole, SignupMode
+from app.models.module import OrganizationModuleEntitlement
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
 from app.models.user import User
+from app.modules.registry import get_module_registry, is_module_entitled
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.email import TestEmailRequest
 from app.schemas.pat import BulkRevokeResult
@@ -139,6 +141,49 @@ class ModuleEntitlementPolicyOut(BaseModel):
 
 class ModuleEntitlementPolicyUpdate(BaseModel):
     default_module_entitlement_policy: ModuleEntitlementPolicy
+
+
+class ModuleOut(BaseModel):
+    """A registered module's static description (module system Phase 1) —
+    "what modules exist," with no per-organisation data. See
+    `OrgModuleEntitlementOut` for the per-organisation entitlement view."""
+
+    module_key: str
+    name: str
+    description: str
+    version: str
+    default_enabled: bool
+    implemented: bool
+
+
+class OrgModuleEntitlementOut(BaseModel):
+    """One module's entitlement state for a specific organisation, as seen
+    by a `MODULE_ADMINISTRATOR`/`SERVER_ADMIN` (module system Phase 1).
+
+    Attributes:
+        module_key: The module's registry key.
+        name: The module's display name.
+        entitled: The *effective* entitlement (an explicit override row's
+            value, or the deployment's default policy if none exists).
+        has_override: Whether an explicit `OrganizationModuleEntitlement`
+            row exists for this organisation/module pair.
+        default_policy_used: The inverse of `has_override` — `True` when
+            `entitled` was derived from `ServerSettings.
+            default_module_entitlement_policy` rather than an explicit row.
+    """
+
+    module_key: str
+    name: str
+    entitled: bool
+    has_override: bool
+    default_policy_used: bool
+
+
+class OrgModuleEntitlementUpdate(BaseModel):
+    """Sets an explicit server-tier entitlement override for one
+    organisation/module pair (module system Phase 1)."""
+
+    entitled: bool
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -720,6 +765,111 @@ def update_module_entitlement_policy(
     db.commit()
     db.refresh(server_settings)
     return server_settings
+
+
+# --- Module registry & entitlement (module system Phase 1) ------------------
+
+
+@router.get("/modules", response_model=list[ModuleOut])
+def list_modules(
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+):
+    """Returns every module in the registry — "what modules exist," with
+    no per-organisation entitlement/enablement data (see
+    `list_org_module_entitlements` below for that). Gated the same as the
+    entitlement-policy endpoints above."""
+    return [
+        ModuleOut(
+            module_key=definition.key, name=definition.name, description=definition.description,
+            version=definition.version, default_enabled=definition.default_enabled,
+            implemented=definition.implemented,
+        )
+        for definition in get_module_registry().values()
+    ]
+
+
+@router.get("/orgs/{organization_id}/module-entitlements", response_model=list[OrgModuleEntitlementOut])
+def list_org_module_entitlements(
+    organization_id: UUID,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module combined with `organization_id`'s
+    current effective and explicit entitlement state — the server-tier
+    licensing/plan view (module system Phase 1)."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+
+    overrides = {
+        row.module_key: row
+        for row in db.scalars(
+            select(OrganizationModuleEntitlement).where(
+                OrganizationModuleEntitlement.organization_id == organization_id
+            )
+        )
+    }
+    result: list[OrgModuleEntitlementOut] = []
+    for definition in get_module_registry().values():
+        override = overrides.get(definition.key)
+        entitled = is_module_entitled(db, organization_id, definition.key)
+        result.append(
+            OrgModuleEntitlementOut(
+                module_key=definition.key, name=definition.name, entitled=entitled,
+                has_override=override is not None, default_policy_used=override is None,
+            )
+        )
+    return result
+
+
+@router.put(
+    "/orgs/{organization_id}/module-entitlements/{module_key}", response_model=OrgModuleEntitlementOut
+)
+def update_org_module_entitlement(
+    organization_id: UUID, module_key: str, payload: OrgModuleEntitlementUpdate,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Sets an explicit server-tier entitlement override for one
+    organisation/module pair (module system Phase 1).
+
+    Turning entitlement off does NOT cascade-delete any existing
+    `OrganizationModuleEnablement` row for this org/module — that's
+    intentional, not a missed cleanup: `is_module_enabled`'s effective
+    formula already ANDs entitlement with enablement, so a stale
+    `enabled=True` enablement row under a revoked entitlement is inert and
+    presents no confusing effective state. A future reader should not "fix"
+    this by adding a cascade delete.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    row = db.scalar(
+        select(OrganizationModuleEntitlement).where(
+            OrganizationModuleEntitlement.organization_id == organization_id,
+            OrganizationModuleEntitlement.module_key == module_key,
+        )
+    )
+    if row is None:
+        row = OrganizationModuleEntitlement(organization_id=organization_id, module_key=module_key)
+        db.add(row)
+    row.entitled = payload.entitled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
+        action="module.entitlement_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": module_key, "entitled": payload.entitled},
+    )
+    db.commit()
+    db.refresh(row)
+    return OrgModuleEntitlementOut(
+        module_key=definition.key, name=definition.name, entitled=row.entitled,
+        has_override=True, default_policy_used=False,
+    )
 
 
 # --- Public self-signup mode -------------------------------------------------

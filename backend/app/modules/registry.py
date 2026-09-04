@@ -1,0 +1,406 @@
+"""
+Module: modules.registry
+
+Builds and serves the merged module registry for the modular feature
+system (compliance-module-plan.md Phase 1): the single source of truth for
+"which modules exist" that `app.main` mounts routers from and
+`app.services.rbac`'s `require_org_module_enabled`/
+`require_project_module_enabled` dependencies, and the org/system admin
+endpoints in `app.routers.orgs`/`app.routers.system`, all read from.
+
+Three discovery sources are merged, in priority order (an earlier source's
+`key` always wins over a later one, logged as a rejection):
+
+1. `INSTALLED_MODULES` — a static, in-repo, code-reviewed list of
+   first-party modules. **Always loads**, regardless of configuration.
+2. Python entry points in the `reqtrackmanager.modules` group — the
+   standard plugin-discovery idiom (the same one pytest/Flask extensions
+   use) for a package deliberately `pip install`-ed into the deployment's
+   image.
+3. An optional local directory (`Settings.extra_modules_path`) scanned for
+   subdirectories each containing a `module.py` — for a self-hosted
+   operator adding a custom module without publishing a package.
+
+Sources 2 and 3 are gated behind `Settings.allow_external_modules`
+(default `False`) — see `Settings.allow_external_modules`'s own
+docstring (`app.config`) for the full SOC 2 rationale (CC6.8). When the
+flag is off, this module does not even call the discovery functions for
+sources 2/3 — not merely filter their results — so no third-party package
+metadata or filesystem path is scanned at all.
+
+Design note on later phases: Phase 5+ first-party modules mount their own
+`get_router()` behind `require_module_enabled`-family dependencies
+*internally*, inside their own router module — there is no second gate
+applied here at the `app.main` mount-loop level. This keeps the mount loop
+itself trivial (a module either contributes a router or it doesn't) and
+keeps all per-module authorization logic colocated with that module's own
+endpoints, the same way every other router in this codebase already
+handles its own dependency wiring rather than relying on a generic outer
+gate.
+
+External dependencies: none beyond the standard library
+(`importlib.metadata`, `importlib.util`) and this project's own ORM/config
+modules.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import importlib.util
+import logging
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from fastapi import APIRouter
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+ENTRY_POINT_GROUP = "reqtrackmanager.modules"
+
+
+@dataclass(frozen=True)
+class ModuleDefinition:
+    """Declares a single module — first-party or third-party — to the
+    modular feature system's registry.
+
+    Attributes:
+        key: Stable, unique identifier for the module (e.g. `"compliance"`)
+            — used as the `module_key` column value in
+            `OrganizationModuleEntitlement`/`OrganizationModuleEnablement`,
+            so it must never change once a deployment has data keyed on it.
+        name: Human-readable display name shown in admin UIs.
+        description: Short human-readable description shown in admin UIs.
+        version: The module's own version string (independent of the core
+            application's `app.version`), logged at discovery time so a
+            startup log line is a real operational record of what code
+            entered the trust boundary on that run.
+        default_enabled: Whether an organisation that is entitled to this
+            module, but has no explicit `OrganizationModuleEnablement` row,
+            gets it enabled by default. Compliance (Phase 5) is
+            `default_enabled=True` per its own requirements' "enabled by
+            default"; a more optional/experimental module would ship
+            `default_enabled=False`.
+        implemented: Whether this module actually does anything yet.
+            `False` for a definition registered as a placeholder/in-
+            progress (nothing in this plan requires that today, but the
+            field exists so a future phase can register a module ahead of
+            its full implementation landing without misrepresenting it as
+            live) — admin UIs display this rather than hiding an
+            unimplemented entry, matching the "don't hide, grey out"
+            principle this plan already applies to non-entitled modules.
+        get_router: Zero-argument callable returning the module's
+            `APIRouter`, or `None` if it contributes no HTTP endpoints at
+            all. Called (not stored eagerly) so a module can defer its own
+            import-time work, and so a module with genuinely no router
+            (e.g. one that only contributes MCP tools, Phase 4) can return
+            `None` without needing a dummy empty router.
+        roles: Module-contributed RBAC role declarations — placeholder,
+            filled in by Phase 2 (`ModuleRoleDefinition` entries). Left as
+            an empty tuple until then so this dataclass's shape doesn't
+            need a breaking change when Phase 2 lands.
+        frontend_manifest: Module-contributed frontend integration
+            manifest — placeholder, filled in by Phase 3. `None` until
+            then.
+        mcp_tools: Module-contributed MCP tool declarations — placeholder,
+            filled in by Phase 4 (`McpToolDefinition` entries). Left as an
+            empty tuple until then.
+    """
+
+    key: str
+    name: str
+    description: str
+    version: str
+    default_enabled: bool
+    implemented: bool
+    get_router: Callable[[], APIRouter | None]
+    roles: tuple = field(default=())
+    frontend_manifest: object | None = None
+    mcp_tools: tuple = field(default=())
+
+
+# First-party modules, added here starting with Compliance in Phase 5.
+# Always loaded regardless of `Settings.allow_external_modules` — this is
+# in-repo code that goes through this project's normal review process, not
+# a third-party discovery source.
+INSTALLED_MODULES: list[ModuleDefinition] = []
+
+_registry_cache: dict[str, ModuleDefinition] | None = None
+
+
+def _discover_entry_point_modules() -> list[ModuleDefinition]:
+    """Discovers third-party modules registered under the
+    `reqtrackmanager.modules` entry-point group (`importlib.metadata`).
+
+    Each entry point is expected to load to either a `ModuleDefinition`
+    instance directly, or a zero-argument callable returning one. Any
+    failure to load or resolve a single entry point is caught and logged
+    (`logger.exception`) without aborting discovery of the others — one
+    broken third-party package must not take down every other module, or
+    the application's own startup.
+
+    Only ever called when `Settings.allow_external_modules` is `True` —
+    see this module's docstring and `build_registry`.
+
+    Returns:
+        The list of successfully resolved `ModuleDefinition` instances.
+    """
+    discovered: list[ModuleDefinition] = []
+    try:
+        entry_points = importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)
+    except Exception:
+        logger.exception("Failed to enumerate entry points for group %r", ENTRY_POINT_GROUP)
+        return discovered
+
+    for entry_point in entry_points:
+        try:
+            loaded = entry_point.load()
+            definition = loaded() if callable(loaded) and not isinstance(loaded, ModuleDefinition) else loaded
+        except Exception:
+            logger.exception("Failed to load module entry point %r", entry_point.name)
+            continue
+
+        if not isinstance(definition, ModuleDefinition):
+            logger.warning(
+                "Entry point %r did not resolve to a ModuleDefinition (got %r); skipping",
+                entry_point.name, type(definition),
+            )
+            continue
+
+        logger.info(
+            "Discovered module %r (version=%s, source=entry_point)", definition.key, definition.version
+        )
+        discovered.append(definition)
+
+    return discovered
+
+
+def _discover_path_modules(path_str: str) -> list[ModuleDefinition]:
+    """Discovers third-party modules by scanning `path_str` for immediate
+    subdirectories that each contain a `module.py` exposing a module-level
+    `MODULE_DEFINITION` attribute.
+
+    For a self-hosted operator adding a custom module without publishing a
+    package. Same per-item try/except-and-log-and-continue behaviour as
+    `_discover_entry_point_modules` — a broken module directory doesn't
+    abort discovery of any other module. Only ever called when
+    `Settings.allow_external_modules` is `True` — see this module's
+    docstring and `build_registry`.
+
+    Args:
+        path_str: Directory to scan. Non-existent or non-directory paths
+            are logged and treated as "no modules found" rather than
+            raising, since a misconfigured/typo'd path is an operator
+            error, not a reason to fail application startup.
+
+    Returns:
+        The list of successfully resolved `ModuleDefinition` instances.
+    """
+    discovered: list[ModuleDefinition] = []
+    base_path = Path(path_str)
+    if not base_path.is_dir():
+        logger.warning("EXTRA_MODULES_PATH %r is not a directory; skipping path-based module discovery", path_str)
+        return discovered
+
+    for entry in sorted(base_path.iterdir()):
+        if not entry.is_dir():
+            continue
+        module_file = entry / "module.py"
+        if not module_file.is_file():
+            continue
+
+        try:
+            spec = importlib.util.spec_from_file_location(f"_extra_module_{entry.name}", module_file)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Could not build an import spec for {module_file}")
+            loaded_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(loaded_module)
+            definition = getattr(loaded_module, "MODULE_DEFINITION", None)
+        except Exception:
+            logger.exception("Failed to load module from path %r", str(module_file))
+            continue
+
+        if not isinstance(definition, ModuleDefinition):
+            logger.warning(
+                "Module directory %r did not expose a MODULE_DEFINITION ModuleDefinition; skipping", entry.name
+            )
+            continue
+
+        logger.info("Discovered module %r (version=%s, source=path)", definition.key, definition.version)
+        discovered.append(definition)
+
+    return discovered
+
+
+def build_registry(*, force: bool = False) -> dict[str, ModuleDefinition]:
+    """Builds (and process-caches) the merged module registry.
+
+    Always loads `INSTALLED_MODULES` first, logging each at `INFO` with
+    `source=installed`. Then, **only if** `Settings.allow_external_modules`
+    is `True`, discovers entry-point-registered modules and (if
+    `Settings.extra_modules_path` is set) path-based modules; when the flag
+    is `False`, neither discovery function is called at all — a single
+    `INFO` log line records that discovery was skipped, which is itself
+    part of the operational record this plan requires (see this module's
+    docstring).
+
+    Any externally-discovered module whose `key` collides with an
+    already-registered key (from `INSTALLED_MODULES`, or an earlier
+    external source) is skipped with a `WARNING` log — installed modules
+    always win, and the first external module to claim a key wins over a
+    later one.
+
+    Args:
+        force: Bypasses and rebuilds the process-level cache. Needed by
+            tests that monkeypatch `INSTALLED_MODULES`, `Settings.
+            allow_external_modules`, or the discovery functions themselves
+            and need the change to actually take effect.
+
+    Returns:
+        A mapping of `module_key -> ModuleDefinition` for every module that
+        made it into the merged registry.
+    """
+    global _registry_cache
+    if _registry_cache is not None and not force:
+        return _registry_cache
+
+    registry: dict[str, ModuleDefinition] = {}
+
+    for definition in INSTALLED_MODULES:
+        if definition.key in registry:
+            logger.warning("Duplicate installed module key %r; keeping the first one registered", definition.key)
+            continue
+        logger.info("Loaded module %r (version=%s, source=installed)", definition.key, definition.version)
+        registry[definition.key] = definition
+
+    settings = get_settings()
+    if not settings.allow_external_modules:
+        logger.info("ALLOW_EXTERNAL_MODULES is false; skipping entry-point and path module discovery")
+    else:
+        for definition in _discover_entry_point_modules():
+            if definition.key in registry:
+                logger.warning(
+                    "External module %r (source=entry_point) collides with an already-registered key; skipping",
+                    definition.key,
+                )
+                continue
+            registry[definition.key] = definition
+
+        if settings.extra_modules_path:
+            for definition in _discover_path_modules(settings.extra_modules_path):
+                if definition.key in registry:
+                    logger.warning(
+                        "External module %r (source=path) collides with an already-registered key; skipping",
+                        definition.key,
+                    )
+                    continue
+                registry[definition.key] = definition
+
+    _registry_cache = registry
+    return registry
+
+
+def get_module_registry() -> dict[str, ModuleDefinition]:
+    """Returns the merged module registry, building it (without forcing a
+    rebuild) if it hasn't been built yet this process."""
+    return build_registry()
+
+
+def get_module(module_key: str) -> ModuleDefinition | None:
+    """Returns the registered `ModuleDefinition` for `module_key`, or
+    `None` if no module with that key is registered."""
+    return get_module_registry().get(module_key)
+
+
+def is_module_entitled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
+    """Resolves whether `organization_id` is entitled to use `module_key`
+    (the server-tier licensing/plan lever, compliance-module-plan.md
+    Phase 1).
+
+    An explicit `OrganizationModuleEntitlement` row, if one exists, is
+    authoritative. Otherwise, falls back to the deployment-wide
+    `ServerSettings.default_module_entitlement_policy`. If no
+    `ServerSettings` row exists at all (early bootstrap, before
+    `services.branding.get_server_settings` has lazily created one),
+    defaults to `True` (open) rather than raising — mirroring how other
+    singleton-settings lookups in this codebase tolerate a missing row
+    rather than treating it as an error (`services/branding.py`'s own
+    "there might be zero rows" handling).
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve entitlement for.
+        module_key: The module's registry key.
+
+    Returns:
+        `True` if the organisation is entitled to the module.
+    """
+    # Deferred import to avoid a circular import at module load time:
+    # `app.models.organization` doesn't import this module, but importing
+    # it eagerly at the top of this file would still be an unnecessary
+    # coupling for a registry module whose other functions don't need it.
+    from app.models.enums import ModuleEntitlementPolicy
+    from app.models.module import OrganizationModuleEntitlement
+    from app.models.organization import ServerSettings
+
+    override = db.scalar(
+        select(OrganizationModuleEntitlement).where(
+            OrganizationModuleEntitlement.organization_id == organization_id,
+            OrganizationModuleEntitlement.module_key == module_key,
+        )
+    )
+    if override is not None:
+        return override.entitled
+
+    server_settings = db.scalar(select(ServerSettings))
+    if server_settings is None:
+        return True
+    return server_settings.default_module_entitlement_policy == ModuleEntitlementPolicy.OPEN
+
+
+def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
+    """Resolves the *effective* enabled state of `module_key` for
+    `organization_id` — entitlement AND enablement
+    (compliance-module-plan.md Phase 1's exact formula: "Effective enabled
+    = entitled(org,key) AND (org_row.enabled if present else
+    registry.default_enabled)").
+
+    Returns `False` immediately (without a database lookup for enablement)
+    when the module isn't registered at all, or when the organisation
+    isn't entitled to it — a disabled/non-entitled module must be
+    indistinguishable from one that doesn't exist to the RBAC dependencies
+    that call this (`app.services.rbac.require_org_module_enabled`/
+    `require_project_module_enabled`, which both 404 rather than 403 on a
+    `False` result here).
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve enablement for.
+        module_key: The module's registry key.
+
+    Returns:
+        `True` only if the module exists, the organisation is entitled to
+        it, and it is (explicitly or by registry default) enabled.
+    """
+    definition = get_module(module_key)
+    if definition is None:
+        return False
+    if not is_module_entitled(db, organization_id, module_key):
+        return False
+
+    from app.models.module import OrganizationModuleEnablement
+
+    override = db.scalar(
+        select(OrganizationModuleEnablement).where(
+            OrganizationModuleEnablement.organization_id == organization_id,
+            OrganizationModuleEnablement.module_key == module_key,
+        )
+    )
+    if override is not None:
+        return override.enabled
+    return definition.default_enabled

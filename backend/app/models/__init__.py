@@ -17,6 +17,7 @@ from app.models.change_request import (
 from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
     Organization,
@@ -107,5 +108,7 @@ __all__ = [
     "RequirementReview",
     "RequirementVersion",
     "UserServerRole",
+    "OrganizationModuleEntitlement",
+    "OrganizationModuleEnablement",
     "User",
 ]

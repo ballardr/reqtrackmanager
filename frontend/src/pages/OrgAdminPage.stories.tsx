@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -41,6 +41,7 @@ function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
+  modules?: OrgModule[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -60,6 +61,11 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return overrides.advanced ?? advanced;
     if (path.includes("/pats")) return overrides.pats ?? [];
+    // Module system Phase 1: fetched inside the same try/catch-403 block
+    // as `/advanced-settings` above — must be mocked here or every story
+    // that doesn't override it would otherwise throw on the "unmocked
+    // path" fallback below and fail `reload()` as a whole.
+    if (path.includes("/modules")) return overrides.modules ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -1458,6 +1464,7 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
+    if (path.includes("/modules")) return [];
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/access")) return { org_groups: [], projects: [] };
@@ -1639,6 +1646,91 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
       )
     );
     await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Module system Phase 1 (compliance-module-plan.md): the new "Modules"
+ * top-level group. A deployment with no modules registered yet (the true
+ * state today — no first-party module exists until Phase 5) shows the
+ * empty state rather than an empty table. */
+export const ModulesSectionEmptyState: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() =>
+      expect(canvas.getByText("No modules are registered on this deployment yet.")).toBeInTheDocument()
+    );
+  },
+};
+
+const entitledEnabledModule: OrgModule = {
+  module_key: "fake_module", name: "Fake Module", description: "A fixture module used only by this story.",
+  version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
+};
+
+/** An entitled, implemented module renders with an active toggle — toggling
+ * it off calls `PUT .../modules/{key}` and patches local state from the
+ * response, with a toast confirming the change (feedback-on-every-mutation). */
+export const ModulesSectionToggleEntitledModule: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ modules: [entitledEnabledModule] });
+    spyOn(api, "put").mockResolvedValue({ ...entitledEnabledModule, enabled: false });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module" });
+    await expect(toggle).toBeChecked();
+    await expect(toggle).toBeEnabled();
+
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/fake_module`, { enabled: false })
+    );
+    await expect(within(document.body).getByText("Fake Module disabled")).toBeInTheDocument();
+  },
+};
+
+/** Non-entitled modules are shown greyed out with an explanatory note
+ * rather than hidden entirely (plan requirement — visibility helps future
+ * upsell), and the toggle itself stays disabled so an org admin can't
+ * self-enable a module their organisation isn't entitled to. */
+export const ModulesSectionNonEntitledModuleIsGreyedOut: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [{ ...entitledEnabledModule, entitled: false, enabled: false }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(
+      canvas.getByText("Not available on this organisation's current plan. Contact your server administrator to request access.")
+    ).toBeInTheDocument();
+    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+  },
+};
+
+/** A registered-but-not-yet-implemented module (`implemented: false`, the
+ * state every module will be in before Phase 5) also renders with a
+ * disabled toggle and its own explanatory note, distinct from the
+ * non-entitled case above. */
+export const ModulesSectionNotYetImplementedModuleIsDisabled: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [{ ...entitledEnabledModule, implemented: false, enabled: false }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(canvas.getByText("Not yet available in this version of the application.")).toBeInTheDocument();
+    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
   },
 };
 

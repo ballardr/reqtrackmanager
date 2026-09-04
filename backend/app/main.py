@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.metrics import http_request_duration_seconds, http_requests_total
 from app.migrations import run_migrations
+from app.modules.registry import get_module_registry
 from app.routers import (
     action_types,
     actions,
@@ -208,3 +209,19 @@ if settings.websocket_enabled:
     # or don't want persistent socket connections can disable it entirely
     # via WEBSOCKET_ENABLED=false rather than it always being mounted.
     app.include_router(ws.router)
+
+# --- Module system (compliance-module-plan.md Phase 1) ---------------------
+# Mounts every registered module's own router, if it has one. Building the
+# registry here (via `get_module_registry`, which internally caches) is
+# also what produces this run's "every loaded module logged at startup"
+# operational record (see `app.modules.registry`'s module docstring) — no
+# separate lifespan-hook logging is needed for that. No first-party module
+# exists yet (none is added to `INSTALLED_MODULES` until Phase 5), so this
+# loop currently mounts nothing; that's expected, not a bug — it's
+# infrastructure for later phases. A module's own router applies its own
+# `require_org_module_enabled`/`require_project_module_enabled` gating
+# internally; there is no second gate applied at this mount-loop level.
+for _module_definition in get_module_registry().values():
+    _module_router = _module_definition.get_router()
+    if _module_router is not None:
+        app.include_router(_module_router)

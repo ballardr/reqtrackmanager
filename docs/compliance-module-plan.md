@@ -8,14 +8,14 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-04 (Phase 0 complete).
+**Last updated:** 2026-09-04 (Phase 1 complete).
 
-**Overall progress:** 1 / 16 phases complete.
+**Overall progress:** 2 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Server-level RBAC extension | [x] Complete |
-| 1 | Module registry & backend plugin loading | [ ] Not started |
+| 1 | Module registry & backend plugin loading | [x] Complete |
 | 2 | Module-contributed RBAC | [ ] Not started |
 | 3 | Frontend module integration (2-tier) | [ ] Not started |
 | 4 | Module-contributed MCP tools | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 1.
+**Next phase to pick up:** Phase 2.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -147,6 +147,7 @@ Implemented as specified, with a few decisions the spec above left implicit — 
 - Test coverage landed as `backend/tests/test_module_system_rbac.py` (new file) rather than extending `test_access_review.py` — this is module-system infrastructure, not an access-review feature, even though it touches the same `/system/users` roster.
 - No frontend surface was built for `default_module_entitlement_policy` itself (only the `MODULE_ADMINISTRATOR`-gated API) — Phase 1's "Modules" admin UI is the natural, non-redundant home for a control over this setting, per the "settled" design history; building a one-off toggle now would just be relocated later.
 - Incidentally fixed while touching `AccessReviewTab`: the old `ActionMenu`'s grant/revoke-server-admin item was wrongly scoped to org-less accounts only (bundled under the same `!has_org_membership` guard as deactivate/ban) — contradicting this feature's own prior decisions-log entry that it should work "for everyone." Moving grant/revoke into the new column (rendered for every row) fixes this as a side effect. The old standalone "Server admin" badge was also removed as redundant once the new column's closed-state summary started showing the same fact.
+- A first full-suite run caught a real bug: `UserServerRole.user_id` was missing `index=True` even though the migration explicitly creates an index on it, which `test_schema_migrations_match_models.py` caught immediately. Fixed; re-run confirmed clean. Lesson for later phases with their own new indexed FK columns: always run the full suite (not just the new phase's own tests) before calling a phase done — this repo has a dedicated drift test for exactly this class of mistake.
 - See `docs/decisions.md`'s "Compliance module plan, Phase 0" entry for the full account, and `docs/soc2/policies/access-control-policy.md`'s Authorization section item 4 for the SOC 2 policy update this phase committed to.
 
 ### Phase 1 — Two-Tier Module Gating + Backend Plugin Loading
@@ -177,6 +178,17 @@ Org Admin's Modules UI shows non-entitled modules **greyed out with an explanato
 - This introduces a new code-loading trust boundary. Phase 1 must include a SOC 2 identify→verify→remediate pass (per this repo's `CLAUDE.md` change-management policy) recorded in `docs/decisions.md`, **and the concrete policy-doc edits listed in "SOC2 / Security Planning" above** (a new `vendor-and-subprocessor-management-policy.md` clause for installed modules, an `access-control-policy.md` subsection once Phase 2's role tier exists) — not just a generic "consulted the policy" note.
 - `docs/solution-architecture.md` gains a "Modular Feature System" section describing this.
 - Tests: entitlement/enablement effective-value resolution (all four combinations), `require_module_enabled` 404 behaviour, registry merge logic (with a fake entry-point-registered test module), `ALLOW_EXTERNAL_MODULES=false` actually prevents sources 2/3 from being scanned at all (not just from being used), Server/Org Admin UI.
+
+#### Phase 1 notes (completed 2026-09-04)
+
+Implemented as specified, with a few judgment calls the spec above left implicit — recorded here so a future session doesn't need to re-derive them:
+- The single `require_module_enabled(module_key)` dependency named in the spec text became **two** separate factories, `require_org_module_enabled`/`require_project_module_enabled` (`services/rbac.py`), matching this codebase's own established convention of separate org-scoped and project-scoped dependency factories (`require_org_role` vs. `require_project_role`/`require_project_view`) rather than one dependency parameterized by scope — consistent with how the rest of `rbac.py` is already structured, not a deviation from that convention.
+- Audit-log action-name strings, not pinned down in the spec: `"module.enablement_updated"` (org-tier, `routers/orgs.py`) and `"module.entitlement_updated"` (server-tier, `routers/system.py`) — the `module.` prefix distinguishes these from Phase 0's own `module_entitlement_policy_updated` (no dot, different shape, already shipped) and leaves room for future module-system audit actions (e.g. Phase 2's role grants) to share the same `module.` namespace without colliding.
+- `OrgModuleOut`/`OrgModuleEnablementUpdate` landed in `schemas/org.py` (matching `orgs.py`'s established convention of importing schemas from that file), while `system.py`'s three new response/request shapes (`ModuleOut`, `OrgModuleEntitlementOut`, `OrgModuleEntitlementUpdate`) are inline `BaseModel` classes directly in `routers/system.py` — matching that file's own different, already-established convention (see `ModuleEntitlementPolicyOut`/`Update` from Phase 0, defined the same way in the same file) rather than introducing a `schemas/system.py` this phase didn't otherwise need.
+- The registry's `build_registry`/cache-invalidation test surface (`fake_module` pytest fixture in `test_module_registry.py`) mutates the real, shared `INSTALLED_MODULES` module-level list for the duration of one test and restores it in teardown, rather than monkeypatching the whole list to a fresh object — chosen because `app.modules.registry` is imported once at process start (including by `app.main`'s own mount loop), so replacing the list object itself would not be visible to any code that had already imported the original list by reference; mutating in place is what actually works cleanly here, and is explicitly why the fixture always tears down (append/remove, not reassign).
+- No changes were needed to `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py` for this phase: both new tables are override-only with a working zero-row default, and there is nothing yet to demonstrate (`INSTALLED_MODULES` stays empty until Phase 5) — revisit both scripts when Compliance lands as the first real module.
+- The Playwright e2e coverage for the frontend Modules section is deliberately narrower than a normal new-UI-feature spec (per this plan's own Phase 1 test list, which only asks for "Server/Org Admin UI", not a specific interaction) — it covers the section loading and its empty state only, since the real backend registry has no modules to toggle against until Phase 5 and fabricating a fake production module package to get one would be scope creep this repo's own testing conventions explicitly warn against. Full toggle-interaction coverage (entitled-and-enabled, non-entitled-greyed-out, not-yet-implemented) lives in `OrgAdminPage.stories.tsx`'s `ModulesSection*` stories instead, which mock the endpoint the same way every other section on that page already does.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 1" entry for the full account, including the identify→verify→remediate SOC 2 pass and the incidental Phase 0 documentation-drift fix (`server_roles` had never been added to `solution-architecture.md`'s identity ER diagram/table list) made while updating that document for this phase's own two new tables.
 
 ### Phase 2 — Module-Contributed RBAC
 

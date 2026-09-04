@@ -17,6 +17,7 @@ import type {
   MergeConflict,
   OrgAdvancedSettings,
   OrgGroup,
+  OrgModule,
   OrgMergePreviewResult,
   OrgMergeResult,
   OrgPendingInvite,
@@ -95,7 +96,8 @@ type OrgAdminGroupKey =
   | "templates-reports"
   | "oauth-sso"
   | "email"
-  | "security";
+  | "security"
+  | "modules";
 
 /** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
@@ -113,6 +115,7 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "oauth-sso",
   "email",
   "security",
+  "modules",
 ];
 
 /**
@@ -236,6 +239,13 @@ export function OrgAdminPage() {
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
+  // Module system Phase 1 (compliance-module-plan.md): the org's own
+  // enable/disable choice among modules it's entitled to. Fetched inside
+  // the same try/catch-403-and-hide-section block as `advanced` above
+  // (non-admins simply don't see the section) — `[]` before that resolves,
+  // which also correctly renders as "no modules" for a deployment with
+  // none registered yet (there are zero implemented modules until Phase 5).
+  const [modules, setModules] = useState<OrgModule[]>([]);
   // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
@@ -519,6 +529,7 @@ export function OrgAdminPage() {
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
+      setModules(await api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
@@ -1073,6 +1084,21 @@ export function OrgAdminPage() {
     }
   }
 
+  // Module system Phase 1: immediate PUT + local-state patch, same shape
+  // as `grantOrgRole`/`revokeOrgRole` above — a single toggle only ever
+  // changes this one module's own row, so there's nothing else on the page
+  // a full `reload()` would need to refresh, and a toast gives the
+  // feedback-on-every-mutation the style guide requires.
+  async function toggleModuleEnabled(moduleKey: string, enabled: boolean) {
+    try {
+      const updated = await api.put<OrgModule>(`/api/v1/orgs/${orgId}/modules/${moduleKey}`, { enabled });
+      setModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
+      showToast(enabled ? strings.orgAdmin.moduleEnabledToast(updated.name) : strings.orgAdmin.moduleDisabledToast(updated.name));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   async function createGroup() {
     try {
       await api.post(`/api/v1/orgs/${orgId}/groups`, { name: newGroupName });
@@ -1569,6 +1595,7 @@ export function OrgAdminPage() {
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
+    { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
   ];
 
   // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
@@ -3181,6 +3208,62 @@ export function OrgAdminPage() {
                 {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
               </CollapsibleSection>
             )}
+          </div>
+        )}
+
+        {activeGroup === "modules" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.modules" title={strings.orgAdmin.modulesTitle}>
+              <p className="text-muted">{strings.orgAdmin.modulesDescription}</p>
+              {modules.length === 0 ? (
+                <p className="text-muted">{strings.orgAdmin.modulesEmpty}</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{strings.orgAdmin.name}</th>
+                      <th></th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modules.map((m) => {
+                      // Non-entitled (or not-yet-implemented) modules are
+                      // shown greyed out with an explanatory note rather
+                      // than hidden entirely (plan requirement — visibility
+                      // helps future upsell); the toggle itself stays
+                      // disabled either way.
+                      const disabled = !m.entitled || !m.implemented;
+                      const hint = !m.entitled
+                        ? strings.orgAdmin.moduleNotEntitledHint
+                        : !m.implemented
+                          ? strings.orgAdmin.moduleNotImplementedHint
+                          : null;
+                      return (
+                        <tr key={m.module_key} style={!m.entitled ? { opacity: 0.55 } : undefined}>
+                          <td>
+                            <div className="stack" style={{ gap: 0 }}>
+                              <strong>{m.name}</strong>
+                              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{m.description}</span>
+                              {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+                            </div>
+                          </td>
+                          <td className="text-muted" style={{ fontSize: "0.8rem" }}>{m.version}</td>
+                          <td>
+                            <ToggleSwitch
+                              checked={m.enabled}
+                              disabled={disabled}
+                              label={strings.orgAdmin.moduleToggleLabel(m.name)}
+                              onChange={(next) => toggleModuleEnabled(m.module_key, next)}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </CollapsibleSection>
           </div>
         )}
       </ResourceMenu>
