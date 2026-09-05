@@ -9,14 +9,17 @@ models living under `app.modules.compliance.models` rather than
 `app.models`.
 
 `ComplianceStandardVersionStatus` is consumed starting Phase 5 itself
-(`ComplianceStandardVersion.status`). `ComplianceStatus`,
-`ComplianceApplicability`, and `ComplianceApprovalState` are defined now,
-per the plan's own Phase 5 spec, but are not yet referenced by any model —
-they belong to `ProjectComplianceRequirement` (Phase 7) and its approval
-workflow (Phase 9), which don't exist until those phases land. Defining the
-vocabulary now, ahead of the tables that use it, mirrors this plan's own
-precedent for `ServerRole.SERVER_ADMIN` (module system Phase 0) existing
-"for composition/reference only" ahead of a later phase's use.
+(`ComplianceStandardVersion.status`). `ComplianceStatus` and
+`ComplianceApplicability` are consumed starting Phase 7
+(`ProjectComplianceRequirement.compliance_status`/`.explicit_applicability`).
+`ComplianceApprovalState` is also a Phase 7 column
+(`ProjectComplianceRequirement.approval_state`, defaulting `NOT_ASSESSED`),
+added a phase ahead of the workflow that actually transitions it (Phase 9)
+because §20's overall-status calculation — which Phase 7 itself must
+define — folds approval state in (see `service.py::summarize_project_
+compliance`); no endpoint moves a row off `NOT_ASSESSED` until Phase 9
+ships. `ComplianceApplicabilitySource` is Phase 7's own addition, computed
+(never stored) by `service.py::resolve_applicability`.
 """
 
 from __future__ import annotations
@@ -94,3 +97,24 @@ class ComplianceApprovalState(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     REQUIRES_REASSESSMENT = "requires_reassessment"
+
+
+class ComplianceApplicabilitySource(str, enum.Enum):
+    """How a `ProjectComplianceRequirement`'s *effective* applicability was
+    determined (§9's "Hierarchical Applicability" — "The UI must clearly
+    distinguish: Explicitly set applicability. Applicability inherited from
+    a parent. An overridden inherited value."). Computed at read time by
+    `app.modules.compliance.service.resolve_applicability`; not itself a
+    stored column — see that function's docstring for the full resolution
+    rule.
+
+    EXPLICIT covers both "a user actively set this row's own applicability"
+    and "nothing has been decided on this row and no ancestor says
+    Not Applicable either" (the ordinary, undecorated Applicable default) —
+    both render identically in the UI (no special badge), unlike INHERITED/
+    OVERRIDDEN, which the UI must call out per §9.
+    """
+
+    EXPLICIT = "explicit"
+    INHERITED = "inherited"
+    OVERRIDDEN = "overridden"

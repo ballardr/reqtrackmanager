@@ -186,7 +186,25 @@ class ModuleDefinition:
     mcp_tools: tuple[McpToolDefinition, ...] = ()
     models_import_path: str | None = None       # dotted path to your ORM models module
     migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
+    get_project_router: Callable[[], APIRouter | None] | None = None  # optional 2nd, project-scoped router
 ```
+
+**`get_router` vs. `get_project_router`**: `get_router()` mounts at
+`/api/v1/orgs/{organization_id}/modules/<key>/...` — the org-scoped root
+every module before Compliance's Phase 7 used exclusively. If your module
+also has endpoints that should live at `/api/v1/projects/{project_id}/
+modules/<key>/...` instead (no `organization_id` in the path at all),
+declare a second router via `get_project_router`. The main reason to want
+one: an MCP tool proxying to a project-scoped endpoint can only declare
+`project_id` as its path parameter — mirroring hand-written tools like
+`get_project(project_id)` — if the underlying route has no
+`{organization_id}` placeholder to also require. `build_mcp_tool_manifest`
+validates each tool's `path_template` against *either* of your two router
+prefixes (whichever one actually has a matching route), so a tool
+declaring a `path_template` under `get_project_router()`'s prefix is
+checked against that router, not `get_router()`'s. `app.main`'s mount loop
+mounts both the same way; leave this `None` if you have no project-scoped
+endpoints of your own (most modules).
 
 `key` and every `role_key` a module declares are load-bearing identifiers —
 they're used as plain string keys in database rows (entitlement, enablement,

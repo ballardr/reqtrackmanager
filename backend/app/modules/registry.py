@@ -259,12 +259,14 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
     - The registered `name` is always this tool's declaring module's `key`,
       an underscore, and its local `name` — never the module's local name
       alone, so a module can't claim another module's (or core's) tool name.
-    - `path_template` must fall inside the declaring module's own
-      `get_router()` mount prefix (`APIRouter.prefix`) and must name a real
-      route on that router with a matching `method` — a module with no
+    - `path_template` must fall inside one of the declaring module's own
+      router mount prefixes (`get_router()`'s, or `get_project_router()`'s
+      when the module declares one too — compliance-module-plan.md Phase 7
+      is the first module with both) and must name a real route on
+      *that same router* with a matching `method` — a module with no
       router at all can declare no legal tools; a `path_template` outside
-      its own router, or with no matching route, is excluded (logged),
-      regardless of what the module's own declaration claims.
+      every one of its own routers, or with no matching route, is excluded
+      (logged), regardless of what the module's own declaration claims.
     - `mutates` is derived purely from `method` (`"GET"` -> `False`,
       everything else -> `True`) — nothing for a module to misdeclare.
     - Whether the resolved route is an approval/decision-type action is
@@ -293,33 +295,41 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
         if not definition.mcp_tools:
             continue
 
-        router = definition.get_router()
-        if router is None:
+        routers = [
+            r for r in (
+                definition.get_router(),
+                definition.get_project_router() if definition.get_project_router is not None else None,
+            )
+            if r is not None
+        ]
+        if not routers:
             logger.warning(
-                "Module %r declares %d MCP tool(s) but has no get_router() to validate them "
-                "against; excluding all of them",
+                "Module %r declares %d MCP tool(s) but has no router (get_router()/"
+                "get_project_router()) to validate them against; excluding all of them",
                 definition.key, len(definition.mcp_tools),
             )
             continue
 
+        router_prefixes = [r.prefix for r in routers]
         routes_by_path_and_method: dict[tuple[str, str], object] = {}
-        for route in router.routes:
-            path = getattr(route, "path", None)
-            methods = getattr(route, "methods", None) or ()
-            if path is None:
-                continue
-            for method in methods:
-                routes_by_path_and_method[(path, method.upper())] = route
+        for r in routers:
+            for route in r.routes:
+                path = getattr(route, "path", None)
+                methods = getattr(route, "methods", None) or ()
+                if path is None:
+                    continue
+                for method in methods:
+                    routes_by_path_and_method[(path, method.upper())] = route
 
         for tool in definition.mcp_tools:
             full_name = f"{definition.key}_{tool.name}"
             declared_method = tool.method.upper()
 
-            if not tool.path_template.startswith(router.prefix):
+            if not any(tool.path_template.startswith(p) for p in router_prefixes):
                 logger.warning(
                     "Module %r's MCP tool %r declares path_template %r outside its own "
-                    "router prefix %r; excluding",
-                    definition.key, tool.name, tool.path_template, router.prefix,
+                    "router prefix(es) %r; excluding",
+                    definition.key, tool.name, tool.path_template, router_prefixes,
                 )
                 continue
 
@@ -414,6 +424,25 @@ class ModuleDefinition:
             import-time work, and so a module with genuinely no router
             (e.g. one that only contributes MCP tools, Phase 4) can return
             `None` without needing a dummy empty router.
+        get_project_router: Like `get_router`, but for a second, optional
+            router mounted at a genuinely different path root (compliance-
+            module-plan.md Phase 7). Phases 0-6 only ever needed one router
+            per module, always org-scoped (`/api/v1/orgs/{organization_id}/
+            modules/<key>/...`). Phase 7 is the first module surface that
+            also needs project-scoped endpoints living at their own,
+            unprefixed-by-org path root (`/api/v1/projects/{project_id}/
+            modules/<key>/...`) — required so that an MCP tool proxying to
+            one of them can declare `project_id` as its only path
+            parameter (mirroring hand-written tools like `get_project
+            (project_id)`), which is impossible if the underlying route
+            also carries an `{organization_id}` placeholder. `None` for a
+            module with no project-scoped router of its own (every module
+            before Phase 7). `build_mcp_tool_manifest` validates a tool's
+            `path_template` against **either** of a module's two router
+            prefixes, not just `get_router`'s — see that function's own
+            docstring. `app.main`'s mount loop mounts both, the same way,
+            with no second gate applied at the mount-loop level (see this
+            module's own docstring).
         roles: Module-contributed RBAC role declarations (module system
             Phase 2) — each a `ModuleRoleDefinition`. Synced into the
             `module_role_definitions` table at startup by
@@ -499,6 +528,7 @@ class ModuleDefinition:
     mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
     models_import_path: str | None = None
     migrations_import_path: str | None = None
+    get_project_router: Callable[[], APIRouter | None] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.

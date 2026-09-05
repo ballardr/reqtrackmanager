@@ -42,11 +42,18 @@ Design decisions, not left implicit:
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.modules.compliance.enums import ComplianceStandardVersionStatus
+from app.modules.compliance.enums import (
+    ComplianceApplicability,
+    ComplianceApplicabilitySource,
+    ComplianceApprovalState,
+    ComplianceStandardVersionStatus,
+    ComplianceStatus,
+)
 
 # --- Standards ---------------------------------------------------------------
 
@@ -228,3 +235,156 @@ class ComplianceActionTypeOut(BaseModel):
     organization_id: UUID
     name: str
     sort_order: int
+
+
+# --- Phase 7: project-specific compliance assessment ----------------------------
+
+
+class ProjectComplianceCreate(BaseModel):
+    """Payload for assigning a standard version to a project (§7).
+    `standard_id` is redundant with `standard_version_id` (a version
+    already identifies its standard) but required anyway so the URL/path
+    and the payload agree on which standard is being assigned — the router
+    still verifies `standard_version_id` actually belongs to `standard_id`
+    (`router.py::_get_version_or_404`), the same cross-check every other
+    Phase 6 endpoint already performs."""
+
+    standard_id: UUID
+    standard_version_id: UUID
+    target_compliance_date: date | None = None
+
+
+class ProjectComplianceOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID
+    standard_version_id: UUID
+    assigned_at: datetime
+    assigned_by: UUID
+    target_compliance_date: date | None
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectComplianceApplicabilityUpdate(BaseModel):
+    """Payload for `PATCH .../requirements/{id}/applicability` (§9).
+    `justification` is required by the router (400, not a schema-level
+    validator) exactly when `applicability == NOT_APPLICABLE` — see
+    `project_router.py::update_requirement_applicability`."""
+
+    applicability: ComplianceApplicability
+    justification: str = ""
+
+
+class ProjectComplianceAssessmentUpdate(BaseModel):
+    """Payload for `PATCH .../requirements/{id}/assessment` (§10, §16).
+    `justification` is required by the router (400, not a schema-level
+    validator) exactly when `compliance_status == NON_COMPLIANT` — see
+    `project_router.py::update_requirement_assessment`."""
+
+    compliance_status: ComplianceStatus
+    justification: str = ""
+    notes: str = ""
+
+
+class ProjectComplianceRequirementOut(BaseModel):
+    """Response shape for one `ProjectComplianceRequirement` row, plus its
+    *computed* (never stored) effective applicability and source — see
+    `service.py::resolve_applicability`. Built explicitly by the router
+    (not `from_attributes` alone), since `effective_applicability`/
+    `applicability_source` aren't ORM columns."""
+
+    id: UUID
+    project_compliance_id: UUID
+    requirement_id: UUID
+    explicit_applicability: ComplianceApplicability | None
+    effective_applicability: ComplianceApplicability
+    applicability_source: ComplianceApplicabilitySource
+    justification: str
+    notes: str
+    compliance_status: ComplianceStatus
+    assessed_at: datetime | None
+    assessed_by: UUID | None
+    applicability_set_at: datetime | None
+    applicability_set_by: UUID | None
+    approval_state: ComplianceApprovalState
+    created_at: datetime
+    updated_at: datetime
+
+
+class ComplianceRequiredActionAssessmentUpdate(BaseModel):
+    """Payload for `PATCH .../required-action-assessments/{id}` (§6) —
+    assignee/due date/notes only. Completion is a separate `complete`/
+    `uncomplete` action endpoint, mirroring `Requirement`'s own
+    `complete_requirement`/`uncomplete_requirement` shape, not a field
+    write here."""
+
+    assignee_id: UUID | None = None
+    due_date: date | None = None
+    notes: str = ""
+
+
+class ComplianceRequiredActionAssessmentOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_compliance_requirement_id: UUID
+    required_action_id: UUID
+    assignee_id: UUID | None
+    due_date: date | None
+    is_completed: bool
+    completed_at: datetime | None
+    completed_by: UUID | None
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectComplianceStatusOut(BaseModel):
+    """§20's overall status summary for one `ProjectCompliance` assignment
+    — see `service.py::summarize_project_compliance` for the exact,
+    documented calculation this schema exposes. Always includes the raw
+    counts alongside the calculated percentage, per §20's explicit "the UI
+    should always display the actual counts as well as any calculated
+    percentage so that the percentage cannot be misleading.\""""
+
+    project_compliance_id: UUID
+    project_id: UUID
+    standard_id: UUID
+    standard_reference: str
+    standard_name: str
+    standard_version_id: UUID
+    version_label: str
+    target_compliance_date: date | None
+    assigned_at: datetime
+    total_requirements: int
+    applicable_count: int
+    not_applicable_count: int
+    counts_by_status: dict[str, int]
+    compliance_percentage: float
+    has_non_compliant: bool
+    overall_compliance_state: Literal["compliant", "non_compliant", "in_progress", "not_applicable"]
+    overall_approval_state: ComplianceApprovalState
+
+
+class NonCompliantRequirementOut(BaseModel):
+    """One row of `GET .../non-compliant-requirements` (§20/§21 — "Non-
+    Compliant requirements" as a distinct, drillable list, not just a
+    count)."""
+
+    project_compliance_id: UUID
+    standard_reference: str
+    standard_name: str
+    version_label: str
+    project_compliance_requirement_id: UUID
+    requirement_id: UUID
+    requirement_reference: str | None
+    requirement_name: str
+    justification: str
+    notes: str
+    assessed_at: datetime | None
+    assessed_by: UUID | None

@@ -35,7 +35,7 @@ Plus two write tools, only when [write mode](#write-mode) is enabled:
 
 No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
 
-A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers the first three (all read-only), listed there.
+A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers five so far (all read-only), listed there.
 
 ## Write mode
 
@@ -53,15 +53,17 @@ Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`ye
 
 Beyond the hand-written tools above, a backend module (compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (compliance-module-plan.md Phase 6) is the first module to use this**, contributing three read-only tools:
+**Compliance (compliance-module-plan.md Phase 6, extended in Phase 7) is the first module to use this**, contributing five read-only tools:
 
 | Tool | Purpose |
 | --- | --- |
 | `compliance_list_standards` | Lists an organisation's compliance standards |
 | `compliance_get_standard_version` | Fetches a single version of a compliance standard |
 | `compliance_list_requirements` | Lists the requirements defined in one version of a compliance standard |
+| `compliance_get_project_status` | Gets a project's overall compliance status against each of its currently assigned, active standards |
+| `compliance_list_non_compliant_requirements` | Lists every applicable, Non-Compliant requirement across a project's active standard assignments |
 
-Every one of these takes `organization_id` as a required parameter (`compliance_get_standard_version`/`compliance_list_requirements` also take `standard_id`/`version_id`) — Phase 4's scoping rule (see above): no implicit "current org," no cross-org aggregation. No mutating tool is declared for the standards API's publish/retire lifecycle — Compliance's MCP surface stays deliberately read-only for now, the same cautious "add write tools narrowly and deliberately" default [Write mode](#write-mode) above already applies to this server's own hand-written tools.
+The first three take `organization_id` as a required parameter (`compliance_get_standard_version`/`compliance_list_requirements` also take `standard_id`/`version_id`) — Phase 4's scoping rule (see above): no implicit "current org," no cross-org aggregation. The two Phase 7 tools take `project_id` only, no `organization_id` at all — mirroring hand-written tools like `get_project(project_id)` — because they proxy to a *second*, project-scoped router the Compliance module registers (`get_project_router`, mounted at `/api/v1/projects/{project_id}/modules/compliance/...`) rather than its original org-scoped one; `build_mcp_tool_manifest` validates a tool's `path_template` against either of a module's two router prefixes, not just one. No mutating tool is declared for the standards API's publish/retire lifecycle, or for changing a project's applicability/compliance-status assessments — Compliance's MCP surface stays deliberately read-only for now, the same cautious "add write tools narrowly and deliberately" default [Write mode](#write-mode) above already applies to this server's own hand-written tools.
 
 **How it works, briefly:** the backend's `GET /api/v1/system/modules/mcp-tools` (normal bearer-token authentication, no exemption) returns a manifest of every currently-registered module tool, already mechanically verified on the backend side — the registered tool name is always prefixed with its declaring module's key (e.g. `compliance_list_standards`), `mutates` is derived from HTTP method rather than declared by the module, and any tool that would resolve to an approval/decision-type action is excluded from the manifest entirely, the same "approval stays human-only" principle [Write mode](#write-mode) above already applies to this server's own hand-written tools. This server fetches that manifest **lazily and authenticated** — never at an unauthenticated boot-time call — using whichever connecting session's own already-presented token first triggers a refresh within a cache window (`MODULE_TOOLS_REFRESH_SECONDS`, default 600 seconds / 10 minutes); the result is cached in-process and reused across every session until the next refresh. Each declarative tool is a plain proxy call through the same `_call_backend` helper every hand-written tool above uses — no module's own code ever runs inside this process.
 

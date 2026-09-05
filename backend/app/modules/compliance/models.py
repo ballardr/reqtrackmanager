@@ -1,13 +1,14 @@
 """
 Module: modules.compliance.models
 
-The Compliance Module's data model (docs/Compliance_Module_Requirements.md
-§2, §5, §6, §25, §31; docs/compliance-module-plan.md Phase 5) — organisation-
-level, reusable compliance standard definitions. Project-specific assessment
-state (§7-§16) is deliberately **not** part of this file: per §31's "A
+The Compliance Module's data model. Phase 5 (docs/Compliance_Module_
+Requirements.md §2, §5, §6, §25, §31) built the organisation-level, reusable
+compliance standard definitions. Phase 7 (§7-§11, §16, §20, §25, §26) adds
+the project-specific assessment layer on top of them: per §31's "A
 Compliance Requirement must not contain the compliance state of a project,"
-that belongs to `ProjectCompliance`/`ProjectComplianceRequirement`, built in
-Phase 7 on top of these tables, not alongside them.
+that state was deliberately kept off `ComplianceRequirement`/
+`ComplianceRequiredAction` and lives in the three models at the bottom of
+this file instead.
 
 Shape, per §25's conceptual data model:
 
@@ -17,6 +18,11 @@ Shape, per §25's conceptual data model:
                         `-- ComplianceRequiredAction (§6)
 
     ComplianceActionTypeDefinition (org-level, extensible vocabulary, §6)
+
+    Project
+        `-- ProjectCompliance (a project's assignment to one standard version, §7)
+                `-- ProjectComplianceRequirement (per-requirement assessment, §8-§10)
+                        `-- ComplianceRequiredActionAssessment (per-required-action assessment, §6/§25)
 
 Design decisions:
 - `ComplianceStandard`/`ComplianceStandardVersion` follow the `Requirement`/
@@ -80,6 +86,76 @@ Design decisions:
   of any seed step (see module system Phase 1's notes on
   `organization_module_entitlements`/`organization_modules`).
 
+Phase 7 design decisions:
+- `ProjectCompliance.standard_version_id` may only ever be set to a
+  `PUBLISHED` version (enforced at the API layer, `router.py::
+  create_project_compliance`) — a `DRAFT` version's requirements aren't
+  fixed yet, and `ComplianceStandardVersionStatus.RETIRED`'s own docstring
+  already states a retired version is "no longer assignable to **new**
+  projects." An existing assignment stays on its version regardless of
+  that version's later lifecycle changes (§4, §27) — nothing here ever
+  moves `standard_version_id` to a different row.
+- "Compliance Officer(s)" (§7's own field list for `ProjectCompliance`) is
+  **not** a column on this model — it's already fully answered by
+  `UserModuleRole` rows for `(module_key="compliance", role_key=
+  "compliance_officer", project_id=...)` (module system Phase 2), which
+  the existing `GET/POST /projects/{project_id}/members/{user_id}/
+  module-roles` endpoints already expose. Duplicating that as a second
+  field here would create two sources of truth for the same fact.
+- "Review schedule" (§7's field list) is, like §2's identical field on
+  `ComplianceStandard`, satisfied by Phase 10's dedicated `ComplianceReview`
+  entity, not a column here — see this file's Phase 5 notes above for the
+  identical reasoning applied to the standard-level case.
+- `ProjectComplianceRequirement.explicit_applicability` is nullable —
+  `None` means "never explicitly decided," distinct from an explicit
+  `APPLICABLE` decision, even though both currently *resolve* to the same
+  effective value absent an ancestor override. This is what lets
+  `service.py::resolve_applicability` distinguish "the ordinary, untouched
+  default" from "a user actively confirmed this is applicable" if a future
+  phase ever needs to (today both render as the same `EXPLICIT` source —
+  see `ComplianceApplicabilitySource`'s own docstring).
+- A single `justification` column serves both §9's "Not Applicable
+  justification" and §16's "rationale... required for Non-Compliant
+  decisions" — §8 itself lists this as one field ("Justification/
+  rationale"), and the two are never needed simultaneously in practice (a
+  row is either Not Applicable *or* Applicable-and-assessed, never both at
+  once). Enforced as mandatory, at the API layer, exactly when
+  `explicit_applicability` is being set to `NOT_APPLICABLE` or
+  `compliance_status` is being set to `NON_COMPLIANT` — never a NOT NULL
+  constraint, since it is conditionally required depending on which other
+  field is changing.
+- `ProjectComplianceRequirement.approval_state` exists now (default
+  `NOT_ASSESSED`) but no endpoint in this phase changes it — see this
+  file's enums module docstring for why the column can't wait for Phase 9
+  without splitting one coherent piece of the data model across two
+  phases, mirroring the same reasoning Phase 5's own notes already recorded
+  for `ComplianceStandardVersionStatus`.
+- Every `ComplianceRequirement` in an assigned version — section/parent
+  rows and leaf rows alike — gets its own `ProjectComplianceRequirement`
+  row, materialised once, in full, at `ProjectCompliance` creation time
+  (`router.py::create_project_compliance`), not lazily on first access.
+  This deliberately does not special-case "does this requirement have
+  children" — the tree structure only matters for applicability
+  inheritance (§9) and requirement-count totals (§20), not for which rows
+  exist. Same materialisation for `ComplianceRequiredActionAssessment` —
+  one row per `ComplianceRequiredAction` under the version, created at the
+  same time. A version's requirement/required-action set is immutable
+  once published (Phase 6's own enforcement), so there is nothing to
+  reconcile later: the set materialised at assignment time is permanently
+  complete for that assignment.
+- `ComplianceRequiredActionAssessment` mirrors `Requirement`'s own
+  "completion overlay" shape (`is_completed`/`completed_at`/`completed_by`,
+  see `Requirement.completed_at`'s own docstring) rather than reusing the
+  `ComplianceStatus` enum — a required action is closer to a task than to
+  something needing degrees of compliance, and §6's own field list
+  ("Status, Assignee, Due date, Completion information") reads as a task's
+  fields, not a re-assessment's.
+- Evidence linkage is deliberately absent from every model in this file —
+  Phase 8 owns it, following `services/files.py::upload_file`'s existing
+  join-table-per-owner-type convention; adding a placeholder column now
+  would just need reconciling away later, the same call Phase 5 already
+  made about its own standard-level fields.
+
 External dependencies: none beyond this project's own ORM/config modules.
 """
 
@@ -88,13 +164,18 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.modules.compliance.enums import ComplianceStandardVersionStatus
+from app.modules.compliance.enums import (
+    ComplianceApplicability,
+    ComplianceApprovalState,
+    ComplianceStandardVersionStatus,
+    ComplianceStatus,
+)
 
 
 class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
@@ -324,3 +405,182 @@ class ComplianceActionTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(100))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# --- Phase 7: project-specific compliance assessment ----------------------------
+
+
+class ProjectCompliance(UUIDPKMixin, TimestampMixin, Base):
+    """A project's assignment to one specific `ComplianceStandardVersion`
+    (§7) — e.g. "Project A is assigned to Corporate Security Standard
+    v3.1." The same standard may be assigned to many projects, and the
+    same project may be assigned many standards (§7's own worked example);
+    each `(project_id, standard_version_id)` pair is exactly one row.
+
+    Attributes:
+        project_id: The assigned project.
+        standard_version_id: The specific standard version assigned — must
+            be `PUBLISHED` at assignment time (enforced at the API layer,
+            never a `DRAFT` or already-`RETIRED` version — see this
+            module's own docstring). Stays pointed at this exact version
+            row forever, even after that version is later retired or a
+            newer version is published (§4, §27) — migrating to a newer
+            version is a distinct, explicit, user-triggered action (Phase
+            11), never an implicit effect of this row's own lifecycle.
+        assigned_at / assigned_by: When/who made this assignment (§7's
+            "Date assigned").
+        target_compliance_date: Optional target date for the project to
+            reach full compliance (§7) — distinct from any individual
+            required action's own due date.
+        is_archived / archived_at / archived_by: Soft-delete, mirroring
+            `ComplianceStandard`'s own convention — used when a project no
+            longer needs to track compliance against this standard.
+            Deliberately never a hard delete: the `ProjectComplianceRequirement`
+            rows underneath carry real assessment/audit history (§16) that
+            must survive a project deciding to stop tracking a standard.
+    """
+
+    __tablename__ = "project_compliances"
+    __table_args__ = (UniqueConstraint("project_id", "standard_version_id"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    standard_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_standard_versions.id"), index=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    assigned_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    target_compliance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ProjectComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
+    """One project's assessment of one `ComplianceRequirement` (§8) —
+    "Requirement 1 -> Compliant" in §8's own worked example. Deliberately
+    separate from `ComplianceRequirement` itself: the same requirement has
+    a different `ProjectComplianceRequirement` row per project that's
+    assigned the standard it belongs to (§8: "This allows the same
+    requirement to have different compliance states for different
+    projects").
+
+    One row exists per `(project_compliance_id, requirement_id)` pair,
+    materialised in full when the owning `ProjectCompliance` is created —
+    see this module's own docstring.
+
+    Attributes:
+        project_compliance_id: The owning `ProjectCompliance` assignment.
+        requirement_id: The `ComplianceRequirement` this row assesses.
+        explicit_applicability: This row's own, directly-set applicability
+            decision, or `None` if never explicitly set (§9). See this
+            module's own docstring for why `None` is distinct from an
+            explicit `APPLICABLE`. The *effective* applicability (after
+            hierarchical inheritance, §9's "Hierarchical Applicability") is
+            never stored — it's computed by `service.py::
+            resolve_applicability`.
+        justification: Mandatory (enforced at the API layer, not a NOT NULL
+            constraint) when `explicit_applicability` is being set to
+            `NOT_APPLICABLE` (§9) or `compliance_status` is being set to
+            `NON_COMPLIANT` (§16) — see this module's own docstring for why
+            one field serves both.
+        notes: Free-text notes (§8), independent of `justification`.
+        compliance_status: This project's assessed compliance state
+            against this requirement (§10), independent of applicability
+            (§10: "Applicability should remain separate from compliance
+            status").
+        assessed_at / assessed_by: When/who last changed `compliance_status`
+            (§8's "Assessment date"/"Assessed by") — set automatically by
+            the assessment endpoint, never caller-supplied.
+        applicability_set_at / applicability_set_by: When/who last changed
+            `explicit_applicability` — set automatically by the
+            applicability endpoint, never caller-supplied. `None` until
+            `explicit_applicability` is set for the first time.
+        approval_state: Reserved for Phase 9's approval/sign-off workflow
+            (§12) — see this module's own docstring and the enums module's
+            docstring for why this column exists a phase ahead of the
+            workflow that transitions it.
+    """
+
+    __tablename__ = "project_compliance_requirements"
+    __table_args__ = (UniqueConstraint("project_compliance_id", "requirement_id"),)
+
+    project_compliance_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_compliances.id", ondelete="CASCADE"), index=True
+    )
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id"), index=True
+    )
+    explicit_applicability: Mapped[ComplianceApplicability | None] = mapped_column(
+        str_enum(ComplianceApplicability, 20), nullable=True
+    )
+    justification: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    compliance_status: Mapped[ComplianceStatus] = mapped_column(
+        str_enum(ComplianceStatus, 20), default=ComplianceStatus.NOT_STARTED
+    )
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assessed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    applicability_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applicability_set_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    approval_state: Mapped[ComplianceApprovalState] = mapped_column(
+        str_enum(ComplianceApprovalState, 24), default=ComplianceApprovalState.NOT_ASSESSED
+    )
+
+
+class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
+    """One project's assessment of one `ComplianceRequiredAction` (§6's
+    "Status, Assignee, Due date, Completion information," §25's "Required
+    Action Assessments" nested under "Project Compliance Requirements").
+
+    One row exists per `(project_compliance_requirement_id,
+    required_action_id)` pair, materialised in full alongside its owning
+    `ProjectComplianceRequirement` — see this module's own docstring.
+
+    Attributes:
+        project_compliance_requirement_id: The owning per-project
+            requirement assessment.
+        required_action_id: The `ComplianceRequiredAction` this row
+            assesses.
+        assignee_id: Who is responsible for this required action, or
+            `None` if unassigned (§6's "Assignee").
+        due_date: Optional due date (§6).
+        is_completed / completed_at / completed_by: Completion overlay,
+            mirroring `Requirement.completed_at`'s own shape — see this
+            module's own docstring for why this shape rather than reusing
+            `ComplianceStatus`.
+        notes: Free-text notes.
+    """
+
+    __tablename__ = "compliance_required_action_assessments"
+    __table_args__ = (
+        UniqueConstraint("project_compliance_requirement_id", "required_action_id"),
+        # Explicit, shortened index name: `index=True`'s auto-generated
+        # `ix_compliance_required_action_assessments_project_compliance_
+        # requirement_id` is 75 characters, over Postgres's 63-byte
+        # identifier limit — Postgres silently truncates it at DDL time,
+        # which then never matches SQLAlchemy's own (untruncated) computed
+        # name and permanently fails `test_schema_migrations_match_models.py`
+        # regardless of what the migration itself names it. No other
+        # table/column combination in this codebase is long enough to hit
+        # this limit (confirmed by inspecting every table's own indexes).
+        Index(
+            "ix_required_action_assessments_pcr_id", "project_compliance_requirement_id"
+        ),
+    )
+
+    project_compliance_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_compliance_requirements.id", ondelete="CASCADE")
+    )
+    required_action_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_required_actions.id"), index=True
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")

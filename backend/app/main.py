@@ -231,18 +231,22 @@ if settings.websocket_enabled:
     app.include_router(ws.router)
 
 # --- Module system (compliance-module-plan.md Phase 1) ---------------------
-# Mounts every registered module's own router, if it has one. Building the
+# Mounts every registered module's own router(s), if it has any. Building the
 # registry here (via `get_module_registry`, which internally caches) is
 # also what produces this run's "every loaded module logged at startup"
 # operational record (see `app.modules.registry`'s module docstring) — no
-# separate lifespan-hook logging is needed for that. Compliance (Phase 5) is
-# the first first-party module in `INSTALLED_MODULES`, but its own
-# `get_router()` still returns `None` (Phase 5 is data model only — no
-# endpoints yet), so this loop currently mounts nothing either way; that's
-# expected, not a bug. A module's own router applies its own
-# `require_org_module_enabled`/`require_project_module_enabled` gating
-# internally; there is no second gate applied at this mount-loop level.
+# separate lifespan-hook logging is needed for that. A module contributes up
+# to two routers — `get_router()` (org-scoped, `/api/v1/orgs/
+# {organization_id}/modules/<key>/...`) and, since Phase 7, an optional
+# `get_project_router()` (project-scoped, `/api/v1/projects/{project_id}/
+# modules/<key>/...`) — both mounted the same way here. A module's own
+# router(s) apply their own `require_org_module_enabled`/`require_project_
+# module_enabled`/`require_module_role` gating internally; there is no
+# second gate applied at this mount-loop level.
 for _module_definition in get_module_registry().values():
-    _module_router = _module_definition.get_router()
-    if _module_router is not None:
-        app.include_router(_module_router)
+    for _module_router in (
+        _module_definition.get_router(),
+        _module_definition.get_project_router() if _module_definition.get_project_router is not None else None,
+    ):
+        if _module_router is not None:
+            app.include_router(_module_router)

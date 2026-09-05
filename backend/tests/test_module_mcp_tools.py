@@ -226,17 +226,24 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All three of Compliance's Phase 6 tools resolve, are read-only
-    (`mutates=False`, since all three are GET), and carry exactly the path
-    parameters their router endpoints require — the concrete proof that
-    `module.py`'s declared `path_template`s actually match real routes on
-    `compliance.router.router`, not just that the strings look right."""
+    """All five of Compliance's tools (three from Phase 6, two more from
+    Phase 7) resolve, are read-only (`mutates=False`, all GET), and carry
+    exactly the path parameters their router endpoints require — the
+    concrete proof that `module.py`'s declared `path_template`s actually
+    match real routes on `compliance.router.router`/`compliance.
+    project_router.router`, not just that the strings look right. The
+    Phase 7 tools are the first real proof that `build_mcp_tool_manifest`
+    validates a tool against *either* of a module's two router prefixes
+    (`app.modules.registry.ModuleDefinition.get_project_router`), not just
+    `get_router`'s."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
     assert "compliance_list_standards" in by_name
     assert "compliance_get_standard_version" in by_name
     assert "compliance_list_requirements" in by_name
+    assert "compliance_get_project_status" in by_name
+    assert "compliance_list_non_compliant_requirements" in by_name
 
     list_standards = by_name["compliance_list_standards"]
     assert list_standards.mutates is False
@@ -259,6 +266,22 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     )
     assert {p["name"] for p in list_requirements.params} == {"organization_id", "standard_id", "version_id"}
 
-    # No mutating tool for publish/retire is declared at all — Phase 6's
-    # spec deliberately keeps this module's MCP surface read-only.
+    # Phase 7's two tools: `project_id` only, no `organization_id` at all —
+    # the whole reason they live on `get_project_router()` rather than
+    # nested under the org-scoped router (see module.py's own docstring).
+    get_status = by_name["compliance_get_project_status"]
+    assert get_status.mutates is False
+    assert get_status.path_template == "/api/v1/projects/{project_id}/modules/compliance/status"
+    assert {p["name"] for p in get_status.params} == {"project_id"}
+
+    list_non_compliant = by_name["compliance_list_non_compliant_requirements"]
+    assert list_non_compliant.mutates is False
+    assert list_non_compliant.path_template == (
+        "/api/v1/projects/{project_id}/modules/compliance/non-compliant-requirements"
+    )
+    assert {p["name"] for p in list_non_compliant.params} == {"project_id"}
+
+    # No mutating tool for publish/retire, applicability, or assessment is
+    # declared at all — this module's MCP surface stays deliberately
+    # read-only across both Phase 6 and Phase 7.
     assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())

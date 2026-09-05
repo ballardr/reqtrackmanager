@@ -24,11 +24,25 @@ surface read-only for this module so far, mirroring `docs/mcp-server.md`'s
 existing cautious default of adding write tools narrowly and deliberately
 rather than by default.
 
+Phase 7 (Project Compliance Assignment & Assessment) adds this module's
+first *project*-scoped router — `get_project_router()`, a new
+`ModuleDefinition` field (`app.modules.registry`) mounted at `/api/v1/
+projects/{project_id}/modules/compliance` — alongside two more read-only
+MCP tools whose path_templates fall under that router's own prefix instead
+of `get_router()`'s: `compliance_get_project_status(project_id)` and
+`compliance_list_non_compliant_requirements(project_id)`. Neither tool
+takes `organization_id` — deliberately, mirroring hand-written tools like
+`get_project(project_id)` — which is exactly why these two live on a
+second router rather than being nested under the org-scoped one; see
+`app.modules.registry`'s own docstring on `get_project_router` and
+`project_router.py`'s module docstring for the full reasoning.
+
 External dependencies: `app.modules.registry`'s own dataclasses;
-`app.modules.compliance.router` (imported lazily, inside `get_router()`,
-to avoid any import-cycle risk with this module's own registration --
-mirroring how Phase 5's own notes already document resolving the
-`MODULE_DEFINITION`/registry import cycle via `app/modules/__init__.py`).
+`app.modules.compliance.router`/`.project_router` (each imported lazily,
+inside `get_router()`/`get_project_router()`, to avoid any import-cycle
+risk with this module's own registration -- mirroring how Phase 5's own
+notes already document resolving the `MODULE_DEFINITION`/registry import
+cycle via `app/modules/__init__.py`).
 """
 
 from __future__ import annotations
@@ -40,16 +54,27 @@ from app.modules.registry import McpToolDefinition, ModuleDefinition, ModuleRole
 COMPLIANCE_MODULE_KEY = "compliance"
 
 _ROUTER_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{COMPLIANCE_MODULE_KEY}"
+_PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{COMPLIANCE_MODULE_KEY}"
 
 
 def get_router() -> APIRouter | None:
-    """Returns this module's `APIRouter` (Phase 6 — Standards Management
-    API). Imported inside the function body, not at module top-level, to
-    avoid any import-cycle risk with this module's own registration (see
-    this module's own docstring)."""
+    """Returns this module's org-scoped `APIRouter` (Phase 6 — Standards
+    Management API; Phase 7 adds standard-to-project assignment endpoints
+    to this same router). Imported inside the function body, not at module
+    top-level, to avoid any import-cycle risk with this module's own
+    registration (see this module's own docstring)."""
     from app.modules.compliance.router import router as compliance_router
 
     return compliance_router
+
+
+def get_project_router() -> APIRouter | None:
+    """Returns this module's project-scoped `APIRouter` (Phase 7 — Project
+    Compliance Assignment & Assessment). Imported inside the function
+    body for the same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.project_router import router as compliance_project_router
+
+    return compliance_project_router
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -63,6 +88,7 @@ MODULE_DEFINITION = ModuleDefinition(
     default_enabled=True,
     implemented=True,
     get_router=get_router,
+    get_project_router=get_project_router,
     models_import_path="app.modules.compliance.models",
     roles=(
         ModuleRoleDefinition(
@@ -121,6 +147,34 @@ MODULE_DEFINITION = ModuleDefinition(
                  "description": "The compliance standard."},
                 {"name": "version_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The specific version of the standard whose requirements to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="get_project_status",
+            description=(
+                "Gets a project's overall compliance status (§20) against each of its currently "
+                "assigned, active compliance standards — total/applicable/non-applicable requirement "
+                "counts, a per-status breakdown, the calculated compliance percentage, and the "
+                "overall compliance/approval state."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/status",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose compliance status to get."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_non_compliant_requirements",
+            description=(
+                "Lists every applicable, Non-Compliant requirement across a project's active "
+                "compliance standard assignments."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/non-compliant-requirements",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose non-compliant requirements to list."},
             ],
         ),
     ),

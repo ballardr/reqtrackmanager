@@ -68,6 +68,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
 from app.modules.compliance.models import (
@@ -76,6 +77,7 @@ from app.modules.compliance.models import (
     ComplianceRequirement,
     ComplianceStandard,
     ComplianceStandardVersion,
+    ProjectCompliance,
 )
 from app.modules.compliance.schemas import (
     ComplianceActionTypeCreate,
@@ -92,7 +94,11 @@ from app.modules.compliance.schemas import (
     ComplianceStandardUpdate,
     ComplianceStandardVersionCreate,
     ComplianceStandardVersionOut,
+    ProjectComplianceCreate,
+    ProjectComplianceOut,
+    ProjectComplianceStatusOut,
 )
+from app.modules.compliance.service import build_status_out, materialize_assessment_rows
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
@@ -944,3 +950,141 @@ def delete_action_type(
         allow_empty=True,
     )
     db.commit()
+
+
+# --- Project compliance assignment (org-scoped: assigning IS a Compliance -------
+# Manager decision, §26; day-to-day assessment lives on `project_router.py`
+# instead, since Phase 4's MCP tool scoping rule requires `project_id` as
+# the *only* path placeholder for `compliance_get_project_status`/
+# `compliance_list_non_compliant_requirements` — impossible on a route that
+# also carries `{organization_id}`. See docs/compliance-module-plan.md's
+# Phase 7 notes for the full reasoning behind this split.)
+
+
+def _get_project_or_404(db: Session, organization_id: UUID, project_id: UUID) -> Project:
+    project = db.get(Project, project_id)
+    if project is None or project.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return project
+
+
+def _get_project_compliance_or_404(
+    db: Session, organization_id: UUID, project_id: UUID, project_compliance_id: UUID
+) -> ProjectCompliance:
+    _get_project_or_404(db, organization_id, project_id)
+    project_compliance = db.get(ProjectCompliance, project_compliance_id)
+    if project_compliance is None or project_compliance.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project compliance assignment not found.")
+    return project_compliance
+
+
+@router.post(
+    "/projects/{project_id}/project-compliance", response_model=ProjectComplianceOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_compliance(
+    organization_id: UUID, project_id: UUID, payload: ProjectComplianceCreate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Assigns a compliance standard version to a project (§7) — a
+    Compliance Manager decision (module.py's own role description; §26
+    doesn't list this as a Project Manager/Compliance Officer capability).
+    Only a `PUBLISHED` version may be assigned (409 otherwise) — see
+    `models.py`'s own docstring for why. Materialises the full per-
+    requirement/per-required-action assessment row set for this
+    assignment in the same transaction (`service.materialize_assessment_
+    rows`) — see that function's own docstring for why this happens once,
+    upfront, rather than lazily."""
+    _get_project_or_404(db, organization_id, project_id)
+    _, version = _get_version_or_404(db, organization_id, payload.standard_id, payload.standard_version_id)
+    if version.status != ComplianceStandardVersionStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Only a published standard version can be assigned to a project."
+        )
+    existing = db.scalar(
+        select(ProjectCompliance.id).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.standard_version_id == version.id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project is already assigned to this standard version.")
+
+    project_compliance = ProjectCompliance(
+        project_id=project_id, standard_version_id=version.id,
+        assigned_at=datetime.now(UTC), assigned_by=current_user.id,
+        target_compliance_date=payload.target_compliance_date,
+    )
+    db.add(project_compliance)
+    db.flush()
+    materialize_assessment_rows(db, project_compliance_id=project_compliance.id, standard_version_id=version.id)
+    log_event(db, entity_type="project_compliance", entity_id=project_compliance.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id, project_id=project_id,
+              detail={"standard_version_id": str(version.id)})
+    db.commit()
+    db.refresh(project_compliance)
+    return project_compliance
+
+
+@router.get("/project-compliance", response_model=list[ProjectComplianceStatusOut])
+def list_all_project_compliance(
+    organization_id: UUID, include_archived: bool = Query(False),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Lists every `ProjectCompliance` assignment across this
+    organisation's projects, each with its computed §20 overall status —
+    the Compliance Manager's "View compliance across projects" capability
+    (§26). Manage-gated, not view-gated: §26 lists this specifically under
+    Compliance Manager, not under any project role or general org
+    membership."""
+    query = (
+        select(ProjectCompliance)
+        .join(Project, Project.id == ProjectCompliance.project_id)
+        .where(Project.organization_id == organization_id)
+    )
+    if not include_archived:
+        query = query.where(ProjectCompliance.is_archived.is_(False))
+    assignments = db.scalars(query).all()
+    return [build_status_out(db, pc) for pc in assignments]
+
+
+@router.post(
+    "/projects/{project_id}/project-compliance/{project_compliance_id}/archive",
+    response_model=ProjectComplianceOut,
+)
+def archive_project_compliance(
+    organization_id: UUID, project_id: UUID, project_compliance_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Soft-archives a project's assignment to a standard — used when a
+    project no longer needs to track compliance against it. Never a hard
+    delete: the `ProjectComplianceRequirement` rows underneath carry real
+    assessment/audit history (§16) that must survive this."""
+    project_compliance = _get_project_compliance_or_404(db, organization_id, project_id, project_compliance_id)
+    project_compliance.is_archived = True
+    project_compliance.archived_at = datetime.now(UTC)
+    project_compliance.archived_by = current_user.id
+    log_event(db, entity_type="project_compliance", entity_id=project_compliance.id, action="archived",
+              actor_id=current_user.id, organization_id=organization_id, project_id=project_id)
+    db.commit()
+    db.refresh(project_compliance)
+    return project_compliance
+
+
+@router.post(
+    "/projects/{project_id}/project-compliance/{project_compliance_id}/unarchive",
+    response_model=ProjectComplianceOut,
+)
+def unarchive_project_compliance(
+    organization_id: UUID, project_id: UUID, project_compliance_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Restores an archived project compliance assignment. Idempotent."""
+    project_compliance = _get_project_compliance_or_404(db, organization_id, project_id, project_compliance_id)
+    project_compliance.is_archived = False
+    project_compliance.archived_at = None
+    project_compliance.archived_by = None
+    log_event(db, entity_type="project_compliance", entity_id=project_compliance.id, action="unarchived",
+              actor_id=current_user.id, organization_id=organization_id, project_id=project_id)
+    db.commit()
+    db.refresh(project_compliance)
+    return project_compliance
