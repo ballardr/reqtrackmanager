@@ -390,7 +390,13 @@ def test_project_status_calculation(client, admin_token, org_id):
     assert summary["compliance_percentage"] == round(2 / 3 * 100, 1)
     assert summary["has_non_compliant"] is False
     assert summary["overall_compliance_state"] == "in_progress"
-    assert summary["overall_approval_state"] == "not_assessed"
+    # Phase 9: performing an assessment always advances that row's own
+    # approval_state to "assessed" (service.py::advance_approval_state_on_
+    # assessment) — all three applicable rows here have been assessed
+    # (the fourth is Not Applicable, excluded from this aggregation), so
+    # the overall approval state is "assessed," not the Phase 7-era
+    # "not_assessed" default.
+    assert summary["overall_approval_state"] == "assessed"
 
     # Now push one applicable requirement to Non-Compliant: has_non_compliant
     # flips, and the overall state clearly reflects it regardless of percentage.

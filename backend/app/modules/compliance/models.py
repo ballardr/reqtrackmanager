@@ -130,6 +130,40 @@ Phase 7 design decisions:
   without splitting one coherent piece of the data model across two
   phases, mirroring the same reasoning Phase 5's own notes already recorded
   for `ComplianceStandardVersionStatus`.
+
+Phase 9 design decisions:
+- `approval_decided_at`/`approval_decided_by`/`decision_note` are added to
+  `ProjectComplianceRequirement` (§12's "Date/time of approval"/"Who
+  approved/signed off the assessment") — one column pair serves *both* an
+  approval and a rejection decision (mirroring `justification`'s own
+  Phase-7-established "one field, meaning depends on which transition is
+  happening" precedent) rather than separate `approved_*`/`rejected_*`
+  pairs, since a row is never both at once and `approval_state` itself
+  already distinguishes which decision `decision_note` belongs to.
+  "Who performed the assessment"/"date/time of assessment" (§12) reuse the
+  existing `assessed_at`/`assessed_by` columns — no new columns needed
+  there.
+- No new "submitted for approval" timestamp/actor columns: §12's own
+  minimum field list names only assessment and approval timestamps, not a
+  submission event, and `services.audit.log_event`'s existing history
+  (surfaced by `project_router.py::get_requirement_history`) already
+  records who/when moved a row into `PENDING_APPROVAL` — adding a redundant
+  pair of columns for a fact the audit trail already carries would be a
+  second source of truth for the same thing, the same call this file's own
+  Phase 5/7 notes already made about not duplicating audit-log facts as
+  columns.
+- No bespoke "approval history" table: §12's "Approval/sign-off history"
+  is satisfied by the same `AuditEvent` rows/`get_requirement_history`
+  endpoint that already carry Phase 7's assessment/applicability history —
+  `service.py`'s new `advance_approval_state_on_assessment`/`invalidate_
+  approval_if_in_flight` transitions are logged through `log_event` by
+  their callers exactly like every other mutation in this module, not a
+  second, parallel history mechanism.
+- The state-machine transitions themselves (§12's "Not Assessed -> Assessed
+  -> Pending Approval -> Approved/Rejected -> Requires Re-assessment") are
+  business logic, not something this file enforces structurally — see
+  `service.py`'s own docstring and `project_router.py`'s new `submit-for-
+  approval`/`approve`/`reject` endpoints.
 - Every `ComplianceRequirement` in an assigned version — section/parent
   rows and leaf rows alike — gets its own `ProjectComplianceRequirement`
   row, materialised once, in full, at `ProjectCompliance` creation time
@@ -535,10 +569,21 @@ class ProjectComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
             `explicit_applicability` — set automatically by the
             applicability endpoint, never caller-supplied. `None` until
             `explicit_applicability` is set for the first time.
-        approval_state: Reserved for Phase 9's approval/sign-off workflow
-            (§12) — see this module's own docstring and the enums module's
-            docstring for why this column exists a phase ahead of the
-            workflow that transitions it.
+        approval_state: The row's current position in §12's approval/
+            sign-off state machine — see this module's own Phase 9 notes
+            and `service.py` for the transition rules.
+        approval_decided_at / approval_decided_by: When/who last decided
+            this row's `approval_state` at the `approve`/`reject` step
+            (§12's "Date/time of approval"/"Who approved/signed off") —
+            `None` until the first such decision. Not set by `submit-for-
+            approval` (that's a request, not a decision) or by the
+            automatic transitions in `service.py` (those are system-
+            derived, not a human decision).
+        decision_note: Free-text rationale attached to the last `approve`/
+            `reject` decision — mandatory (enforced at the API layer) for
+            a rejection, optional for an approval. Independent of
+            `justification`/`notes` (Phase 7's own assessment/applicability
+            fields), which this column never overwrites or reads from.
     """
 
     __tablename__ = "project_compliance_requirements"
@@ -567,6 +612,11 @@ class ProjectComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
     approval_state: Mapped[ComplianceApprovalState] = mapped_column(
         str_enum(ComplianceApprovalState, 24), default=ComplianceApprovalState.NOT_ASSESSED
     )
+    approval_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    decision_note: Mapped[str] = mapped_column(Text, default="")
 
 
 class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):

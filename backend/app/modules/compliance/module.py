@@ -46,6 +46,19 @@ core, module-agnostic `GET /api/v1/files/{id}` download endpoint
 (`app.routers.files.download_file`) can authorize a Compliance evidence
 attachment without importing anything from this module directly.
 
+Phase 9 (Approval/Sign-off, §12, §16, §27) adds one more read-only MCP tool,
+`compliance_list_pending_approvals(project_id)`, mirroring `compliance_
+list_non_compliant_requirements`'s exact shape. The three real workflow
+actions this phase adds — `submit-for-approval`, `approve`, `reject` — are
+**deliberately never declared here**: `project_router.py` marks `approve`/
+`reject` with `app.modules.registry.APPROVAL_ACTION_ROUTE_EXTRA`, which
+would exclude them from the manifest even if a future session mistakenly
+added tool declarations for them, but the first line of defence is simply
+that no `McpToolDefinition` for any of the three exists in this file at
+all — mirroring `docs/mcp-server.md`'s existing, explicit rule that
+ReqTrackManager's core approval workflow is excluded from the tool surface
+on principle (accountable-human-decision, not an RBAC question).
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.service` (each imported
 lazily, inside `get_router()`/`get_project_router()`/`resolve_file_owner_
@@ -211,6 +224,19 @@ MODULE_DEFINITION = ModuleDefinition(
             params=[
                 {"name": "project_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The project whose expiring/expired evidence to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_pending_approvals",
+            description=(
+                "Lists every requirement currently awaiting formal approval/sign-off across a "
+                "project's active compliance standard assignments."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/pending-approvals",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose pending compliance approvals to list."},
             ],
         ),
     ),

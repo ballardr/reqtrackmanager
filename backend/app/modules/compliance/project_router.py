@@ -33,6 +33,28 @@ nested under one specific `ProjectCompliance` assignment, since a single
 piece of evidence may support requirements across more than one of a
 project's standard assignments at once.
 
+Phase 9 (Approval/Sign-off, §12, §16, §27) adds the `submit-for-approval`/
+`approve`/`reject` state-machine actions and the `pending-approvals`
+cross-assignment listing to the per-requirement assessment section below.
+`approve`/`reject` are marked with `app.modules.registry.
+APPROVAL_ACTION_ROUTE_EXTRA` (`openapi_extra`) — Phase 4's manifest-builder
+exclusion reads this directly off the route, so these two can never be
+exposed as an MCP tool regardless of what a future session's `module.py`
+might declare; `submit-for-approval` is marked the same way as belt-and-
+braces, even though it only queues a decision rather than making one, since
+§11 describes the whole flow ("Request/perform assessment... Approve/sign
+off compliance") as one accountable-human action set. No new MCP tool is
+declared for any of the three — only the read-only `pending-approvals`
+listing (`compliance_list_pending_approvals`, `module.py`) is, mirroring
+the existing `compliance_get_project_status`/`list_non_compliant_
+requirements` read-only shape. `update_requirement_assessment` and
+`update_requirement_applicability` (Phase 7) are extended to trigger the
+two automatic transitions `service.py`'s `advance_approval_state_on_
+assessment`/`invalidate_approval_if_in_flight` define; `archive_evidence`/
+`revalidate_evidence` (Phase 8) are extended to invalidate any in-flight or
+decided approval the changed evidence supports, via `service.py`'s `find_
+pcrs_linked_to_evidence`.
+
 Responsibilities:
 - Every mutating endpoint (applicability, assessment, required-action
   assessment updates/completion, and Phase 8's evidence CRUD/linkage/file
@@ -78,7 +100,7 @@ from app.models.audit import AuditEvent
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
-from app.modules.compliance.enums import ComplianceApplicability, ComplianceStatus
+from app.modules.compliance.enums import ComplianceApplicability, ComplianceApprovalState, ComplianceStatus
 from app.modules.compliance.models import (
     ComplianceEvidence,
     ComplianceEvidenceActionLink,
@@ -93,6 +115,7 @@ from app.modules.compliance.models import (
     ProjectComplianceRequirement,
 )
 from app.modules.compliance.schemas import (
+    ComplianceApprovalDecisionRequest,
     ComplianceEvidenceActionLinkCreate,
     ComplianceEvidenceCreate,
     ComplianceEvidenceOut,
@@ -103,6 +126,7 @@ from app.modules.compliance.schemas import (
     ComplianceRequiredActionAssessmentOut,
     ComplianceRequiredActionAssessmentUpdate,
     NonCompliantRequirementOut,
+    PendingApprovalOut,
     ProjectComplianceApplicabilityUpdate,
     ProjectComplianceAssessmentUpdate,
     ProjectComplianceOut,
@@ -110,12 +134,16 @@ from app.modules.compliance.schemas import (
     ProjectComplianceStatusOut,
 )
 from app.modules.compliance.service import (
+    advance_approval_state_on_assessment,
     build_evidence_out,
     build_requirement_out,
     build_status_out,
+    find_pcrs_linked_to_evidence,
+    invalidate_approval_if_in_flight,
     list_expiring_or_expired_evidence,
     load_pcrs_and_applicability,
 )
+from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.audit import AuditEventOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services.audit import log_event
@@ -179,6 +207,42 @@ def _get_pcr_for_project_or_404(db: Session, project_id: UUID, pcr_id: UUID) -> 
         if project_compliance is not None and project_compliance.project_id == project_id:
             return pcr
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Project compliance requirement not found.")
+
+
+def _invalidate_approvals_supported_by_evidence(
+    db: Session, project_id: UUID, evidence: ComplianceEvidence, actor_id: UUID, *, reason: str
+) -> None:
+    """Applies §12/§16/§27's evidence-side auto-invalidation: for every
+    `ProjectComplianceRequirement` this evidence supports (directly or via
+    a required-action assessment — `service.py::find_pcrs_linked_to_evidence`),
+    downgrades an in-flight or decided approval to `REQUIRES_REASSESSMENT`
+    (`service.py::invalidate_approval_if_in_flight`) and logs the
+    transition against that requirement's own history, exactly like every
+    other approval-state change on this router. Called by `archive_evidence`
+    (evidence marked no longer applicable) and `revalidate_evidence`
+    (evidence's expiry information changed) — see each of those endpoints'
+    own docstrings; a no-op for a piece of evidence that supports nothing,
+    or whose linked rows aren't currently `PENDING_APPROVAL`/`APPROVED`.
+    `actor_id` is the user who performed the evidence mutation that
+    triggered this — a real human action, unlike a future Phase 10
+    passive-expiry sweep, which would log with `actor_id=None` instead.
+
+    Does not commit — callers commit as part of their own single
+    transaction, same convention as every other mutation on this router.
+    """
+    for pcr in find_pcrs_linked_to_evidence(db, evidence_id=evidence.id):
+        previous_approval_state = invalidate_approval_if_in_flight(pcr)
+        if previous_approval_state is None:
+            continue
+        log_event(
+            db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="approval_invalidated",
+            actor_id=actor_id, project_id=project_id,
+            detail={
+                "reason": reason, "evidence_id": str(evidence.id),
+                "previous_approval_state": previous_approval_state.value,
+                "new_approval_state": pcr.approval_state.value,
+            },
+        )
 
 
 def _get_assessment_for_project_or_404(
@@ -288,6 +352,55 @@ def list_non_compliant_requirements(
     return results
 
 
+@router.get("/pending-approvals", response_model=list[PendingApprovalOut])
+def list_pending_approvals(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Every requirement currently `PENDING_APPROVAL` across this project's
+    active standard assignments (§12's "Pending Approval" as its own
+    drillable list) — the `compliance_list_pending_approvals` MCP tool.
+    Mirrors `list_non_compliant_requirements`'s exact loop shape above."""
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+
+    results: list[PendingApprovalOut] = []
+    for project_compliance in assignments:
+        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+        standard = db.get(ComplianceStandard, version.standard_id)
+        pcrs, _applicability = load_pcrs_and_applicability(
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+        )
+        requirements_by_id = {
+            r.id: r
+            for r in db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
+            ).all()
+        }
+        for pcr in pcrs:
+            if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
+                continue
+            requirement = requirements_by_id[pcr.requirement_id]
+            results.append(
+                PendingApprovalOut(
+                    project_compliance_id=project_compliance.id,
+                    standard_reference=standard.reference,
+                    standard_name=standard.name,
+                    version_label=version.version_label,
+                    project_compliance_requirement_id=pcr.id,
+                    requirement_id=requirement.id,
+                    requirement_reference=requirement.reference,
+                    requirement_name=requirement.name,
+                    compliance_status=pcr.compliance_status,
+                    assessed_at=pcr.assessed_at,
+                    assessed_by=pcr.assessed_by,
+                )
+            )
+    return results
+
+
 # --- Per-requirement assessment -------------------------------------------------
 
 
@@ -349,6 +462,11 @@ def update_requirement_applicability(
     pcr.justification = payload.justification
     pcr.applicability_set_at = datetime.now(UTC)
     pcr.applicability_set_by = current_user.id
+
+    previous_approval_state = None
+    if previous_applicability != payload.applicability:
+        previous_approval_state = invalidate_approval_if_in_flight(pcr)
+
     log_event(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="applicability_changed",
         actor_id=current_user.id, project_id=project_id,
@@ -356,6 +474,8 @@ def update_requirement_applicability(
             "previous_applicability": previous_applicability.value if previous_applicability else None,
             "new_applicability": payload.applicability.value,
             "justification": payload.justification,
+            "previous_approval_state": previous_approval_state.value if previous_approval_state else None,
+            "new_approval_state": pcr.approval_state.value if previous_approval_state else None,
         },
     )
     db.commit()
@@ -392,12 +512,138 @@ def update_requirement_assessment(
     pcr.notes = payload.notes
     pcr.assessed_at = datetime.now(UTC)
     pcr.assessed_by = current_user.id
+    previous_approval_state = advance_approval_state_on_assessment(pcr)
     log_event(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="assessed",
         actor_id=current_user.id, project_id=project_id,
         detail={
             "previous_status": previous_status.value, "new_status": payload.compliance_status.value,
             "justification": payload.justification,
+            "previous_approval_state": previous_approval_state.value,
+            "new_approval_state": pcr.approval_state.value,
+        },
+    )
+    db.commit()
+    db.refresh(pcr)
+    _pcrs, applicability = load_pcrs_and_applicability(
+        db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
+    )
+    return build_requirement_out(pcr, applicability)
+
+
+@router.post(
+    "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/submit-for-approval",
+    response_model=ProjectComplianceRequirementOut,
+    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
+)
+def submit_requirement_for_approval(
+    project_id: UUID, project_compliance_id: UUID, pcr_id: UUID,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Requests formal approval/sign-off for this requirement's current
+    assessment (§12) — `ASSESSED` -> `PENDING_APPROVAL`. 409 from any other
+    `approval_state`, enforcing §12's own minimum ordering ("Not Assessed ->
+    Assessed -> Pending Approval -> ...") rather than allowing e.g. a
+    `NOT_ASSESSED` row to be submitted with nothing yet assessed."""
+    project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
+    if pcr.approval_state != ComplianceApprovalState.ASSESSED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot submit for approval from state '{pcr.approval_state.value}'; the requirement must be "
+            "'assessed' first.",
+        )
+    pcr.approval_state = ComplianceApprovalState.PENDING_APPROVAL
+    log_event(
+        db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="submitted_for_approval",
+        actor_id=current_user.id, project_id=project_id,
+        detail={"previous_approval_state": "assessed", "new_approval_state": "pending_approval"},
+    )
+    db.commit()
+    db.refresh(pcr)
+    _pcrs, applicability = load_pcrs_and_applicability(
+        db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
+    )
+    return build_requirement_out(pcr, applicability)
+
+
+@router.post(
+    "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/approve",
+    response_model=ProjectComplianceRequirementOut,
+    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
+)
+def approve_requirement(
+    project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Formally approves/signs off this requirement's assessment (§12) —
+    `PENDING_APPROVAL` -> `APPROVED`. Gated the same as every other
+    mutating endpoint on this router (`compliance_officer` or
+    `PROJECT_MANAGER`) — §11/§26 describe "Approve/sign off compliance
+    where authorised" as one of the same Project Manager/Compliance
+    Officer actions as assessing, with no separate approver role named.
+    Marked `APPROVAL_ACTION_ROUTE_EXTRA` so Phase 4's manifest-builder can
+    never expose this as an MCP tool, regardless of what a future
+    `module.py` declares."""
+    project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
+    if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot approve from state '{pcr.approval_state.value}'; the requirement must be "
+            "'pending_approval' first.",
+        )
+    pcr.approval_state = ComplianceApprovalState.APPROVED
+    pcr.approval_decided_at = datetime.now(UTC)
+    pcr.approval_decided_by = current_user.id
+    pcr.decision_note = payload.decision_note
+    log_event(
+        db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="approved",
+        actor_id=current_user.id, project_id=project_id,
+        detail={
+            "previous_approval_state": "pending_approval", "new_approval_state": "approved",
+            "decision_note": payload.decision_note,
+        },
+    )
+    db.commit()
+    db.refresh(pcr)
+    _pcrs, applicability = load_pcrs_and_applicability(
+        db, project_compliance_id=project_compliance.id, standard_version_id=project_compliance.standard_version_id
+    )
+    return build_requirement_out(pcr, applicability)
+
+
+@router.post(
+    "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/reject",
+    response_model=ProjectComplianceRequirementOut,
+    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
+)
+def reject_requirement(
+    project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Formally rejects this requirement's assessment (§12) —
+    `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is mandatory (400) —
+    mirrors §16's existing mandatory-rationale rule for Non-Compliant/Not-
+    Applicable decisions, applied to a rejection for the same reason: a
+    rejection must never appear with no indication of why."""
+    project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
+    if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot reject from state '{pcr.approval_state.value}'; the requirement must be "
+            "'pending_approval' first.",
+        )
+    if not payload.decision_note.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A decision note is required to reject an approval.")
+    pcr.approval_state = ComplianceApprovalState.REJECTED
+    pcr.approval_decided_at = datetime.now(UTC)
+    pcr.approval_decided_by = current_user.id
+    pcr.decision_note = payload.decision_note
+    log_event(
+        db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="rejected",
+        actor_id=current_user.id, project_id=project_id,
+        detail={
+            "previous_approval_state": "pending_approval", "new_approval_state": "rejected",
+            "decision_note": payload.decision_note,
         },
     )
     db.commit()
@@ -711,6 +957,7 @@ def archive_evidence(
     evidence.archived_by = current_user.id
     log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="archived",
               actor_id=current_user.id, project_id=project_id)
+    _invalidate_approvals_supported_by_evidence(db, project_id, evidence, current_user.id, reason="evidence_archived")
     db.commit()
     db.refresh(evidence)
     return build_evidence_out(db, evidence)
@@ -763,6 +1010,7 @@ def revalidate_evidence(
             "justification": payload.justification,
         },
     )
+    _invalidate_approvals_supported_by_evidence(db, project_id, evidence, current_user.id, reason="evidence_revalidated")
     db.commit()
     db.refresh(evidence)
     return build_evidence_out(db, evidence)

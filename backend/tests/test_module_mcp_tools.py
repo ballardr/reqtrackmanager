@@ -226,16 +226,22 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All six of Compliance's tools (three from Phase 6, two more from
-    Phase 7, one more from Phase 8) resolve, are read-only (`mutates=False`,
-    all GET), and carry exactly the path parameters their router endpoints
-    require — the concrete proof that `module.py`'s declared `path_template`s
-    actually match real routes on `compliance.router.router`/`compliance.
-    project_router.router`, not just that the strings look right. The
-    Phase 7 tools are the first real proof that `build_mcp_tool_manifest`
-    validates a tool against *either* of a module's two router prefixes
-    (`app.modules.registry.ModuleDefinition.get_project_router`), not just
-    `get_router`'s."""
+    """All seven of Compliance's tools (three from Phase 6, two more from
+    Phase 7, one more from Phase 8, one more from Phase 9) resolve, are
+    read-only (`mutates=False`, all GET), and carry exactly the path
+    parameters their router endpoints require — the concrete proof that
+    `module.py`'s declared `path_template`s actually match real routes on
+    `compliance.router.router`/`compliance.project_router.router`, not just
+    that the strings look right. The Phase 7 tools are the first real proof
+    that `build_mcp_tool_manifest` validates a tool against *either* of a
+    module's two router prefixes (`app.modules.registry.ModuleDefinition.
+    get_project_router`), not just `get_router`'s. Phase 9's real `approve`/
+    `reject` routes (marked `APPROVAL_ACTION_ROUTE_EXTRA`) are also proven
+    here to resolve to no tool at all against the live registry — not just
+    the synthetic `fake_module` fixture's own approval-marked route above —
+    since no `McpToolDefinition` for them was ever declared in `module.py`
+    in the first place (the manifest builder's exclusion is defence in
+    depth, not the only thing stopping them)."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
@@ -288,8 +294,18 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     assert list_expiring_evidence.path_template == "/api/v1/projects/{project_id}/modules/compliance/expiring-evidence"
     assert {p["name"] for p in list_expiring_evidence.params} == {"project_id"}
 
-    # No mutating tool for publish/retire, applicability, assessment, or
-    # any evidence mutation (create/update/archive/revalidate/link/
-    # upload) is declared at all — this module's MCP surface stays
-    # deliberately read-only across Phases 6-8.
+    # Phase 9's tool: also `project_id`-only.
+    list_pending_approvals = by_name["compliance_list_pending_approvals"]
+    assert list_pending_approvals.mutates is False
+    assert list_pending_approvals.path_template == "/api/v1/projects/{project_id}/modules/compliance/pending-approvals"
+    assert {p["name"] for p in list_pending_approvals.params} == {"project_id"}
+
+    # No mutating tool for publish/retire, applicability, assessment, any
+    # evidence mutation (create/update/archive/revalidate/link/upload), or
+    # any of Phase 9's own submit-for-approval/approve/reject actions is
+    # declared at all — this module's MCP surface stays deliberately
+    # read-only across every phase so far.
     assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())
+    assert not any(
+        name in {"compliance_submit_for_approval", "compliance_approve", "compliance_reject"} for name in by_name
+    )

@@ -43,6 +43,13 @@ Design decisions, not left implicit:
   `ComplianceEvidenceOut` is built explicitly by the router rather than
   `from_attributes` alone, for the same "computed field" reason as
   `ProjectComplianceRequirementOut`.
+- Phase 9 (§12, §16, §27, Approval/Sign-off) adds `ComplianceApprovalDecisionRequest`
+  (payload for both `approve` and `reject` — `decision_note` is required at
+  the API layer, not the schema layer, exactly when rejecting, mirroring
+  every other conditionally-mandatory-justification rule in this module)
+  and `PendingApprovalOut` (mirrors `NonCompliantRequirementOut`'s exact
+  shape/rationale for the same kind of cross-assignment drillable list, one
+  section up).
 """
 
 from __future__ import annotations
@@ -319,6 +326,9 @@ class ProjectComplianceRequirementOut(BaseModel):
     applicability_set_at: datetime | None
     applicability_set_by: UUID | None
     approval_state: ComplianceApprovalState
+    approval_decided_at: datetime | None
+    approval_decided_by: UUID | None
+    decision_note: str
     created_at: datetime
     updated_at: datetime
 
@@ -490,3 +500,36 @@ class ComplianceEvidenceOut(BaseModel):
     updated_at: datetime
     linked_requirement_ids: list[UUID]
     linked_required_action_assessment_ids: list[UUID]
+
+
+# --- Phase 9: Approval / sign-off workflow ---------------------------------------
+
+
+class ComplianceApprovalDecisionRequest(BaseModel):
+    """Payload for `POST .../requirements/{id}/approve` and `.../reject`
+    (§12). `decision_note` is required by the router (400, not a schema-
+    level validator) when rejecting — the same conditionally-mandatory
+    pattern as `ProjectComplianceApplicabilityUpdate.justification`/
+    `ProjectComplianceAssessmentUpdate.justification` — and optional when
+    approving."""
+
+    decision_note: str = ""
+
+
+class PendingApprovalOut(BaseModel):
+    """One row of `GET .../pending-approvals` (§12's "Pending Approval" as
+    its own distinct, drillable list) — the `compliance_list_pending_
+    approvals` MCP tool. Mirrors `NonCompliantRequirementOut`'s exact shape
+    one section up, for the same kind of cross-assignment listing."""
+
+    project_compliance_id: UUID
+    standard_reference: str
+    standard_name: str
+    version_label: str
+    project_compliance_requirement_id: UUID
+    requirement_id: UUID
+    requirement_reference: str | None
+    requirement_name: str
+    compliance_status: ComplianceStatus
+    assessed_at: datetime | None
+    assessed_by: UUID | None

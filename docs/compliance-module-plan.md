@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-05 (Phase 8 complete).
+**Last updated:** 2026-09-06 (Phase 9 complete).
 
-**Overall progress:** 9 / 16 phases complete.
+**Overall progress:** 10 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -23,7 +23,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 6 | Standards management API | [x] Complete |
 | 7 | Project Compliance assignment & assessment | [x] Complete |
 | 8 | Evidence | [x] Complete |
-| 9 | Approval / sign-off workflow | [ ] Not started |
+| 9 | Approval / sign-off workflow | [x] Complete |
 | 10 | Scheduled reviews + notifications | [ ] Not started |
 | 11 | Cross-standard mapping + version impact | [ ] Not started |
 | 12 | Frontend — Compliance Manager surfaces | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 9.
+**Next phase to pick up:** Phase 10.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -402,6 +402,18 @@ Implemented as specified, with a number of judgment calls the spec text left ope
 - Full approval history (who assessed, who approved, timestamps, previous/current state).
 - Auto-invalidation: a material change to evidence (expiry) or the underlying requirement (standard version change) flags the approval as requiring re-assessment rather than silently remaining "Approved" (§15, §27).
 - MCP tools: a read-only `compliance_list_pending_approvals(project_id)` tool is fine (mirrors the existing `list_project_reviews_due(project_id)` shape). **The approve/reject/sign-off action itself must never be declared as an MCP tool** — mark it `is_approval_action: true` if it's ever tempting to add one, so Phase 4's manifest-builder exclusion catches it even if a future session forgets why. This mirrors `docs/mcp-server.md`'s existing, explicit rule that ReqTrackManager's core approval workflow is deliberately excluded from the tool surface for the same reason (accountable-human-decision, not an RBAC question).
+
+#### Phase 9 notes (completed 2026-09-06)
+
+Implemented as specified, with a few judgment calls the spec above left open — recorded here so a future session doesn't need to re-derive them:
+- **Two different resulting states for the two kinds of "material change," not one.** The spec's own bullet list doesn't say whether a fresh reassessment and an evidence/applicability change should land on the same state. They don't: `service.advance_approval_state_on_assessment` always sets `ASSESSED` (from *any* prior state, including `APPROVED`) when `update_requirement_assessment` runs, since performing that endpoint's own action *is* the reassessment — landing on `REQUIRES_REASSESSMENT` would contradict that state's own Phase-7-authored meaning ("a reassessment is still needed"). `service.invalidate_approval_if_in_flight` instead downgrades `PENDING_APPROVAL`/`APPROVED` to `REQUIRES_REASSESSMENT` for a change *without* an accompanying reassessment — an applicability change (only when the value actually changes) or evidence being archived/revalidated.
+- **§27's "standard version change" trigger is a deliberate no-op in this phase, not a gap.** `ProjectCompliance.standard_version_id` never changes after assignment (Phase 7's own pinned-forever design) and there is no version-migration action yet (Phase 11). `invalidate_approval_if_in_flight` is generic enough for Phase 11 to call per affected requirement when that migration action ships; nothing in this phase calls it for that case, since nothing in this phase can.
+- **No bespoke approval-history table.** §12's "approval/sign-off history" is satisfied entirely by the existing `AuditEvent`/`get_requirement_history` trail Phase 7 already exposed — every new transition logs through `services.audit.log_event` like every other mutation on this router. `approval_decided_at`/`approval_decided_by`/`decision_note` are the only new columns, and `decision_note` is one field serving both an approval and a rejection decision (mirroring `justification`'s own established shape), not two.
+- **Rejection requires a `decision_note` (400 if blank); approval doesn't.** §12 itself doesn't explicitly mandate this, but it's a direct, deliberate extension of §16's already-twice-established mandatory-rationale pattern (Not Applicable, Non-Compliant) to the same class of negative/blocking decision — flagged explicitly here per this repo's own "don't silently invent requirements" norm, rather than left undiscoverable as a judgment call.
+- **`submit-for-approval` is also marked `APPROVAL_ACTION_ROUTE_EXTRA`**, not just `approve`/`reject` — even though it only queues a decision rather than making one. §11 describes the whole flow ("Request/perform assessment... Approve/sign off compliance") as one accountable-human action set, so all three got the same belt-and-braces treatment; the primary defence for all three is still simply that `module.py` declares no `McpToolDefinition` for any of them at all.
+- Evidence-triggered invalidation (`_invalidate_approvals_supported_by_evidence`, `project_router.py`) logs with the *acting user's* id, not `None` — a human directly caused the archive/revalidate call, unlike a hypothetical future Phase 10 passive-expiry sweep (which would have no human actor and should log `actor_id=None` instead, per `services.audit.log_event`'s own "None for system-initiated actions" convention).
+- `list_pending_approvals` was placed next to `list_non_compliant_requirements` (both cross-assignment listings), not down near the state-machine action endpoints it's most related to by feature — grouping by "shape of query" (loop over active assignments, filter, project into a summary schema) rather than "phase that added it" matched this file's own existing section organisation more closely.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 9" entry for the full account, including the identify→verify→remediate pass.
 
 ### Phase 10 — Scheduled Reviews + Notifications
 

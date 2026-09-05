@@ -46,14 +46,15 @@ def _alembic_config() -> Config:
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase. Updated for Phase 8 (docs/
+    `INSTALLED_MODULES` as of this phase. Updated for Phase 9 (docs/
     compliance-module-plan.md): the module now has both an org-scoped and
-    a project-scoped router, six read-only MCP tools (three from Phase 6,
-    two more from Phase 7, one more from Phase 8's evidence support), and a
+    a project-scoped router, seven read-only MCP tools (three from Phase 6,
+    two more from Phase 7, one more from Phase 8's evidence support, one
+    more from Phase 9's pending-approvals listing), and a
     `resolve_file_owner_project_id` hook (Phase 8) — see
     `test_compliance_standards_api.py`/`test_project_compliance_api.py`/
-    `test_compliance_evidence_api.py` for the actual API surfaces these
-    facts stand in for here."""
+    `test_compliance_evidence_api.py`/`test_compliance_approval_workflow.py`
+    for the actual API surfaces these facts stand in for here."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
@@ -63,8 +64,13 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 6, (
-        "Phase 6 declared three read-only MCP tools; Phase 7 added two more; Phase 8 added one more"
+    assert len(definition.mcp_tools) == 7, (
+        "Phase 6 declared three read-only MCP tools; Phase 7 added two more; Phase 8 added one more; "
+        "Phase 9 added one more"
+    )
+    assert not any(tool.name in {"submit_for_approval", "approve", "reject"} for tool in definition.mcp_tools), (
+        "Phase 9's own actual approve/reject/submit-for-approval workflow actions must never be declared "
+        "as MCP tools — see module.py's own Phase 9 notes"
     )
     assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
 

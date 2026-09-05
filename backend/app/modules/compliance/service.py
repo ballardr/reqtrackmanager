@@ -28,6 +28,16 @@ Responsibilities:
   the exact, documented "valid/expiring/expired" derivation for a
   `ComplianceEvidence` row — see `compute_evidence_validity_state`'s own
   docstring for the rule and its warning-window constant.
+- `advance_approval_state_on_assessment`/`invalidate_approval_if_in_flight`
+  (Phase 9, §12/§16/§27): the two state-machine transition rules a
+  `ProjectComplianceRequirement`'s `approval_state` goes through outside
+  the explicit `submit-for-approval`/`approve`/`reject` actions themselves
+  (which are simple enough to stay inline in `project_router.py`, mirroring
+  how Phase 7's own `update_requirement_applicability`/`update_requirement_
+  assessment` never needed a service-layer wrapper for their own direct
+  transitions either) — see each function's own docstring for the exact
+  rule and why the two mutation-triggers (a fresh assessment vs. every
+  other material change) transition differently.
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -362,6 +372,9 @@ def build_requirement_out(
         applicability_set_at=pcr.applicability_set_at,
         applicability_set_by=pcr.applicability_set_by,
         approval_state=pcr.approval_state,
+        approval_decided_at=pcr.approval_decided_at,
+        approval_decided_by=pcr.approval_decided_by,
+        decision_note=pcr.decision_note,
         created_at=pcr.created_at,
         updated_at=pcr.updated_at,
     )
@@ -426,6 +439,109 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
         overall_compliance_state=summary.overall_compliance_state,
         overall_approval_state=summary.overall_approval_state,
     )
+
+
+# --- Phase 9: Approval / sign-off workflow -----------------------------------------
+
+#: `approval_state` values a material change (an applicability change, or a
+#: change to supporting evidence) downgrades to `REQUIRES_REASSESSMENT` —
+#: see `invalidate_approval_if_in_flight`'s own docstring for why this is
+#: exactly `{PENDING_APPROVAL, APPROVED}` and no other member.
+_IN_FLIGHT_APPROVAL_STATES = (ComplianceApprovalState.PENDING_APPROVAL, ComplianceApprovalState.APPROVED)
+
+
+def advance_approval_state_on_assessment(pcr: ProjectComplianceRequirement) -> ComplianceApprovalState:
+    """Applies §12/§16's assessment-side approval transition: performing a
+    fresh compliance-status assessment (`project_router.py::update_
+    requirement_assessment`) always moves `approval_state` to `ASSESSED`,
+    from *any* prior state.
+
+    This is deliberately unconditional, including from `APPROVED` — unlike
+    `invalidate_approval_if_in_flight` below, which flags `REQUIRES_
+    REASSESSMENT` for a change *not* accompanied by an actual reassessment.
+    Landing an assessment endpoint's own effect on `REQUIRES_REASSESSMENT`
+    would be self-contradictory (that state means "a reassessment is still
+    needed," but a reassessment was just performed) — `ASSESSED` is always
+    the correct result here, satisfying §12's "must not simply remain
+    'Approved'" for the assessment-change case specifically, and restarting
+    the approval cycle (a new `submit-for-approval` is required before this
+    row can be `APPROVED` again).
+
+    Args:
+        pcr: The row being reassessed. Mutated in place; caller commits.
+
+    Returns:
+        The `approval_state` value immediately before this call, for audit
+        logging.
+    """
+    previous = pcr.approval_state
+    pcr.approval_state = ComplianceApprovalState.ASSESSED
+    return previous
+
+
+def invalidate_approval_if_in_flight(pcr: ProjectComplianceRequirement) -> ComplianceApprovalState | None:
+    """Applies §12/§16/§27's "material change without an accompanying
+    reassessment" approval transition — used by `project_router.py::
+    update_requirement_applicability` (when the applicability decision
+    actually changes) and by the evidence endpoints (`archive_evidence`/
+    `revalidate_evidence`, via `find_pcrs_linked_to_evidence` below) when a
+    piece of evidence supporting an in-flight or decided approval is
+    archived or revalidated.
+
+    Rule: if `approval_state` is currently `PENDING_APPROVAL` or `APPROVED`,
+    it moves to `REQUIRES_REASSESSMENT` — a pending decision is no longer
+    trustworthy once its underlying material changes, and an already-
+    `APPROVED` row must not simply remain so (§12's explicit rule, §27's
+    "material change... should identify whether reassessment/reapproval is
+    required"). Every other state (`NOT_ASSESSED`, `ASSESSED`, `REJECTED`,
+    already-`REQUIRES_REASSESSMENT`) is left untouched — none of them
+    represent a decision or pending decision that could be invalidated.
+
+    Args:
+        pcr: The row to check/mutate in place; caller commits.
+
+    Returns:
+        The `approval_state` value immediately before this call, if it was
+        changed; `None` if no change was made (nothing to log).
+    """
+    if pcr.approval_state in _IN_FLIGHT_APPROVAL_STATES:
+        previous = pcr.approval_state
+        pcr.approval_state = ComplianceApprovalState.REQUIRES_REASSESSMENT
+        return previous
+    return None
+
+
+def find_pcrs_linked_to_evidence(db: Session, *, evidence_id: uuid.UUID) -> list[ProjectComplianceRequirement]:
+    """Every `ProjectComplianceRequirement` that a piece of evidence
+    supports — directly (`ComplianceEvidenceRequirementLink`) or via one of
+    its required-action assessments (`ComplianceEvidenceActionLink` ->
+    `ComplianceRequiredActionAssessment.project_compliance_requirement_id`)
+    — de-duplicated by id. Used by `archive_evidence`/`revalidate_evidence`
+    to find every approval `invalidate_approval_if_in_flight` should be
+    checked against when that evidence materially changes (§13's "a single
+    piece of evidence should be capable of supporting multiple compliance
+    requirements," extended to required actions of those requirements too)."""
+    direct_ids = set(
+        db.scalars(
+            select(ComplianceEvidenceRequirementLink.project_compliance_requirement_id).where(
+                ComplianceEvidenceRequirementLink.evidence_id == evidence_id
+            )
+        ).all()
+    )
+    via_action_ids = set(
+        db.scalars(
+            select(ComplianceRequiredActionAssessment.project_compliance_requirement_id)
+            .join(
+                ComplianceEvidenceActionLink,
+                ComplianceEvidenceActionLink.required_action_assessment_id == ComplianceRequiredActionAssessment.id,
+            )
+            .where(ComplianceEvidenceActionLink.evidence_id == evidence_id)
+        ).all()
+    )
+    pcr_ids = direct_ids | via_action_ids
+    if not pcr_ids:
+        return []
+    return list(db.scalars(select(ProjectComplianceRequirement).where(ProjectComplianceRequirement.id.in_(pcr_ids))).all())
 
 
 # --- Phase 8: Evidence ------------------------------------------------------------
