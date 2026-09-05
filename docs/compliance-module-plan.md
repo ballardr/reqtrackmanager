@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-05 (Phase 5 complete).
+**Last updated:** 2026-09-05 (Phase 6 complete).
 
-**Overall progress:** 6 / 16 phases complete.
+**Overall progress:** 7 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -20,7 +20,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 3 | Frontend module integration (2-tier) | [x] Complete |
 | 4 | Module-contributed MCP tools | [x] Complete |
 | 5 | Compliance data model (as a module) | [x] Complete |
-| 6 | Standards management API | [ ] Not started |
+| 6 | Standards management API | [x] Complete |
 | 7 | Project Compliance assignment & assessment | [ ] Not started |
 | 8 | Evidence | [ ] Not started |
 | 9 | Approval / sign-off workflow | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 6.
+**Next phase to pick up:** Phase 7.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -319,6 +319,24 @@ Implemented as specified, with a few judgment calls the spec above left open —
 - Every mutating endpoint gated by `require_module_role("compliance", "compliance_manager")` (org admins retain full access per §3, already implicit via `is_server_admin`/`OrgRole.ORG_ADMIN`'s existing override behaviour — confirm this composition explicitly in tests).
 - Every mutation logged via `services/audit.py::log_event`.
 - Declare read-only Phase 4 MCP tools for this surface, each taking `organization_id` as a required parameter per Phase 4's scoping rule (never implicit/aggregate): `compliance_list_standards(organization_id)`, `compliance_get_standard_version(organization_id, standard_id, version_id)`, `compliance_list_requirements(organization_id, standard_id, version_id)`. No mutating tool for publish/retire — keep the MCP surface read-only here, matching the existing project's cautious default of adding write tools narrowly and deliberately (`docs/mcp-server.md`'s write-mode design) rather than by default.
+
+#### Phase 6 notes (completed 2026-09-05)
+
+Implemented as specified, with a number of judgment calls the spec text left open — recorded here so a future session doesn't need to re-derive them:
+
+- **Exact path shape**: `backend/app/modules/compliance/router.py` mounts at `/api/v1/orgs/{organization_id}/modules/compliance` (the exact prefix `registry.py`'s own `McpToolDefinition` docstring already named). Standards: `POST|GET /standards`, `GET|PATCH /standards/{standard_id}`, `POST /standards/{standard_id}/archive|unarchive`. Versions: `POST|GET /standards/{standard_id}/versions`, `GET /standards/{standard_id}/versions/{version_id}`, `POST .../publish`, `POST .../retire` — no delete-version endpoint at all (versions are permanent history). Requirements and required actions are nested the rest of the way down under their real owning parent (`.../versions/{version_id}/requirements/{requirement_id}/required-actions/{action_id}`), each level with its own `move` endpoint (`.../move`, body `{"direction": "up"|"down"}`, reusing `schemas.project.MoveDirection` rather than declaring a second copy of the same tiny schema). Action types are a sibling top-level resource, `/action-types`, mirroring `action_types.py`'s own shape but organisation- rather than project-scoped.
+- **Reference immutability**: `ComplianceStandardUpdate` simply omits `reference` — there was no direct precedent in this codebase for an identifying "reference"-like field becoming immutable after creation (project/requirement codes are system-generated, not user-supplied), so this is a new, deliberate call: an org-unique reference code that other things eventually point at by reference (e.g. a future report, or an admin communicating "ISO-27001" to their team) changing after the fact would be surprising and isn't asked for anywhere in §2-§4.
+- **Version cloning is a first-class part of version creation**, not a separate endpoint: `POST .../versions` accepts an optional `clone_from_version_id`, and when given, deep-copies the source version's full `ComplianceRequirement` tree (preserving parent/child structure via an old-id→new-id remap, `router.py::_clone_requirement_tree`) plus every requirement's `ComplianceRequiredAction`s into the new (always-`DRAFT`) version. This isn't spelled out in the spec's bullet list, but without it, §4's "changes should result in a new version rather than modifying requirements" would make every new version a from-scratch rebuild — defeating the point of versioning an *evolving* standard. The source version's own rows are left completely untouched (verified by a dedicated test).
+- **Requirement listing is flat with `parent_requirement_id` populated**, per the spec's own suggested default — but ordered by an actual depth-first, parent-before-children traversal (`_flatten_requirements_dfs`) rather than an arbitrary `sort_order`-only sort, so a client doesn't have to reconstruct reading order from scratch; each sibling group is still internally ordered by its own `sort_order`, matching the (`standard_version_id`, `parent_requirement_id`) sibling-group scoping `move` also uses.
+- **Cross-org lookups return 404, not 403**, at every level of the chain (standard → version → requirement → required action), each verified transitively against the organisation named in the path — directly following `routers.action_types`' own precedent (checked directly: its equivalent mismatch returns 404 "Action type not found," not 403). Verified symmetrically in tests: an org B resource addressed via org A's path 404s too, not just the reverse.
+- **The "published version's requirements become immutable" rule was extended to `move` (reordering) as well**, even though the spec's bullet list only names create/update/delete explicitly — reordering still changes what a published version presents to a project that's pinned to it, even though no single requirement's own field values change, so leaving `move` mutable on a published version would be a silent way around the immutability guarantee. Applied uniformly to both the requirement-level and required-action-level `move` endpoints.
+- **Required-action-type validation is a 400, not a 404`**: creating/updating a required action with an `action_type_id` that doesn't belong to the same organisation returns 400 ("action_type_id must be an action type in this organisation"), mirroring `routers.actions.py::_validate_action_type`'s own 400 (not 404) for the equivalent project-scoped case — this is payload validation on a foreign-key reference the caller chose, not a path-addressed resource lookup.
+- **Action-type delete has no "must retain at least one" floor** (`allow_empty=True` unconditionally, unlike project-scoped `ActionTypeDefinition`'s own floor) — per the spec's explicit note that this scope's vocabulary can be emptied to zero, since nothing about a compliance standard's authoring flow depends on an org always having at least one required-action type the way a project's own required-action creation flow depends on `ActionTypeDefinition` never reaching zero.
+- **Exact audit action-name strings**: `"created"`/`"updated"`/`"archived"`/`"unarchived"`/`"deleted"`/`"reordered"`/`"renamed"` (mirroring `action_types.py`'s own verbs exactly for the action-type sub-resource), plus two new ones this phase introduces for the version lifecycle: `"published"` and `"retired"`. Entity-type strings: `"compliance_standard"`, `"compliance_standard_version"`, `"compliance_requirement"`, `"compliance_required_action"`, `"compliance_action_type_definition"`.
+- **No reparenting endpoint for requirements**: `ComplianceRequirementUpdate` has no `parent_requirement_id` field. Nothing in the spec asks for moving a requirement to a different parent after creation, and adding it would complicate `move`'s own sibling-group semantics (a requirement's sibling group is its `(standard_version_id, parent_requirement_id)` pair) for a capability nobody asked for yet — if a future session needs this, it should be a small, dedicated endpoint rather than folded into the general update payload.
+- **RBAC composition confirmed, not reimplemented**: `require_module_role("compliance", "compliance_manager")` already composes `is_server_admin`/`OrgRole.ORG_ADMIN`/the direct grant (Phase 2's own design) — this phase's tests (`test_rbac_composition_manager_grant_admin_override_and_member_forbidden`) prove all three paths succeed and a plain member without either is rejected, per the spec's explicit instruction to confirm this rather than assume it. No new RBAC code was needed.
+- **No new SOC 2 policy-document edits were needed this phase**, per the plan's own "SOC2 / Security Planning" guidance that Phase 6 opens no new trust boundary (it reuses Phase 0/2's already-hardened `require_module_role` and the existing `log_event` audit pattern verbatim). A short identify→verify→remediate pass was still recorded in `docs/decisions.md` per this repo's change-management policy for any RBAC/audit-touching change — it found nothing new to fix, which is itself the recorded outcome, not a skipped step.
+- **Tests**: `backend/tests/test_compliance_standards_api.py` (new, 9 tests) covers the full CRUD happy path (standard → version → parent/child requirement → required action → action type) through the real HTTP API for the first time this module has had one, requirement/required-action reordering, the RBAC composition proof above, the publish/retire lifecycle plus immutability enforcement, version cloning, symmetric cross-org 404 isolation, audit-event assertions, and action-type delete-with-reassignment (including the "can be emptied to zero" case). `backend/tests/test_module_mcp_tools.py` gained a new section (`test_compliance_mcp_tools_resolve_against_the_real_registry`) that calls `build_mcp_tool_manifest()` against the real, non-fixture module registry and asserts all three `compliance_*` tools resolve with `mutates=False` and the right params — concrete proof `module.py`'s declared `path_template`s match real routes, not just that the strings look right. `backend/tests/test_compliance_data_model.py`'s two now-stale assertions (`get_router() is None`, `mcp_tools == ()`) were updated to their Phase 6 reality. Full backend suite re-run afterward with no other DB-touching process active to confirm no regression; `ruff check` clean on every touched/new file.
 
 ### Phase 7 — Project Compliance Assignment & Assessment
 

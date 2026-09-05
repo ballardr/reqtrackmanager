@@ -210,3 +210,55 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
     member_token = login(client, "mcp-tools-member@example.com", "Password123!")
     resp = client.get("/api/v1/system/modules/mcp-tools", headers=auth_headers(member_token))
     assert resp.status_code == 200
+
+
+# --- Against the REAL registry (Compliance, Phase 6) -------------------------
+#
+# Every test above proves `build_mcp_tool_manifest`'s mechanics against a
+# fixture module — this section proves the real thing: Compliance is now a
+# real, permanent `INSTALLED_MODULES` entry (Phase 5) with a real router and
+# three declared MCP tools (Phase 6), so this is the "prove itself against
+# something real once a real module exists" integration coverage the plan's
+# own "Reused Existing Patterns" section calls for, that a fixture-only
+# suite can't give on its own. Deliberately does NOT use the `fake_module`
+# fixture — no `INSTALLED_MODULES` mutation needed, since Compliance is
+# already there.
+
+
+def test_compliance_mcp_tools_resolve_against_the_real_registry():
+    """All three of Compliance's Phase 6 tools resolve, are read-only
+    (`mutates=False`, since all three are GET), and carry exactly the path
+    parameters their router endpoints require — the concrete proof that
+    `module.py`'s declared `path_template`s actually match real routes on
+    `compliance.router.router`, not just that the strings look right."""
+    tools = build_mcp_tool_manifest()
+    by_name = {t.name: t for t in tools}
+
+    assert "compliance_list_standards" in by_name
+    assert "compliance_get_standard_version" in by_name
+    assert "compliance_list_requirements" in by_name
+
+    list_standards = by_name["compliance_list_standards"]
+    assert list_standards.mutates is False
+    assert list_standards.method == "GET"
+    assert list_standards.path_template == "/api/v1/orgs/{organization_id}/modules/compliance/standards"
+    assert {p["name"] for p in list_standards.params} == {"organization_id"}
+
+    get_version = by_name["compliance_get_standard_version"]
+    assert get_version.mutates is False
+    assert get_version.path_template == (
+        "/api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}/versions/{version_id}"
+    )
+    assert {p["name"] for p in get_version.params} == {"organization_id", "standard_id", "version_id"}
+    assert all(p["in"] == "path" and p["required"] for p in get_version.params)
+
+    list_requirements = by_name["compliance_list_requirements"]
+    assert list_requirements.mutates is False
+    assert list_requirements.path_template == (
+        "/api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements"
+    )
+    assert {p["name"] for p in list_requirements.params} == {"organization_id", "standard_id", "version_id"}
+
+    # No mutating tool for publish/retire is declared at all — Phase 6's
+    # spec deliberately keeps this module's MCP surface read-only.
+    assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())

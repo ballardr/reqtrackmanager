@@ -35,7 +35,7 @@ Plus two write tools, only when [write mode](#write-mode) is enabled:
 
 No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
 
-A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. None are registered today; this repository has no module with tools yet.
+A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers the first three (all read-only), listed there.
 
 ## Write mode
 
@@ -51,7 +51,17 @@ Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`ye
 
 ## Module-contributed tools
 
-Beyond the hand-written tools above, a backend module (compliance-module-plan.md Phase 4 — Compliance is the first module planned to use this, though none does yet) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+Beyond the hand-written tools above, a backend module (compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+
+**Compliance (compliance-module-plan.md Phase 6) is the first module to use this**, contributing three read-only tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `compliance_list_standards` | Lists an organisation's compliance standards |
+| `compliance_get_standard_version` | Fetches a single version of a compliance standard |
+| `compliance_list_requirements` | Lists the requirements defined in one version of a compliance standard |
+
+Every one of these takes `organization_id` as a required parameter (`compliance_get_standard_version`/`compliance_list_requirements` also take `standard_id`/`version_id`) — Phase 4's scoping rule (see above): no implicit "current org," no cross-org aggregation. No mutating tool is declared for the standards API's publish/retire lifecycle — Compliance's MCP surface stays deliberately read-only for now, the same cautious "add write tools narrowly and deliberately" default [Write mode](#write-mode) above already applies to this server's own hand-written tools.
 
 **How it works, briefly:** the backend's `GET /api/v1/system/modules/mcp-tools` (normal bearer-token authentication, no exemption) returns a manifest of every currently-registered module tool, already mechanically verified on the backend side — the registered tool name is always prefixed with its declaring module's key (e.g. `compliance_list_standards`), `mutates` is derived from HTTP method rather than declared by the module, and any tool that would resolve to an approval/decision-type action is excluded from the manifest entirely, the same "approval stays human-only" principle [Write mode](#write-mode) above already applies to this server's own hand-written tools. This server fetches that manifest **lazily and authenticated** — never at an unauthenticated boot-time call — using whichever connecting session's own already-presented token first triggers a refresh within a cache window (`MODULE_TOOLS_REFRESH_SECONDS`, default 600 seconds / 10 minutes); the result is cached in-process and reused across every session until the next refresh. Each declarative tool is a plain proxy call through the same `_call_backend` helper every hand-written tool above uses — no module's own code ever runs inside this process.
 

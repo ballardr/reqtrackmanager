@@ -43,18 +43,21 @@ def _alembic_config() -> Config:
     return cfg
 
 
-def test_compliance_module_is_registered_with_org_and_project_roles_and_no_router_yet():
+def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase."""
+    `INSTALLED_MODULES` as of this phase. Updated for Phase 6 (docs/
+    compliance-module-plan.md): the module now has a real router and
+    three read-only MCP tools — see `test_compliance_standards_api.py`
+    for the actual API surface these two facts stand in for here."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
 
     assert definition.default_enabled is True, "§1: compliance is enabled by default"
     assert definition.implemented is True
-    assert definition.get_router() is None, "Phase 5 is data model only; Phase 6 adds the router"
-    assert definition.mcp_tools == (), "no MCP tools until Phase 6 declares them"
+    assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
+    assert len(definition.mcp_tools) == 3, "Phase 6 declares three read-only MCP tools"
 
     roles_by_key = {role.role_key: role for role in definition.roles}
     assert set(roles_by_key) == {"compliance_manager", "compliance_officer"}
