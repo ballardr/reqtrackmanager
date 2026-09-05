@@ -198,6 +198,25 @@ Test restores periodically — a backup that has never been restored is not a ve
 
 The backend runs `alembic upgrade head` automatically on every startup (see [decisions.md](decisions.md) for why). Upgrading to a new ReqTrackManager version is: pull the new image, `docker compose up -d backend` — no manual migration step is required. Because of this, always take a database backup before upgrading, since the migration runs immediately and automatically on container start.
 
+### Adding an external module by mounting a directory
+
+The modular feature system (see [solution-architecture.md](solution-architecture.md)'s "Modular Feature System" section) can load a module from a plain directory mounted into the `backend` container — no rebuild of the backend image required. This is **off by default** and must be deliberately opted into, since it lets code the deployment operator supplies run inside the backend's own process with the backend's own database credentials; see [soc2/policies/vendor-and-subprocessor-management-policy.md](soc2/policies/vendor-and-subprocessor-management-policy.md) point 7 before enabling it.
+
+1. Build the module directory on the host, e.g. `./modules/my_module/module.py` exposing a module-level `MODULE_DEFINITION` (a `ModuleDefinition` — see `docs/modules.md` for the full authoring contract). If the module has its own database tables, it can also declare `migrations_import_path` pointing at a sibling module exposing an idempotent `run_migrations(connection) -> None`.
+2. Mount that directory into the backend container and point `EXTRA_MODULES_PATH` at it, and set `ALLOW_EXTERNAL_MODULES=true`:
+
+   ```yaml
+   backend:
+     environment:
+       ALLOW_EXTERNAL_MODULES: "true"
+       EXTRA_MODULES_PATH: /extra-modules
+     volumes:
+       - ./modules:/extra-modules:ro
+   ```
+3. `docker compose up -d backend` (or restart the container). At startup the backend discovers `MODULE_DEFINITION`, mounts its router (if any), registers its RBAC roles/MCP tools (if any), imports its models into the schema-comparison metadata, and — because `ALLOW_EXTERNAL_MODULES` is on — automatically applies its own `migrations_import_path` migration if it declares one. No edit to any core ReqTrackManager file is needed for any of this.
+
+A first-party module shipped inside the backend's own image (`backend/app/modules/`, e.g. Compliance) is unaffected by any of this — it always loads regardless of `ALLOW_EXTERNAL_MODULES`, and its own schema changes always ship as a reviewed Alembic migration in the core image, never via `migrations_import_path`.
+
 ### Observability
 
 ```bash

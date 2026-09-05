@@ -56,6 +56,7 @@ from typing import Literal
 
 from fastapi import APIRouter
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -434,6 +435,56 @@ class ModuleDefinition:
             function's own docstring, and docs/modules.md §6 for a worked
             example. Empty tuple for a module that contributes no tools of
             its own.
+        models_import_path: Dotted import path to this module's own ORM
+            models submodule (e.g. `"app.modules.compliance.models"`), or
+            `None` for a module with no models of its own. `import_all_
+            module_models` (below) imports every registered module's
+            declared path once, early, so `Base.metadata` — this project's
+            single shared SQLAlchemy declarative registry — includes that
+            module's tables without a hand-written `import app.modules.
+            <key>.models` line in `alembic/env.py`/`tests/conftest.py` per
+            module (module system Phase 5's own "one model-import line per
+            first-party module" touch point, now automated instead of
+            hand-maintained). Only ever *imports* a module's already-
+            registered models — it grants no new trust: a module still has
+            to be in the registry at all (first-party `INSTALLED_MODULES`,
+            always reviewed in-repo code; or, if the deployment operator has
+            explicitly opted in, `Settings.allow_external_modules`'s entry-
+            point/path discovery) before this does anything with it.
+            Importing a model class is inert with respect to any real
+            database — it only registers a table *shape* in-process. This
+            attribute has no bearing on whether that shape is ever actually
+            applied to a live database; see `migrations_import_path` below
+            for the (much more restricted) mechanism that does that.
+        migrations_import_path: Dotted import path to a Python module
+            exposing a `run_migrations(connection) -> None` function that
+            applies this module's own database schema changes — or `None`
+            for a module with no migration of its own (e.g. one with no
+            models, or a first-party module, which ships a real Alembic
+            migration in the reviewed core chain instead — see below).
+            Applied by `apply_external_module_migrations`, called once at
+            startup right after `alembic upgrade head` completes.
+
+            **This is honoured only for a module discovered via `Settings.
+            allow_external_modules`'s entry-point/path sources — never for
+            an `INSTALLED_MODULES` (first-party) module**, even if one sets
+            this field: `apply_external_module_migrations` checks registry
+            *source*, not merely presence of the field, and logs a warning
+            and skips it for any module whose `key` is also in `INSTALLED_
+            MODULES`. First-party migrations must keep going through a
+            reviewed PR into `backend/alembic/versions/`, exactly as before
+            — this field exists to let an *externally discovered* module
+            (one the deployment operator has already, separately, opted
+            into via `allow_external_modules`) apply its own schema changes
+            without a second, per-module core-repo edit, not to give a
+            first-party module a second, less-reviewed path to the same
+            end. `run_migrations(connection)` must be idempotent (safe to
+            call on every process start, the same `CREATE TABLE IF NOT
+            EXISTS`/`CREATE INDEX IF NOT EXISTS` convention every migration
+            in `backend/alembic/versions/` already follows) — it is called
+            every startup, not tracked against a per-module revision
+            history the way Alembic tracks the core chain's own `alembic_
+            version` table.
     """
 
     key: str
@@ -446,12 +497,26 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = field(default=())
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
+    models_import_path: str | None = None
+    migrations_import_path: str | None = None
 
 
-# First-party modules, added here starting with Compliance in Phase 5.
-# Always loaded regardless of `Settings.allow_external_modules` — this is
-# in-repo code that goes through this project's normal review process, not
-# a third-party discovery source.
+# First-party modules. Always loaded regardless of `Settings.
+# allow_external_modules` — this is in-repo code that goes through this
+# project's normal review process, not a third-party discovery source.
+#
+# Left empty here deliberately, rather than populated with a top-of-file
+# `from app.modules.compliance.module import MODULE_DEFINITION` — that
+# module itself imports `ModuleDefinition`/`ModuleRoleDefinition` from
+# *this* module, so importing it back before those names are defined would
+# be a genuine circular import if anything ever imported
+# `app.modules.compliance.module` directly ahead of this one (e.g. a test).
+# `app/modules/__init__.py` is the composition root that appends first-party
+# modules here instead: as a package `__init__`, it is guaranteed to finish
+# running before any of its submodules (this one included) can be imported
+# by anyone, so it can safely import this module to completion first and
+# only then import a first-party module's own `module.py` — see its own
+# docstring for the full reasoning.
 INSTALLED_MODULES: list[ModuleDefinition] = []
 
 _registry_cache: dict[str, ModuleDefinition] | None = None
@@ -728,6 +793,181 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     if override is not None:
         return override.enabled
     return definition.default_enabled
+
+
+def import_all_module_models() -> None:
+    """Imports every registered module's own `models_import_path`, if it
+    declares one, so `Base.metadata` — this project's single shared
+    SQLAlchemy declarative registry — includes that module's tables.
+
+    This is what `alembic/env.py` and `tests/conftest.py` call instead of a
+    hand-written `import app.modules.<key>.models` line per module: adding a
+    first-party module's own models to `Base.metadata` (needed for Alembic
+    autogenerate and `test_schema_migrations_match_models.py`'s drift check)
+    now follows automatically from that module declaring `models_import_
+    path` on its own `ModuleDefinition`, rather than requiring a matching
+    edit in two core files every time. Call this once, early — before
+    `Base.metadata` is read for anything — the same requirement `app.
+    models`'s own "populates Base.metadata" import comment already implies
+    for core models; this just does the equivalent for every module's own
+    models too, driven by the registry instead of a hand-maintained list of
+    imports.
+
+    A module whose `models_import_path` fails to import (a typo, a genuine
+    error in that module's own models module) is logged (`logger.exception`)
+    and skipped — it does not abort every other module's import, the same
+    per-module fault isolation `_discover_entry_point_modules`/`_discover_
+    path_modules` already apply to a broken third-party module elsewhere in
+    this file.
+
+    Trust boundary — what this function does **not** do: it only imports
+    Python model *classes* for a module already present in the live
+    registry (first-party `INSTALLED_MODULES`, always reviewed in-repo
+    code; or, only if the deployment operator has explicitly set `Settings.
+    allow_external_modules`, an entry-point/path-discovered module).
+    Importing a model class registers its table's *shape* with SQLAlchemy —
+    it does not create, alter, or touch that table in any real database.
+    Getting a real database's schema to actually match that shape is a
+    separate, more restricted step: a first-party module's own migration
+    still lands in the single, reviewed, linear `backend/alembic/versions/`
+    chain exactly as before; an externally-discovered module's own schema
+    changes are applied by `apply_external_module_migrations` (below), a
+    materially more restricted mechanism than this one — see its own
+    docstring for why running SQL against a real database is a categorically
+    different risk than importing an inert Python class, and is gated
+    accordingly.
+    """
+    for definition in get_module_registry().values():
+        if not definition.models_import_path:
+            continue
+        try:
+            importlib.import_module(definition.models_import_path)
+        except Exception:
+            logger.exception(
+                "Failed to import models_import_path %r for module %r; its tables will not appear "
+                "in Base.metadata",
+                definition.models_import_path, definition.key,
+            )
+
+
+def apply_external_module_migrations(engine: Engine) -> None:
+    """Applies every *externally-discovered* module's own database schema
+    changes, via its declared `migrations_import_path` — the mechanism that
+    lets a module dropped into `Settings.extra_modules_path` (e.g. a
+    directory mounted into a container) or installed as a `pip`-installed
+    entry-point package bring its own schema changes without a per-module
+    edit to this repo's core, reviewed `backend/alembic/versions/` chain.
+
+    Called once, early at process startup (`app.migrations.run_migrations`,
+    right after `alembic upgrade head` completes) — after the core schema is
+    known-current, and before anything else (route mounting, module-role
+    sync) might touch a module's own tables.
+
+    **Gating — deliberately more restrictive than `import_all_module_
+    models`, not the same check reused:**
+
+    1. A no-op entirely unless `Settings.allow_external_modules` is `True`
+       — the existing off-by-default opt-in (see its own docstring for the
+       CC6.8 rationale). When `False`, this function returns immediately
+       without even building the registry further or importing anything.
+    2. Even when external discovery is on, **only a module whose `key` is
+       *not* also in the static `INSTALLED_MODULES` list gets its migration
+       applied.** A first-party module declaring `migrations_import_path`
+       anyway (it shouldn't) is logged as a warning and skipped — it must
+       ship a real migration in the reviewed core chain instead, exactly as
+       every existing first-party module (including Compliance's own 0026)
+       already does. This is checked structurally (registry-key membership
+       against the real `INSTALLED_MODULES` list), not trusted from
+       anything the module itself claims about its own status — the same
+       "verify, don't trust a self-declared field" principle this file
+       already applies to a Tier B `frame_url` (`get_frontend_manifest`)
+       and an MCP tool's `path_template`/`is_approval_action`
+       (`build_mcp_tool_manifest`).
+
+    Each qualifying external module's `run_migrations(connection)` runs in
+    its **own** transaction (`engine.begin()` per module, not one shared
+    transaction across every module) — deliberately, so one module's
+    mid-migration failure rolls back only its own work and leaves the
+    connection usable for the next module, rather than aborting a shared
+    transaction every other module's own `connection.execute(...)` calls
+    would then also fail against. A failure (an exception raised by the
+    module's own `run_migrations`, or that module's `migrations_import_path`
+    failing to import, or exposing no `run_migrations` attribute at all) is
+    logged (`logger.exception`/`logger.warning`) and that module is skipped
+    — it does not abort startup or any other module's own migration, the
+    same per-module fault isolation this file already applies to a broken
+    third-party module during discovery itself. A module whose migration
+    fails may then have missing or incomplete tables of its own; its
+    endpoints querying them will fail with ordinary database errors at
+    request time rather than the whole application refusing to start over
+    one external module's own bug.
+
+    Honesty note, consistent with this file's existing one for MCP tools and
+    Tier B frames: this closes the "core files need a per-module edit" gap
+    for an *already-opted-into* external module, but does not and cannot
+    make running that module's own SQL as safe as a first-party, PR-reviewed
+    migration — the actual code being run is still whatever that module
+    declares, and the operator's decision to set `allow_external_modules`
+    is still what "was deliberately installed" (Phase 1's own trust
+    boundary) hinges on. `run_migrations(connection)` must be idempotent —
+    it is re-invoked on every process start, not tracked against a
+    per-module revision history.
+
+    Args:
+        engine: The application's real SQLAlchemy `Engine` (`app.database.
+            engine`) — a fresh connection/transaction is opened from it per
+            qualifying module.
+    """
+    if not get_settings().allow_external_modules:
+        logger.info("ALLOW_EXTERNAL_MODULES is false; skipping external-module migrations")
+        return
+
+    installed_keys = {definition.key for definition in INSTALLED_MODULES}
+
+    for definition in get_module_registry().values():
+        if not definition.migrations_import_path:
+            continue
+
+        if definition.key in installed_keys:
+            logger.warning(
+                "First-party module %r declares migrations_import_path %r; ignoring — a first-party "
+                "module must ship a real Alembic migration in the reviewed core chain instead",
+                definition.key, definition.migrations_import_path,
+            )
+            continue
+
+        try:
+            migrations_module = importlib.import_module(definition.migrations_import_path)
+        except Exception:
+            logger.exception(
+                "Failed to import migrations_import_path %r for external module %r; its own schema "
+                "changes were not applied",
+                definition.migrations_import_path, definition.key,
+            )
+            continue
+
+        run_migrations_fn = getattr(migrations_module, "run_migrations", None)
+        if run_migrations_fn is None:
+            logger.warning(
+                "External module %r's migrations_import_path %r has no run_migrations(connection) "
+                "function; its own schema changes were not applied",
+                definition.key, definition.migrations_import_path,
+            )
+            continue
+
+        try:
+            with engine.begin() as connection:
+                logger.info(
+                    "Applying external module %r's own migration (source=external, path=%r)",
+                    definition.key, definition.migrations_import_path,
+                )
+                run_migrations_fn(connection)
+        except Exception:
+            logger.exception(
+                "External module %r's own migration raised; its schema may be missing or incomplete, "
+                "but startup continues",
+                definition.key,
+            )
 
 
 def sync_module_role_definitions(db: Session) -> None:

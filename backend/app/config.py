@@ -152,6 +152,19 @@ class Settings(BaseSettings):
             turns this on knowingly, per the due-diligence expectation
             recorded in `docs/soc2/policies/
             vendor-and-subprocessor-management-policy.md`.
+
+            Also gates `app.modules.registry.apply_external_module_
+            migrations` (module system follow-up, 2026-09-05): when `True`,
+            a discovered external module's own declared `migrations_
+            import_path` is imported and its `run_migrations(connection)`
+            applied automatically, once at startup — the same opt-in that
+            already permits loading and running that module's code at all
+            now also covers applying its own database schema changes,
+            rather than requiring the operator to additionally hand-run a
+            migration out of band. Never applies to an `INSTALLED_MODULES`
+            (first-party) module regardless of this setting — first-party
+            schema changes always go through a reviewed PR into `backend/
+            alembic/versions/`.
         extra_modules_path: Optional local directory scanned for third-party
             modules (each an immediate subdirectory containing a
             `module.py` with a module-level `MODULE_DEFINITION`) when

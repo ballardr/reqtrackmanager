@@ -184,6 +184,8 @@ class ModuleDefinition:
     roles: tuple[ModuleRoleDefinition, ...] = ()  # module-contributed RBAC roles
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = ()
+    models_import_path: str | None = None       # dotted path to your ORM models module
+    migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
 ```
 
 `key` and every `role_key` a module declares are load-bearing identifiers —
@@ -191,6 +193,33 @@ they're used as plain string keys in database rows (entitlement, enablement,
 role grants), not foreign keys into a "modules" table, since modules are
 defined in code, not as rows. **Never change a module's `key` or an existing
 role's `role_key` once a deployment has data keyed on it.**
+
+**If your module has its own database tables**, set `models_import_path` to
+the dotted path of the module that defines them (e.g.
+`"app.modules.compliance.models"`) — `import_all_module_models()` imports it
+for you at the right time, so `Base.metadata` includes your tables for
+Alembic's own comparisons without you having to touch `alembic/env.py` or
+`tests/conftest.py` at all. This is purely an in-process Python import; it
+never touches a real database on its own.
+
+Getting your tables to actually *exist* in a real database is a separate
+step, and where it happens depends on how your module is loaded:
+
+- **First-party** (shipped inside `backend/app/modules/`, added to
+  `INSTALLED_MODULES`): ship a real Alembic migration in
+  `backend/alembic/versions/`, exactly like every other first-party
+  migration (Compliance's own `0026_compliance_data_model.py` is a worked
+  example) — reviewed in a normal PR. Leave `migrations_import_path` unset;
+  it is ignored for a first-party module even if you do set it.
+- **External** (loaded via `EXTRA_MODULES_PATH` or a `pip`-installed entry
+  point, only when the deployment operator has set `ALLOW_EXTERNAL_MODULES`):
+  set `migrations_import_path` to a module exposing
+  `run_migrations(connection) -> None`. It's called automatically at every
+  startup, each module in its own transaction — so it must be **idempotent**
+  (`CREATE TABLE IF NOT EXISTS`, etc., the same style every migration in this
+  repo already uses), since there's no per-module revision tracking. See
+  "Adding an external module by mounting a directory" in
+  [deployment.md](deployment.md) for the full operator-facing walkthrough.
 
 ---
 
@@ -468,10 +497,15 @@ reaches the registry:
 | Local directory | A folder with a `module.py` exposing `MODULE_DEFINITION`, pointed at by `EXTRA_MODULES_PATH` | Yes |
 
 **Backend:**
-1. Define your models and their own Alembic migration (a first-party module
-   adds one import line to `backend/alembic/env.py`; a third-party module
-   ships and applies its own migration separately — this system doesn't run
-   arbitrary third-party migrations automatically).
+1. Define your models and set `models_import_path` on your
+   `ModuleDefinition` so `Base.metadata` includes them automatically —
+   no core-file edit needed for this part, regardless of discovery path.
+   Getting a real database to match that shape differs by discovery path:
+   a first-party module ships a real, reviewed Alembic migration in
+   `backend/alembic/versions/`; an external module instead sets
+   `migrations_import_path` to an idempotent `run_migrations(connection)`,
+   applied automatically — but only when the deployment operator has set
+   `ALLOW_EXTERNAL_MODULES` (see [Security model](#security-model)).
 2. Build an `APIRouter` for your endpoints. Gate each mutating/sensitive
    endpoint with `require_org_module_enabled(your_key)` /
    `require_project_module_enabled(your_key)`, or `require_module_role
@@ -480,8 +514,8 @@ reaches the registry:
    audit trail every core mutation already goes through.
 4. Assemble your `ModuleDefinition` (key, name, description, version,
    `default_enabled`, `get_router`, `roles`, `frontend_manifest`,
-   `mcp_tools`) and register it via whichever discovery path you chose
-   above.
+   `mcp_tools`, `models_import_path`, `migrations_import_path`) and
+   register it via whichever discovery path you chose above.
 
 **Frontend (if you have a UI):**
 - Prefer **Tier A**: build your route components against the real shared
@@ -524,6 +558,12 @@ that way, not glossed over:
 - **Sandboxing arbitrary untrusted code execution is explicitly out of
   scope.** The mitigation is the opt-in gate above, not a sandbox — the same
   boundary any Python plugin ecosystem (pytest, Flask) relies on.
+- **That same opt-in also covers applying an external module's own database
+  migration**, via `migrations_import_path` (§3 above) — not a second,
+  separate trust decision, just the same "was deliberately installed" gate
+  extended to schema changes rather than only request-time behaviour. A
+  first-party module is exempt from this mechanism regardless of the flag:
+  its schema changes always ship as a reviewed migration in the core image.
 - **Path-scoping and approval-exclusion for MCP tools are mechanically
   enforced**, not trusted from a module's own manifest — see
   [§6](#6-module-contributed-mcp-tools) above. This gives a real guarantee

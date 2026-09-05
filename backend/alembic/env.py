@@ -10,6 +10,9 @@ import app.models  # noqa: F401  (populates Base.metadata)
 from alembic import context
 from app.config import get_settings
 from app.database import Base
+from app.modules.registry import import_all_module_models
+
+import_all_module_models()  # populates Base.metadata for every registered module's own models
 
 config = context.config
 if config.config_file_name is not None:

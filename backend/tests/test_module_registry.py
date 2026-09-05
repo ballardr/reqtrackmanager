@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import create_engine, text
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -27,7 +28,12 @@ from app.models.audit import AuditEvent
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
 from app.models.user import User
 from app.modules import registry as module_registry
-from app.modules.registry import ModuleDefinition, build_registry
+from app.modules.registry import (
+    ModuleDefinition,
+    apply_external_module_migrations,
+    build_registry,
+    import_all_module_models,
+)
 from app.services.rbac import require_org_module_enabled, require_project_module_enabled
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
@@ -319,6 +325,202 @@ def test_allow_external_modules_false_never_calls_discovery_functions(monkeypatc
     get_settings.cache_clear()
     try:
         build_registry(force=True)  # must not raise
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+        build_registry(force=True)
+
+
+# --- import_all_module_models (Base.metadata auto-registration) -------------
+#
+# These monkeypatch `module_registry.importlib.import_module` itself, rather
+# than actually importing a real fake models module: a real dynamic import
+# would permanently register a fake table on the process-wide `Base.metadata`
+# for the rest of this test session (SQLAlchemy has no "unregister a mapped
+# class" operation, unlike this file's own `INSTALLED_MODULES` list, which
+# every other test here can freely append to and remove from) — the very
+# next test in this suite that runs `test_schema_migrations_match_models.py`
+# would then see a table in `Base.metadata` with nothing in the real migrated
+# schema to match it against, and fail. Asserting on *what got called*, not
+# on a real import's side effect, avoids that entirely.
+#
+# Assertions check membership/subset, not exact equality: Compliance is a
+# real, permanent `INSTALLED_MODULES` entry with its own `models_import_path`
+# (`"app.modules.compliance.models"`), so every call here also imports that
+# alongside whatever fixture modules the test itself registers.
+
+
+def test_import_all_module_models_imports_every_declared_path(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(module_registry.importlib, "import_module", calls.append)
+    fake_a = _fake_module(key="models_fake_a", models_import_path="fake.package.a.models")
+    fake_b = _fake_module(key="models_fake_b", models_import_path="fake.package.b.models")
+    module_registry.INSTALLED_MODULES.extend([fake_a, fake_b])
+    build_registry(force=True)
+    try:
+        import_all_module_models()
+        assert {"fake.package.a.models", "fake.package.b.models"} <= set(calls)
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key not in {"models_fake_a", "models_fake_b"}
+        ]
+        build_registry(force=True)
+
+
+def test_import_all_module_models_skips_a_module_with_no_models_import_path(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(module_registry.importlib, "import_module", calls.append)
+    fake = _fake_module(key="models_fake_none")  # models_import_path defaults to None
+    module_registry.INSTALLED_MODULES.append(fake)
+    build_registry(force=True)
+    try:
+        import_all_module_models()
+        assert "fake" not in " ".join(calls), "a module with no models_import_path must not trigger any import"
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key != "models_fake_none"
+        ]
+        build_registry(force=True)
+
+
+def test_import_all_module_models_one_failure_does_not_block_the_others(monkeypatch):
+    """A module whose `models_import_path` fails to import (a typo, a
+    genuine bug in that module) is logged and skipped — it must not abort
+    every other module's own import."""
+    calls: list[str] = []
+
+    def _fake_import(path: str):
+        if path == "fake.package.broken.models":
+            raise ModuleNotFoundError(path)
+        calls.append(path)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+    broken = _fake_module(key="models_fake_broken", models_import_path="fake.package.broken.models")
+    healthy = _fake_module(key="models_fake_healthy", models_import_path="fake.package.healthy.models")
+    module_registry.INSTALLED_MODULES.extend([broken, healthy])
+    build_registry(force=True)
+    try:
+        import_all_module_models()  # must not raise
+        assert "fake.package.healthy.models" in calls
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key not in {"models_fake_broken", "models_fake_healthy"}
+        ]
+        build_registry(force=True)
+
+
+# --- apply_external_module_migrations ----------------------------------------
+#
+# Each test uses a real, throwaway in-memory SQLite engine (`create_engine
+# ("sqlite://")`) rather than the shared Postgres test database — this
+# exercises the real `engine.begin()`/`connection.execute(text(...))`
+# mechanics `run_migrations(connection)` actually uses, without touching
+# anything the rest of this suite depends on. `importlib.import_module` is
+# still monkeypatched (as in the `import_all_module_models` tests above) so
+# no fake module needs to exist on disk.
+
+
+def test_apply_external_module_migrations_noop_when_disallowed(monkeypatch):
+    def _boom(path):
+        raise AssertionError("must not even attempt to import a migrations module when disallowed")
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _boom)
+    monkeypatch.delenv("ALLOW_EXTERNAL_MODULES", raising=False)
+    get_settings.cache_clear()
+    fake = _fake_module(key="migrations_fake_disallowed", migrations_import_path="fake.migrations")
+    module_registry.INSTALLED_MODULES.append(fake)  # present in the registry, just not entitled to run
+    build_registry(force=True)
+    try:
+        apply_external_module_migrations(create_engine("sqlite://"))  # must not raise
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key != "migrations_fake_disallowed"
+        ]
+        get_settings.cache_clear()
+        build_registry(force=True)
+
+
+def test_apply_external_module_migrations_applies_for_an_external_module_when_allowed(monkeypatch):
+    ran_with: list = []
+
+    def _run_migrations(connection):
+        connection.execute(text("CREATE TABLE widget (id INTEGER PRIMARY KEY)"))
+        ran_with.append(connection)
+
+    fake_migrations_module = SimpleNamespace(run_migrations=_run_migrations)
+    monkeypatch.setattr(
+        module_registry.importlib, "import_module",
+        lambda path: fake_migrations_module if path == "fake.migrations.external" else (_ for _ in ()).throw(
+            ModuleNotFoundError(path)
+        ),
+    )
+    external = _fake_module(key="migrations_fake_external", migrations_import_path="fake.migrations.external")
+    monkeypatch.setattr(module_registry, "_discover_entry_point_modules", lambda: [external])
+    monkeypatch.setenv("ALLOW_EXTERNAL_MODULES", "true")
+    get_settings.cache_clear()
+    build_registry(force=True)
+    engine = create_engine("sqlite://")
+    try:
+        apply_external_module_migrations(engine)
+        assert len(ran_with) == 1
+        with engine.connect() as conn:
+            conn.execute(text("SELECT * FROM widget"))  # table must actually exist now
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+        build_registry(force=True)
+
+
+def test_apply_external_module_migrations_skips_a_first_party_module_even_if_declared(monkeypatch):
+    """A module in `INSTALLED_MODULES` declaring `migrations_import_path`
+    anyway must be ignored — first-party migrations go through the reviewed
+    core Alembic chain, never this mechanism, regardless of what a
+    first-party `ModuleDefinition` itself declares."""
+
+    def _boom(path):
+        raise AssertionError("a first-party module's migrations_import_path must never be imported")
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _boom)
+    monkeypatch.setenv("ALLOW_EXTERNAL_MODULES", "true")
+    get_settings.cache_clear()
+    fake = _fake_module(key="migrations_fake_first_party", migrations_import_path="fake.migrations.first_party")
+    module_registry.INSTALLED_MODULES.append(fake)
+    build_registry(force=True)
+    try:
+        apply_external_module_migrations(create_engine("sqlite://"))  # must not raise
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key != "migrations_fake_first_party"
+        ]
+        monkeypatch.undo()
+        get_settings.cache_clear()
+        build_registry(force=True)
+
+
+def test_apply_external_module_migrations_one_failure_does_not_block_the_others(monkeypatch):
+    ran: list[str] = []
+
+    def _broken_run_migrations(connection):
+        raise RuntimeError("boom")
+
+    def _healthy_run_migrations(connection):
+        connection.execute(text("CREATE TABLE widget (id INTEGER PRIMARY KEY)"))
+        ran.append("healthy")
+
+    modules_by_path = {
+        "fake.migrations.broken": SimpleNamespace(run_migrations=_broken_run_migrations),
+        "fake.migrations.healthy": SimpleNamespace(run_migrations=_healthy_run_migrations),
+    }
+    monkeypatch.setattr(module_registry.importlib, "import_module", lambda path: modules_by_path[path])
+    broken = _fake_module(key="migrations_fake_broken", migrations_import_path="fake.migrations.broken")
+    healthy = _fake_module(key="migrations_fake_healthy", migrations_import_path="fake.migrations.healthy")
+    monkeypatch.setattr(module_registry, "_discover_entry_point_modules", lambda: [broken, healthy])
+    monkeypatch.setenv("ALLOW_EXTERNAL_MODULES", "true")
+    get_settings.cache_clear()
+    build_registry(force=True)
+    try:
+        apply_external_module_migrations(create_engine("sqlite://"))  # must not raise
+        assert ran == ["healthy"]
     finally:
         monkeypatch.undo()
         get_settings.cache_clear()

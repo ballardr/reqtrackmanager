@@ -235,10 +235,11 @@ if settings.websocket_enabled:
 # registry here (via `get_module_registry`, which internally caches) is
 # also what produces this run's "every loaded module logged at startup"
 # operational record (see `app.modules.registry`'s module docstring) — no
-# separate lifespan-hook logging is needed for that. No first-party module
-# exists yet (none is added to `INSTALLED_MODULES` until Phase 5), so this
-# loop currently mounts nothing; that's expected, not a bug — it's
-# infrastructure for later phases. A module's own router applies its own
+# separate lifespan-hook logging is needed for that. Compliance (Phase 5) is
+# the first first-party module in `INSTALLED_MODULES`, but its own
+# `get_router()` still returns `None` (Phase 5 is data model only — no
+# endpoints yet), so this loop currently mounts nothing either way; that's
+# expected, not a bug. A module's own router applies its own
 # `require_org_module_enabled`/`require_project_module_enabled` gating
 # internally; there is no second gate applied at this mount-loop level.
 for _module_definition in get_module_registry().values():

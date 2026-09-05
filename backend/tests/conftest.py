@@ -58,7 +58,10 @@ from app.config import get_settings
 from app.database import Base, SessionLocal
 from app.database import engine as app_engine
 from app.migrations import run_migrations
+from app.modules.registry import import_all_module_models
 from app.services.bootstrap import run_bootstrap
+
+import_all_module_models()  # populates Base.metadata for every registered module's own models
 
 _settings_for_guard = get_settings()
 _test_db_name = _settings_for_guard.database_url.rpartition("/")[2]
