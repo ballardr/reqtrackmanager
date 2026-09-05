@@ -514,6 +514,25 @@ class ModuleDefinition:
             every startup, not tracked against a per-module revision
             history the way Alembic tracks the core chain's own `alembic_
             version` table.
+        resolve_file_owner_project_id: Optional hook (compliance-module-
+            plan.md Phase 8) letting a module authorize downloads of files
+            it owns through the single generic `GET /api/v1/files/{id}`
+            endpoint (`app.routers.files.download_file`), without that
+            core, module-agnostic router needing to import anything from
+            the module directly — the same "core code shouldn't need much
+            modification per module" goal `get_router`/`get_project_router`
+            already serve for HTTP endpoints, applied to this one
+            remaining core file that every module sharing the existing
+            file-attachment mechanism (§13's own "reuse ReqTrackManager's
+            existing attachment/file mechanisms") needs a hook into.
+            `download_file` calls `resolve_module_file_project_id` (below),
+            which tries this hook, in registry order, across every
+            registered module until one returns a project id or all
+            return `None`. Takes `(db, file_id)`, returns the owning
+            project's id if this module's own file-link table (e.g.
+            Compliance's `ComplianceEvidenceFile`) references `file_id`,
+            else `None`. `None` for a module with no file attachments of
+            its own (every module before Phase 8).
     """
 
     key: str
@@ -529,6 +548,7 @@ class ModuleDefinition:
     models_import_path: str | None = None
     migrations_import_path: str | None = None
     get_project_router: Callable[[], APIRouter | None] | None = None
+    resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1110,6 +1130,38 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
         )
         return None
     return manifest
+
+
+def resolve_module_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
+    """Tries every registered module's `resolve_file_owner_project_id` hook
+    (compliance-module-plan.md Phase 8), in registry iteration order,
+    returning the first non-`None` project id found — the mechanism
+    `app.routers.files.download_file` calls to authorize a module-owned
+    file attachment (e.g. Compliance evidence) without that core,
+    module-agnostic router importing anything from any specific module.
+
+    A module with no `resolve_file_owner_project_id` of its own (the
+    default `None`) is simply skipped, the same as one declaring no
+    `mcp_tools`/`roles`. Two modules should never legitimately claim the
+    same `file_id` (each module's own file-link table only ever contains
+    files it created), so "first match wins" is a defensive tie-break, not
+    a meaningful precedence rule.
+
+    Args:
+        db: An active database session.
+        file_id: The `FileAsset` id being resolved.
+
+    Returns:
+        The owning project's id, or `None` if no registered module's hook
+        recognises this file.
+    """
+    for definition in get_module_registry().values():
+        if definition.resolve_file_owner_project_id is None:
+            continue
+        project_id = definition.resolve_file_owner_project_id(db, file_id)
+        if project_id is not None:
+            return project_id
+    return None
 
 
 def list_enabled_module_roles(

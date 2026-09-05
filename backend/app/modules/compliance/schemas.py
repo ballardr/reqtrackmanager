@@ -37,6 +37,12 @@ Design decisions, not left implicit:
   precedent for this specific field in this codebase, so this is a new,
   deliberate judgment call — see docs/compliance-module-plan.md's "Phase 6
   notes").
+- Phase 8 (§13-§15, Evidence) adds its own schemas at the bottom of this
+  file: `ComplianceEvidenceUpdate` deliberately excludes `expiry_date`
+  (§15's revalidation-only rule — see that schema's own docstring), and
+  `ComplianceEvidenceOut` is built explicitly by the router rather than
+  `from_attributes` alone, for the same "computed field" reason as
+  `ProjectComplianceRequirementOut`.
 """
 
 from __future__ import annotations
@@ -51,6 +57,7 @@ from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApplicabilitySource,
     ComplianceApprovalState,
+    ComplianceEvidenceValidityState,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -388,3 +395,98 @@ class NonCompliantRequirementOut(BaseModel):
     notes: str
     assessed_at: datetime | None
     assessed_by: UUID | None
+
+
+# --- Phase 8: Evidence ----------------------------------------------------------
+
+
+class ComplianceEvidenceCreate(BaseModel):
+    """Payload for creating a `ComplianceEvidence` row (§13). `provided_by`/
+    `provided_at` are never caller-supplied — the router always sets them
+    to the current user/now, mirroring `ProjectCompliance.assigned_at`/
+    `assigned_by`'s own convention. `project_compliance_requirement_ids`/
+    `required_action_assessment_ids` are optional initial links (§13's
+    multi-linkage) — each is validated to belong to this project; further
+    links can be added afterward via the dedicated link endpoints."""
+
+    title: str
+    description: str = ""
+    issuing_organisation: str | None = None
+    issued_date: date | None = None
+    expiry_date: date | None = None
+    notes: str = ""
+    project_compliance_requirement_ids: list[UUID] = []
+    required_action_assessment_ids: list[UUID] = []
+
+
+class ComplianceEvidenceUpdate(BaseModel):
+    """Update payload — deliberately excludes `expiry_date`: per §15,
+    changing an evidence row's validity/expiry must always go through
+    `POST .../revalidate` so the previous value is retained in
+    `ComplianceEvidenceRevalidation`, never silently overwritten by a plain
+    field edit."""
+
+    title: str
+    description: str = ""
+    issuing_organisation: str | None = None
+    issued_date: date | None = None
+    notes: str = ""
+
+
+class ComplianceEvidenceRevalidateRequest(BaseModel):
+    """Payload for `POST .../evidence/{id}/revalidate` (§15). `new_expiry_date`
+    may be `None` (e.g. revalidating evidence that has no expiry at all, to
+    simply record a periodic re-confirmation) — see `router.py::revalidate_
+    evidence`."""
+
+    new_expiry_date: date | None = None
+    justification: str = ""
+
+
+class ComplianceEvidenceRevalidationOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    evidence_id: UUID
+    revalidated_by: UUID
+    revalidated_at: datetime
+    previous_expiry_date: date | None
+    new_expiry_date: date | None
+    justification: str
+    created_at: datetime
+
+
+class ComplianceEvidenceRequirementLinkCreate(BaseModel):
+    project_compliance_requirement_id: UUID
+
+
+class ComplianceEvidenceActionLinkCreate(BaseModel):
+    required_action_assessment_id: UUID
+
+
+class ComplianceEvidenceOut(BaseModel):
+    """Response shape for one `ComplianceEvidence` row, plus its *computed*
+    (never stored) `validity_state` (§14 — see `service.py::compute_
+    evidence_validity_state`) and its current linked requirement/required-
+    action-assessment ids (§13's multi-linkage) — built explicitly by the
+    router (not `from_attributes` alone), the same reason
+    `ProjectComplianceRequirementOut` is."""
+
+    id: UUID
+    project_id: UUID
+    title: str
+    description: str
+    issuing_organisation: str | None
+    issued_date: date | None
+    expiry_date: date | None
+    provided_by: UUID
+    provided_at: datetime
+    notes: str
+    validity_state: ComplianceEvidenceValidityState
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    linked_requirement_ids: list[UUID]
+    linked_required_action_assessment_ids: list[UUID]

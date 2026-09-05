@@ -37,17 +37,30 @@ second router rather than being nested under the org-scoped one; see
 `app.modules.registry`'s own docstring on `get_project_router` and
 `project_router.py`'s module docstring for the full reasoning.
 
+Phase 8 (Evidence, §13-§15) adds this module's evidence endpoints to the
+same project router, one more read-only MCP tool
+(`compliance_list_expiring_evidence(project_id)`), and this module's
+`resolve_file_owner_project_id` hook (`app.modules.registry`) — resolving
+a `ComplianceEvidenceFile`-attached file to its owning project, so the
+core, module-agnostic `GET /api/v1/files/{id}` download endpoint
+(`app.routers.files.download_file`) can authorize a Compliance evidence
+attachment without importing anything from this module directly.
+
 External dependencies: `app.modules.registry`'s own dataclasses;
-`app.modules.compliance.router`/`.project_router` (each imported lazily,
-inside `get_router()`/`get_project_router()`, to avoid any import-cycle
-risk with this module's own registration -- mirroring how Phase 5's own
-notes already document resolving the `MODULE_DEFINITION`/registry import
-cycle via `app/modules/__init__.py`).
+`app.modules.compliance.router`/`.project_router`/`.service` (each imported
+lazily, inside `get_router()`/`get_project_router()`/`resolve_file_owner_
+project_id`, to avoid any import-cycle risk with this module's own
+registration -- mirroring how Phase 5's own notes already document
+resolving the `MODULE_DEFINITION`/registry import cycle via `app/modules/
+__init__.py`).
 """
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter
+from sqlalchemy.orm import Session
 
 from app.modules.registry import McpToolDefinition, ModuleDefinition, ModuleRoleDefinition
 
@@ -77,6 +90,15 @@ def get_project_router() -> APIRouter | None:
     return compliance_project_router
 
 
+def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
+    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook
+    (Phase 8) — imported lazily for the same import-cycle reason as
+    `get_router()`/`get_project_router()`."""
+    from app.modules.compliance.service import resolve_evidence_file_project_id
+
+    return resolve_evidence_file_project_id(db, file_id)
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
     name="Compliance",
@@ -90,6 +112,7 @@ MODULE_DEFINITION = ModuleDefinition(
     get_router=get_router,
     get_project_router=get_project_router,
     models_import_path="app.modules.compliance.models",
+    resolve_file_owner_project_id=resolve_file_owner_project_id,
     roles=(
         ModuleRoleDefinition(
             role_key="compliance_manager",
@@ -175,6 +198,19 @@ MODULE_DEFINITION = ModuleDefinition(
             params=[
                 {"name": "project_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The project whose non-compliant requirements to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_expiring_evidence",
+            description=(
+                "Lists a project's non-archived supporting evidence that is approaching or has "
+                "already passed its expiry date."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/expiring-evidence",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose expiring/expired evidence to list."},
             ],
         ),
     ),

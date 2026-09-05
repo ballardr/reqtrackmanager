@@ -20,6 +20,11 @@ define — folds approval state in (see `service.py::summarize_project_
 compliance`); no endpoint moves a row off `NOT_ASSESSED` until Phase 9
 ships. `ComplianceApplicabilitySource` is Phase 7's own addition, computed
 (never stored) by `service.py::resolve_applicability`.
+
+`ComplianceEvidenceValidityState` is Phase 8's own addition (§14), also
+computed rather than stored — see `service.py::compute_evidence_validity_
+state` — for the same "queryable derived state, not a stored one that can
+drift" reason `ComplianceApplicabilitySource` already established.
 """
 
 from __future__ import annotations
@@ -118,3 +123,30 @@ class ComplianceApplicabilitySource(str, enum.Enum):
     EXPLICIT = "explicit"
     INHERITED = "inherited"
     OVERRIDDEN = "overridden"
+
+
+class ComplianceEvidenceValidityState(str, enum.Enum):
+    """A `ComplianceEvidence` row's *current* validity, derived from its
+    `expiry_date` at read time (§14 — "The system must be able to
+    identify: Valid evidence. Evidence approaching expiry. Expired
+    evidence."). Computed by `service.py::compute_evidence_validity_state`,
+    never stored — see that function's own docstring for the exact rule
+    and the warning-window constant it uses. Independent of `ComplianceEvidence.
+    is_archived`: archived evidence is still assigned a validity state (it
+    simply isn't surfaced by the "expiring/expired" listings, which exclude
+    archived rows) — "no longer applicable" (§13) and "no longer valid"
+    (§14) are deliberately different questions.
+
+    `NO_EXPIRY` is a distinct value from `VALID`, not folded into it: §14's
+    own field list treats "has no expiry date at all" and "has an expiry
+    date that hasn't been reached yet" as different facts about a piece of
+    evidence, and a caller (e.g. a future Phase 10 reminder sweep) should
+    be able to tell "nothing to ever warn about" apart from "currently
+    fine, but will eventually need attention" without inspecting
+    `expiry_date` itself.
+    """
+
+    NO_EXPIRY = "no_expiry"
+    VALID = "valid"
+    EXPIRING_SOON = "expiring_soon"
+    EXPIRED = "expired"

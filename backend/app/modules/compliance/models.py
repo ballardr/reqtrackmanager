@@ -156,6 +156,44 @@ Phase 7 design decisions:
   would just need reconciling away later, the same call Phase 5 already
   made about its own standard-level fields.
 
+Phase 8 design decisions:
+- `ComplianceEvidence` is project-scoped (`project_id`), not standard- or
+  requirement-scoped: evidence (a certificate, a test report) is a real
+  artefact supplied for one project's own assessment, even though a
+  single row may support several of that project's requirements and/or
+  required actions at once (§13's own "a single piece of evidence should
+  be capable of supporting multiple compliance requirements"). That
+  multi-linkage is a genuine many-to-many, not a foreign key on either
+  side — see `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
+  below, which deliberately point at the project-specific assessment rows
+  (`ProjectComplianceRequirement`/`ComplianceRequiredActionAssessment`),
+  not the reusable `ComplianceRequirement`/`ComplianceRequiredAction`
+  definitions — the same §31 "state belongs to the project-specific
+  assessment layer, not the reusable definition" principle this file's
+  own Phase 7 notes already apply to `ComplianceStatus`/
+  `ComplianceApplicability`, extended one concept further to evidence.
+- `ComplianceEvidence.expiry_date` is this row's *current* effective
+  expiry — revalidating (§15) updates it in place. `ComplianceEvidenceRevalidation`
+  is a separate, append-only table recording what it previously was: §15's
+  own worked example ("Issued/Expires/Revalidated/By/New expiry") requires
+  the *previous* expiry to remain visible after a revalidation, which a
+  plain in-place update (even with `updated_at` tracking) cannot provide,
+  since a second revalidation would overwrite the first's own "previous"
+  value along with the row's `expiry_date` itself.
+- `ComplianceEvidenceFile` mirrors `app.models.file.RequirementFile`'s
+  exact shape (UUID PK, `evidence_id`/`file_id`/`linked_by`/`created_at`,
+  no `updated_at`) rather than reusing that table directly — it lives in
+  this module (not `app.models.file`) since it is Compliance-owned, not a
+  core concept, per §13's "reuse ReqTrackManager's existing attachment/
+  file mechanisms" (i.e. `services.files.upload_file`), not its existing
+  *tables*, which are all owned by specific core entities.
+- `is_archived`/`archived_at`/`archived_by` on `ComplianceEvidence` mirrors
+  every other compliance entity's soft-delete convention exactly, and is
+  this model's answer to §13's own listed attribute "Whether it remains
+  applicable" — deliberately not a hard delete, since that would silently
+  sever `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
+  rows that other assessments' own audit trail (§16) may still depend on.
+
 External dependencies: none beyond this project's own ORM/config modules.
 """
 
@@ -584,3 +622,150 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+
+
+# --- Phase 8: Evidence -----------------------------------------------------------
+
+
+class ComplianceEvidence(UUIDPKMixin, TimestampMixin, Base):
+    """A piece of supporting evidence for one or more of a project's
+    compliance assessments (§13) — e.g. "IPX9 Test Certificate." Project-
+    scoped, not standard/requirement-scoped: see this module's own
+    docstring for why.
+
+    Attributes:
+        project_id: The owning project.
+        title: Short display name (§13's own worked example: "IPX9 Test
+            Certificate").
+        description: Free-text elaboration.
+        issuing_organisation: The external body/person that issued this
+            evidence, where applicable (§14) — e.g. a test lab's name.
+        issued_date: When this evidence was issued (§13/§14's "Issue
+            date"), distinct from `provided_at` (when it was uploaded into
+            this system).
+        expiry_date: This evidence's *current* effective expiry (§14),
+            nullable — not every piece of evidence expires. Updated in
+            place by a revalidation; see this module's own docstring for
+            why the *previous* value is never lost.
+        provided_by / provided_at: Who supplied this evidence and when
+            (§13) — set automatically at creation, never caller-supplied,
+            mirroring `ProjectCompliance.assigned_at`/`assigned_by`'s own
+            convention.
+        notes: Free-text notes, independent of `description`.
+        is_archived / archived_at / archived_by: Whether this evidence
+            "remains applicable" (§13) — see this module's own docstring
+            for why this is a soft-delete, not a hard one.
+    """
+
+    __tablename__ = "compliance_evidence"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    issuing_organisation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    issued_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    provided_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    provided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ComplianceEvidenceRevalidation(UUIDPKMixin, Base):
+    """One revalidation event for a `ComplianceEvidence` row (§15) —
+    append-only, never updated: mirrors `app.models.file.RequirementFile`'s
+    own "no `updated_at`, insert-only" shape (a plain `created_at` column
+    rather than `TimestampMixin`), for the same reason — this row is never
+    mutated after creation.
+
+    Attributes:
+        evidence_id: The `ComplianceEvidence` this revalidation applies to.
+        revalidated_by / revalidated_at: Who revalidated and when (§15).
+        previous_expiry_date: `ComplianceEvidence.expiry_date`'s value
+            immediately before this revalidation (`None` if it had none) —
+            this is what makes the history genuinely retained rather than
+            reconstructible only from timestamps.
+        new_expiry_date: The new validity/expiry date this revalidation
+            sets (§15) — mirrors `ComplianceEvidence.expiry_date`'s value
+            immediately after this event is applied.
+        justification: Optional free-text justification (§15).
+    """
+
+    __tablename__ = "compliance_evidence_revalidations"
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"), index=True
+    )
+    revalidated_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    revalidated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    previous_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    new_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    justification: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ComplianceEvidenceFile(UUIDPKMixin, Base):
+    """Links a file (direct upload, or an organisation shared resource) to
+    a `ComplianceEvidence` row — the exact shape of `app.models.file.
+    RequirementFile`; see this module's own docstring for why this lives
+    here rather than reusing that table directly. No `index=True` on
+    either foreign key, mirroring `RequirementFile`'s own
+    unindexed-beyond-primary-key convention for this exact join-table
+    shape."""
+
+    __tablename__ = "compliance_evidence_files"
+    __table_args__ = (UniqueConstraint("evidence_id", "file_id"),)
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ComplianceEvidenceRequirementLink(UUIDPKMixin, Base):
+    """Links one `ComplianceEvidence` row to one
+    `ProjectComplianceRequirement` row (§13's "a requirement... should be
+    able to reference supporting evidence" / "a single piece of evidence
+    should be capable of supporting multiple compliance requirements").
+    Deliberately points at the project-specific assessment row, not the
+    reusable `ComplianceRequirement` definition — see this module's own
+    docstring. No `index=True` on either foreign key, mirroring
+    `RequirementFile`'s own convention for this exact join-table shape
+    (and avoiding this exact table/column combination's auto-generated
+    index name exceeding Postgres's 63-byte identifier limit, the same
+    class of problem `ComplianceRequiredActionAssessment`'s own comment
+    already documents for a different table)."""
+
+    __tablename__ = "compliance_evidence_requirement_links"
+    __table_args__ = (UniqueConstraint("evidence_id", "project_compliance_requirement_id"),)
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
+    project_compliance_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_compliance_requirements.id", ondelete="CASCADE")
+    )
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ComplianceEvidenceActionLink(UUIDPKMixin, Base):
+    """Links one `ComplianceEvidence` row to one
+    `ComplianceRequiredActionAssessment` row (§13's "...or Required Action
+    should be able to reference supporting evidence") — the required-
+    action-assessment equivalent of `ComplianceEvidenceRequirementLink`
+    above; see that model's own docstring for why this points at the
+    project-specific assessment layer, not the reusable definition, and
+    for why neither foreign key here is indexed."""
+
+    __tablename__ = "compliance_evidence_action_links"
+    __table_args__ = (UniqueConstraint("evidence_id", "required_action_assessment_id"),)
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
+    required_action_assessment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_required_action_assessments.id", ondelete="CASCADE")
+    )
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

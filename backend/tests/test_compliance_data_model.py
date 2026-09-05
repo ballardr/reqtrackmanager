@@ -46,11 +46,13 @@ def _alembic_config() -> Config:
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase. Updated for Phase 7 (docs/
+    `INSTALLED_MODULES` as of this phase. Updated for Phase 8 (docs/
     compliance-module-plan.md): the module now has both an org-scoped and
-    a project-scoped router, and five read-only MCP tools (three from
-    Phase 6, two more from Phase 7) — see `test_compliance_standards_api.py`
-    /`test_project_compliance_api.py` for the actual API surfaces these
+    a project-scoped router, six read-only MCP tools (three from Phase 6,
+    two more from Phase 7, one more from Phase 8's evidence support), and a
+    `resolve_file_owner_project_id` hook (Phase 8) — see
+    `test_compliance_standards_api.py`/`test_project_compliance_api.py`/
+    `test_compliance_evidence_api.py` for the actual API surfaces these
     facts stand in for here."""
     registry = get_module_registry()
     assert "compliance" in registry
@@ -61,7 +63,10 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 5, "Phase 6 declared three read-only MCP tools; Phase 7 added two more"
+    assert len(definition.mcp_tools) == 6, (
+        "Phase 6 declared three read-only MCP tools; Phase 7 added two more; Phase 8 added one more"
+    )
+    assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
 
     roles_by_key = {role.role_key: role for role in definition.roles}
     assert set(roles_by_key) == {"compliance_manager", "compliance_officer"}

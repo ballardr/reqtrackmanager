@@ -187,6 +187,7 @@ class ModuleDefinition:
     models_import_path: str | None = None       # dotted path to your ORM models module
     migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
     get_project_router: Callable[[], APIRouter | None] | None = None  # optional 2nd, project-scoped router
+    resolve_file_owner_project_id: Callable[[Session, UUID], UUID | None] | None = None  # file-download auth hook
 ```
 
 **`get_router` vs. `get_project_router`**: `get_router()` mounts at
@@ -238,6 +239,20 @@ step, and where it happens depends on how your module is loaded:
   repo already uses), since there's no per-module revision tracking. See
   "Adding an external module by mounting a directory" in
   [deployment.md](deployment.md) for the full operator-facing walkthrough.
+
+**If your module lets users attach files** (reusing `services.files.
+upload_file`, per the project's own "reuse existing attachment mechanisms"
+principle — Compliance's evidence attachments, Phase 8, are the first
+example), set `resolve_file_owner_project_id` so the single, generic,
+module-agnostic `GET /api/v1/files/{id}` download endpoint
+(`app.routers.files.download_file`) can authorize your attachments too,
+without that core router importing anything from your module directly.
+It takes `(db, file_id)` and returns the owning project's id if your
+module's own file-link table (e.g. `ComplianceEvidenceFile`) references
+that file, else `None` — `app.modules.registry.resolve_module_file_
+project_id` tries every registered module's hook, in registry order,
+until one matches. Leave this `None` if your module has no file
+attachments of its own.
 
 ---
 

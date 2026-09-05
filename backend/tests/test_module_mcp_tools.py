@@ -226,11 +226,11 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All five of Compliance's tools (three from Phase 6, two more from
-    Phase 7) resolve, are read-only (`mutates=False`, all GET), and carry
-    exactly the path parameters their router endpoints require — the
-    concrete proof that `module.py`'s declared `path_template`s actually
-    match real routes on `compliance.router.router`/`compliance.
+    """All six of Compliance's tools (three from Phase 6, two more from
+    Phase 7, one more from Phase 8) resolve, are read-only (`mutates=False`,
+    all GET), and carry exactly the path parameters their router endpoints
+    require — the concrete proof that `module.py`'s declared `path_template`s
+    actually match real routes on `compliance.router.router`/`compliance.
     project_router.router`, not just that the strings look right. The
     Phase 7 tools are the first real proof that `build_mcp_tool_manifest`
     validates a tool against *either* of a module's two router prefixes
@@ -244,6 +244,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     assert "compliance_list_requirements" in by_name
     assert "compliance_get_project_status" in by_name
     assert "compliance_list_non_compliant_requirements" in by_name
+    assert "compliance_list_expiring_evidence" in by_name
 
     list_standards = by_name["compliance_list_standards"]
     assert list_standards.mutates is False
@@ -281,7 +282,14 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     )
     assert {p["name"] for p in list_non_compliant.params} == {"project_id"}
 
-    # No mutating tool for publish/retire, applicability, or assessment is
-    # declared at all — this module's MCP surface stays deliberately
-    # read-only across both Phase 6 and Phase 7.
+    # Phase 8's tool: also `project_id`-only, on the same project router.
+    list_expiring_evidence = by_name["compliance_list_expiring_evidence"]
+    assert list_expiring_evidence.mutates is False
+    assert list_expiring_evidence.path_template == "/api/v1/projects/{project_id}/modules/compliance/expiring-evidence"
+    assert {p["name"] for p in list_expiring_evidence.params} == {"project_id"}
+
+    # No mutating tool for publish/retire, applicability, assessment, or
+    # any evidence mutation (create/update/archive/revalidate/link/
+    # upload) is declared at all — this module's MCP surface stays
+    # deliberately read-only across Phases 6-8.
     assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())

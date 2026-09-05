@@ -24,6 +24,10 @@ Responsibilities:
 - `summarize_project_compliance`: §20's overall status calculation — the
   exact, documented rule this phase is required to define. See that
   function's own docstring for the full rule.
+- `compute_evidence_validity_state`/`build_evidence_out` (Phase 8, §14):
+  the exact, documented "valid/expiring/expired" derivation for a
+  `ComplianceEvidence` row — see `compute_evidence_validity_state`'s own
+  docstring for the rule and its warning-window constant.
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -31,6 +35,7 @@ External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
 from typing import Literal
 
 from sqlalchemy import select
@@ -40,9 +45,14 @@ from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApplicabilitySource,
     ComplianceApprovalState,
+    ComplianceEvidenceValidityState,
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ComplianceEvidence,
+    ComplianceEvidenceActionLink,
+    ComplianceEvidenceFile,
+    ComplianceEvidenceRequirementLink,
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
@@ -51,7 +61,11 @@ from app.modules.compliance.models import (
     ProjectCompliance,
     ProjectComplianceRequirement,
 )
-from app.modules.compliance.schemas import ProjectComplianceRequirementOut, ProjectComplianceStatusOut
+from app.modules.compliance.schemas import (
+    ComplianceEvidenceOut,
+    ProjectComplianceRequirementOut,
+    ProjectComplianceStatusOut,
+)
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
 
@@ -412,3 +426,144 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
         overall_compliance_state=summary.overall_compliance_state,
         overall_approval_state=summary.overall_approval_state,
     )
+
+
+# --- Phase 8: Evidence ------------------------------------------------------------
+
+#: Days before `ComplianceEvidence.expiry_date` that it is reported
+#: `EXPIRING_SOON` rather than `VALID` (§14: "The system should provide
+#: appropriate warnings/notifications when evidence is approaching
+#: expiry"). A plain constant, not a per-project/per-org configurable
+#: setting: §14 names no specific lead time, and Phase 10 (Scheduled
+#: Reviews + Notifications) is where this module's actual warning/
+#: notification delivery is built — if that phase needs this to be
+#: configurable (mirroring `Project.review_reminder_lead_days_default`'s
+#: own precedent for an analogous "how many days before X is this
+#: worth flagging" setting), it can promote this constant to a column
+#: then, once there is a real notification consumer to configure for.
+EVIDENCE_EXPIRY_WARNING_DAYS = 30
+
+
+def compute_evidence_validity_state(
+    evidence: ComplianceEvidence, *, today: date | None = None
+) -> ComplianceEvidenceValidityState:
+    """Derives a `ComplianceEvidence` row's current validity (§14) from its
+    `expiry_date` — never stored, so it can never drift out of date the
+    way a cached/stored flag could (§14: "Expired evidence must not
+    silently continue to be treated as valid").
+
+    Rule:
+    - No `expiry_date` at all -> `NO_EXPIRY` (nothing to ever warn about).
+    - `expiry_date` already passed -> `EXPIRED`.
+    - `expiry_date` within `EVIDENCE_EXPIRY_WARNING_DAYS` of today (inclusive)
+      -> `EXPIRING_SOON`.
+    - Otherwise -> `VALID`.
+
+    Independent of `evidence.is_archived` — an archived (no-longer-
+    applicable) row is still assigned a real validity state; see
+    `ComplianceEvidenceValidityState`'s own docstring for why these are
+    deliberately different questions. Callers that want to exclude
+    archived/no-longer-applicable evidence from an "expiring/expired"
+    listing (e.g. `list_expiring_or_expired_evidence` below) filter on
+    `is_archived` themselves, not by folding it into this function.
+
+    Args:
+        evidence: The row to evaluate.
+        today: Overridable for tests; defaults to the real current date.
+
+    Returns:
+        The computed `ComplianceEvidenceValidityState`.
+    """
+    if evidence.expiry_date is None:
+        return ComplianceEvidenceValidityState.NO_EXPIRY
+    today = today or date.today()
+    if evidence.expiry_date < today:
+        return ComplianceEvidenceValidityState.EXPIRED
+    if evidence.expiry_date <= today + timedelta(days=EVIDENCE_EXPIRY_WARNING_DAYS):
+        return ComplianceEvidenceValidityState.EXPIRING_SOON
+    return ComplianceEvidenceValidityState.VALID
+
+
+def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceEvidenceOut:
+    """Builds the response schema for one `ComplianceEvidence` row,
+    filling in its computed `validity_state` (`compute_evidence_validity_
+    state`) and its current linked requirement/required-action-assessment
+    ids (§13's multi-linkage) — used by every `project_router.py` endpoint
+    that returns one or more evidence rows, so these two derived/joined
+    fields are never built ad hoc per call site."""
+    requirement_ids = list(
+        db.scalars(
+            select(ComplianceEvidenceRequirementLink.project_compliance_requirement_id).where(
+                ComplianceEvidenceRequirementLink.evidence_id == evidence.id
+            )
+        ).all()
+    )
+    action_ids = list(
+        db.scalars(
+            select(ComplianceEvidenceActionLink.required_action_assessment_id).where(
+                ComplianceEvidenceActionLink.evidence_id == evidence.id
+            )
+        ).all()
+    )
+    return ComplianceEvidenceOut(
+        id=evidence.id,
+        project_id=evidence.project_id,
+        title=evidence.title,
+        description=evidence.description,
+        issuing_organisation=evidence.issuing_organisation,
+        issued_date=evidence.issued_date,
+        expiry_date=evidence.expiry_date,
+        provided_by=evidence.provided_by,
+        provided_at=evidence.provided_at,
+        notes=evidence.notes,
+        validity_state=compute_evidence_validity_state(evidence),
+        is_archived=evidence.is_archived,
+        archived_at=evidence.archived_at,
+        archived_by=evidence.archived_by,
+        created_at=evidence.created_at,
+        updated_at=evidence.updated_at,
+        linked_requirement_ids=requirement_ids,
+        linked_required_action_assessment_ids=action_ids,
+    )
+
+
+def list_expiring_or_expired_evidence(db: Session, *, project_id: uuid.UUID) -> list[ComplianceEvidence]:
+    """Every non-archived `ComplianceEvidence` row for `project_id` whose
+    computed validity is `EXPIRING_SOON` or `EXPIRED` (§14) — backs both
+    `GET .../expiring-evidence` and the `compliance_list_expiring_evidence`
+    MCP tool. Archived (no-longer-applicable) evidence is excluded: a row
+    the project has already marked as no longer relevant isn't something
+    worth surfacing as needing attention (see `ComplianceEvidenceValidityState`'s
+    own docstring on why "applicable" and "valid" are different axes)."""
+    all_evidence = db.scalars(
+        select(ComplianceEvidence).where(
+            ComplianceEvidence.project_id == project_id, ComplianceEvidence.is_archived.is_(False)
+        )
+    ).all()
+    return [
+        evidence
+        for evidence in all_evidence
+        if compute_evidence_validity_state(evidence)
+        in (ComplianceEvidenceValidityState.EXPIRING_SOON, ComplianceEvidenceValidityState.EXPIRED)
+    ]
+
+
+def resolve_evidence_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
+    """Resolves a `FileAsset` id to the project it belongs to, if it is
+    attached to a piece of Compliance evidence (`ComplianceEvidenceFile`)
+    — the Compliance module's own `ModuleDefinition.resolve_file_owner_
+    project_id` hook (`app.modules.registry`), called generically by
+    `routers.files.download_file` alongside every other owner-type check,
+    without that core router needing to import anything from this module
+    directly (the whole point of the hook: a core file that must stay
+    module-agnostic can still authorize a module-owned attachment).
+
+    Returns:
+        The owning project's id, or `None` if `file_id` isn't a Compliance
+        evidence attachment at all.
+    """
+    link = db.scalar(select(ComplianceEvidenceFile).where(ComplianceEvidenceFile.file_id == file_id))
+    if link is None:
+        return None
+    evidence = db.get(ComplianceEvidence, link.evidence_id)
+    return evidence.project_id if evidence is not None else None

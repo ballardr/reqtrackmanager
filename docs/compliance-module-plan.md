@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-05 (Phase 7 complete).
+**Last updated:** 2026-09-05 (Phase 8 complete).
 
-**Overall progress:** 8 / 16 phases complete.
+**Overall progress:** 9 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -22,7 +22,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 5 | Compliance data model (as a module) | [x] Complete |
 | 6 | Standards management API | [x] Complete |
 | 7 | Project Compliance assignment & assessment | [x] Complete |
-| 8 | Evidence | [ ] Not started |
+| 8 | Evidence | [x] Complete |
 | 9 | Approval / sign-off workflow | [ ] Not started |
 | 10 | Scheduled reviews + notifications | [ ] Not started |
 | 11 | Cross-standard mapping + version impact | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 8.
+**Next phase to pick up:** Phase 9.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -377,6 +377,22 @@ Implemented as specified, with a significant infrastructure addition and a numbe
 - Expiry date, revalidation history (append-only, never overwrites — §15's explicit "must not overwrite the historical record").
 - Valid/expiring/expired identification — a queryable derived state, not a stored one that can drift.
 - Declare a read-only Phase 4 MCP tool: `compliance_list_expiring_evidence(project_id)`.
+
+#### Phase 8 notes (completed 2026-09-05)
+
+Implemented as specified, with a number of judgment calls the spec text left open — recorded here so a future session doesn't need to re-derive them:
+
+- **Evidence is project-scoped (`ComplianceEvidence.project_id`), not tied to one specific `ProjectCompliance` assignment** — the spec's own "multi-requirement/multi-action linkage" bullet, combined with §13's literal "supporting multiple compliance requirements and/or standards," reads most naturally as spanning more than one of a project's standard assignments at once (one certificate satisfying requirements under two different standards a project happens to be assigned). `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` are genuine many-to-many join tables pointing at `ProjectComplianceRequirement`/`ComplianceRequiredActionAssessment` — the project-specific assessment layer Phase 7 established — never at the reusable `ComplianceRequirement`/`ComplianceRequiredAction` definitions, extending Phase 7's own "state belongs to the project-specific assessment layer" principle one concept further.
+- **A new, generic module-system hook, not a compliance-specific core-router edit**: making evidence file attachments downloadable through the existing single, generic `GET /api/v1/files/{id}` endpoint (`app.routers.files.download_file`) without that router importing `app.modules.compliance` directly needed a real (small) module-system addition — `ModuleDefinition.resolve_file_owner_project_id` (`app.modules.registry`) plus `resolve_module_file_project_id`, which tries every registered module's hook, in registry order, as a fallback after the router's existing core attachment-type checks. This mirrors Phase 7's own `get_project_router` precedent: a genuine, generic module-system capability discovered while building the first module that needs it, not a one-off. `docs/modules.md` was updated so a future module author with file attachments of their own can use it directly.
+- **`is_archived`/`archived_at`/`archived_by` on `ComplianceEvidence` is this model's answer to §13's own listed attribute "Whether it remains applicable"** — mirrors every other compliance entity's soft-delete convention exactly rather than inventing a differently-named field for the same concept, and is kept a genuinely distinct axis from §14's expiry-derived validity: `GET .../expiring-evidence` excludes archived rows (a project has already said this evidence no longer matters), but `compute_evidence_validity_state` still computes a real value for an archived row rather than special-casing it to some third "n/a" state — "applicable" and "valid" are different questions, not one collapsed into the other.
+- **`ComplianceEvidenceUpdate` has no `expiry_date` field at all**, not merely a validator rejecting attempts to change it — per §15's explicit "must not overwrite the historical record," the only sanctioned way to change an evidence row's expiry is `POST .../revalidate`, which also writes the append-only history row; omitting the field from the update schema is the simplest way to make a plain metadata edit structurally incapable of bypassing that.
+- **`ComplianceEvidenceRevalidation` is a dedicated, typed append-only table**, not `services.audit.log_event` reuse (unlike Phase 7's choice for requirement-assessment history) — §15's own worked example needs structured `previous_expiry_date`/`new_expiry_date`/`revalidated_by`/`revalidated_at`/`justification` fields for a dedicated "this evidence's own revalidation history" listing, and a revalidation is itself a real column change (`ComplianceEvidence.expiry_date`) needing its *own* audit-log entry in addition (which `revalidate_evidence` also writes, via `log_event`, mirroring `update_requirement_applicability`'s "detail carries previous/new value" convention) — the two aren't a substitute for each other here the way they were for Phase 7's purely-computed-from-columns history.
+- **`EVIDENCE_EXPIRY_WARNING_DAYS = 30` is a plain module-level constant, not a configurable per-project/org setting** — §14 names no specific lead time, and unlike `Project.review_reminder_lead_days_default` (which exists because a real scheduler job already consumes it), Phase 8 has no notification delivery of its own yet; Phase 10 (Scheduled Reviews + Notifications) is the natural place to promote this to a real setting if/when it needs one, once there's an actual consumer to configure for.
+- **Two convenience, read-only endpoints** (`GET .../requirements/{pcr_id}/evidence`, `GET .../required-action-assessments/{id}/evidence`) view evidence from the assessment side, mirroring §13's "a requirement or Required Action should be able to reference supporting evidence" — the canonical CRUD/linkage surface stays the project-level `/evidence` resource (a single evidence row can span assignments a single pcr's own nested path can't reach), and these two endpoints are pure reads over the same `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` tables, not a second way to mutate anything.
+- **File attachment endpoints (`upload`/`link`/`list`/`unlink`) are near-verbatim copies of `routers.requirements`'s own four**, reusing `services.files.upload_file`/`delete_file` exactly per §13's "reuse ReqTrackManager's existing attachment/file mechanisms" — including one hardening detail carried over deliberately: `unlink_evidence_file` calls `db.flush()` between deleting the link row and (for a non-shared upload) deleting the `FileAsset`, exactly like `unlink_requirement_file` does, to avoid the `FileAsset`'s own `ON DELETE CASCADE` on `compliance_evidence_files.file_id` racing the ORM's pending `DELETE` for that same link row. This was actually caught the hard way — see "Tests" below — before being recognised as the same class of thing the core code already handles correctly.
+- **No new SOC 2 policy-document edits were needed this phase** — evidence reuses Phase 2's already-hardened `require_module_role`, Phase 6's `_get_*_or_404`/404-not-403 convention, and the existing, already-reviewed `services.files.upload_file`/`delete_file` mechanism verbatim; the one new mechanism (`resolve_file_owner_project_id`) only ever *adds* an authorization path for a file a module itself created a link row for, it cannot grant access to anything a module doesn't already own a reference to. A short identify→verify→remediate pass was still recorded in `docs/decisions.md` per this repo's change-management policy.
+- **Tests** landed as `backend/tests/test_compliance_evidence_api.py` (new, 10 tests). A first test run caught a real bug — not a pre-existing gap, introduced by this phase's own `unlink_evidence_file` initially omitting the `db.flush()` mentioned above — surfaced as a benign-looking `SAWarning` ("DELETE statement ... 0 were matched") rather than a test failure; re-run with `-W error::sqlalchemy.exc.SAWarning` after the fix to confirm it was actually gone, not just unobserved, per this repo's own "warnings must be fixed, not ignored" rule. `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py` were not touched — per this plan's own established precedent, seeding compliance data (evidence included) remains Phase 15's own, already-documented responsibility.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 8" entry for the full account, including the identify→verify→remediate pass.
 
 ### Phase 9 — Approval / Sign-off Workflow
 
