@@ -21,6 +21,7 @@ can never grant itself or others a role).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -36,7 +37,7 @@ from app.models.module import OrganizationModuleEntitlement
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
 from app.models.user import User
-from app.modules.registry import get_module_registry, is_module_entitled
+from app.modules.registry import build_mcp_tool_manifest, get_module_registry, is_module_entitled
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.email import TestEmailRequest
 from app.schemas.pat import BulkRevokeResult
@@ -184,6 +185,26 @@ class OrgModuleEntitlementUpdate(BaseModel):
     organisation/module pair (module system Phase 1)."""
 
     entitled: bool
+
+
+class ModuleMcpToolOut(BaseModel):
+    """One module-contributed `mcp-server/` tool (module system Phase 4) —
+    the wire shape of `app.modules.registry.ResolvedMcpTool`. Every field
+    here has already been through `build_mcp_tool_manifest`'s mechanical
+    verification; see that function's docstring for what that means.
+    `params` is passed through as plain dicts (`{"name", "type", "required",
+    "in", "description"}` per entry) rather than a nested model — the same
+    loosely-typed, declaration-shaped design `McpToolDefinition.params`
+    itself uses, since these values are display/JSON-Schema hints for the
+    calling AI assistant, not something this endpoint needs to validate
+    further."""
+
+    name: str
+    description: str
+    method: str
+    path_template: str
+    mutates: bool
+    params: list[dict[str, Any]]
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -870,6 +891,44 @@ def update_org_module_entitlement(
         module_key=definition.key, name=definition.name, entitled=row.entitled,
         has_override=True, default_policy_used=False,
     )
+
+
+# --- Module-contributed MCP tools (module system Phase 4) -------------------
+
+
+@router.get("/modules/mcp-tools", response_model=list[ModuleMcpToolOut])
+def list_module_mcp_tools(current_user: User = Depends(get_current_user)):
+    """Returns the manifest of every module-contributed `mcp-server/` tool
+    across the live module registry (compliance-module-plan.md Phase 4) —
+    what `mcp-server` fetches (lazily, on a caller's own already-presented
+    token, cached in-process for a refresh window) to register declarative
+    tools that proxy to a module's own REST endpoints.
+
+    Gated by plain `get_current_user` — normal bearer-token authentication,
+    deliberately with **no exemption**, per this phase's own hardening pass
+    (docs/compliance-module-plan.md's "SOC2 / Security Planning" section):
+    this must never become an unauthenticated boot-time call, even though
+    the manifest itself carries no organisation-specific data. Per-call
+    access to whatever a listed tool actually proxies to is still fully
+    enforced by that endpoint's own `require_org_module_enabled`/
+    `require_project_module_enabled`/`require_module_role` dependency —
+    a tool being listed here has never implied a given caller can use it,
+    exactly like `list_projects` in `mcp-server` already works today.
+
+    Every entry has already been through `build_mcp_tool_manifest`'s
+    mechanical verification — `mutates` is derived from HTTP method, never
+    module-declared; any tool whose `path_template` fell outside its
+    declaring module's own router, or that resolved to a route marked as an
+    approval action, has already been excluded. This endpoint does no
+    further filtering of its own.
+    """
+    return [
+        ModuleMcpToolOut(
+            name=tool.name, description=tool.description, method=tool.method,
+            path_template=tool.path_template, mutates=tool.mutates, params=tool.params,
+        )
+        for tool in build_mcp_tool_manifest()
+    ]
 
 
 # --- Public self-signup mode -------------------------------------------------

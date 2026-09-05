@@ -156,6 +156,228 @@ class ModuleFrontendManifest:
 
 
 @dataclass(frozen=True)
+class McpToolDefinition:
+    """Declares one module-contributed `mcp-server/` tool (compliance-
+    module-plan.md Phase 4) — see docs/modules.md's "Module-contributed MCP
+    tools" section for the full worked example and rationale, and
+    `build_mcp_tool_manifest` (below) for how every security-relevant part
+    of this declaration is mechanically re-derived or verified rather than
+    trusted as written here.
+
+    Attributes:
+        name: A short *local* name (e.g. `"list_standards"`) — never a full
+            global tool name. `build_mcp_tool_manifest` always prefixes it
+            with the declaring module's own key (`"compliance_list_
+            standards"`), regardless of what's passed here, so one module
+            can never claim or collide with another module's or core's tool
+            name.
+        description: Shown to the calling AI assistant as the tool's
+            description — write it the way you'd write a tool docstring.
+        method: The HTTP method the underlying backend endpoint uses.
+            `mutates` (`"GET"` -> `False`, everything else -> `True`) is
+            derived from this by `build_mcp_tool_manifest` — deliberately
+            not a separate field a module could misdeclare.
+        path_template: The backend path this tool proxies to, e.g.
+            `"/api/v1/orgs/{organization_id}/modules/compliance/standards/
+            {standard_id}"`. Must fall inside this module's own
+            `get_router()` mount prefix (its `APIRouter(prefix=...)`), and
+            must name a real route on that router with a matching `method`
+            — either failure excludes the tool entirely (logged), regardless
+            of what's declared here. Every tool must name an explicit
+            `{organization_id}` or `{project_id}` path placeholder — there
+            is no implicit "current org" and no cross-org aggregation
+            (docs/modules.md's Phase 4 section).
+        params: One dict per tool parameter: `{"name": str, "type": str,
+            "required": bool, "in": "path" | "query" | "body",
+            "description": str}` (`"description"` may be omitted, defaulting
+            to `""`). `type` is a display/JSON-Schema hint shown to the
+            calling AI assistant (e.g. `"uuid"`, `"string"`, `"integer"`,
+            `"boolean"`, `"number"`) — not itself a security boundary; real
+            validation happens at the proxied backend endpoint, the same
+            single source of truth every other request already goes
+            through. A malformed entry (missing key, unrecognised `"in"`)
+            excludes just that one parameter (logged), not the whole tool.
+    """
+
+    name: str
+    description: str
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    path_template: str
+    params: list[dict] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ResolvedMcpTool:
+    """One module-contributed MCP tool that has survived `build_mcp_tool_
+    manifest`'s mechanical verification (compliance-module-plan.md Phase 4)
+    — this, not `McpToolDefinition`, is what `GET /api/v1/system/modules/
+    mcp-tools` actually returns, and the only shape `mcp-server` ever sees.
+
+    Unlike `McpToolDefinition`, every field here is either copied verbatim
+    from a value already proven safe (the module-key-prefixed `name`) or
+    derived/verified mechanically rather than taken from the module's own
+    declaration (`mutates`; the very fact this entry exists at all implies
+    its `path_template` fell inside its declaring module's own router and
+    did not resolve to a route marked as an approval action).
+    """
+
+    name: str
+    description: str
+    method: str
+    path_template: str
+    mutates: bool
+    params: list[dict]
+
+
+#: `openapi_extra` key a route's own author sets to mark it as an
+#: approval/decision-type action (e.g. `@router.post(..., openapi_extra=
+#: APPROVAL_ACTION_ROUTE_EXTRA)`) — `build_mcp_tool_manifest` reads this
+#: directly off the resolved route object and excludes any tool resolving
+#: to such a route from the manifest entirely, regardless of what the
+#: declaring module's own `McpToolDefinition` claims. See docs/modules.md's
+#: Phase 4 section: "mark any endpoint that approves/decides something with
+#: your route's own approval-action metadata — don't rely on the manifest
+#: builder's exclusion as your only defence."
+APPROVAL_ACTION_EXTRA_KEY = "x-approval-action"
+APPROVAL_ACTION_ROUTE_EXTRA: dict = {APPROVAL_ACTION_EXTRA_KEY: True}
+
+_VALID_MCP_TOOL_PARAM_LOCATIONS = {"path", "query", "body"}
+
+
+def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
+    """Builds the full, mechanically-verified manifest of every module-
+    contributed MCP tool across the live registry (compliance-module-plan.md
+    Phase 4) — the exact list `GET /api/v1/system/modules/mcp-tools`
+    returns, and the only thing `mcp-server` ever sees of a module's
+    `mcp_tools` declarations.
+
+    Nothing about a tool's *safety* is trusted from the declaring module's
+    own `McpToolDefinition` — each is re-derived or checked against real,
+    already-reviewed data instead:
+
+    - The registered `name` is always this tool's declaring module's `key`,
+      an underscore, and its local `name` — never the module's local name
+      alone, so a module can't claim another module's (or core's) tool name.
+    - `path_template` must fall inside the declaring module's own
+      `get_router()` mount prefix (`APIRouter.prefix`) and must name a real
+      route on that router with a matching `method` — a module with no
+      router at all can declare no legal tools; a `path_template` outside
+      its own router, or with no matching route, is excluded (logged),
+      regardless of what the module's own declaration claims.
+    - `mutates` is derived purely from `method` (`"GET"` -> `False`,
+      everything else -> `True`) — nothing for a module to misdeclare.
+    - Whether the resolved route is an approval/decision-type action is
+      read from *that route's own* `openapi_extra` metadata
+      (`APPROVAL_ACTION_EXTRA_KEY`), set by the route's own author and
+      reviewed the same way the endpoint itself is — never from the
+      module's `McpToolDefinition`. Any tool resolving to such a route is
+      excluded from the manifest entirely.
+
+    This gives a genuinely mechanical guarantee for tools resolving to
+    first-party module endpoints (this project's own reviewed code). For a
+    third-party module's *own* endpoints, the guarantee reduces to the same
+    "was deliberately installed" trust boundary `Settings.
+    allow_external_modules` already establishes — a malicious third-party
+    module could still mislabel its own route's own metadata. This isn't a
+    gap unique to this mechanism; it's why third-party discovery defaults
+    off in the first place.
+
+    Returns:
+        Every `ResolvedMcpTool` that survived verification, across every
+        module currently in the registry, in registry iteration order
+        (module) then declaration order (tool).
+    """
+    resolved: list[ResolvedMcpTool] = []
+    for definition in get_module_registry().values():
+        if not definition.mcp_tools:
+            continue
+
+        router = definition.get_router()
+        if router is None:
+            logger.warning(
+                "Module %r declares %d MCP tool(s) but has no get_router() to validate them "
+                "against; excluding all of them",
+                definition.key, len(definition.mcp_tools),
+            )
+            continue
+
+        routes_by_path_and_method: dict[tuple[str, str], object] = {}
+        for route in router.routes:
+            path = getattr(route, "path", None)
+            methods = getattr(route, "methods", None) or ()
+            if path is None:
+                continue
+            for method in methods:
+                routes_by_path_and_method[(path, method.upper())] = route
+
+        for tool in definition.mcp_tools:
+            full_name = f"{definition.key}_{tool.name}"
+            declared_method = tool.method.upper()
+
+            if not tool.path_template.startswith(router.prefix):
+                logger.warning(
+                    "Module %r's MCP tool %r declares path_template %r outside its own "
+                    "router prefix %r; excluding",
+                    definition.key, tool.name, tool.path_template, router.prefix,
+                )
+                continue
+
+            route = routes_by_path_and_method.get((tool.path_template, declared_method))
+            if route is None:
+                logger.warning(
+                    "Module %r's MCP tool %r declares path_template=%r method=%r with no "
+                    "matching route on its own router; excluding",
+                    definition.key, tool.name, tool.path_template, declared_method,
+                )
+                continue
+
+            if bool((getattr(route, "openapi_extra", None) or {}).get(APPROVAL_ACTION_EXTRA_KEY)):
+                logger.warning(
+                    "Module %r's MCP tool %r resolves to a route marked as an approval "
+                    "action; excluding regardless of the module's own declaration",
+                    definition.key, tool.name,
+                )
+                continue
+
+            valid_params: list[dict] = []
+            for param in tool.params:
+                try:
+                    param_name = str(param["name"])
+                    location = str(param["in"])
+                    required = bool(param["required"])
+                    param_type = str(param["type"])
+                except (KeyError, TypeError):
+                    logger.warning(
+                        "Module %r's MCP tool %r declares a malformed param %r; excluding "
+                        "just this param",
+                        definition.key, tool.name, param,
+                    )
+                    continue
+                if location not in _VALID_MCP_TOOL_PARAM_LOCATIONS:
+                    logger.warning(
+                        "Module %r's MCP tool %r declares param %r with an unrecognised "
+                        "'in' %r; excluding just this param",
+                        definition.key, tool.name, param_name, location,
+                    )
+                    continue
+                valid_params.append(
+                    {
+                        "name": param_name, "type": param_type, "required": required,
+                        "in": location, "description": str(param.get("description", "")),
+                    }
+                )
+
+            resolved.append(
+                ResolvedMcpTool(
+                    name=full_name, description=tool.description, method=declared_method,
+                    path_template=tool.path_template, mutates=declared_method != "GET",
+                    params=valid_params,
+                )
+            )
+    return resolved
+
+
+@dataclass(frozen=True)
 class ModuleDefinition:
     """Declares a single module — first-party or third-party — to the
     modular feature system's registry.
@@ -205,9 +427,13 @@ class ModuleDefinition:
             site that renders it to a browser — that function additionally
             enforces the Tier B origin-allowlist check documented on
             `ModuleFrontendManifest.frame_url`.
-        mcp_tools: Module-contributed MCP tool declarations — placeholder,
-            filled in by Phase 4 (`McpToolDefinition` entries). Left as an
-            empty tuple until then.
+        mcp_tools: Module-contributed MCP tool declarations (module system
+            Phase 4) — each an `McpToolDefinition`. `build_mcp_tool_
+            manifest` is what actually turns these into the real,
+            mechanically-verified manifest `mcp-server` consumes; see that
+            function's own docstring, and docs/modules.md §6 for a worked
+            example. Empty tuple for a module that contributes no tools of
+            its own.
     """
 
     key: str
@@ -219,7 +445,7 @@ class ModuleDefinition:
     get_router: Callable[[], APIRouter | None]
     roles: tuple[ModuleRoleDefinition, ...] = field(default=())
     frontend_manifest: ModuleFrontendManifest | None = None
-    mcp_tools: tuple = field(default=())
+    mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
 
 
 # First-party modules, added here starting with Compliance in Phase 5.
