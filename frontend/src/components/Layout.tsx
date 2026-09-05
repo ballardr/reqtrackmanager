@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
+import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
@@ -89,6 +90,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
+  const enabledModules = useProjectEnabledModules(projectId);
 
   useEffect(() => {
     if (!user) return;
@@ -168,6 +170,23 @@ function LayoutShell({ children }: { children: ReactNode }) {
               <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railCollapsed} />
               <NavRailLink to={`/projects/${projectId}/admin`} label={strings.nav.admin} icon={<Settings size={16} />} railCollapsed={railCollapsed} />
+              {/* Module-contributed nav entries (compliance-module-plan.md
+                  Phase 3) — one per currently-enabled module that declares a
+                  frontend manifest, Tier A or Tier B alike; a module whose
+                  manifest was rejected (e.g. a Tier B frame_url outside the
+                  deployment's allowlist) simply has no entry here, since
+                  `get_frontend_manifest` already omitted it server-side. */}
+              {enabledModules.map((moduleEntry) =>
+                moduleEntry.frontend_manifest ? (
+                  <NavRailLink
+                    key={moduleEntry.module_key}
+                    to={moduleEntry.frontend_manifest.nav_path}
+                    label={moduleEntry.frontend_manifest.nav_label}
+                    icon={<Wrench size={16} />}
+                    railCollapsed={railCollapsed}
+                  />
+                ) : null
+              )}
             </>
           )}
           <div className="nav-section-label">Global</div>

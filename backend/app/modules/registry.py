@@ -112,6 +112,50 @@ class ModuleRoleDefinition:
 
 
 @dataclass(frozen=True)
+class ModuleFrontendManifest:
+    """Declares a module's frontend integration (compliance-module-plan.md
+    Phase 3's two-tier frontend module system).
+
+    Attributes:
+        tier: `"installed"` (Tier A — the module ships route components and
+            a nav entry compiled directly into the frontend bundle,
+            registered in `frontend/src/modules/registry.ts`; this manifest
+            carries only the nav-entry metadata, since the actual React
+            components live in that frontend registry, not here — a Python
+            backend value has no way to reference a React component) or
+            `"remote"` (Tier B — the module is rendered in a sandboxed
+            `<ModuleFrame>` iframe pointed at `frame_url`, with the Host UI
+            Bridge relaying real shared-component chrome over `postMessage`).
+        nav_label: Display label for this module's nav-rail entry.
+        nav_path: The frontend route path this module's nav entry links to
+            (e.g. `"/compliance"` or `"/projects/{project_id}/modules/
+            compliance"`). For `"remote"` modules this is the path the host
+            mounts the generic `<ModuleFrame>` route at; for `"installed"`
+            modules it must match the path the module's own Tier A route
+            registration in `frontend/src/modules/registry.ts` uses.
+        frame_url: Required (and only meaningful) when `tier == "remote"` —
+            the full origin+path the sandboxed iframe loads. Must resolve to
+            an origin present in `Settings.module_frame_allowed_origins`, or
+            `get_frontend_manifest` rejects it (logs a warning and returns
+            `None` instead of this manifest) — mechanically enforced at the
+            point of use, not trusted from the module's own declaration,
+            mirroring Phase 4's path-prefix enforcement for MCP tools.
+            `None` when `tier == "installed"`.
+    """
+
+    tier: Literal["installed", "remote"]
+    nav_label: str
+    nav_path: str
+    frame_url: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.tier == "remote" and not self.frame_url:
+            raise ValueError("ModuleFrontendManifest: tier 'remote' requires frame_url.")
+        if self.tier == "installed" and self.frame_url:
+            raise ValueError("ModuleFrontendManifest: tier 'installed' must not set frame_url.")
+
+
+@dataclass(frozen=True)
 class ModuleDefinition:
     """Declares a single module — first-party or third-party — to the
     modular feature system's registry.
@@ -153,9 +197,14 @@ class ModuleDefinition:
             `sync_module_role_definitions` and surfaced to callers of
             `list_enabled_module_roles`. Empty tuple for a module that
             contributes no roles of its own.
-        frontend_manifest: Module-contributed frontend integration
-            manifest — placeholder, filled in by Phase 3. `None` until
-            then.
+        frontend_manifest: Module-contributed frontend integration manifest
+            (module system Phase 3) — a `ModuleFrontendManifest`, or `None`
+            for a module with no frontend surface of its own (e.g. one that
+            only contributes a backend router or MCP tools). Read through
+            `get_frontend_manifest`, not this field directly, at any call
+            site that renders it to a browser — that function additionally
+            enforces the Tier B origin-allowlist check documented on
+            `ModuleFrontendManifest.frame_url`.
         mcp_tools: Module-contributed MCP tool declarations — placeholder,
             filled in by Phase 4 (`McpToolDefinition` entries). Left as an
             empty tuple until then.
@@ -169,7 +218,7 @@ class ModuleDefinition:
     implemented: bool
     get_router: Callable[[], APIRouter | None]
     roles: tuple[ModuleRoleDefinition, ...] = field(default=())
-    frontend_manifest: object | None = None
+    frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple = field(default=())
 
 
@@ -519,6 +568,52 @@ def sync_module_role_definitions(db: Session) -> None:
                 existing.description = role.description
                 existing.scope = role.scope
     db.commit()
+
+
+def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
+    """Returns `module_key`'s `ModuleFrontendManifest`, or `None` if it has
+    none, the module itself isn't registered, or (Tier B only) its declared
+    `frame_url` doesn't resolve to an origin in `Settings.module_frame_
+    allowed_origins` (module system Phase 3).
+
+    This last check is deliberately mechanical, at the point of use, rather
+    than trusted from the module's own declaration — the same "verify,
+    don't trust a self-declared field" principle Phase 4 already applies to
+    MCP tools' `path_template`/`is_approval_action`. A misconfigured or
+    malicious `frame_url` outside the operator's own allowlist is logged
+    and treated as "this module has no usable frontend integration," not
+    silently rendered — the browser's own `Content-Security-Policy: frame-
+    src` (built from the same allowlist, see `app.main`'s security-headers
+    middleware) would refuse to load it anyway; this just gives a clear,
+    attributable log line and an empty manifest instead of a
+    browser-blocked, confusing-to-debug broken iframe.
+
+    Args:
+        module_key: The module's registry key.
+
+    Returns:
+        The module's `ModuleFrontendManifest` if it declares one and (for
+        `tier == "remote"`) its origin is allowlisted; otherwise `None`.
+    """
+    definition = get_module(module_key)
+    if definition is None or definition.frontend_manifest is None:
+        return None
+    manifest = definition.frontend_manifest
+    if manifest.tier == "installed":
+        return manifest
+
+    from urllib.parse import urlsplit
+
+    origin = urlsplit(manifest.frame_url).scheme + "://" + urlsplit(manifest.frame_url).netloc
+    settings = get_settings()
+    if origin not in settings.module_frame_allowed_origin_list:
+        logger.warning(
+            "Module %r declares a Tier B frame_url %r whose origin %r is not in "
+            "MODULE_FRAME_ALLOWED_ORIGINS; excluding its frontend manifest",
+            module_key, manifest.frame_url, origin,
+        )
+        return None
+    return manifest
 
 
 def list_enabled_module_roles(

@@ -1,8 +1,10 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
+import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
+import { buildModuleRoutes } from "./modules/buildModuleRoutes";
 import { ActionDetailPage } from "./pages/ActionDetailPage";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
@@ -32,6 +34,11 @@ import { SignupPage } from "./pages/SignupPage";
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const projectId = projectMatch ? projectMatch[1] : null;
+  const enabledModules = useProjectEnabledModules(projectId);
+
   if (loading) {
     return (
       <div className="container" style={{ marginTop: "3rem" }}>
@@ -44,6 +51,7 @@ function ProtectedRoutes() {
   return (
     <Layout>
       <Routes>
+        {buildModuleRoutes(enabledModules, projectId)}
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

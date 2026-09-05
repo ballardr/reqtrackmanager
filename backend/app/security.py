@@ -172,6 +172,67 @@ def decode_email_unsubscribe_token(token: str) -> str | None:
     return payload.get("sub")
 
 
+def create_module_frame_token(
+    module_key: str, organization_id: str, user_id: str, project_id: str | None = None
+) -> str:
+    """Creates a short-lived signed JWT scoping a Tier B `<ModuleFrame>`
+    iframe's own backend calls to exactly one module, organisation,
+    (optionally) project, and user (compliance-module-plan.md Phase 3).
+
+    Minted by `POST /orgs/{id}/modules/{module_key}/frame-token` or
+    `POST /projects/{id}/modules/{module_key}/frame-token` for a caller who
+    already holds a normal session (those endpoints depend on
+    `require_org_module_enabled_dynamic`/`require_project_module_enabled_
+    dynamic`, which only accept a real `get_current_user` session — a
+    module-frame token can never be used to mint another one, since
+    `deps.get_current_user` rejects any token whose `purpose` isn't
+    `"access"`). The minted token itself is deliberately narrower than the
+    caller's real session: `app.deps.get_current_user_or_module_frame` only
+    accepts it for the one `module_key` it was minted for, and `app.
+    services.rbac._enforce_module_frame_scope` additionally requires the
+    request's own `organization_id`/`project_id` path parameter to match
+    the token's — so the remote module's own code, which receives this
+    token (not the user's real session token) via the Host UI Bridge's
+    `init` message, can only ever reach that one module's own endpoints for
+    that one org/project, regardless of what else the underlying user could
+    otherwise do.
+
+    Args:
+        module_key: The module this token is scoped to.
+        organization_id: The organisation this token is scoped to.
+        user_id: The real user this token was minted for.
+        project_id: The project this token is scoped to, for a
+            project-mounted `<ModuleFrame>` — `None` for an org-mounted one.
+
+    Returns:
+        An encoded JWT string, expiring in 15 minutes.
+    """
+    expire = datetime.now(UTC) + timedelta(minutes=15)
+    payload = {
+        "module_key": module_key, "organization_id": organization_id,
+        "project_id": project_id, "user_id": user_id,
+        "exp": expire, "purpose": "module_frame",
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_module_frame_token(token: str) -> dict[str, Any] | None:
+    """Decodes a token created by `create_module_frame_token`.
+
+    Returns:
+        The decoded claims dict, or `None` if the token is invalid, expired,
+        or wasn't issued for this purpose (e.g. a normal access token
+        replayed here, which must not be accepted).
+    """
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return None
+    if payload.get("purpose") != "module_frame":
+        return None
+    return payload
+
+
 def generate_pat() -> tuple[str, str, str]:
     """Generates a new Personal Access Token secret.
 

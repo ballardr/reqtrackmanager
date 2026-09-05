@@ -53,10 +53,17 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import list_enabled_module_roles
+from app.modules.registry import get_frontend_manifest, get_module_registry, is_module_enabled, list_enabled_module_roles
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
-from app.schemas.org import ModuleRoleAssign, ModuleRoleDefinitionOut, ModuleRoleGrantOut
+from app.schemas.org import (
+    ModuleFrameTokenOut,
+    ModuleFrontendManifestOut,
+    ModuleNavEntryOut,
+    ModuleRoleAssign,
+    ModuleRoleDefinitionOut,
+    ModuleRoleGrantOut,
+)
 from app.schemas.project import (
     AssignByEmailOut,
     CategoryCreate,
@@ -97,6 +104,7 @@ from app.schemas.project import (
     UserProjectRoleAssignByEmail,
 )
 from app.schemas.report import ProjectReportConfig
+from app.security import create_module_frame_token
 from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.baseline import create_baseline_for_stage
@@ -123,6 +131,7 @@ from app.services.rbac import (
     is_org_admin,
     lock_project_for_update,
     require_project_manage,
+    require_project_module_enabled_dynamic,
     require_project_view,
     require_project_view_or_manage,
 )
@@ -3187,6 +3196,67 @@ def list_project_module_roles(
         ModuleRoleDefinitionOut(module_key=module_key, role_key=role.role_key, name=role.name, description=role.description)
         for module_key, role in list_enabled_module_roles(db, project.organization_id, "project")
     ]
+
+
+@router.get("/{project_id}/enabled-modules", response_model=list[ModuleNavEntryOut])
+def list_project_enabled_modules(
+    project_id: UUID,
+    current_user: User = Depends(require_project_view_or_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists every module currently *effectively enabled* for this
+    project's owning organisation, with enough of its frontend manifest for
+    the frontend to render a nav entry and route for it (module system
+    Phase 3).
+
+    Deliberately lean and enabled-only, unlike `GET /orgs/{id}/modules`
+    (`OrgModuleOut`) which is an org-admin bookkeeping view that
+    deliberately includes non-entitled/disabled modules greyed out — this
+    is the read any project member uses purely to render nav/routing, so a
+    disabled/non-entitled module is simply absent rather than represented
+    in some disabled state a plain nav rail has no use for. Gated by
+    `require_project_view_or_manage`, the same dependency `list_project_
+    module_roles`/`list_project_groups` use, for the same "structure, not
+    content" reasoning.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    result: list[ModuleNavEntryOut] = []
+    for definition in get_module_registry().values():
+        if not is_module_enabled(db, project.organization_id, definition.key):
+            continue
+        manifest = get_frontend_manifest(definition.key)
+        result.append(
+            ModuleNavEntryOut(
+                module_key=definition.key, name=definition.name,
+                frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+            )
+        )
+    return result
+
+
+@router.post("/{project_id}/modules/{module_key}/frame-token", response_model=ModuleFrameTokenOut)
+def create_project_module_frame_token(
+    project_id: UUID,
+    module_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_project_module_enabled_dynamic),
+) -> ModuleFrameTokenOut:
+    """Project-scoped sibling of `orgs.create_org_module_frame_token`
+    (module system Phase 3) — mints a token scoped to `(module_key,
+    project_id, current_user)` for a Tier B `<ModuleFrame>` mounted on a
+    project-scoped page. See that endpoint's and `app.security.create_
+    module_frame_token`'s docstrings for the full scoping rationale.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    token = create_module_frame_token(
+        module_key=module_key, organization_id=str(project.organization_id),
+        user_id=str(current_user.id), project_id=str(project_id),
+    )
+    return ModuleFrameTokenOut(token=token, expires_in_minutes=15)
 
 
 @router.post("/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)

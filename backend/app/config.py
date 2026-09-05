@@ -159,6 +159,21 @@ class Settings(BaseSettings):
             adding a custom module without publishing a package. Has no
             effect at all while `allow_external_modules` is `False` (its
             default), same rationale as that flag's docstring.
+        module_frame_allowed_origins: Comma-separated list of origins the
+            frontend is allowed to embed a Tier B remote module in a
+            sandboxed `<ModuleFrame>` iframe (`Content-Security-Policy:
+            frame-src`, compliance-module-plan.md Phase 3). Empty by
+            default — `frame-src 'none'` is sent until a deployment operator
+            explicitly lists a trusted module origin, mirroring `cors_
+            origins`' own comma-separated-list shape but for the opposite
+            direction (what this app is allowed to frame, not who is
+            allowed to frame this app — see `main.py`'s security-headers
+            middleware). A registered module's own declared `frame_url`
+            (`app.modules.registry.ModuleFrontendManifest`) must resolve to
+            an origin in this list or `get_frontend_manifest` rejects it
+            (logs and returns `None`) — mechanically enforced, not trusted
+            from the module's own declaration, mirroring Phase 4's
+            path-prefix enforcement for MCP tools.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -210,11 +225,19 @@ class Settings(BaseSettings):
     access_review_show_org_names: bool = True
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
+    module_frame_allowed_origins: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
         """Returns the configured CORS origins as a list of strings."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def module_frame_allowed_origin_list(self) -> list[str]:
+        """Returns the configured Tier B module-frame origin allowlist as a
+        list of strings — empty by default, so `frame-src 'none'` is what
+        ships until an operator opts a specific origin in."""
+        return [origin.strip() for origin in self.module_frame_allowed_origins.split(",") if origin.strip()]
 
     @property
     def geoip_lookup_exclude_networks(self) -> list:

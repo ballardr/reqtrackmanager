@@ -300,7 +300,7 @@ export const UsersSectionModuleRoleGrantAndRevoke: Story = {
       modules: [
         {
           module_key: "compliance", name: "Compliance", description: "Compliance tracking.", version: "1.0.0",
-          implemented: true, entitled: true, enabled: true, default_enabled: true,
+          implemented: true, entitled: true, enabled: true, default_enabled: true, frontend_manifest: null,
         },
       ],
       moduleRoles: [
@@ -1749,6 +1749,7 @@ export const ModulesSectionEmptyState: Story = {
 const entitledEnabledModule: OrgModule = {
   module_key: "fake_module", name: "Fake Module", description: "A fixture module used only by this story.",
   version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
+  frontend_manifest: null,
 };
 
 /** An entitled, implemented module renders with an active toggle — toggling

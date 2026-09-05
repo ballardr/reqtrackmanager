@@ -32,7 +32,13 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import RequirementLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
-from app.modules.registry import get_module_registry, is_module_enabled, is_module_entitled, list_enabled_module_roles
+from app.modules.registry import (
+    get_frontend_manifest,
+    get_module_registry,
+    is_module_enabled,
+    is_module_entitled,
+    list_enabled_module_roles,
+)
 from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
@@ -41,6 +47,8 @@ from app.schemas.org import (
     DisplayNameLockUpdate,
     ExternalUserMatch,
     MergeConflictOut,
+    ModuleFrameTokenOut,
+    ModuleFrontendManifestOut,
     ModuleRoleAssign,
     ModuleRoleDefinitionOut,
     ModuleRoleGrantOut,
@@ -83,7 +91,7 @@ from app.schemas.pat import BulkRevokeResult, OrgPersonalAccessTokenOut
 from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.schemas.report import OrgReportDefaults
-from app.security import generate_scim_token, hash_password
+from app.security import create_module_frame_token, generate_scim_token, hash_password
 from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.definitions import (
@@ -107,6 +115,7 @@ from app.services.rbac import (
     get_effective_project_managers,
     get_effective_project_roles,
     require_org_admin_or_server_admin,
+    require_org_module_enabled_dynamic,
     require_org_role,
     require_server_admin,
     would_create_org_group_cycle,
@@ -2246,11 +2255,13 @@ def list_org_modules(
     for definition in get_module_registry().values():
         entitled = is_module_entitled(db, organization_id, definition.key)
         enabled = is_module_enabled(db, organization_id, definition.key)
+        manifest = get_frontend_manifest(definition.key)
         result.append(
             OrgModuleOut(
                 module_key=definition.key, name=definition.name, description=definition.description,
                 version=definition.version, implemented=definition.implemented,
                 entitled=entitled, enabled=enabled, default_enabled=definition.default_enabled,
+                frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
             )
         )
     return result
@@ -2301,11 +2312,38 @@ def update_org_module_enablement(
     )
     db.commit()
     db.refresh(row)
+    manifest = get_frontend_manifest(definition.key)
     return OrgModuleOut(
         module_key=definition.key, name=definition.name, description=definition.description,
         version=definition.version, implemented=definition.implemented,
         entitled=True, enabled=row.enabled, default_enabled=definition.default_enabled,
+        frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
     )
+
+
+@router.post("/{organization_id}/modules/{module_key}/frame-token", response_model=ModuleFrameTokenOut)
+def create_org_module_frame_token(
+    organization_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_org_module_enabled_dynamic),
+) -> ModuleFrameTokenOut:
+    """Mints a short-lived Tier B `<ModuleFrame>` token scoped to
+    `(module_key, organization_id, current_user)` (module system Phase 3).
+
+    Requires `module_key` to be a real, currently-*enabled* module for this
+    organisation (`require_org_module_enabled_dynamic` — 404 otherwise,
+    matching every other module-gated endpoint's "disabled/non-entitled is
+    indistinguishable from not existing" behaviour) and a real session/PAT
+    (never another module-frame token — see that dependency's docstring).
+    The returned token is what the frontend's Host UI Bridge hands to the
+    module's own sandboxed iframe via the `init` message, in place of the
+    caller's real session token — see `app.security.create_module_frame_
+    token`'s docstring for exactly what it can and cannot be used for.
+    """
+    token = create_module_frame_token(
+        module_key=module_key, organization_id=str(organization_id), user_id=str(current_user.id)
+    )
+    return ModuleFrameTokenOut(token=token, expires_in_minutes=15)
 
 
 @router.post("/{organization_id}/test-email", status_code=status.HTTP_204_NO_CONTENT)

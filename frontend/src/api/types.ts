@@ -1184,6 +1184,19 @@ export interface OrgAdvancedSettings {
  * enabled) computed server-side; a non-entitled module is still included
  * in the response rather than filtered out, so the Modules admin UI can
  * grey it out with an explanatory note instead of hiding it entirely. */
+/** A module's frontend integration manifest (module system Phase 3) — see
+ * backend `app.modules.registry.ModuleFrontendManifest`'s docstring.
+ * `tier === "installed"` (Tier A) means the module's route components ship
+ * compiled into this bundle, registered in `src/modules/registry.ts`;
+ * `tier === "remote"` (Tier B) means it's rendered via `<ModuleFrame>` at
+ * `frame_url`, which is always non-null for that tier. */
+export interface ModuleFrontendManifest {
+  tier: "installed" | "remote";
+  nav_label: string;
+  nav_path: string;
+  frame_url: string | null;
+}
+
 export interface OrgModule {
   module_key: string;
   name: string;
@@ -1193,6 +1206,22 @@ export interface OrgModule {
   entitled: boolean;
   enabled: boolean;
   default_enabled: boolean;
+  frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** One currently-enabled module, as returned by `GET /projects/{id}/enabled-
+ * modules` — the lean, nav-facing shape (module system Phase 3), unlike
+ * `OrgModule`'s org-admin bookkeeping view. */
+export interface ModuleNavEntry {
+  module_key: string;
+  name: string;
+  frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** A freshly-minted Tier B `<ModuleFrame>` token (module system Phase 3). */
+export interface ModuleFrameToken {
+  token: string;
+  expires_in_minutes: number;
 }
 
 export interface PersonalAccessTokenOrgRef {

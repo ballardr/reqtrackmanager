@@ -137,7 +137,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, get_current_user_or_module_frame
 from app.models.enums import OrgRole, ProjectRole, ProjectRoleInheritanceMode, ProjectVisibility, ServerRole
 from app.models.module_role import UserModuleRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
@@ -1915,6 +1915,52 @@ def require_project_manage(
     return project
 
 
+def _enforce_module_frame_scope(
+    request: Request, *, organization_id: UUID | None = None, project_id: UUID | None = None
+) -> None:
+    """Enforces that a Tier B `<ModuleFrame>` token's own scope matches the
+    resource this specific request is naming (compliance-module-plan.md
+    Phase 3).
+
+    A no-op for a normal session/PAT request — `request.state.module_frame_
+    scope` is only ever set by `app.deps.get_current_user_or_module_frame`,
+    which only runs for the three module-gating dependencies below, and
+    only actually stamps it when the presented token was a module-frame
+    token (not a normal access token). This is what makes a module-frame
+    token minted for `(module_key=X, organization_id=A)` unusable against
+    `organization_id=B`, or against a project-scoped endpoint at all (an
+    org-minted token carries `project_id: None`, which never matches a
+    real `project_id` path parameter) — enforced here, on every request,
+    rather than trusted from the token's own claims alone.
+
+    Deliberately called *before* any admin-override bypass
+    (`is_server_admin`, `OrgRole.ORG_ADMIN`, `ProjectRole.PROJECT_MANAGER`)
+    in every caller below: a module-frame token is scoped narrower than the
+    real user it names on purpose (the whole point of not handing the
+    remote module the user's actual session token), so the fact that the
+    underlying user happens to hold a higher-tier role must never let a
+    mis-scoped module-frame token reach a resource it wasn't minted for.
+
+    Args:
+        request: The incoming request.
+        organization_id: This request's own `organization_id`, if it names
+            one — checked against the token's `organization_id` claim.
+        project_id: This request's own `project_id`, if it names one —
+            checked against the token's `project_id` claim.
+
+    Raises:
+        HTTPException: 403 if a module-frame scope is present and doesn't
+            match the given `organization_id`/`project_id`.
+    """
+    scope = getattr(request.state, "module_frame_scope", None)
+    if scope is None:
+        return
+    if organization_id is not None and scope.get("organization_id") != str(organization_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    if project_id is not None and scope.get("project_id") != str(project_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+
 def require_org_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
     enabled (entitled AND enabled — `app.modules.registry.is_module_enabled`)
@@ -1936,15 +1982,24 @@ def require_org_module_enabled(module_key: str):
     until Phase 5) — this is infrastructure a module's own router uses
     internally once it has one, not something applied at the `app.main`
     mount-loop level (see `app.modules.registry`'s module docstring).
+
+    Also accepts a Tier B `<ModuleFrame>` token scoped to this exact
+    `module_key` and this exact `organization_id` (compliance-module-
+    plan.md Phase 3, `app.deps.get_current_user_or_module_frame` +
+    `_enforce_module_frame_scope`) — a remote module's own backend calls,
+    authenticated with the narrower token the Host UI Bridge handed it
+    rather than the user's real session token, are checked by this exact
+    dependency the same as any other request to this module's endpoints.
     """
 
     def _dependency(
         organization_id: UUID,
         request: Request,
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_org_module_enabled` factory's docstring."""
+        _enforce_module_frame_scope(request, organization_id=organization_id)
         check_pat_scope(request, organization_id)
         _require_org_active(db, organization_id)
         _require_org_2fa(db, organization_id, current_user)
@@ -1957,6 +2012,42 @@ def require_org_module_enabled(module_key: str):
     return _dependency
 
 
+def require_org_module_enabled_dynamic(
+    organization_id: UUID,
+    module_key: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Like `require_org_module_enabled`, but `module_key` is itself a path
+    parameter rather than fixed at router-definition time (compliance-
+    module-plan.md Phase 3).
+
+    Used only by the generic Tier B module-frame-token minting endpoint
+    (`POST /orgs/{organization_id}/modules/{module_key}/frame-token`),
+    which must work for *any* currently-enabled module without a dedicated
+    per-module router — every other module-gated endpoint in the app
+    belongs to one specific module's own router and uses the `require_org_
+    module_enabled(module_key)` factory instead, with `module_key` fixed at
+    definition time.
+
+    Deliberately depends on plain `get_current_user`, not `get_current_
+    user_or_module_frame` — minting a new scoped token must only ever be
+    reachable with a real session/PAT, never with an existing module-frame
+    token (which `get_current_user` already rejects outright, same as any
+    other non-`"access"`-purpose token), so a Tier B iframe can never use
+    its own already-scoped token to mint itself a different one.
+    """
+    check_pat_scope(request, organization_id)
+    _require_org_active(db, organization_id)
+    _require_org_2fa(db, organization_id, current_user)
+    if not get_effective_org_roles(db, current_user.id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    if not is_module_enabled(db, organization_id, module_key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    return current_user
+
+
 def require_project_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
     enabled for the organisation owning the project named by the
@@ -1966,15 +2057,20 @@ def require_project_module_enabled(module_key: str):
     404-not-403 rationale, which applies identically here.
 
     Expects a `project_id` path parameter, same as `require_project_view`.
+
+    Also accepts a Tier B `<ModuleFrame>` token scoped to this exact
+    `module_key` and this exact `project_id`, exactly as documented on
+    `require_org_module_enabled` — see that factory's docstring.
     """
 
     def _dependency(
         project_id: UUID,
         request: Request,
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_project_module_enabled` factory's docstring."""
+        _enforce_module_frame_scope(request, project_id=project_id)
         check_pat_scope_for_project(request, db, project_id)
         organization_id = _project_organization_id(db, project_id)
         if organization_id is None:
@@ -1988,6 +2084,32 @@ def require_project_module_enabled(module_key: str):
         return current_user
 
     return _dependency
+
+
+def require_project_module_enabled_dynamic(
+    project_id: UUID,
+    module_key: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Project-scoped sibling of `require_org_module_enabled_dynamic` —
+    used only by `POST /projects/{project_id}/modules/{module_key}/frame-
+    token` (compliance-module-plan.md Phase 3). See that function's
+    docstring for why `module_key` is a path parameter here and why this
+    depends on plain `get_current_user`, not a module-frame-accepting one.
+    """
+    check_pat_scope_for_project(request, db, project_id)
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    _require_org_active(db, organization_id)
+    _require_org_2fa(db, organization_id, current_user)
+    if not get_effective_project_roles(db, current_user.id, project_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    if not is_module_enabled(db, organization_id, module_key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    return current_user
 
 
 def _has_module_role_grant(
@@ -2087,11 +2209,16 @@ def require_module_role(module_key: str, role_key: str):
         def _org_dependency(
             organization_id: UUID,
             request: Request,
-            current_user: User = Depends(get_current_user),
+            current_user: User = Depends(get_current_user_or_module_frame(module_key)),
             db: Session = Depends(get_db),
         ) -> User:
             """See the enclosing `require_module_role` factory's docstring
-            (org-scoped branch)."""
+            (org-scoped branch). Also accepts a Tier B `<ModuleFrame>` token
+            scoped to this exact `module_key`/`organization_id`, checked by
+            `_enforce_module_frame_scope` before any admin-override bypass
+            below — see `require_org_module_enabled`'s docstring for the
+            full rationale, which applies identically here."""
+            _enforce_module_frame_scope(request, organization_id=organization_id)
             check_pat_scope(request, organization_id)
             _require_org_active(db, organization_id)
             _require_org_2fa(db, organization_id, current_user)
@@ -2112,11 +2239,16 @@ def require_module_role(module_key: str, role_key: str):
     def _project_dependency(
         project_id: UUID,
         request: Request,
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_module_role` factory's docstring
-        (project-scoped branch)."""
+        (project-scoped branch). Also accepts a Tier B `<ModuleFrame>`
+        token scoped to this exact `module_key`/`project_id`, checked by
+        `_enforce_module_frame_scope` before any admin-override bypass
+        below — see `require_org_module_enabled`'s docstring for the full
+        rationale, which applies identically here."""
+        _enforce_module_frame_scope(request, project_id=project_id)
         check_pat_scope_for_project(request, db, project_id)
         organization_id = _project_organization_id(db, project_id)
         if organization_id is None:

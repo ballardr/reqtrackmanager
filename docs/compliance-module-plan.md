@@ -8,16 +8,16 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-05 (Phase 2 complete).
+**Last updated:** 2026-09-05 (Phase 3 complete).
 
-**Overall progress:** 3 / 16 phases complete.
+**Overall progress:** 4 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Server-level RBAC extension | [x] Complete |
 | 1 | Module registry & backend plugin loading | [x] Complete |
 | 2 | Module-contributed RBAC | [x] Complete |
-| 3 | Frontend module integration (2-tier) | [ ] Not started |
+| 3 | Frontend module integration (2-tier) | [x] Complete |
 | 4 | Module-contributed MCP tools | [ ] Not started |
 | 5 | Compliance data model (as a module) | [ ] Not started |
 | 6 | Standards management API | [ ] Not started |
@@ -31,7 +31,7 @@ This document is the persistent, session-resumable implementation plan for the C
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 3.
+**Next phase to pick up:** Phase 4.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -226,6 +226,18 @@ Implemented as specified, with a few judgment calls the spec above left open —
 - The `iframe` carries a `sandbox` attribute; CSP gains an explicit `frame-src` **allowlist** populated only from registered, admin-trusted module origins (never a wildcard) — mirrors how OIDC issuer URLs are configured (explicit per-module opt-in), consistent with `main.py`'s existing deliberately-restrictive CSP posture.
 
 Both tiers are built in this phase (the registry convention and the bridge). No actual third-party module ships as part of this plan — none is required by `Compliance_Module_Requirements.md`, and building one would be scope creep. Tests: Tier A registry loading + a fixture module exercising real shared-component imports; Tier B bridge message contract (toast/confirm round-trip), token minting/scoping, CSP header generation from the allowlist.
+
+#### Phase 3 notes (completed 2026-09-05)
+
+Implemented as specified, with a few judgment calls the spec above left open — recorded here so a future session doesn't need to re-derive them:
+- **Sandbox flags**: the spec named "a `sandbox` attribute" without picking flags. Shipped as `sandbox="allow-scripts allow-same-origin allow-forms"` — `allow-same-origin` scopes to the iframe's *own* distinct origin (never the host's, since the origin is always cross-origin by construction — same-origin admin-hosted modules aren't a case this mechanism needs to handle specially), needed for the module's own script to use its own storage/cookies/fetch normally; everything else `sandbox` restricts by default (top-level navigation, popups, pointer lock, etc.) stays off.
+- **Token-scoping enforcement mechanism**, not fully specified by the spec text (which only said the minted token is "checked by `require_module_enabled`/`require_module_role` exactly like any other request"): a Tier B token cannot be used through `get_current_user` at all — `deps._resolve_user_from_token` already rejects any non-`"access"`-purpose token (the same path that rejects a replayed 2FA challenge token), so a new `get_current_user_or_module_frame(module_key)` factory was added, used *only* by the three module-gating dependencies, which stamps `request.state.module_frame_scope` for a module-frame token and leaves it unset for a normal one. A new `rbac._enforce_module_frame_scope` helper checks that scope (when present) against the request's own `organization_id`/`project_id` path parameter, called *before* any `is_server_admin`/`ORG_ADMIN`/`PROJECT_MANAGER` bypass in all three dependencies — a mis-scoped token must 403 regardless of what the underlying real user could otherwise do. This mechanically confines a module-frame token to exactly the one module/org/project it was minted for, with no reliance on the token holder's own honesty.
+- **Frame-token minting endpoints** needed a `module_key`-as-path-parameter variant of the two module-gating dependencies (`require_org_module_enabled_dynamic`/`require_project_module_enabled_dynamic` in `services/rbac.py`) — the existing factories fix `module_key` as a closure constant at router-definition time (correct for a real module's own router, wrong for a generic "mint a token for whichever module a request names" endpoint). Both mint endpoints deliberately depend on plain `get_current_user`, not the module-frame-accepting variant, so a Tier B iframe's own already-scoped token can never mint itself a different one.
+- **Origin-allowlist enforcement lives in the registry, not just the CSP header**: `app.modules.registry.get_frontend_manifest(module_key)` cross-checks a Tier B module's declared `frame_url` against `Settings.module_frame_allowed_origins` and returns `None` (logged) if it falls outside — mirroring Phase 4's own "verify mechanically, don't trust a self-declared field" principle for MCP tools, applied here to a different field. The CSP `frame-src` header (built from the same setting) is a second, independent, browser-enforced backstop — even if the registry check were somehow bypassed, an unlisted origin still can't be framed.
+- **Nav/routing plumbing** ended up needing a new, lean, project-member-readable endpoint, `GET /projects/{project_id}/enabled-modules` (`ModuleNavEntryOut`), rather than reusing the existing org-admin-only `GET /orgs/{id}/modules` (`OrgModuleOut` — gated `OrgRole.ORG_ADMIN`, and deliberately includes non-entitled/disabled modules greyed out, the wrong shape for "what should a plain project member's nav rail show"). `OrgModuleOut` also gained a `frontend_manifest` field for the admin view, computed the same way. `frontend/src/hooks/useProjectEnabledModules.ts` is called independently by `Layout.tsx` (nav) and `App.tsx` (route splicing via `frontend/src/modules/buildModuleRoutes.tsx`) rather than through a shared context provider — mirrors this codebase's existing convention (`BrandingContext`/`TerminologyContext` each independently fetch their own project-derived data rather than sharing one provider).
+- **`ModuleFrame` reads the resolved theme directly off `<html data-theme>`** (`document.documentElement.getAttribute("data-theme")`) rather than via `useTheme()`/`ThemeContext` — `ThemeProvider` already stamps the *resolved* light/dark value onto that attribute (which every other component's CSS already cascades from), so reading it directly is equivalent without pulling in a context dependency only one other, unstoried component (`Layout.tsx`) uses; this also kept the Storybook story for `ModuleFrame` from needing a `ThemeContext.Provider` wrapper no other story in this codebase has needed yet.
+- **`buildModuleRoutes` was split into its own file** (`frontend/src/modules/buildModuleRoutes.tsx`) rather than living in `App.tsx` alongside the `App` component — a file mixing component and non-component exports breaks Fast Refresh (`react-refresh/only-export-components`, a real lint error under this repo's "fix warnings, don't suppress" rule), the same reasoning `context/ProjectContextValue.ts`'s own split from `TerminologyContext.tsx` already documents.
+- **Testing**: no Tier A/Tier B module exists yet (none is required until Phase 12), so — following Phase 1/2's own established precedent for module-system infrastructure — interactive coverage lives entirely in Storybook (`frontend/src/App.stories.tsx`'s `TierARoutingHarness`, exercising a fixture module pushed into the real `installedModules` registry and rendered through the real `buildModuleRoutes`; `frontend/src/components/ModuleFrame.stories.tsx`, exercising the full Host UI Bridge message contract — init/toast/confirm round-trip, untrusted-origin rejection — by dispatching synthetic `MessageEvent`s at the rendered iframe's own `contentWindow` rather than depending on a real external origin loading inside the test browser, which real cross-origin navigation would make untestable via `spyOn`/`mockRestore` (`SecurityError` on a genuinely cross-origin `contentWindow`) — the story's fixture `frameUrl` is same-origin to the test page for exactly this reason, while every assertion still only depends on the `origin` *string* on each message, exercised identically either way). Backend coverage (`backend/tests/test_module_frontend_integration.py`, 26 tests) covers `ModuleFrontendManifest` validation, `get_frontend_manifest`'s allowlist enforcement, CSP `frame-src` header generation, token minting/scoping (including the "a module-frame token can't mint another one" and "an org-scoped token can't satisfy a project-scoped endpoint" cases), and the nav-facing endpoints. Full backend suite re-run clean (839 passed) after this phase's changes; no new warnings.
 
 ### Phase 4 — Module-Contributed MCP Tools
 

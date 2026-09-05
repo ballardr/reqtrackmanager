@@ -190,6 +190,22 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_relaxed_child_project_creation: bool = True
 
 
+class ModuleFrontendManifestOut(BaseModel):
+    """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
+    system Phase 3) — see that dataclass's docstring for what each field
+    means. Only ever constructed from `app.modules.registry.
+    get_frontend_manifest`'s return value, never a raw `ModuleDefinition.
+    frontend_manifest`, so a Tier B entry whose `frame_url` origin isn't
+    allowlisted never reaches the frontend at all (that function returns
+    `None` for it, and the containing `OrgModuleOut.frontend_manifest`/
+    `ModuleNavEntryOut.frontend_manifest` is simply omitted)."""
+
+    tier: str
+    nav_label: str
+    nav_path: str
+    frame_url: str | None = None
+
+
 class OrgModuleOut(BaseModel):
     """A single module's state as seen by an org admin (module system
     Phase 1) — combines the registry's static description with this
@@ -210,6 +226,31 @@ class OrgModuleOut(BaseModel):
     entitled: bool
     enabled: bool
     default_enabled: bool
+    frontend_manifest: ModuleFrontendManifestOut | None = None
+
+
+class ModuleNavEntryOut(BaseModel):
+    """One currently-*enabled* module's nav-facing summary (module system
+    Phase 3, `GET /projects/{id}/enabled-modules`) — unlike `OrgModuleOut`
+    (an org-admin bookkeeping view that deliberately includes non-entitled/
+    disabled modules, greyed out), this is the lean, read-only shape any
+    project member uses to render module nav entries/routes, so a
+    disabled/non-entitled module is simply absent rather than included in
+    some disabled state a plain nav rail has no use for."""
+
+    module_key: str
+    name: str
+    frontend_manifest: ModuleFrontendManifestOut | None = None
+
+
+class ModuleFrameTokenOut(BaseModel):
+    """A freshly-minted Tier B `<ModuleFrame>` token (module system Phase
+    3, `POST /orgs/{id}/modules/{module_key}/frame-token` / `POST
+    /projects/{id}/modules/{module_key}/frame-token`) — see `app.security.
+    create_module_frame_token`'s docstring for what it's scoped to and why."""
+
+    token: str
+    expires_in_minutes: int
 
 
 class OrgModuleEnablementUpdate(BaseModel):

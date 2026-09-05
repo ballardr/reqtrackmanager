@@ -160,12 +160,24 @@ async def security_headers_middleware(request: Request, call_next):
     against this specific SPA's actual script/style sources to avoid
     silently breaking it, so it's left as a documented follow-up
     (docs/deployment.md) rather than shipped unverified here.
+
+    `frame-src` is the exception, added for the modular feature system's
+    Tier B remote modules (compliance-module-plan.md Phase 3): unlike
+    `frame-ancestors` (who may frame *this app* — always `'none'`), `frame-
+    src` governs what *this app* may embed in its own `<ModuleFrame>`
+    iframe, so it is built from `Settings.module_frame_allowed_origins`
+    every request (cheap — `get_settings()` is `lru_cache`d) rather than
+    hardcoded, and defaults to `'none'` (no origin allowlisted) exactly
+    like every other module-system opt-in in this codebase (`ALLOW_
+    EXTERNAL_MODULES`, `MCP_WRITES_ENABLED`).
     """
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    frame_src_origins = get_settings().module_frame_allowed_origin_list
+    frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
+    response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
     return response
 
 
