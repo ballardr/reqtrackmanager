@@ -59,13 +59,22 @@ all — mirroring `docs/mcp-server.md`'s existing, explicit rule that
 ReqTrackManager's core approval workflow is excluded from the tool surface
 on principle (accountable-human-decision, not an RBAC question).
 
+Phase 10 (Scheduled Reviews + Notifications, §17, §18, §28) adds one more
+read-only MCP tool, `compliance_list_reviews_due(project_id)`, and this
+module's first `scheduled_jobs` — four APScheduler jobs (`app.modules.
+registry.ModuleScheduledJob`), one per date-driven sweep `scheduler.py`
+defines. No mutating tool is declared for the review CRUD/complete
+endpoints this phase adds (`router.py`/`project_router.py`) — Phase 10's
+own plan spec asks only for the read-only "reviews due" listing, mirroring
+this module's existing cautious default of adding MCP tools narrowly.
+
 External dependencies: `app.modules.registry`'s own dataclasses;
-`app.modules.compliance.router`/`.project_router`/`.service` (each imported
-lazily, inside `get_router()`/`get_project_router()`/`resolve_file_owner_
-project_id`, to avoid any import-cycle risk with this module's own
-registration -- mirroring how Phase 5's own notes already document
-resolving the `MODULE_DEFINITION`/registry import cycle via `app/modules/
-__init__.py`).
+`app.modules.compliance.router`/`.project_router`/`.service`/`.scheduler`
+(each imported lazily, inside `get_router()`/`get_project_router()`/
+`resolve_file_owner_project_id`/the `scheduled_jobs` callables, to avoid any
+import-cycle risk with this module's own registration -- mirroring how
+Phase 5's own notes already document resolving the `MODULE_DEFINITION`/
+registry import cycle via `app/modules/__init__.py`).
 """
 
 from __future__ import annotations
@@ -75,7 +84,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
-from app.modules.registry import McpToolDefinition, ModuleDefinition, ModuleRoleDefinition
+from app.modules.registry import McpToolDefinition, ModuleDefinition, ModuleRoleDefinition, ModuleScheduledJob
 
 COMPLIANCE_MODULE_KEY = "compliance"
 
@@ -112,6 +121,30 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     return resolve_evidence_file_project_id(db, file_id)
 
 
+def _run_evidence_expiry_notifications(db: Session) -> None:
+    from app.modules.compliance.scheduler import send_evidence_expiry_notifications
+
+    send_evidence_expiry_notifications(db)
+
+
+def _run_review_due_notifications(db: Session) -> None:
+    from app.modules.compliance.scheduler import send_review_due_notifications
+
+    send_review_due_notifications(db)
+
+
+def _run_required_action_due_notifications(db: Session) -> None:
+    from app.modules.compliance.scheduler import send_required_action_due_notifications
+
+    send_required_action_due_notifications(db)
+
+
+def _run_target_date_notifications(db: Session) -> None:
+    from app.modules.compliance.scheduler import send_target_date_notifications
+
+    send_target_date_notifications(db)
+
+
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
     name="Compliance",
@@ -126,6 +159,16 @@ MODULE_DEFINITION = ModuleDefinition(
     get_project_router=get_project_router,
     models_import_path="app.modules.compliance.models",
     resolve_file_owner_project_id=resolve_file_owner_project_id,
+    scheduled_jobs=(
+        ModuleScheduledJob(
+            job_id="evidence_expiry_reminders", hour=2, minute=0, run=_run_evidence_expiry_notifications
+        ),
+        ModuleScheduledJob(job_id="review_due_reminders", hour=2, minute=15, run=_run_review_due_notifications),
+        ModuleScheduledJob(
+            job_id="required_action_due_reminders", hour=2, minute=30, run=_run_required_action_due_notifications
+        ),
+        ModuleScheduledJob(job_id="target_date_reminders", hour=2, minute=45, run=_run_target_date_notifications),
+    ),
     roles=(
         ModuleRoleDefinition(
             role_key="compliance_manager",
@@ -237,6 +280,20 @@ MODULE_DEFINITION = ModuleDefinition(
             params=[
                 {"name": "project_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The project whose pending compliance approvals to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_reviews_due",
+            description=(
+                "Lists every scheduled compliance review, standard-level or project-level, that is "
+                "currently due or overdue for a project — its own project-level reviews plus any "
+                "review of a standard it is assigned to."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/reviews-due",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose due/overdue compliance reviews to list."},
             ],
         ),
     ),

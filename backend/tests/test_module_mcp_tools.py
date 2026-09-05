@@ -226,9 +226,10 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All seven of Compliance's tools (three from Phase 6, two more from
-    Phase 7, one more from Phase 8, one more from Phase 9) resolve, are
-    read-only (`mutates=False`, all GET), and carry exactly the path
+    """All eight of Compliance's tools (three from Phase 6, two more from
+    Phase 7, one more from Phase 8, one more from Phase 9, one more from
+    Phase 10) resolve, are read-only (`mutates=False`, all GET), and carry
+    exactly the path
     parameters their router endpoints require — the concrete proof that
     `module.py`'s declared `path_template`s actually match real routes on
     `compliance.router.router`/`compliance.project_router.router`, not just
@@ -251,6 +252,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     assert "compliance_get_project_status" in by_name
     assert "compliance_list_non_compliant_requirements" in by_name
     assert "compliance_list_expiring_evidence" in by_name
+    assert "compliance_list_reviews_due" in by_name
 
     list_standards = by_name["compliance_list_standards"]
     assert list_standards.mutates is False
@@ -299,6 +301,12 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     assert list_pending_approvals.mutates is False
     assert list_pending_approvals.path_template == "/api/v1/projects/{project_id}/modules/compliance/pending-approvals"
     assert {p["name"] for p in list_pending_approvals.params} == {"project_id"}
+
+    # Phase 10's tool: also `project_id`-only.
+    list_reviews_due = by_name["compliance_list_reviews_due"]
+    assert list_reviews_due.mutates is False
+    assert list_reviews_due.path_template == "/api/v1/projects/{project_id}/modules/compliance/reviews-due"
+    assert {p["name"] for p in list_reviews_due.params} == {"project_id"}
 
     # No mutating tool for publish/retire, applicability, assessment, any
     # evidence mutation (create/update/archive/revalidate/link/upload), or

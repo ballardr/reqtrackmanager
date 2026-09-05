@@ -230,6 +230,45 @@ class ResolvedMcpTool:
     params: list[dict]
 
 
+@dataclass(frozen=True)
+class ModuleScheduledJob:
+    """Declares one date-driven background sweep a module needs run
+    periodically (compliance-module-plan.md Phase 10) — e.g. Compliance's
+    evidence-expiry/review-due/required-action-due/target-date sweeps
+    (§18, §28). `app.services.scheduler.start_scheduler` registers every
+    registered module's declared jobs generically, alongside its own two
+    core jobs, so a module needing scheduled processing doesn't require a
+    hand-written edit to that core file — the same "core code shouldn't
+    need much modification per module" goal `get_router`/`resolve_file_
+    owner_project_id` already serve for other concerns, applied here to
+    APScheduler wiring.
+
+    Attributes:
+        job_id: A short, module-unique identifier (e.g. `"evidence_expiry_
+            reminders"`) — `start_scheduler` prefixes it with the
+            declaring module's own key (`"compliance_evidence_expiry_
+            reminders"`) when registering it with APScheduler, so two
+            modules can never collide on a job id even if they pick the
+            same short name.
+        hour / minute: When this job runs, in the container's local time —
+            mirrors `start_scheduler`'s own two core jobs (`hour=1,
+            minute=0`/`15`), which stagger their run times rather than
+            firing simultaneously; a module should do the same relative to
+            existing jobs to avoid an unnecessary DB-load spike, though
+            nothing enforces this mechanically.
+        run: A callable taking one open `Session` and performing the sweep
+            — mirrors `services.reviews.send_due_review_reminders`'s own
+            `(db: Session) -> None` shape exactly. `start_scheduler` opens
+            and closes the session around this call; the callable itself
+            never opens its own.
+    """
+
+    job_id: str
+    hour: int
+    minute: int
+    run: Callable[[Session], None]
+
+
 #: `openapi_extra` key a route's own author sets to mark it as an
 #: approval/decision-type action (e.g. `@router.post(..., openapi_extra=
 #: APPROVAL_ACTION_ROUTE_EXTRA)`) — `build_mcp_tool_manifest` reads this
@@ -533,6 +572,12 @@ class ModuleDefinition:
             Compliance's `ComplianceEvidenceFile`) references `file_id`,
             else `None`. `None` for a module with no file attachments of
             its own (every module before Phase 8).
+        scheduled_jobs: Module-contributed APScheduler jobs (compliance-
+            module-plan.md Phase 10) — each a `ModuleScheduledJob`.
+            Registered generically by `app.services.scheduler.
+            start_scheduler`, job-id-prefixed with this module's own `key`.
+            Empty tuple for a module with no scheduled processing of its
+            own (every module before Phase 10).
     """
 
     key: str
@@ -549,6 +594,7 @@ class ModuleDefinition:
     migrations_import_path: str | None = None
     get_project_router: Callable[[], APIRouter | None] | None = None
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
+    scheduled_jobs: tuple[ModuleScheduledJob, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1162,6 +1208,24 @@ def resolve_module_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID
         if project_id is not None:
             return project_id
     return None
+
+
+def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:
+    """Every registered module's declared `scheduled_jobs` (compliance-
+    module-plan.md Phase 10), each paired with its declaring module's own
+    `key` — what `app.services.scheduler.start_scheduler` iterates to
+    register module-contributed APScheduler jobs generically, alongside its
+    own two core jobs. A module with no `scheduled_jobs` of its own (the
+    default empty tuple) simply contributes nothing.
+
+    Returns:
+        A list of `(module_key, job)` pairs, in registry iteration order.
+    """
+    jobs: list[tuple[str, ModuleScheduledJob]] = []
+    for definition in get_module_registry().values():
+        for job in definition.scheduled_jobs:
+            jobs.append((definition.key, job))
+    return jobs
 
 
 def list_enabled_module_roles(

@@ -42,6 +42,28 @@ class NotificationType(str, enum.Enum):
     REQUIREMENT_REVIEW_DUE = "requirement_review_due"
     STAGE_REVIEW_AUTO_APPROVED = "stage_review_auto_approved"
 
+    # Compliance Module (docs/compliance-module-plan.md Phase 10; docs/
+    # Compliance_Module_Requirements.md §18) — every event §18 lists.
+    # `app.modules.compliance` sends these; kept in this shared core enum
+    # (not a module-owned one) since `Notification.type`/`NotificationPreference.
+    # type` are core, module-agnostic tables every notification (core or
+    # module-contributed) shares — the same reason `NotificationType` itself
+    # was never made per-module.
+    COMPLIANCE_REQUIRED_ACTION_DUE_SOON = "compliance_required_action_due_soon"
+    COMPLIANCE_REQUIRED_ACTION_OVERDUE = "compliance_required_action_overdue"
+    COMPLIANCE_TARGET_DATE_APPROACHING = "compliance_target_date_approaching"
+    COMPLIANCE_TARGET_DATE_EXCEEDED = "compliance_target_date_exceeded"
+    COMPLIANCE_APPROVAL_REQUESTED = "compliance_approval_requested"
+    COMPLIANCE_ASSESSMENT_REJECTED = "compliance_assessment_rejected"
+    COMPLIANCE_APPROVAL_INVALIDATED = "compliance_approval_invalidated"
+    COMPLIANCE_REVIEW_DUE = "compliance_review_due"
+    COMPLIANCE_REVIEW_OVERDUE = "compliance_review_overdue"
+    COMPLIANCE_EVIDENCE_EXPIRING_SOON = "compliance_evidence_expiring_soon"
+    COMPLIANCE_EVIDENCE_EXPIRED = "compliance_evidence_expired"
+    COMPLIANCE_REQUIREMENT_NON_COMPLIANT = "compliance_requirement_non_compliant"
+    COMPLIANCE_STANDARD_UPDATE_REVIEW_NEEDED = "compliance_standard_update_review_needed"
+    COMPLIANCE_ASSIGNMENT_CREATED = "compliance_assignment_created"
+
 
 class DigestMode(str, enum.Enum):
     """How often email notifications are sent (C-N-05)."""

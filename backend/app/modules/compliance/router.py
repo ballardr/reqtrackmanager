@@ -68,13 +68,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
-from app.modules.compliance.enums import ComplianceStandardVersionStatus
+from app.modules.compliance.enums import ComplianceReviewStatus, ComplianceStandardVersionStatus
 from app.modules.compliance.models import (
     ComplianceActionTypeDefinition,
     ComplianceRequiredAction,
     ComplianceRequirement,
+    ComplianceReview,
     ComplianceStandard,
     ComplianceStandardVersion,
     ProjectCompliance,
@@ -89,6 +91,10 @@ from app.modules.compliance.schemas import (
     ComplianceRequirementCreate,
     ComplianceRequirementOut,
     ComplianceRequirementUpdate,
+    ComplianceReviewCompleteRequest,
+    ComplianceReviewCreate,
+    ComplianceReviewOut,
+    ComplianceReviewUpdate,
     ComplianceStandardCreate,
     ComplianceStandardOut,
     ComplianceStandardUpdate,
@@ -98,8 +104,15 @@ from app.modules.compliance.schemas import (
     ProjectComplianceOut,
     ProjectComplianceStatusOut,
 )
-from app.modules.compliance.service import build_status_out, materialize_assessment_rows
+from app.modules.compliance.service import (
+    build_review_out,
+    build_status_out,
+    complete_review,
+    get_effective_compliance_officers,
+    materialize_assessment_rows,
+)
 from app.schemas.project import MoveDirection
+from app.services import notifications
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
 from app.services.ordering import move_ordered
@@ -449,6 +462,47 @@ def get_standard_version(
     return version
 
 
+def _notify_projects_of_standard_update(
+    db: Session, standard: ComplianceStandard, *, new_version: ComplianceStandardVersion, actor_id: UUID
+) -> None:
+    """Notifies the compliance officers of every project currently (non-
+    archived-ly) assigned to an *older* version of `standard` that a new
+    version has been published (§18's "A compliance standard being updated
+    where affected projects require review") — those projects stay pinned
+    to their own assigned version (Phase 7's own design; publishing never
+    moves an existing assignment), so this is purely informational: a
+    project's Compliance Manager decides separately whether/when to
+    actually migrate (Phase 11)."""
+    other_version_ids = set(
+        db.scalars(
+            select(ComplianceStandardVersion.id).where(
+                ComplianceStandardVersion.standard_id == standard.id,
+                ComplianceStandardVersion.id != new_version.id,
+            )
+        ).all()
+    )
+    if not other_version_ids:
+        return
+    affected_assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.standard_version_id.in_(other_version_ids), ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+    for assignment in affected_assignments:
+        for recipient_id in get_effective_compliance_officers(db, assignment.project_id):
+            recipient = db.get(User, recipient_id)
+            if recipient is None:
+                continue
+            notifications.notify(
+                db, recipient, notification_type=NotificationType.COMPLIANCE_STANDARD_UPDATE_REVIEW_NEEDED,
+                title=f"New version published: {standard.name}",
+                body=f'"{standard.name}" has a new version ({new_version.version_label}); '
+                     "this project's assignment may need review.",
+                project_id=assignment.project_id, entity_type="compliance_standard", entity_id=str(standard.id),
+                actor_id=actor_id,
+            )
+
+
 @router.post(
     "/standards/{standard_id}/versions/{version_id}/publish", response_model=ComplianceStandardVersionOut
 )
@@ -459,7 +513,7 @@ def publish_standard_version(
     """Publishes a `DRAFT` version (§4) — after this, its requirements and
     required actions become immutable (`_require_draft_version`). 409 if
     the version isn't currently `DRAFT` (already published or retired)."""
-    _, version = _get_version_or_404(db, organization_id, standard_id, version_id)
+    standard, version = _get_version_or_404(db, organization_id, standard_id, version_id)
     if version.status != ComplianceStandardVersionStatus.DRAFT:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft version can be published.")
     version.status = ComplianceStandardVersionStatus.PUBLISHED
@@ -467,6 +521,7 @@ def publish_standard_version(
     version.published_by = current_user.id
     log_event(db, entity_type="compliance_standard_version", entity_id=version.id, action="published",
               actor_id=current_user.id, organization_id=organization_id)
+    _notify_projects_of_standard_update(db, standard, new_version=version, actor_id=current_user.id)
     db.commit()
     db.refresh(version)
     return version
@@ -1020,6 +1075,17 @@ def create_project_compliance(
     log_event(db, entity_type="project_compliance", entity_id=project_compliance.id, action="created",
               actor_id=current_user.id, organization_id=organization_id, project_id=project_id,
               detail={"standard_version_id": str(version.id)})
+    for recipient_id in get_effective_compliance_officers(db, project_id):
+        recipient = db.get(User, recipient_id)
+        if recipient is None:
+            continue
+        notifications.notify(
+            db, recipient, notification_type=NotificationType.COMPLIANCE_ASSIGNMENT_CREATED,
+            title="New compliance assignment",
+            body="This project was assigned to a compliance standard and needs assessment to begin.",
+            project_id=project_id, entity_type="project_compliance", entity_id=str(project_compliance.id),
+            actor_id=current_user.id,
+        )
     db.commit()
     db.refresh(project_compliance)
     return project_compliance
@@ -1088,3 +1154,123 @@ def unarchive_project_compliance(
     db.commit()
     db.refresh(project_compliance)
     return project_compliance
+
+
+# --- Phase 10: Scheduled reviews (standard-level; §17, §18, §28) ----------------
+
+
+def _get_standard_review_or_404(db: Session, organization_id: UUID, standard_id: UUID, review_id: UUID) -> ComplianceReview:
+    """404s unless `review_id` is a *standard*-level review (`standard_id`
+    set, not `project_compliance_id`) owned by `standard_id`/`organization_id`
+    — a project-level review is only ever reachable through `project_
+    router.py`'s project-scoped endpoints."""
+    _get_standard_or_404(db, organization_id, standard_id)
+    review = db.get(ComplianceReview, review_id)
+    if review is None or review.standard_id != standard_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance review not found.")
+    return review
+
+
+@router.post(
+    "/standards/{standard_id}/reviews", response_model=ComplianceReviewOut, status_code=status.HTTP_201_CREATED
+)
+def create_standard_review(
+    organization_id: UUID, standard_id: UUID, payload: ComplianceReviewCreate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Schedules a new review of a compliance standard itself (§17) — e.g.
+    "Annual audit of this standard.\""""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    review = ComplianceReview(
+        standard_id=standard.id, frequency_label=payload.frequency_label, recurrence_days=payload.recurrence_days,
+        next_due_date=payload.next_due_date, owner_id=payload.owner_id, notes=payload.notes,
+        created_by=current_user.id,
+    )
+    db.add(review)
+    db.flush()
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id, detail={"standard_id": str(standard.id)})
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.get("/standards/{standard_id}/reviews", response_model=list[ComplianceReviewOut])
+def list_standard_reviews(
+    organization_id: UUID, standard_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists every review — `SCHEDULED` and `COMPLETED` — ever scheduled
+    against this standard, in creation order (§17's "Review history")."""
+    _get_standard_or_404(db, organization_id, standard_id)
+    reviews = db.scalars(
+        select(ComplianceReview).where(ComplianceReview.standard_id == standard_id).order_by(ComplianceReview.created_at)
+    ).all()
+    return [build_review_out(db, review) for review in reviews]
+
+
+@router.get("/standards/{standard_id}/reviews/{review_id}", response_model=ComplianceReviewOut)
+def get_standard_review(
+    organization_id: UUID, standard_id: UUID, review_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
+    return build_review_out(db, review)
+
+
+@router.patch("/standards/{standard_id}/reviews/{review_id}", response_model=ComplianceReviewOut)
+def update_standard_review(
+    organization_id: UUID, standard_id: UUID, review_id: UUID, payload: ComplianceReviewUpdate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Mirrors `project_router.py::update_project_review`'s exact shape,
+    for a standard-level review."""
+    review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
+    if review.next_due_date != payload.next_due_date:
+        review.due_reminder_sent_at = None
+        review.overdue_notified_at = None
+    review.frequency_label = payload.frequency_label
+    review.recurrence_days = payload.recurrence_days
+    review.next_due_date = payload.next_due_date
+    review.owner_id = payload.owner_id
+    review.notes = payload.notes
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.delete("/standards/{standard_id}/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_standard_review(
+    organization_id: UUID, standard_id: UUID, review_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A completed review is retained history and cannot be deleted.")
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="deleted",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.delete(review)
+    db.commit()
+
+
+@router.post("/standards/{standard_id}/reviews/{review_id}/complete", response_model=ComplianceReviewOut)
+def complete_standard_review(
+    organization_id: UUID, standard_id: UUID, review_id: UUID, payload: ComplianceReviewCompleteRequest,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed.")
+    next_review = complete_review(db, review, outcome=payload.outcome, notes=payload.notes, actor_id=current_user.id)
+    log_event(
+        db, entity_type="compliance_review", entity_id=review.id, action="completed",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"outcome": payload.outcome.value, "next_review_id": str(next_review.id) if next_review else None},
+    )
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)

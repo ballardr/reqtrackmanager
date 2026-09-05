@@ -25,6 +25,16 @@ ships. `ComplianceApplicabilitySource` is Phase 7's own addition, computed
 computed rather than stored — see `service.py::compute_evidence_validity_
 state` — for the same "queryable derived state, not a stored one that can
 drift" reason `ComplianceApplicabilitySource` already established.
+
+`ComplianceReviewStatus`/`ComplianceReviewOutcome` are Phase 10's own
+addition (§17). Unlike `ComplianceApplicabilitySource`/
+`ComplianceEvidenceValidityState`, `ComplianceReviewStatus` *is* a stored
+column (`ComplianceReview.status`) — a review's own lifecycle (scheduled ->
+completed) is a real event history, not something derivable from a date
+comparison the way evidence validity is. Whether a still-`SCHEDULED` review
+is upcoming/due/overdue *is* computed, never stored, for the same
+"can't drift" reason as the other two — see `service.py::compute_review_
+schedule_state`.
 """
 
 from __future__ import annotations
@@ -150,3 +160,41 @@ class ComplianceEvidenceValidityState(str, enum.Enum):
     VALID = "valid"
     EXPIRING_SOON = "expiring_soon"
     EXPIRED = "expired"
+
+
+class ComplianceReviewStatus(str, enum.Enum):
+    """Lifecycle state of a `ComplianceReview` row (§17).
+
+    A review starts `SCHEDULED`. `COMPLETED` is a terminal, retained state
+    (§17's "Completed reviews must be retained as part of the compliance
+    history") — recording an outcome creates a new `SCHEDULED` row for the
+    next cycle when the review recurs (`ComplianceReview.recurrence_days`
+    is set) rather than reopening/reusing the completed row, mirroring
+    `RequirementReview`'s own "outcome recorded on a fresh row, the
+    schedule field it satisfied is untouched" shape one level up. There is
+    deliberately no `CANCELLED`/`OVERDUE` member: whether a `SCHEDULED`
+    review is upcoming/due/overdue is a computed, point-in-time comparison
+    against `next_due_date` (`service.py::compute_review_schedule_state`),
+    not a state transition to persist — see this module's own docstring.
+    """
+
+    SCHEDULED = "scheduled"
+    COMPLETED = "completed"
+
+
+class ComplianceReviewOutcome(str, enum.Enum):
+    """Outcome recorded when a `ComplianceReview` is completed (§17's
+    "Review outcome"). `None` (nullable on the model) until completion.
+
+    Three values, not `RequirementReviewOutcome`'s simpler met/failed pair:
+    a compliance review is a broader audit-style event (§17's own examples
+    include "Annual security compliance review," "Review after a
+    significant standard change") that commonly identifies follow-up work
+    without being an outright failure — `ACTION_REQUIRED` captures that
+    middle outcome so it isn't forced into `SATISFACTORY` or
+    `UNSATISFACTORY`.
+    """
+
+    SATISFACTORY = "satisfactory"
+    ACTION_REQUIRED = "action_required"
+    UNSATISFACTORY = "unsatisfactory"

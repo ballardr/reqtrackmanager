@@ -38,6 +38,21 @@ Responsibilities:
   transitions either) — see each function's own docstring for the exact
   rule and why the two mutation-triggers (a fresh assessment vs. every
   other material change) transition differently.
+- `compute_review_schedule_state`/`build_review_out`/`complete_review`
+  (Phase 10, §17): the "upcoming/due/overdue" derivation for a `SCHEDULED`
+  `ComplianceReview` (computed, never stored — mirrors `compute_evidence_
+  validity_state`'s own reasoning), the response-schema builder, and the
+  completion action's recurrence logic (creates the next cycle's row when
+  `recurrence_days` is set — see that function's own docstring).
+- `get_effective_compliance_officers`/`get_effective_compliance_managers`
+  (Phase 10, §18): notification-recipient resolution for Compliance's own
+  event-driven notifications (`router.py`/`project_router.py`) — deliberately
+  *not* an authorization check (RBAC gating stays exactly
+  `require_module_role`, unchanged), just "who should be told about this,"
+  so a same-org/-project fan-out that misses an edge case (e.g. an org
+  group granting `ORG_ADMIN`, which this codebase's groups don't support
+  anyway — see each function's own docstring) is a missed notification, not
+  a security gap.
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -45,7 +60,7 @@ External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import select
@@ -56,6 +71,8 @@ from app.modules.compliance.enums import (
     ComplianceApplicabilitySource,
     ComplianceApprovalState,
     ComplianceEvidenceValidityState,
+    ComplianceReviewOutcome,
+    ComplianceReviewStatus,
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
@@ -66,6 +83,8 @@ from app.modules.compliance.models import (
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
+    ComplianceReview,
+    ComplianceReviewEvidenceLink,
     ComplianceStandard,
     ComplianceStandardVersion,
     ProjectCompliance,
@@ -73,6 +92,7 @@ from app.modules.compliance.models import (
 )
 from app.modules.compliance.schemas import (
     ComplianceEvidenceOut,
+    ComplianceReviewOut,
     ProjectComplianceRequirementOut,
     ProjectComplianceStatusOut,
 )
@@ -683,3 +703,191 @@ def resolve_evidence_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
         return None
     evidence = db.get(ComplianceEvidence, link.evidence_id)
     return evidence.project_id if evidence is not None else None
+
+
+# --- Phase 10: Scheduled reviews ---------------------------------------------------
+
+#: Days before `ComplianceReview.next_due_date` that a still-`SCHEDULED`
+#: review is reported `DUE` rather than `UPCOMING` (§17/§28's "identify
+#: upcoming and overdue compliance reviews"). A plain constant, like
+#: `EVIDENCE_EXPIRY_WARNING_DAYS` above, but a shorter window: a review
+#: (an activity someone must actually schedule time to perform) warrants a
+#: shorter advance flag than a certificate's own expiry.
+COMPLIANCE_REVIEW_DUE_WARNING_DAYS = 14
+
+
+def compute_review_schedule_state(
+    review: ComplianceReview, *, today: date | None = None
+) -> Literal["upcoming", "due", "overdue"] | None:
+    """Derives a `ComplianceReview`'s current schedule state (§17/§28) from
+    `next_due_date` — never stored, mirroring `compute_evidence_validity_
+    state`'s own "can't drift" reasoning.
+
+    Rule:
+    - Not `SCHEDULED` (i.e. `COMPLETED`) -> `None` (the concept doesn't
+      apply to a completed review).
+    - `next_due_date` already passed -> `OVERDUE`.
+    - `next_due_date` within `COMPLIANCE_REVIEW_DUE_WARNING_DAYS` of today
+      (inclusive) -> `DUE`.
+    - Otherwise -> `UPCOMING`.
+
+    Args:
+        review: The row to evaluate.
+        today: Overridable for tests; defaults to the real current date.
+
+    Returns:
+        The computed state, or `None` for a non-`SCHEDULED` review.
+    """
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        return None
+    today = today or date.today()
+    if review.next_due_date < today:
+        return "overdue"
+    if review.next_due_date <= today + timedelta(days=COMPLIANCE_REVIEW_DUE_WARNING_DAYS):
+        return "due"
+    return "upcoming"
+
+
+def build_review_out(db: Session, review: ComplianceReview) -> ComplianceReviewOut:
+    """Builds the response schema for one `ComplianceReview` row, filling in
+    its computed `schedule_state` and current linked evidence ids — used by
+    every endpoint (`router.py`/`project_router.py`) that returns one or
+    more review rows, so these two derived/joined fields are never built ad
+    hoc per call site."""
+    linked_evidence_ids = list(
+        db.scalars(
+            select(ComplianceReviewEvidenceLink.evidence_id).where(ComplianceReviewEvidenceLink.review_id == review.id)
+        ).all()
+    )
+    return ComplianceReviewOut(
+        id=review.id,
+        standard_id=review.standard_id,
+        project_compliance_id=review.project_compliance_id,
+        frequency_label=review.frequency_label,
+        recurrence_days=review.recurrence_days,
+        next_due_date=review.next_due_date,
+        owner_id=review.owner_id,
+        status=review.status,
+        schedule_state=compute_review_schedule_state(review),
+        notes=review.notes,
+        outcome=review.outcome,
+        completed_at=review.completed_at,
+        completed_by=review.completed_by,
+        created_by=review.created_by,
+        created_at=review.created_at,
+        updated_at=review.updated_at,
+        linked_evidence_ids=linked_evidence_ids,
+    )
+
+
+def complete_review(
+    db: Session, review: ComplianceReview, *, outcome: ComplianceReviewOutcome, notes: str, actor_id: uuid.UUID
+) -> ComplianceReview | None:
+    """Completes a `SCHEDULED` `ComplianceReview` (§17's "Review outcome").
+    Caller (`router.py`/`project_router.py`) has already checked `review.
+    status == SCHEDULED` (409 otherwise) — this function only performs the
+    transition.
+
+    Marks `review` itself `COMPLETED` (retained as history — §17 — never
+    deleted or reopened) and, when `review.recurrence_days` is set, creates
+    and returns a **new** `SCHEDULED` row for the next cycle (`next_due_date
+    = today + recurrence_days`, same owner/standard-or-project-compliance/
+    frequency_label/recurrence_days) — see `models.py`'s own Phase 10 notes
+    for why a new row rather than reopening this one. A one-off review
+    (`recurrence_days is None`) simply stays `COMPLETED` with nothing
+    scheduled after it.
+
+    Does not commit — caller commits as part of its own single transaction.
+
+    Args:
+        db: An active session (the new row, if any, is added but not
+            flushed/committed).
+        review: The row being completed. Mutated in place.
+        outcome: The `ComplianceReviewOutcome` to record.
+        notes: Replaces `review.notes` (mirrors `ProjectComplianceAssessmentUpdate.
+            notes`'s own "supply the current full value" convention).
+        actor_id: The user completing the review.
+
+    Returns:
+        The newly-created next-cycle `ComplianceReview`, or `None` if this
+        review doesn't recur.
+    """
+    now = datetime.now(UTC)
+    review.status = ComplianceReviewStatus.COMPLETED
+    review.outcome = outcome
+    review.notes = notes
+    review.completed_at = now
+    review.completed_by = actor_id
+
+    if review.recurrence_days is None:
+        return None
+
+    next_review = ComplianceReview(
+        standard_id=review.standard_id,
+        project_compliance_id=review.project_compliance_id,
+        frequency_label=review.frequency_label,
+        recurrence_days=review.recurrence_days,
+        next_due_date=date.today() + timedelta(days=review.recurrence_days),
+        owner_id=review.owner_id,
+        created_by=actor_id,
+    )
+    db.add(next_review)
+    return next_review
+
+
+def get_effective_compliance_officers(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
+    """Users who should be notified as a project's compliance officers
+    (§18) — this project's effective project managers (who already hold
+    every Compliance Officer capability via `require_module_role`'s own
+    composition, Phase 2) union anyone holding a direct `compliance_officer`
+    `UserModuleRole` grant on this project. Not an authorization check —
+    see this module's own docstring for why "misses an edge case" here is
+    only a missed notification, not a security gap."""
+    from app.models.module_role import UserModuleRole
+    from app.services.rbac import get_effective_project_managers
+
+    ids = get_effective_project_managers(db, project_id)
+    ids.update(
+        db.scalars(
+            select(UserModuleRole.user_id).where(
+                UserModuleRole.project_id == project_id,
+                UserModuleRole.module_key == "compliance",
+                UserModuleRole.role_key == "compliance_officer",
+            )
+        ).all()
+    )
+    return ids
+
+
+def get_effective_compliance_managers(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:
+    """Users who should be notified as an organisation's compliance
+    managers (§18) — direct `OrgRole.ORG_ADMIN` grants union anyone holding
+    a direct `compliance_manager` `UserModuleRole` grant on this
+    organisation. Direct-grant-only for `ORG_ADMIN` (unlike `get_effective_
+    compliance_officers`'s reuse of the fuller `get_effective_project_
+    managers`) — this codebase's org groups don't grant `OrgRole` members
+    the way project groups grant `ProjectRole` members (no `OrgGroupRole`
+    table exists), so there is no inheritance path to also cover. Not an
+    authorization check — see this module's own docstring."""
+    from app.models.enums import OrgRole
+    from app.models.module_role import UserModuleRole
+    from app.models.organization import UserOrgRole
+
+    ids = set(
+        db.scalars(
+            select(UserOrgRole.user_id).where(
+                UserOrgRole.organization_id == organization_id, UserOrgRole.role == OrgRole.ORG_ADMIN
+            )
+        ).all()
+    )
+    ids.update(
+        db.scalars(
+            select(UserModuleRole.user_id).where(
+                UserModuleRole.organization_id == organization_id,
+                UserModuleRole.module_key == "compliance",
+                UserModuleRole.role_key == "compliance_manager",
+                UserModuleRole.project_id.is_(None),
+            )
+        ).all()
+    )
+    return ids

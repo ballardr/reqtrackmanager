@@ -50,6 +50,12 @@ Design decisions, not left implicit:
   and `PendingApprovalOut` (mirrors `NonCompliantRequirementOut`'s exact
   shape/rationale for the same kind of cross-assignment drillable list, one
   section up).
+- Phase 10 (§17, Scheduled Reviews) adds `ComplianceReviewCreate`/`Update`/
+  `CompleteRequest`/`Out` and `ComplianceReviewEvidenceLinkCreate` at the
+  bottom of this file. `ComplianceReviewOut.schedule_state` is a computed
+  field (never stored — see `service.py::compute_review_schedule_state`),
+  the same "built explicitly by the router" shape as `ComplianceEvidenceOut.
+  validity_state`.
 """
 
 from __future__ import annotations
@@ -65,6 +71,8 @@ from app.modules.compliance.enums import (
     ComplianceApplicabilitySource,
     ComplianceApprovalState,
     ComplianceEvidenceValidityState,
+    ComplianceReviewOutcome,
+    ComplianceReviewStatus,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -533,3 +541,73 @@ class PendingApprovalOut(BaseModel):
     compliance_status: ComplianceStatus
     assessed_at: datetime | None
     assessed_by: UUID | None
+
+
+# --- Phase 10: Scheduled reviews --------------------------------------------------
+
+
+class ComplianceReviewCreate(BaseModel):
+    """Payload for scheduling a new `ComplianceReview` (§17). Exactly one of
+    `standard_id`/`project_compliance_id` is supplied by the router itself
+    (from the path, not this payload — mirrors how `ComplianceEvidenceCreate`
+    never carries `project_id`), so this schema only needs the fields that
+    are genuinely caller-supplied."""
+
+    frequency_label: str
+    recurrence_days: int | None = None
+    next_due_date: date
+    owner_id: UUID | None = None
+    notes: str = ""
+
+
+class ComplianceReviewUpdate(BaseModel):
+    """Update payload — only while a review is still `SCHEDULED` (enforced
+    by the router, 409 otherwise); a `COMPLETED` review is retained history
+    (§17) and must not be edited in place."""
+
+    frequency_label: str
+    recurrence_days: int | None = None
+    next_due_date: date
+    owner_id: UUID | None = None
+    notes: str = ""
+
+
+class ComplianceReviewCompleteRequest(BaseModel):
+    """Payload for `POST .../reviews/{id}/complete` (§17's "Review outcome").
+    `notes` here replaces the review's own `notes` field (mirrors
+    `ProjectComplianceAssessmentUpdate.notes`'s own "supply the current
+    full value" convention), independent of any evidence linkage."""
+
+    outcome: ComplianceReviewOutcome
+    notes: str = ""
+
+
+class ComplianceReviewEvidenceLinkCreate(BaseModel):
+    evidence_id: UUID
+
+
+class ComplianceReviewOut(BaseModel):
+    """Response shape for one `ComplianceReview` row, plus its *computed*
+    `schedule_state` (§17/§28's "identify upcoming and overdue compliance
+    reviews" — see `service.py::compute_review_schedule_state`) and its
+    current linked evidence ids (§17's "Notes/evidence associated with the
+    review") — built explicitly by the router, the same reason
+    `ComplianceEvidenceOut` is."""
+
+    id: UUID
+    standard_id: UUID | None
+    project_compliance_id: UUID | None
+    frequency_label: str
+    recurrence_days: int | None
+    next_due_date: date
+    owner_id: UUID | None
+    status: ComplianceReviewStatus
+    schedule_state: Literal["upcoming", "due", "overdue"] | None
+    notes: str
+    outcome: ComplianceReviewOutcome | None
+    completed_at: datetime | None
+    completed_by: UUID | None
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+    linked_evidence_ids: list[UUID]

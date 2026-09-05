@@ -98,9 +98,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.audit import AuditEvent
 from app.models.file import FileAsset
+from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
-from app.modules.compliance.enums import ComplianceApplicability, ComplianceApprovalState, ComplianceStatus
+from app.modules.compliance.enums import (
+    ComplianceApplicability,
+    ComplianceApprovalState,
+    ComplianceReviewStatus,
+    ComplianceStatus,
+)
 from app.modules.compliance.models import (
     ComplianceEvidence,
     ComplianceEvidenceActionLink,
@@ -109,6 +115,8 @@ from app.modules.compliance.models import (
     ComplianceEvidenceRevalidation,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
+    ComplianceReview,
+    ComplianceReviewEvidenceLink,
     ComplianceStandard,
     ComplianceStandardVersion,
     ProjectCompliance,
@@ -125,6 +133,11 @@ from app.modules.compliance.schemas import (
     ComplianceEvidenceUpdate,
     ComplianceRequiredActionAssessmentOut,
     ComplianceRequiredActionAssessmentUpdate,
+    ComplianceReviewCompleteRequest,
+    ComplianceReviewCreate,
+    ComplianceReviewEvidenceLinkCreate,
+    ComplianceReviewOut,
+    ComplianceReviewUpdate,
     NonCompliantRequirementOut,
     PendingApprovalOut,
     ProjectComplianceApplicabilityUpdate,
@@ -137,8 +150,12 @@ from app.modules.compliance.service import (
     advance_approval_state_on_assessment,
     build_evidence_out,
     build_requirement_out,
+    build_review_out,
     build_status_out,
+    complete_review,
+    compute_review_schedule_state,
     find_pcrs_linked_to_evidence,
+    get_effective_compliance_officers,
     invalidate_approval_if_in_flight,
     list_expiring_or_expired_evidence,
     load_pcrs_and_applicability,
@@ -146,6 +163,7 @@ from app.modules.compliance.service import (
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.audit import AuditEventOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
+from app.services import notifications
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.rbac import require_module_role, require_project_module_enabled
@@ -209,6 +227,29 @@ def _get_pcr_for_project_or_404(db: Session, project_id: UUID, pcr_id: UUID) -> 
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Project compliance requirement not found.")
 
 
+def _notify_approval_invalidated(
+    db: Session, project_id: UUID, pcr: ProjectComplianceRequirement, *, actor_id: UUID
+) -> None:
+    """Notifies this project's compliance officers that a material change
+    invalidated an in-flight or decided approval (§18's "Compliance
+    approval becoming invalid due to a change") — shared by `update_
+    requirement_applicability` and `_invalidate_approvals_supported_by_
+    evidence` below, the two call sites `invalidate_approval_if_in_flight`
+    already has. Caller has already confirmed a real transition happened
+    (a non-`None` previous state) before calling this."""
+    for recipient_id in get_effective_compliance_officers(db, project_id):
+        recipient = db.get(User, recipient_id)
+        if recipient is None:
+            continue
+        notifications.notify(
+            db, recipient, notification_type=NotificationType.COMPLIANCE_APPROVAL_INVALIDATED,
+            title="Compliance approval invalidated",
+            body="A material change means this compliance assessment must be re-assessed/re-approved.",
+            project_id=project_id, entity_type="project_compliance_requirement", entity_id=str(pcr.id),
+            actor_id=actor_id,
+        )
+
+
 def _invalidate_approvals_supported_by_evidence(
     db: Session, project_id: UUID, evidence: ComplianceEvidence, actor_id: UUID, *, reason: str
 ) -> None:
@@ -243,6 +284,7 @@ def _invalidate_approvals_supported_by_evidence(
                 "new_approval_state": pcr.approval_state.value,
             },
         )
+        _notify_approval_invalidated(db, project_id, pcr, actor_id=actor_id)
 
 
 def _get_assessment_for_project_or_404(
@@ -466,6 +508,8 @@ def update_requirement_applicability(
     previous_approval_state = None
     if previous_applicability != payload.applicability:
         previous_approval_state = invalidate_approval_if_in_flight(pcr)
+        if previous_approval_state is not None:
+            _notify_approval_invalidated(db, project_id, pcr, actor_id=current_user.id)
 
     log_event(
         db, entity_type="project_compliance_requirement", entity_id=pcr.id, action="applicability_changed",
@@ -523,6 +567,18 @@ def update_requirement_assessment(
             "new_approval_state": pcr.approval_state.value,
         },
     )
+    if payload.compliance_status == ComplianceStatus.NON_COMPLIANT and previous_status != ComplianceStatus.NON_COMPLIANT:
+        for recipient_id in get_effective_compliance_officers(db, project_id):
+            recipient = db.get(User, recipient_id)
+            if recipient is None:
+                continue
+            notifications.notify(
+                db, recipient, notification_type=NotificationType.COMPLIANCE_REQUIREMENT_NON_COMPLIANT,
+                title="Compliance requirement is Non-Compliant",
+                body=f"A requirement was assessed Non-Compliant: {payload.justification}",
+                project_id=project_id, entity_type="project_compliance_requirement", entity_id=str(pcr.id),
+                actor_id=current_user.id,
+            )
     db.commit()
     db.refresh(pcr)
     _pcrs, applicability = load_pcrs_and_applicability(
@@ -558,6 +614,17 @@ def submit_requirement_for_approval(
         actor_id=current_user.id, project_id=project_id,
         detail={"previous_approval_state": "assessed", "new_approval_state": "pending_approval"},
     )
+    for recipient_id in get_effective_compliance_officers(db, project_id):
+        recipient = db.get(User, recipient_id)
+        if recipient is None:
+            continue
+        notifications.notify(
+            db, recipient, notification_type=NotificationType.COMPLIANCE_APPROVAL_REQUESTED,
+            title="Compliance approval requested",
+            body="A compliance assessment is awaiting approval/sign-off.",
+            project_id=project_id, entity_type="project_compliance_requirement", entity_id=str(pcr.id),
+            actor_id=current_user.id,
+        )
     db.commit()
     db.refresh(pcr)
     _pcrs, applicability = load_pcrs_and_applicability(
@@ -646,6 +713,15 @@ def reject_requirement(
             "decision_note": payload.decision_note,
         },
     )
+    if pcr.assessed_by is not None:
+        assessor = db.get(User, pcr.assessed_by)
+        if assessor is not None:
+            notifications.notify(
+                db, assessor, notification_type=NotificationType.COMPLIANCE_ASSESSMENT_REJECTED,
+                title="Compliance assessment rejected",
+                body=payload.decision_note, project_id=project_id,
+                entity_type="project_compliance_requirement", entity_id=str(pcr.id), actor_id=current_user.id,
+            )
     db.commit()
     db.refresh(pcr)
     _pcrs, applicability = load_pcrs_and_applicability(
@@ -749,10 +825,16 @@ def update_required_action_assessment(
     """Updates a required action assessment's assignee/due date/notes
     (§6's "Assignee," "Due date"). Completion is a separate action
     endpoint below, mirroring `Requirement`'s own completion-overlay
-    shape — never set here."""
+    shape — never set here. Resetting `due_reminder_sent_at`/`overdue_
+    notified_at` whenever `due_date` actually changes (Phase 10, §18) gives
+    a rescheduled due date its own fresh reminder cycle rather than
+    silently inheriting the old date's "already reminded" state."""
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
+    if assessment.due_date != payload.due_date:
+        assessment.due_reminder_sent_at = None
+        assessment.overdue_notified_at = None
     assessment.assignee_id = payload.assignee_id
     assessment.due_date = payload.due_date
     assessment.notes = payload.notes
@@ -996,6 +1078,8 @@ def revalidate_evidence(
     previous_expiry_date = evidence.expiry_date
     now = datetime.now(UTC)
     evidence.expiry_date = payload.new_expiry_date
+    evidence.expiry_reminder_sent_at = None
+    evidence.expiry_notified_at = None
     db.add(ComplianceEvidenceRevalidation(
         evidence_id=evidence.id, revalidated_by=current_user.id, revalidated_at=now,
         previous_expiry_date=previous_expiry_date, new_expiry_date=payload.new_expiry_date,
@@ -1232,4 +1316,236 @@ def unlink_evidence_file(
         delete_file(db, asset)
     log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="file_unlinked",
               actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
+    db.commit()
+
+
+# --- Phase 10: Scheduled reviews (project-level; §17, §18, §28) -----------------
+
+
+def _get_project_review_or_404(db: Session, project_id: UUID, review_id: UUID) -> ComplianceReview:
+    """404s unless `review_id` is a *project*-level review (`project_
+    compliance_id` set, not `standard_id`) transitively owned by
+    `project_id` — a standard-level review is only ever reachable through
+    `router.py`'s org-scoped endpoints, mirroring every other cross-scope
+    ownership check on this router."""
+    review = db.get(ComplianceReview, review_id)
+    if review is None or review.project_compliance_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance review not found.")
+    project_compliance = db.get(ProjectCompliance, review.project_compliance_id)
+    if project_compliance is None or project_compliance.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance review not found.")
+    return review
+
+
+@router.post(
+    "/project-compliance/{project_compliance_id}/reviews", response_model=ComplianceReviewOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_review(
+    project_id: UUID, project_compliance_id: UUID, payload: ComplianceReviewCreate,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Schedules a new review of a project's compliance assignment (§17)."""
+    project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
+    review = ComplianceReview(
+        project_compliance_id=project_compliance.id, frequency_label=payload.frequency_label,
+        recurrence_days=payload.recurrence_days, next_due_date=payload.next_due_date, owner_id=payload.owner_id,
+        notes=payload.notes, created_by=current_user.id,
+    )
+    db.add(review)
+    db.flush()
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="created",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"project_compliance_id": str(project_compliance.id)})
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.get("/project-compliance/{project_compliance_id}/reviews", response_model=list[ComplianceReviewOut])
+def list_project_reviews(
+    project_id: UUID, project_compliance_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists every review — `SCHEDULED` and `COMPLETED` — ever scheduled
+    against this assignment, in creation order; §17's "Review history" is
+    exactly this listing (see `models.py`'s own Phase 10 notes)."""
+    project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
+    reviews = db.scalars(
+        select(ComplianceReview)
+        .where(ComplianceReview.project_compliance_id == project_compliance.id)
+        .order_by(ComplianceReview.created_at)
+    ).all()
+    return [build_review_out(db, review) for review in reviews]
+
+
+@router.get("/reviews-due", response_model=list[ComplianceReviewOut])
+def list_reviews_due(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Unified `DUE`/`OVERDUE` listing (§17/§28's "identify upcoming and
+    overdue compliance reviews") across every review relevant to this
+    project: its own project-level reviews, plus every review of a
+    standard this project is currently (non-archived-ly) assigned to — a
+    standard-level review (e.g. "annual audit of this standard itself")
+    affects every project assigned to it, so a project's own dashboard
+    should surface both. The `compliance_list_reviews_due` MCP tool."""
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+    project_compliance_ids = [a.id for a in assignments]
+    standard_ids: set[UUID] = set()
+    for assignment in assignments:
+        version = db.get(ComplianceStandardVersion, assignment.standard_version_id)
+        if version is not None:
+            standard_ids.add(version.standard_id)
+
+    reviews: list[ComplianceReview] = []
+    if project_compliance_ids:
+        reviews.extend(
+            db.scalars(
+                select(ComplianceReview).where(
+                    ComplianceReview.project_compliance_id.in_(project_compliance_ids),
+                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+                )
+            ).all()
+        )
+    if standard_ids:
+        reviews.extend(
+            db.scalars(
+                select(ComplianceReview).where(
+                    ComplianceReview.standard_id.in_(standard_ids),
+                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+                )
+            ).all()
+        )
+    due_or_overdue = [review for review in reviews if compute_review_schedule_state(review) in ("due", "overdue")]
+    return [build_review_out(db, review) for review in due_or_overdue]
+
+
+@router.get("/reviews/{review_id}", response_model=ComplianceReviewOut)
+def get_project_review(
+    project_id: UUID, review_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    review = _get_project_review_or_404(db, project_id, review_id)
+    return build_review_out(db, review)
+
+
+@router.patch("/reviews/{review_id}", response_model=ComplianceReviewOut)
+def update_project_review(
+    project_id: UUID, review_id: UUID, payload: ComplianceReviewUpdate,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Edits a still-`SCHEDULED` review's schedule/owner/notes (409 for an
+    already-`COMPLETED` one — §17's retained history must not be edited in
+    place). Resets `due_reminder_sent_at`/`overdue_notified_at` whenever
+    `next_due_date` actually changes, the same reschedule convention
+    `update_required_action_assessment` above already established."""
+    review = _get_project_review_or_404(db, project_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
+    if review.next_due_date != payload.next_due_date:
+        review.due_reminder_sent_at = None
+        review.overdue_notified_at = None
+    review.frequency_label = payload.frequency_label
+    review.recurrence_days = payload.recurrence_days
+    review.next_due_date = payload.next_due_date
+    review.owner_id = payload.owner_id
+    review.notes = payload.notes
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="updated",
+              actor_id=current_user.id, project_id=project_id)
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_review(
+    project_id: UUID, review_id: UUID,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Deletes a still-`SCHEDULED` review scheduled by mistake (409 for an
+    already-`COMPLETED` one — §17's retained history must never be
+    deleted)."""
+    review = _get_project_review_or_404(db, project_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A completed review is retained history and cannot be deleted.")
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="deleted",
+              actor_id=current_user.id, project_id=project_id)
+    db.delete(review)
+    db.commit()
+
+
+@router.post("/reviews/{review_id}/complete", response_model=ComplianceReviewOut)
+def complete_project_review(
+    project_id: UUID, review_id: UUID, payload: ComplianceReviewCompleteRequest,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Completes a `SCHEDULED` review (§17's "Review outcome"), 409 if
+    already completed. Schedules the next cycle automatically when this
+    review recurs — see `service.py::complete_review`'s own docstring."""
+    review = _get_project_review_or_404(db, project_id, review_id)
+    if review.status != ComplianceReviewStatus.SCHEDULED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed.")
+    next_review = complete_review(db, review, outcome=payload.outcome, notes=payload.notes, actor_id=current_user.id)
+    log_event(
+        db, entity_type="compliance_review", entity_id=review.id, action="completed",
+        actor_id=current_user.id, project_id=project_id,
+        detail={"outcome": payload.outcome.value, "next_review_id": str(next_review.id) if next_review else None},
+    )
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.post(
+    "/reviews/{review_id}/evidence-links", response_model=ComplianceReviewOut, status_code=status.HTTP_201_CREATED
+)
+def link_review_evidence(
+    project_id: UUID, review_id: UUID, payload: ComplianceReviewEvidenceLinkCreate,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Links a piece of this project's own evidence to a review (§17's
+    "Notes/evidence associated with the review") — `_get_evidence_or_404`
+    already confines `evidence_id` to this same `project_id`, which is what
+    enforces "a review's evidence must belong to the same project" (see
+    `models.py`'s own docstring)."""
+    review = _get_project_review_or_404(db, project_id, review_id)
+    evidence = _get_evidence_or_404(db, project_id, payload.evidence_id)
+    existing = db.scalar(
+        select(ComplianceReviewEvidenceLink).where(
+            ComplianceReviewEvidenceLink.review_id == review.id,
+            ComplianceReviewEvidenceLink.evidence_id == evidence.id,
+        )
+    )
+    if existing is None:
+        db.add(ComplianceReviewEvidenceLink(
+            review_id=review.id, evidence_id=evidence.id, linked_by=current_user.id, created_at=datetime.now(UTC)
+        ))
+        log_event(db, entity_type="compliance_review", entity_id=review.id, action="evidence_linked",
+                  actor_id=current_user.id, project_id=project_id, detail={"evidence_id": str(evidence.id)})
+    db.commit()
+    db.refresh(review)
+    return build_review_out(db, review)
+
+
+@router.delete("/reviews/{review_id}/evidence-links/{evidence_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_review_evidence(
+    project_id: UUID, review_id: UUID, evidence_id: UUID,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    review = _get_project_review_or_404(db, project_id, review_id)
+    link = db.scalar(
+        select(ComplianceReviewEvidenceLink).where(
+            ComplianceReviewEvidenceLink.review_id == review.id,
+            ComplianceReviewEvidenceLink.evidence_id == evidence_id,
+        )
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This evidence is not linked to that review.")
+    db.delete(link)
+    log_event(db, entity_type="compliance_review", entity_id=review.id, action="evidence_unlinked",
+              actor_id=current_user.id, project_id=project_id, detail={"evidence_id": str(evidence_id)})
     db.commit()

@@ -228,6 +228,48 @@ Phase 8 design decisions:
   sever `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
   rows that other assessments' own audit trail (§16) may still depend on.
 
+Phase 10 design decisions:
+- `ComplianceReview` has exactly one of `standard_id`/`project_compliance_id`
+  set (a `CheckConstraint`, not left to convention) — §17's "Compliance
+  Standards and Project Compliance records must support scheduled reviews"
+  names two distinct owners, not a shared "reviewable thing" abstraction;
+  a standard-level review (e.g. "annual audit of this standard itself") and
+  a project-level review (e.g. "review this project's compliance before
+  release") are different concerns that happen to share every other field.
+- `frequency_label` (free text, e.g. "Annual," "Before product release")
+  plus an optional `recurrence_days` (nullable — `None` means "one-off,
+  does not auto-recur") were chosen over a fixed calendar-frequency enum:
+  §17's own examples include event-triggered reviews with no calendar
+  cadence at all ("Review before product release," "Review after a
+  significant standard change"), which a rigid Annual/Six-Monthly/... enum
+  can't represent without an awkward "Other" escape hatch.
+- "Review history" (§17) is satisfied by *retaining* each completed
+  `ComplianceReview` row (never deleted, `status` moves to `COMPLETED`)
+  and, when `recurrence_days` is set, creating a **new** `SCHEDULED` row
+  for the next cycle rather than reopening/reusing the completed one — see
+  `service.py::complete_review`. Querying every `ComplianceReview` row for
+  one owner, ordered by `created_at`, *is* that owner's review history;
+  no separate history table, mirroring Phase 7/9's own "the audit trail
+  already carries this" reasoning applied to a different mechanism (chained
+  rows instead of `AuditEvent`, since a review's own recurrence naturally
+  produces one row per cycle already).
+- `ComplianceReviewEvidenceLink` (§17's "Notes/evidence associated with the
+  review") is a many-to-many, mirroring `ComplianceEvidenceRequirementLink`'s
+  exact shape (§13's own established evidence-linkage convention) rather
+  than a single nullable FK — the same "a piece of evidence may support
+  more than one thing at once" reasoning Phase 8 already applied to
+  requirements/required actions, extended to reviews. Enforced at the API
+  layer only (not a DB constraint) that a link's evidence and review share
+  the same project — a standard-level review (no `project_id` of its own)
+  cannot be linked to project-scoped evidence at all, since it has no
+  project to share.
+- Evidence-expiry/required-action-due/target-date reminder "already sent"
+  bookkeeping (`*_reminder_sent_at`/`*_notified_at` pairs on `ComplianceEvidence`/
+  `ComplianceRequiredActionAssessment`/`ProjectCompliance`) lives on each
+  owning row rather than a separate notification-log table, mirroring
+  `RequirementVersion.review_reminder_sent_at`'s own established Massif
+  (v3) precedent for exactly this "don't re-notify every sweep run" need.
+
 External dependencies: none beyond this project's own ORM/config modules.
 """
 
@@ -236,7 +278,18 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -245,6 +298,8 @@ from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApprovalState,
+    ComplianceReviewOutcome,
+    ComplianceReviewStatus,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -504,6 +559,16 @@ class ProjectCompliance(UUIDPKMixin, TimestampMixin, Base):
         target_compliance_date: Optional target date for the project to
             reach full compliance (§7) — distinct from any individual
             required action's own due date.
+        target_date_reminder_sent_at / target_date_overdue_notified_at:
+            Phase 10 (§18/§28) sweep bookkeeping — stamped the first time
+            the "target date approaching"/"target date exceeded"
+            notification has been sent for the *current*
+            `target_compliance_date`, so the daily sweep
+            (`scheduler.py::send_target_date_notifications`) never repeats
+            either notification. Mirrors `RequirementVersion.review_
+            reminder_sent_at`'s own single-stamp convention, split into two
+            columns since "approaching" and "exceeded" are two independent
+            notifications here (§18 lists them separately), not one.
         is_archived / archived_at / archived_by: Soft-delete, mirroring
             `ComplianceStandard`'s own convention — used when a project no
             longer needs to track compliance against this standard.
@@ -524,6 +589,8 @@ class ProjectCompliance(UUIDPKMixin, TimestampMixin, Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     assigned_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     target_compliance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    target_date_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    target_date_overdue_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -636,6 +703,15 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
         assignee_id: Who is responsible for this required action, or
             `None` if unassigned (§6's "Assignee").
         due_date: Optional due date (§6).
+        due_reminder_sent_at / overdue_notified_at: Phase 10 (§18/§28) sweep
+            bookkeeping — stamped the first time the "approaching due
+            date"/"overdue" notification has been sent for the *current*
+            `due_date`, so `scheduler.py::send_required_action_due_
+            notifications`'s daily sweep never repeats either notification.
+            Reset to `None` (by the same PATCH that changes `due_date`) so a
+            rescheduled due date gets its own fresh reminder cycle rather
+            than silently inheriting the old date's "already reminded"
+            state.
         is_completed / completed_at / completed_by: Completion overlay,
             mirroring `Requirement.completed_at`'s own shape — see this
             module's own docstring for why this shape rather than reusing
@@ -668,6 +744,8 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
     )
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    overdue_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -702,6 +780,15 @@ class ComplianceEvidence(UUIDPKMixin, TimestampMixin, Base):
             mirroring `ProjectCompliance.assigned_at`/`assigned_by`'s own
             convention.
         notes: Free-text notes, independent of `description`.
+        expiry_reminder_sent_at / expiry_notified_at: Phase 10 (§18/§28)
+            sweep bookkeeping — mirrors `ComplianceRequiredActionAssessment.
+            due_reminder_sent_at`/`overdue_notified_at`'s own shape,
+            stamped by `scheduler.py::send_evidence_expiry_notifications`
+            so its daily sweep never repeats the "approaching expiry"/
+            "expired" notification for the same `expiry_date`. Reset to
+            `None` by `revalidate_evidence` (the only endpoint that changes
+            `expiry_date`), so a revalidated expiry gets its own fresh
+            reminder cycle.
         is_archived / archived_at / archived_by: Whether this evidence
             "remains applicable" (§13) — see this module's own docstring
             for why this is a soft-delete, not a hard one.
@@ -720,6 +807,8 @@ class ComplianceEvidence(UUIDPKMixin, TimestampMixin, Base):
     provided_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     provided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str] = mapped_column(Text, default="")
+    expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiry_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -817,5 +906,97 @@ class ComplianceEvidenceActionLink(UUIDPKMixin, Base):
     required_action_assessment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("compliance_required_action_assessments.id", ondelete="CASCADE")
     )
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Phase 10: Scheduled reviews --------------------------------------------------
+
+
+class ComplianceReview(UUIDPKMixin, TimestampMixin, Base):
+    """A scheduled compliance review (§17) — either of a `ComplianceStandard`
+    itself, or of one project's compliance assignment (`ProjectCompliance`).
+    Exactly one of `standard_id`/`project_compliance_id` is set; see this
+    module's own docstring for why these are separate owners rather than a
+    shared "reviewable" abstraction.
+
+    Attributes:
+        standard_id: The `ComplianceStandard` this review is scheduled
+            against, or `None` if this is a project-level review.
+        project_compliance_id: The `ProjectCompliance` assignment this
+            review is scheduled against, or `None` if this is a
+            standard-level review.
+        frequency_label: Free-text display of the review's cadence (§17's
+            "Review frequency"), e.g. "Annual," "Six-monthly," "Before
+            product release" — display metadata, not itself the scheduling
+            mechanism (`recurrence_days` is).
+        recurrence_days: Days between cycles, or `None` for a one-off
+            review that doesn't automatically recur once completed (see
+            `service.py::complete_review`).
+        next_due_date: This cycle's due date (§17's "Next review date").
+            Never itself computed as "upcoming/due/overdue" — see
+            `service.py::compute_review_schedule_state`.
+        owner_id: Who is responsible for performing this review (§17's
+            "Review owner"), or `None` if not yet assigned.
+        status: `SCHEDULED` or `COMPLETED` — see `ComplianceReviewStatus`'s
+            own docstring for why there's no separate overdue/cancelled
+            member.
+        notes: Free-text notes (§17), independent of the evidence linkage
+            below.
+        outcome: Set only on completion (§17's "Review outcome") — `None`
+            while `SCHEDULED`.
+        completed_at / completed_by: When/who completed this review — set
+            automatically by `service.py::complete_review`, `None` while
+            `SCHEDULED`.
+        created_by: The user who scheduled this review.
+        due_reminder_sent_at / overdue_notified_at: Sweep bookkeeping,
+            mirroring `ComplianceRequiredActionAssessment`'s own pair —
+            see `scheduler.py::send_review_due_notifications`.
+    """
+
+    __tablename__ = "compliance_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "(standard_id IS NOT NULL) != (project_compliance_id IS NOT NULL)",
+            name="ck_compliance_reviews_exactly_one_owner",
+        ),
+    )
+
+    standard_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_standards.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_compliance_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_compliances.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    frequency_label: Mapped[str] = mapped_column(String(100))
+    recurrence_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_due_date: Mapped[date] = mapped_column(Date)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    status: Mapped[ComplianceReviewStatus] = mapped_column(
+        str_enum(ComplianceReviewStatus, 20), default=ComplianceReviewStatus.SCHEDULED
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
+    outcome: Mapped[ComplianceReviewOutcome | None] = mapped_column(str_enum(ComplianceReviewOutcome, 20), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    due_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    overdue_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ComplianceReviewEvidenceLink(UUIDPKMixin, Base):
+    """Links one `ComplianceEvidence` row to one `ComplianceReview` (§17's
+    "Notes/evidence associated with the review") — the review equivalent of
+    `ComplianceEvidenceRequirementLink`; see that model's own docstring for
+    why neither foreign key here is indexed. Only ever created for a
+    project-scoped review (`ComplianceReview.project_compliance_id` set) —
+    enforced at the API layer, since evidence is inherently project-scoped
+    and a standard-level review has no project to share with it."""
+
+    __tablename__ = "compliance_review_evidence_links"
+    __table_args__ = (UniqueConstraint("evidence_id", "review_id"),)
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
+    review_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_reviews.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

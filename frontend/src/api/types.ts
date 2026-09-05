@@ -208,7 +208,23 @@ export type NotificationType =
   | "password_changed"
   | "permission_granted"
   | "permission_revoked"
-  | "comment_added";
+  | "comment_added"
+  | "requirement_review_due"
+  | "stage_review_auto_approved"
+  | "compliance_required_action_due_soon"
+  | "compliance_required_action_overdue"
+  | "compliance_target_date_approaching"
+  | "compliance_target_date_exceeded"
+  | "compliance_approval_requested"
+  | "compliance_assessment_rejected"
+  | "compliance_approval_invalidated"
+  | "compliance_review_due"
+  | "compliance_review_overdue"
+  | "compliance_evidence_expiring_soon"
+  | "compliance_evidence_expired"
+  | "compliance_requirement_non_compliant"
+  | "compliance_standard_update_review_needed"
+  | "compliance_assignment_created";
 
 export interface Notification {
   id: string;
