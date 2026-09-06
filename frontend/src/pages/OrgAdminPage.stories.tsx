@@ -267,7 +267,10 @@ export const UsersSectionGrantAndRevokeRole: Story = {
     const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     await userEvent.click(within(alexRoles).getByRole("checkbox", { name: "Grant Project creator to Alex Morgan" }));
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, { role: "project_creator" })
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, {
+        user_id: "user-1",
+        role: "project_creator",
+      })
     );
 
     // secondOrgUser (not the logged-in user) holds "project_creator" —

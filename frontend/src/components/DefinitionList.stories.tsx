@@ -200,5 +200,62 @@ export const TwoFieldVariant: Story = {
   },
 };
 
+interface FlaggedItem {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+/**
+ * `renderExtra` (added for the Compliance Module's mapping-relationship-type
+ * vocabulary, docs/compliance-module-plan.md Phase 12 — see
+ * `frontend/src/modules/compliance/MappingTypesPanel.tsx`) — a per-row slot
+ * for an attribute `DefinitionList`'s own text-only `fields` contract can't
+ * express, rendered between the text field(s) and the reorder/delete
+ * buttons.
+ */
+export const WithRenderExtra: Story = {
+  render: () => {
+    function Harness() {
+      const [items, setItems] = useState<FlaggedItem[]>([{ id: "1", name: "Equivalent", enabled: false }]);
+      return (
+        <DefinitionList<FlaggedItem>
+          items={items}
+          fields={[{ key: "name", getValue: (i) => i.name, placeholder: "Name", ariaLabel: "Name" }]}
+          getReassignLabel={(i) => i.name}
+          onMove={fn(async () => {})}
+          onRename={fn(async () => {})}
+          onAdd={fn(async () => {})}
+          onDelete={fn(async () => {})}
+          deleteLabel="Delete"
+          addLabel="Add"
+          renderExtra={(item) => (
+            <label key="flag" className="row" style={{ gap: "0.3rem" }}>
+              <input
+                type="checkbox"
+                aria-label={`Enabled for ${item.name}`}
+                checked={item.enabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, enabled: checked } : i)));
+                }}
+              />
+              Enabled
+            </label>
+          )}
+        />
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const checkbox = canvas.getByLabelText("Enabled for Equivalent");
+    await expect(checkbox).not.toBeChecked();
+    await userEvent.click(checkbox);
+    await expect(checkbox).toBeChecked();
+  },
+};
+
 export const LightTheme: Story = { ...RenameReorderAndDelete };
 export const DarkTheme: Story = { ...RenameReorderAndDelete, globals: { theme: "dark" } };

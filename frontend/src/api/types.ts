@@ -62,6 +62,19 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   completed: "Completed",
   failed: "Failed",
 };
+// Compliance module Phase 5/6/12 (compliance-module-plan.md) —
+// `ComplianceStandardVersion.status`'s lifecycle (backend
+// `app.modules.compliance.enums.ComplianceStandardVersionStatus`). The
+// module's other enums (compliance/approval/applicability status) are
+// project-assessment-facing (Phase 13), not needed until that phase's own
+// UI renders them — added here, not preemptively, per this file's own
+// "add a type/label pair when something actually needs to render it" norm.
+export type ComplianceStandardVersionStatus = "draft" | "published" | "retired";
+export const COMPLIANCE_STANDARD_VERSION_STATUS_LABEL: Record<ComplianceStandardVersionStatus, string> = {
+  draft: "Draft",
+  published: "Published",
+  retired: "Retired",
+};
 
 // Sentence-cased per the Australian Government Style Manual's "minimal
 // capitalisation" rule — see docs/decisions.md. Every raw enum value

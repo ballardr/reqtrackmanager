@@ -794,6 +794,13 @@ const en = {
     // day-to-day admin surface (enabling/disabling optional feature
     // modules) rather than an authentication/access-policy setting.
     groupModules: "Modules",
+    // Compliance module Phase 12 (compliance-module-plan.md) — the org-
+    // level Compliance Manager surface (standards/versions/requirements/
+    // required actions/mapping vocabulary), a new top-level group rather
+    // than nested under "Modules" (that group is the generic enable/
+    // disable toggle table any module gets, not a home for a specific
+    // module's own content).
+    groupCompliance: "Compliance",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,

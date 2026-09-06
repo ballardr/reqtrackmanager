@@ -64,6 +64,7 @@ import { cycleSort, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
+import { ComplianceAdminPanel } from "../modules/compliance/ComplianceAdminPanel";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
@@ -98,7 +99,8 @@ type OrgAdminGroupKey =
   | "oauth-sso"
   | "email"
   | "security"
-  | "modules";
+  | "modules"
+  | "compliance";
 
 /** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
@@ -117,6 +119,7 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "email",
   "security",
   "modules",
+  "compliance",
 ];
 
 /**
@@ -1105,7 +1108,7 @@ export function OrgAdminPage() {
   // there's nothing else on the page a full reload would need to refresh.
   async function grantOrgRole(u: OrgUser, role: OrgRole) {
     try {
-      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { role });
+      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { user_id: u.user_id, role });
       setUsers((prev) =>
         prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: [...x.roles, role] } : x))
       );
@@ -1677,6 +1680,7 @@ export function OrgAdminPage() {
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
+    { key: "compliance", label: strings.orgAdmin.groupCompliance, href: `/orgs/${orgId}/admin/compliance` },
   ];
 
   // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
@@ -3381,6 +3385,12 @@ export function OrgAdminPage() {
                 </table>
               )}
             </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "compliance" && (
+          <div className="stack">
+            <ComplianceAdminPanel orgId={org.id} />
           </div>
         )}
       </ResourceMenu>
