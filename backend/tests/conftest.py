@@ -54,14 +54,37 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (populates Base.metadata)
+from alembic.config import Config
 from app.config import get_settings
 from app.database import Base, SessionLocal
 from app.database import engine as app_engine
-from app.migrations import run_migrations
-from app.modules.registry import import_all_module_models
+from app.migrations import _BACKEND_DIR, run_migrations
+from app.modules.registry import configure_alembic_version_locations, import_all_module_models
 from app.services.bootstrap import run_bootstrap
 
 import_all_module_models()  # populates Base.metadata for every registered module's own models
+
+
+def build_alembic_config() -> Config:
+    """Builds an Alembic `Config` the same way `app.migrations.run_
+    migrations` does, `configure_alembic_version_locations` included — for
+    any test that needs to drive Alembic directly (`command.upgrade`/
+    `downgrade`/etc.), e.g. to exercise a specific migration's own up/down
+    behaviour in isolation. Every such test must go through this rather
+    than building its own bare `Config`: since a compliance-module-plan.md
+    Phase 11 follow-up split first-party migrations across multiple
+    directories (`ModuleDefinition.migrations_dir`), a `Config` missing
+    `configure_alembic_version_locations` can no longer resolve `"head"`
+    (or any revision id living in a module's own directory) at all —
+    `test_schema_migrations_match_models.py`'s own module docstring
+    explains why this matters for the drift check specifically; this
+    export is what every migration-driving test in this suite shares to
+    avoid re-deriving (or forgetting) that requirement individually."""
+    cfg = Config(str(_BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
+    configure_alembic_version_locations(cfg)
+    return cfg
+
 
 _settings_for_guard = get_settings()
 _test_db_name = _settings_for_guard.database_url.rpartition("/")[2]

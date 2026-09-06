@@ -16,12 +16,10 @@ nothing compliance-specific goes through the API.
 """
 
 import uuid
-from pathlib import Path
 
 from sqlalchemy import inspect, text
 
 from alembic import command
-from alembic.config import Config
 from app.database import SessionLocal, engine
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
 from app.modules.compliance.models import (
@@ -32,31 +30,24 @@ from app.modules.compliance.models import (
     ComplianceStandardVersion,
 )
 from app.modules.registry import get_module_registry
-from tests.conftest import create_org_user
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(_BACKEND_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
-    return cfg
+from tests.conftest import build_alembic_config, create_org_user
 
 
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase. Updated for Phase 10 (docs/
+    `INSTALLED_MODULES` as of this phase. Updated for Phase 11 (docs/
     compliance-module-plan.md): the module now has both an org-scoped and
-    a project-scoped router, eight read-only MCP tools (three from Phase 6,
+    a project-scoped router, ten read-only MCP tools (three from Phase 6,
     two more from Phase 7, one more from Phase 8's evidence support, one
     more from Phase 9's pending-approvals listing, one more from Phase 10's
-    reviews-due listing), a `resolve_file_owner_project_id` hook (Phase 8),
-    and four scheduled jobs (Phase 10) — see `test_compliance_standards_api.
-    py`/`test_project_compliance_api.py`/`test_compliance_evidence_api.py`/
+    reviews-due listing, two more from Phase 11's mapping/version-diff
+    listings), a `resolve_file_owner_project_id` hook (Phase 8), and four
+    scheduled jobs (Phase 10) — see `test_compliance_standards_api.py`/
+    `test_project_compliance_api.py`/`test_compliance_evidence_api.py`/
     `test_compliance_approval_workflow.py`/`test_compliance_reviews_and_
-    notifications.py` for the actual API surfaces these facts stand in for
-    here."""
+    notifications.py`/`test_compliance_mapping_and_version_impact.py` for
+    the actual API surfaces these facts stand in for here."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
@@ -66,13 +57,17 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 8, (
+    assert len(definition.mcp_tools) == 10, (
         "Phase 6 declared three read-only MCP tools; Phase 7 added two more; Phase 8 added one more; "
-        "Phase 9 added one more; Phase 10 added one more"
+        "Phase 9 added one more; Phase 10 added one more; Phase 11 added two more"
     )
     assert not any(tool.name in {"submit_for_approval", "approve", "reject"} for tool in definition.mcp_tools), (
         "Phase 9's own actual approve/reject/submit-for-approval workflow actions must never be declared "
         "as MCP tools — see module.py's own Phase 9 notes"
+    )
+    assert not any("migrate" in tool.name for tool in definition.mcp_tools), (
+        "Phase 11's own version-migration action must never be declared as an MCP tool — see module.py's "
+        "own Phase 11 notes"
     )
     assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
     assert len(definition.scheduled_jobs) == 4, "Phase 10 adds four date-driven notification sweeps"
@@ -299,7 +294,7 @@ def test_migration_0026_upgrade_and_downgrade_round_trip():
         "compliance_required_actions",
     }
 
-    cfg = _alembic_config()
+    cfg = build_alembic_config()
     try:
         command.downgrade(cfg, "0025")
         with engine.connect() as conn:

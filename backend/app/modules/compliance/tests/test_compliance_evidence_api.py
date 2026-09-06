@@ -22,14 +22,14 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from tests.conftest import auth_headers, create_org_user, create_project, login
-from tests.test_project_compliance_api import (
+from app.modules.compliance.tests.test_project_compliance_api import (
     _assign_project_role,
     _assign_standard_to_project,
     _grant_compliance_officer,
     _project_base,
     _setup_published_standard_with_tree,
 )
+from tests.conftest import auth_headers, create_org_user, create_project, login
 
 TODAY = date.today()
 

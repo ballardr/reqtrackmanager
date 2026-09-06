@@ -53,6 +53,21 @@ Responsibilities:
   group granting `ORG_ADMIN`, which this codebase's groups don't support
   anyway — see each function's own docstring) is a missed notification, not
   a security gap.
+- `diff_standard_versions`/`build_diff_out` (Phase 11, §27): the exact,
+  documented "added/removed/modified/replaced/re-mapped" derivation
+  between any two versions of the same standard, walking `Compliance
+  Requirement.cloned_from_requirement_id`'s clone-lineage chain and
+  `ComplianceRequirementMapping`'s links — see `diff_standard_versions`'s
+  own docstring for the full rule.
+- `migrate_project_compliance`/`build_migration_result_out` (Phase 11,
+  §27): the explicit, user-triggered project version-migration action —
+  creates a new `ProjectCompliance` row and carries forward only the
+  assessments `diff_standard_versions` proves are for content-identical,
+  lineage-matched requirements, downgrading a carried-forward `APPROVED`/
+  `PENDING_APPROVAL` state via the existing (Phase 9) `invalidate_approval_
+  if_in_flight` — see that function's own docstring for the full rule and
+  for why a `replaced`/`modified`/`added` requirement is deliberately never
+  carried forward.
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -80,9 +95,11 @@ from app.modules.compliance.models import (
     ComplianceEvidenceActionLink,
     ComplianceEvidenceFile,
     ComplianceEvidenceRequirementLink,
+    ComplianceMappingRelationshipTypeDefinition,
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
+    ComplianceRequirementMapping,
     ComplianceReview,
     ComplianceReviewEvidenceLink,
     ComplianceStandard,
@@ -91,10 +108,20 @@ from app.modules.compliance.models import (
     ProjectComplianceRequirement,
 )
 from app.modules.compliance.schemas import (
+    AddedRequirementOut,
     ComplianceEvidenceOut,
+    ComplianceRequirementSummaryOut,
     ComplianceReviewOut,
+    ModifiedRequirementOut,
+    ProjectComplianceMigrationRequirementImpact,
+    ProjectComplianceMigrationResultOut,
+    ProjectComplianceOut,
     ProjectComplianceRequirementOut,
     ProjectComplianceStatusOut,
+    RemappedRequirementOut,
+    RemovedRequirementOut,
+    ReplacedRequirementOut,
+    StandardVersionDiffOut,
 )
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
@@ -891,3 +918,673 @@ def get_effective_compliance_managers(db: Session, organization_id: uuid.UUID) -
         ).all()
     )
     return ids
+
+
+# --- Phase 11: Cross-standard mapping + version impact -----------------------------
+
+
+def _changed_content_fields(old: ComplianceRequirement, new: ComplianceRequirement) -> list[str]:
+    """The subset of `reference`/`name`/`description`/`reasoning` that
+    differ between two lineage-matched requirement rows — `diff_standard_
+    versions`'s own content-equality rule for `modified` (a non-empty
+    result) vs. unchanged (empty). Deliberately excludes `sort_order`/
+    `parent_requirement_id`: §27's five categories are about a
+    requirement's own content, not its position within the tree, and a
+    requirement can legitimately move within a re-organised version
+    without its own text having changed at all."""
+    changed: list[str] = []
+    if old.reference != new.reference:
+        changed.append("reference")
+    if old.name != new.name:
+        changed.append("name")
+    if old.description != new.description:
+        changed.append("description")
+    if old.reasoning != new.reasoning:
+        changed.append("reasoning")
+    return changed
+
+
+def _find_replacement_mapping(
+    new_requirement: ComplianceRequirement,
+    *,
+    old_version_id: uuid.UUID,
+    already_matched_old_ids: set[uuid.UUID],
+    mappings_by_requirement_id: dict[uuid.UUID, list[ComplianceRequirementMapping]],
+    all_requirements_by_id: dict[uuid.UUID, ComplianceRequirement],
+    relationship_types_by_id: dict[uuid.UUID, ComplianceMappingRelationshipTypeDefinition],
+) -> tuple[ComplianceRequirementMapping, ComplianceRequirement, ComplianceMappingRelationshipTypeDefinition] | tuple[
+    None, None, None
+]:
+    """Finds an explicit, non-archived `ComplianceRequirementMapping`
+    linking `new_requirement` (which has no clone lineage into
+    `old_version_id`) to a specific, not-yet-matched requirement that
+    belongs to `old_version_id` — `diff_standard_versions`'s `replaced`
+    category. A mapping to a requirement in some *other* standard (a
+    genuine cross-standard link, not a same-standard replacement marker)
+    never qualifies, since its `standard_version_id` can never equal
+    `old_version_id`. Candidates are tried oldest-`created_at`-first for a
+    deterministic result if more than one such mapping exists (see
+    `diff_standard_versions`'s own docstring for why that ambiguity is a
+    Compliance Manager's call, not this function's). Also returns the
+    mapping's own relationship type — `diff_standard_versions`/`build_diff_out`
+    surface its `implies_equivalence` flag on the `replaced` entry so a
+    caller can tell, without a second lookup, whether this specific pair is
+    even eligible to be offered for migration carry-forward (`models.py`'s
+    own Phase 11 notes)."""
+    candidates = sorted(mappings_by_requirement_id.get(new_requirement.id, []), key=lambda m: m.created_at)
+    for mapping in candidates:
+        other_id = (
+            mapping.to_requirement_id
+            if mapping.from_requirement_id == new_requirement.id
+            else mapping.from_requirement_id
+        )
+        other = all_requirements_by_id.get(other_id)
+        if other is None or other.standard_version_id != old_version_id or other.id in already_matched_old_ids:
+            continue
+        return mapping, other, relationship_types_by_id[mapping.relationship_type_id]
+    return None, None, None
+
+
+class StandardVersionDiff:
+    """Plain data holder for `diff_standard_versions`'s result — see that
+    function's own docstring for what each field means. `modified`/
+    `replaced`/`re_mapped` are lists of tuples rather than dataclasses,
+    matching this file's existing "the router/schema layer shapes the
+    response, this layer just returns the computed facts" convention
+    (`ProjectComplianceStatusSummary`'s own plain-holder shape one section
+    up)."""
+
+    def __init__(
+        self,
+        *,
+        old_version_id: uuid.UUID,
+        new_version_id: uuid.UUID,
+        added: list[ComplianceRequirement],
+        removed: list[ComplianceRequirement],
+        modified: list[tuple[ComplianceRequirement, ComplianceRequirement, list[str]]],
+        replaced: list[
+            tuple[
+                ComplianceRequirement,
+                ComplianceRequirement,
+                ComplianceRequirementMapping,
+                ComplianceMappingRelationshipTypeDefinition,
+            ]
+        ],
+        re_mapped: list[tuple[ComplianceRequirement, ComplianceRequirement, list[uuid.UUID], list[uuid.UUID]]],
+        unmodified_lineage_map: dict[uuid.UUID, uuid.UUID],
+    ) -> None:
+        self.old_version_id = old_version_id
+        self.new_version_id = new_version_id
+        self.added = added
+        self.removed = removed
+        self.modified = modified
+        self.replaced = replaced
+        self.re_mapped = re_mapped
+        self.unmodified_lineage_map = unmodified_lineage_map
+
+
+def diff_standard_versions(
+    db: Session,
+    *,
+    standard_id: uuid.UUID,
+    old_version: ComplianceStandardVersion,
+    new_version: ComplianceStandardVersion,
+) -> StandardVersionDiff:
+    """§27's "what changed between standard versions" — the exact,
+    documented diff this phase is required to define, computed between any
+    two versions of the *same* standard, not necessarily directly adjacent
+    ones (e.g. diffing v1 against v3 when v3 was itself cloned from v2, not
+    v1 — `router.py::_clone_requirement_tree` always clones from exactly
+    one immediately-prior version, so resolving "does this v3 requirement
+    trace back to a specific v1 requirement" means walking v3 -> v2 -> v1
+    hop by hop via `ComplianceRequirement.cloned_from_requirement_id`, not
+    a single lookup). Every requirement ever created under `standard_id`
+    (across every version) is loaded once so that walk has everything it
+    might need to traverse, however many versions apart the two given
+    versions are.
+
+    Categories (§27's own five, plus one internal map used only by
+    `migrate_project_compliance`, not part of the public diff result):
+    - A new-version requirement resolves an **old-version ancestor** by
+      walking its own `cloned_from_requirement_id` chain until it either
+      reaches a requirement belonging to `old_version` (a match) or runs
+      out of chain entirely (no ancestor in `old_version` at all).
+    - **added**: no old-version ancestor, and no explicit "replaces"
+      mapping either (see `replaced` below).
+    - **removed**: an old-version requirement that no new-version
+      requirement's lineage (or explicit "replaces" mapping) resolves back
+      to.
+    - **modified**: has an old-version ancestor, but `_changed_content_
+      fields` finds at least one of `reference`/`name`/`description`/
+      `reasoning` differs from it.
+    - **replaced**: no old-version ancestor via lineage, but an explicit,
+      non-archived `ComplianceRequirementMapping` links it (in either
+      direction) to a specific, not-yet-matched `old_version` requirement
+      (`_find_replacement_mapping`) — see `models.py`'s own Phase 11 notes
+      for why marking a same-standard, cross-version "this replaces that"
+      link reuses the general-purpose cross-standard mapping table rather
+      than a second, parallel mechanism. Each entry also carries the
+      mapping's own relationship type's `implies_equivalence` flag
+      (`ReplacedRequirementOut.implies_equivalence`) — whether this
+      specific pair is even eligible to be offered for migration carry-
+      forward; see `migrate_project_compliance`'s own docstring for the
+      second, per-migration gate that must *also* be satisfied before a
+      `replaced` pair's assessment is actually copied.
+    - **re_mapped**: for every lineage-matched pair (`modified` *or*
+      unmodified alike), the old requirement's own non-archived mapping
+      target ids (from *either* side of a `ComplianceRequirementMapping`)
+      differ from the new requirement's — reported only when the *old*
+      side actually had at least one mapping (nothing to lose if it had
+      none). Mapping links are never carried forward by cloning
+      (`_clone_requirement_tree` never touches `ComplianceRequirementMapping`
+      at all) — deliberately: a cross-standard relationship asserted
+      against one specific version's wording may no longer hold once that
+      wording changes, so silently re-pointing it at the new version's
+      requirement would assert something nobody has actually re-confirmed.
+      `re_mapped` is exactly how a Compliance Manager discovers which
+      requirements need their mappings re-established after a new version
+      is published.
+    - `unmodified_lineage_map` (`new_requirement_id -> old_requirement_id`):
+      every lineage-matched pair whose content is identical — i.e. every
+      pair *not* in `modified` — consumed by `migrate_project_compliance`
+      to decide which requirements' project-specific assessments are safe
+      to carry forward without a human re-confirming them. Not part of
+      `StandardVersionDiffOut`'s public schema (an "unchanged" bucket isn't
+      one of §27's five named categories to report).
+
+    Args:
+        db: An active session.
+        standard_id: The standard both versions belong to — the caller
+            (e.g. `router.py::get_standard_version_diff`) is trusted to
+            have already verified `old_version`/`new_version` both belong
+            to it.
+        old_version: The earlier (lower `version_number`) version.
+        new_version: The later (higher `version_number`) version.
+
+    Returns:
+        The computed `StandardVersionDiff`.
+    """
+    all_requirements = list(
+        db.scalars(
+            select(ComplianceRequirement)
+            .join(
+                ComplianceStandardVersion,
+                ComplianceStandardVersion.id == ComplianceRequirement.standard_version_id,
+            )
+            .where(ComplianceStandardVersion.standard_id == standard_id)
+        ).all()
+    )
+    all_requirements_by_id = {r.id: r for r in all_requirements}
+    old_requirements = [r for r in all_requirements if r.standard_version_id == old_version.id]
+    new_requirements = [r for r in all_requirements if r.standard_version_id == new_version.id]
+
+    all_mappings = list(
+        db.scalars(
+            select(ComplianceRequirementMapping).where(
+                ComplianceRequirementMapping.is_archived.is_(False),
+                (ComplianceRequirementMapping.from_requirement_id.in_(all_requirements_by_id))
+                | (ComplianceRequirementMapping.to_requirement_id.in_(all_requirements_by_id)),
+            )
+        ).all()
+    )
+    targets_by_requirement_id: dict[uuid.UUID, set[uuid.UUID]] = {}
+    mappings_by_requirement_id: dict[uuid.UUID, list[ComplianceRequirementMapping]] = {}
+    for mapping in all_mappings:
+        targets_by_requirement_id.setdefault(mapping.from_requirement_id, set()).add(mapping.to_requirement_id)
+        targets_by_requirement_id.setdefault(mapping.to_requirement_id, set()).add(mapping.from_requirement_id)
+        mappings_by_requirement_id.setdefault(mapping.from_requirement_id, []).append(mapping)
+        mappings_by_requirement_id.setdefault(mapping.to_requirement_id, []).append(mapping)
+
+    relationship_type_ids = {mapping.relationship_type_id for mapping in all_mappings}
+    relationship_types_by_id = {
+        rt.id: rt
+        for rt in (
+            db.scalars(
+                select(ComplianceMappingRelationshipTypeDefinition).where(
+                    ComplianceMappingRelationshipTypeDefinition.id.in_(relationship_type_ids)
+                )
+            ).all()
+            if relationship_type_ids
+            else []
+        )
+    }
+
+    def _resolve_old_ancestor(requirement: ComplianceRequirement) -> ComplianceRequirement | None:
+        current = requirement
+        visited: set[uuid.UUID] = set()
+        while current.cloned_from_requirement_id is not None and current.id not in visited:
+            visited.add(current.id)
+            parent = all_requirements_by_id.get(current.cloned_from_requirement_id)
+            if parent is None:
+                return None
+            if parent.standard_version_id == old_version.id:
+                return parent
+            current = parent
+        return None
+
+    matched_old_ids: set[uuid.UUID] = set()
+    added: list[ComplianceRequirement] = []
+    modified: list[tuple[ComplianceRequirement, ComplianceRequirement, list[str]]] = []
+    replaced: list[
+        tuple[
+            ComplianceRequirement,
+            ComplianceRequirement,
+            ComplianceRequirementMapping,
+            ComplianceMappingRelationshipTypeDefinition,
+        ]
+    ] = []
+    unmodified_lineage_map: dict[uuid.UUID, uuid.UUID] = {}
+
+    for new_req in new_requirements:
+        old_ancestor = _resolve_old_ancestor(new_req)
+        if old_ancestor is not None:
+            matched_old_ids.add(old_ancestor.id)
+            changed_fields = _changed_content_fields(old_ancestor, new_req)
+            if changed_fields:
+                modified.append((old_ancestor, new_req, changed_fields))
+            else:
+                unmodified_lineage_map[new_req.id] = old_ancestor.id
+            continue
+
+        replacement_mapping, replaced_old_req, replacement_type = _find_replacement_mapping(
+            new_req,
+            old_version_id=old_version.id,
+            already_matched_old_ids=matched_old_ids,
+            mappings_by_requirement_id=mappings_by_requirement_id,
+            all_requirements_by_id=all_requirements_by_id,
+            relationship_types_by_id=relationship_types_by_id,
+        )
+        if replacement_mapping is not None and replaced_old_req is not None and replacement_type is not None:
+            matched_old_ids.add(replaced_old_req.id)
+            replaced.append((replaced_old_req, new_req, replacement_mapping, replacement_type))
+        else:
+            added.append(new_req)
+
+    removed = [r for r in old_requirements if r.id not in matched_old_ids]
+
+    re_mapped: list[tuple[ComplianceRequirement, ComplianceRequirement, list[uuid.UUID], list[uuid.UUID]]] = []
+    lineage_pairs = list(unmodified_lineage_map.items()) + [(new.id, old.id) for old, new, _fields in modified]
+    for new_id, old_id in lineage_pairs:
+        old_targets = targets_by_requirement_id.get(old_id, set())
+        if not old_targets:
+            continue
+        new_targets = targets_by_requirement_id.get(new_id, set())
+        if old_targets != new_targets:
+            re_mapped.append(
+                (
+                    all_requirements_by_id[old_id],
+                    all_requirements_by_id[new_id],
+                    sorted(old_targets),
+                    sorted(new_targets),
+                )
+            )
+
+    return StandardVersionDiff(
+        old_version_id=old_version.id,
+        new_version_id=new_version.id,
+        added=added,
+        removed=removed,
+        modified=modified,
+        replaced=replaced,
+        re_mapped=re_mapped,
+        unmodified_lineage_map=unmodified_lineage_map,
+    )
+
+
+def build_diff_out(diff: StandardVersionDiff) -> StandardVersionDiffOut:
+    """Builds `GET .../diff/...`'s response schema from a computed
+    `StandardVersionDiff` — see that function's own docstring for what each
+    category means."""
+    return StandardVersionDiffOut(
+        old_version_id=diff.old_version_id,
+        new_version_id=diff.new_version_id,
+        added=[
+            AddedRequirementOut(requirement=ComplianceRequirementSummaryOut.model_validate(r)) for r in diff.added
+        ],
+        removed=[
+            RemovedRequirementOut(requirement=ComplianceRequirementSummaryOut.model_validate(r))
+            for r in diff.removed
+        ],
+        modified=[
+            ModifiedRequirementOut(
+                old_requirement=ComplianceRequirementSummaryOut.model_validate(old),
+                new_requirement=ComplianceRequirementSummaryOut.model_validate(new),
+                changed_fields=changed_fields,
+            )
+            for old, new, changed_fields in diff.modified
+        ],
+        replaced=[
+            ReplacedRequirementOut(
+                old_requirement=ComplianceRequirementSummaryOut.model_validate(old),
+                new_requirement=ComplianceRequirementSummaryOut.model_validate(new),
+                mapping_id=mapping.id,
+                relationship_type_id=mapping.relationship_type_id,
+                implies_equivalence=relationship_type.implies_equivalence,
+            )
+            for old, new, mapping, relationship_type in diff.replaced
+        ],
+        re_mapped=[
+            RemappedRequirementOut(
+                old_requirement=ComplianceRequirementSummaryOut.model_validate(old),
+                new_requirement=ComplianceRequirementSummaryOut.model_validate(new),
+                old_mapping_target_requirement_ids=old_targets,
+                new_mapping_target_requirement_ids=new_targets,
+            )
+            for old, new, old_targets, new_targets in diff.re_mapped
+        ],
+    )
+
+
+class ProjectComplianceMigrationImpact:
+    """Plain data holder — one new requirement's outcome of
+    `migrate_project_compliance`, turned into `schemas.
+    ProjectComplianceMigrationRequirementImpact` by `build_migration_
+    result_out` below (this layer holds the ORM rows; the schema layer
+    holds the flattened ids/strings a caller actually wants)."""
+
+    def __init__(
+        self,
+        *,
+        new_pcr: ProjectComplianceRequirement,
+        requirement: ComplianceRequirement,
+        change: Literal["unchanged", "modified", "added", "replaced"],
+        carried_forward: bool,
+        requires_reassessment: bool,
+    ) -> None:
+        self.new_pcr = new_pcr
+        self.requirement = requirement
+        self.change = change
+        self.carried_forward = carried_forward
+        self.requires_reassessment = requires_reassessment
+
+
+class ProjectComplianceMigrationOutcome:
+    """Plain data holder for `migrate_project_compliance`'s result. `
+    invalidated` is exactly the subset of `impacts` whose `approval_state`
+    was downgraded by `invalidate_approval_if_in_flight` during migration
+    — the router logs/notifies each of these individually, mirroring
+    `_invalidate_approvals_supported_by_evidence`'s own established
+    "service returns what changed, router logs/notifies" split in
+    `project_router.py`."""
+
+    def __init__(
+        self,
+        *,
+        new_project_compliance: ProjectCompliance,
+        impacts: list[ProjectComplianceMigrationImpact],
+        invalidated: list[tuple[ProjectComplianceRequirement, ComplianceApprovalState]],
+    ) -> None:
+        self.new_project_compliance = new_project_compliance
+        self.impacts = impacts
+        self.invalidated = invalidated
+
+
+def migrate_project_compliance(
+    db: Session,
+    *,
+    old_project_compliance: ProjectCompliance,
+    new_version: ComplianceStandardVersion,
+    actor_id: uuid.UUID,
+    confirmed_replacement_requirement_ids: frozenset[uuid.UUID] = frozenset(),
+) -> ProjectComplianceMigrationOutcome:
+    """§27's explicit, user-triggered version-migration action. Creates a
+    **new** `ProjectCompliance` row rather than mutating the existing one
+    in place — `models.py`'s own Phase 7 notes and §27 itself both require
+    that "Existing Project Compliance assignments must remain associated
+    with their original version," not just by default. Does not archive
+    the old assignment, and does not log or notify anything — the caller
+    (`project_router.py::migrate_project_compliance_version`) does both
+    once it has this function's result, mirroring `complete_review`'s own
+    "mutate + return what happened, caller logs/notifies" split.
+
+    Materialises the new assignment's full requirement/required-action
+    assessment row set exactly like a brand-new assignment does
+    (`materialize_assessment_rows`, reused verbatim), then uses
+    `diff_standard_versions`'s `unmodified_lineage_map` to decide, per new
+    requirement, whether its project-specific assessment can be carried
+    forward from the old assignment's own row:
+
+    - **Carried forward** (content-identical lineage match to an old
+      requirement the old assignment actually has an assessment row for):
+      `explicit_applicability`/`justification`/`notes`/`compliance_status`/
+      `assessed_at`/`assessed_by`/`applicability_set_at`/`applicability_
+      set_by`/`approval_state` are copied onto the new row verbatim,
+      preserving the real provenance of *when*/*who* actually performed
+      that assessment (attributing it to the user running the migration
+      instead would misrepresent history). `approval_decided_at`/
+      `approval_decided_by`/`decision_note` are deliberately **not**
+      copied — those describe one specific human sign-off decision against
+      the *old* row's own id, which stays in that row's own (untouched)
+      audit trail; the new row needs a fresh decision if/when it reaches
+      `PENDING_APPROVAL` again. `invalidate_approval_if_in_flight` (Phase
+      9, reused verbatim — exactly the "future caller" its own docstring
+      already anticipated for "a standard version change") is then applied
+      to the *copied* value: a carried-forward `PENDING_APPROVAL`/
+      `APPROVED` state downgrades to `REQUIRES_REASSESSMENT` (§27:
+      "identify whether reassessment/reapproval is required"); every other
+      carried-forward state (`NOT_ASSESSED`/`ASSESSED`/`REJECTED`) is left
+      exactly as copied, since none of those represent a decision
+      migration could invalidate.
+    - **Left at materialised defaults** (`NOT_STARTED`/`None` explicit
+      applicability/`NOT_ASSESSED` approval — untouched): every requirement
+      that is `added` or `modified` per the diff, and every `replaced`
+      requirement *except* the narrow case below. §27 only asks that a
+      *changed* requirement's impact on an *approved* assessment be
+      identified — it does not ask this function to guess at a new/changed
+      requirement's compliance state, which nobody has actually assessed
+      against its new wording yet.
+    - **`replaced`, confirmed carry-forward** (this function's own second
+      gate, added after direct feedback that always treating `replaced`
+      like `added` was too blunt when a Compliance Manager has already
+      judged two requirements genuinely equivalent — e.g. an old "IPX6
+      water ingress" requirement explicitly linked to a new "IP67 water
+      ingress" requirement): a `replaced` pair's assessment is copied
+      *exactly like* a content-identical (`unchanged`) lineage match —
+      same field list, same `invalidate_approval_if_in_flight` call on the
+      copied `approval_state` — but **only** when *both*: (1) the mapping's
+      own relationship type has `implies_equivalence=True` (an org-level
+      Compliance Manager decision — see `models.py`'s own Phase 11 notes on
+      `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`),
+      and (2) the new requirement's id is present in this call's own
+      `confirmed_replacement_requirement_ids` (a separate, per-migration
+      human decision the caller has already validated against the diff —
+      see `project_router.py::migrate_project_compliance_version`). Unlike
+      an `unchanged`-carried row, a `replaced`-carried row's
+      `requires_reassessment` is reported as `True` *unconditionally*, even
+      if `approval_state` itself didn't need downgrading (e.g. it was only
+      `ASSESSED`, never `APPROVED`) — the underlying wording genuinely
+      changed, even if a human has judged the change immaterial, so a
+      reviewer should always look again. A `replaced` pair failing either
+      gate falls back to the same "left at materialised defaults" treatment
+      as `added` — carrying an assessment forward on the strength of an
+      unconfirmed or weak-relationship-type judgement call would risk
+      exactly the "migration must not silently change historical
+      compliance assessments" failure mode §27 warns against, one step
+      removed.
+
+    Does not commit — caller commits as part of its own single transaction.
+
+    Args:
+        db: An active session.
+        old_project_compliance: The assignment being migrated *from*. Not
+            mutated by this function — archiving it is the caller's job.
+        new_version: The `ComplianceStandardVersion` being migrated *to* —
+            the caller has already verified it is `PUBLISHED`, belongs to
+            the same standard, and has a higher `version_number`.
+        actor_id: The user performing the migration (`assigned_by` on the
+            new row).
+        confirmed_replacement_requirement_ids: New-version requirement ids
+            the caller has already validated are both part of this
+            migration's `replaced` diff set *and* linked by a mapping whose
+            relationship type has `implies_equivalence=True` (`project_
+            router.py` does this validation and 400s before ever calling
+            this function — this function trusts its caller and applies
+            the set as given, re-deriving eligibility from its own freshly
+            computed diff regardless, so an id that turns out *not* to
+            satisfy both gates is simply ignored rather than trusted
+            blindly).
+
+    Returns:
+        The `ProjectComplianceMigrationOutcome`.
+    """
+    old_version = db.get(ComplianceStandardVersion, old_project_compliance.standard_version_id)
+
+    new_project_compliance = ProjectCompliance(
+        project_id=old_project_compliance.project_id,
+        standard_version_id=new_version.id,
+        assigned_at=datetime.now(UTC),
+        assigned_by=actor_id,
+        target_compliance_date=old_project_compliance.target_compliance_date,
+    )
+    db.add(new_project_compliance)
+    db.flush()
+    materialize_assessment_rows(
+        db, project_compliance_id=new_project_compliance.id, standard_version_id=new_version.id
+    )
+
+    diff = diff_standard_versions(
+        db, standard_id=new_version.standard_id, old_version=old_version, new_version=new_version
+    )
+    modified_new_ids = {new.id for _old, new, _fields in diff.modified}
+    replaced_by_new_id = {new.id: (old, relationship_type) for old, new, _mapping, relationship_type in diff.replaced}
+
+    new_requirements_by_id = {
+        r.id: r
+        for r in db.scalars(
+            select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == new_version.id)
+        ).all()
+    }
+    old_pcrs_by_requirement_id = {
+        pcr.requirement_id: pcr
+        for pcr in db.scalars(
+            select(ProjectComplianceRequirement).where(
+                ProjectComplianceRequirement.project_compliance_id == old_project_compliance.id
+            )
+        ).all()
+    }
+    new_pcrs = db.scalars(
+        select(ProjectComplianceRequirement).where(
+            ProjectComplianceRequirement.project_compliance_id == new_project_compliance.id
+        )
+    ).all()
+
+    impacts: list[ProjectComplianceMigrationImpact] = []
+    invalidated: list[tuple[ProjectComplianceRequirement, ComplianceApprovalState]] = []
+
+    for new_pcr in new_pcrs:
+        requirement = new_requirements_by_id[new_pcr.requirement_id]
+        old_requirement_id = diff.unmodified_lineage_map.get(new_pcr.requirement_id)
+        old_pcr = old_pcrs_by_requirement_id.get(old_requirement_id) if old_requirement_id is not None else None
+        replacement = replaced_by_new_id.get(new_pcr.requirement_id)
+
+        if old_pcr is not None:
+            new_pcr.explicit_applicability = old_pcr.explicit_applicability
+            new_pcr.justification = old_pcr.justification
+            new_pcr.notes = old_pcr.notes
+            new_pcr.compliance_status = old_pcr.compliance_status
+            new_pcr.assessed_at = old_pcr.assessed_at
+            new_pcr.assessed_by = old_pcr.assessed_by
+            new_pcr.applicability_set_at = old_pcr.applicability_set_at
+            new_pcr.applicability_set_by = old_pcr.applicability_set_by
+            new_pcr.approval_state = old_pcr.approval_state
+            previous_approval_state = invalidate_approval_if_in_flight(new_pcr)
+            if previous_approval_state is not None:
+                invalidated.append((new_pcr, previous_approval_state))
+            impacts.append(
+                ProjectComplianceMigrationImpact(
+                    new_pcr=new_pcr,
+                    requirement=requirement,
+                    change="unchanged",
+                    carried_forward=True,
+                    requires_reassessment=previous_approval_state is not None,
+                )
+            )
+        elif replacement is not None:
+            old_requirement, relationship_type = replacement
+            old_pcr_for_replacement = old_pcrs_by_requirement_id.get(old_requirement.id)
+            confirmed_and_eligible = (
+                relationship_type.implies_equivalence
+                and new_pcr.requirement_id in confirmed_replacement_requirement_ids
+                and old_pcr_for_replacement is not None
+            )
+            if confirmed_and_eligible:
+                new_pcr.explicit_applicability = old_pcr_for_replacement.explicit_applicability
+                new_pcr.justification = old_pcr_for_replacement.justification
+                new_pcr.notes = old_pcr_for_replacement.notes
+                new_pcr.compliance_status = old_pcr_for_replacement.compliance_status
+                new_pcr.assessed_at = old_pcr_for_replacement.assessed_at
+                new_pcr.assessed_by = old_pcr_for_replacement.assessed_by
+                new_pcr.applicability_set_at = old_pcr_for_replacement.applicability_set_at
+                new_pcr.applicability_set_by = old_pcr_for_replacement.applicability_set_by
+                new_pcr.approval_state = old_pcr_for_replacement.approval_state
+                previous_approval_state = invalidate_approval_if_in_flight(new_pcr)
+                if previous_approval_state is not None:
+                    invalidated.append((new_pcr, previous_approval_state))
+            impacts.append(
+                ProjectComplianceMigrationImpact(
+                    new_pcr=new_pcr,
+                    requirement=requirement,
+                    change="replaced",
+                    carried_forward=confirmed_and_eligible,
+                    # Always True for a `replaced` pair, carried forward or
+                    # not — unlike `unchanged`, where it's conditional on
+                    # whether `approval_state` needed downgrading, the
+                    # underlying wording did change here even when a human
+                    # has judged the change immaterial, so a reviewer
+                    # should always be pointed at it.
+                    requires_reassessment=True,
+                )
+            )
+        else:
+            change: Literal["modified", "added"] = (
+                "modified" if new_pcr.requirement_id in modified_new_ids else "added"
+            )
+            impacts.append(
+                ProjectComplianceMigrationImpact(
+                    new_pcr=new_pcr,
+                    requirement=requirement,
+                    change=change,
+                    carried_forward=False,
+                    requires_reassessment=True,
+                )
+            )
+
+    return ProjectComplianceMigrationOutcome(
+        new_project_compliance=new_project_compliance, impacts=impacts, invalidated=invalidated
+    )
+
+
+def build_migration_result_out(
+    outcome: ProjectComplianceMigrationOutcome,
+    *,
+    previous_project_compliance_id: uuid.UUID,
+    previous_standard_version_id: uuid.UUID,
+) -> ProjectComplianceMigrationResultOut:
+    """Builds the version-migration action's response schema from a
+    computed `ProjectComplianceMigrationOutcome` — see `migrate_project_
+    compliance`'s own docstring for what each impact category means."""
+    requirement_impacts = [
+        ProjectComplianceMigrationRequirementImpact(
+            project_compliance_requirement_id=impact.new_pcr.id,
+            requirement_id=impact.requirement.id,
+            requirement_reference=impact.requirement.reference,
+            requirement_name=impact.requirement.name,
+            change=impact.change,
+            carried_forward=impact.carried_forward,
+            requires_reassessment=impact.requires_reassessment,
+        )
+        for impact in outcome.impacts
+    ]
+    return ProjectComplianceMigrationResultOut(
+        new_project_compliance=ProjectComplianceOut.model_validate(outcome.new_project_compliance),
+        previous_project_compliance_id=previous_project_compliance_id,
+        previous_standard_version_id=previous_standard_version_id,
+        new_standard_version_id=outcome.new_project_compliance.standard_version_id,
+        total_requirements=len(outcome.impacts),
+        carried_forward_count=sum(1 for impact in outcome.impacts if impact.carried_forward),
+        requires_reassessment_count=sum(1 for impact in outcome.impacts if impact.requires_reassessment),
+        added_count=sum(1 for impact in outcome.impacts if impact.change == "added"),
+        modified_count=sum(1 for impact in outcome.impacts if impact.change == "modified"),
+        replaced_count=sum(1 for impact in outcome.impacts if impact.change == "replaced"),
+        requirement_impacts=requirement_impacts,
+    )

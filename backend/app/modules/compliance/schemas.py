@@ -56,6 +56,18 @@ Design decisions, not left implicit:
   field (never stored — see `service.py::compute_review_schedule_state`),
   the same "built explicitly by the router" shape as `ComplianceEvidenceOut.
   validity_state`.
+- Phase 11 (§19, §27, Cross-Standard Mapping + Version Impact) adds
+  `ComplianceMappingRelationshipType*` (the org-scoped vocabulary,
+  mirroring `ComplianceActionType*`'s exact shape one section up),
+  `ComplianceRequirementMapping*`, the version-diff response shapes
+  (`ComplianceRequirementSummaryOut` plus one `*Out` per §27 diff
+  category), and the version-migration request/result shapes
+  (`ProjectComplianceMigration*`) at the bottom of this file. Every diff/
+  migration-result schema is built explicitly by the router/service layer
+  from computed data (`service.py::diff_standard_versions`/`migrate_
+  project_compliance`), never `from_attributes` alone, the same reason
+  `ProjectComplianceRequirementOut`/`ComplianceEvidenceOut`/
+  `ComplianceReviewOut` already are.
 """
 
 from __future__ import annotations
@@ -611,3 +623,241 @@ class ComplianceReviewOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     linked_evidence_ids: list[UUID]
+
+
+# --- Phase 11: Cross-standard mapping + version impact ---------------------------
+
+
+class ComplianceMappingRelationshipTypeCreate(BaseModel):
+    name: str
+    implies_equivalence: bool = False
+
+
+class ComplianceMappingRelationshipTypeUpdate(BaseModel):
+    """Update payload — mirrors `ComplianceActionTypeUpdate`'s rename
+    shape, extended with `implies_equivalence` (Phase 11's carry-forward-
+    across-a-replaced-mapping gate, see `models.py`'s own notes). Every
+    `ComplianceRequirementMapping.relationship_type_id` reference points at
+    this row's id, never its name, so renaming never disturbs an existing
+    mapping; toggling `implies_equivalence` likewise never touches any
+    existing mapping row — it only changes whether *future* migrations may
+    offer carry-forward for a `replaced` pair linked by this type."""
+
+    name: str
+    implies_equivalence: bool = False
+
+
+class ComplianceMappingRelationshipTypeOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    organization_id: UUID
+    name: str
+    sort_order: int
+    implies_equivalence: bool
+
+
+class ComplianceRequirementMappingCreate(BaseModel):
+    """Payload for `POST .../requirement-mappings` (§19). `from_requirement_id`/
+    `to_requirement_id` may belong to any standard/version in this
+    organisation (including two versions of the *same* standard — see
+    `models.py`'s own Phase 11 notes on why this table also serves §27's
+    "replaced" category) — the router verifies both, and `relationship_type_id`,
+    belong to this same organisation (404 on a mismatch, this module's usual
+    convention)."""
+
+    from_requirement_id: UUID
+    to_requirement_id: UUID
+    relationship_type_id: UUID
+    notes: str = ""
+
+
+class ComplianceRequirementMappingOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    organization_id: UUID
+    from_requirement_id: UUID
+    to_requirement_id: UUID
+    relationship_type_id: UUID
+    notes: str
+    created_by: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ComplianceRequirementSummaryOut(BaseModel):
+    """Minimal identifying summary of a `ComplianceRequirement` row, used by
+    the version-diff schemas below so a caller can show a reference/name
+    next to a diff category without a second round-trip to `GET .../
+    requirements/{id}`."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    standard_version_id: UUID
+    reference: str | None
+    name: str
+
+
+class AddedRequirementOut(BaseModel):
+    """One row of `StandardVersionDiffOut.added` (§27) — a new-version
+    requirement with no clone lineage back to the old version at all (see
+    `service.py::diff_standard_versions`)."""
+
+    requirement: ComplianceRequirementSummaryOut
+
+
+class RemovedRequirementOut(BaseModel):
+    """One row of `StandardVersionDiffOut.removed` (§27) — an old-version
+    requirement with nothing in the new version tracing lineage back to it,
+    and no explicit "replaced by" mapping either."""
+
+    requirement: ComplianceRequirementSummaryOut
+
+
+class ModifiedRequirementOut(BaseModel):
+    """One row of `StandardVersionDiffOut.modified` (§27) — a lineage-
+    matched pair (same underlying requirement, cloned forward) whose
+    content differs. `changed_fields` names exactly which of `reference`/
+    `name`/`description`/`reasoning` differ, per `service.py::
+    diff_standard_versions`'s own content-equality rule."""
+
+    old_requirement: ComplianceRequirementSummaryOut
+    new_requirement: ComplianceRequirementSummaryOut
+    changed_fields: list[str]
+
+
+class ReplacedRequirementOut(BaseModel):
+    """One row of `StandardVersionDiffOut.replaced` (§27) — an old-version
+    requirement with no clone lineage into the new version, but explicitly
+    linked (via a `ComplianceRequirementMapping`) to a new-version
+    requirement that itself has no clone lineage back — see `models.py`'s
+    own Phase 11 notes for why this reuses the cross-standard mapping table
+    rather than a second mechanism.
+
+    `implies_equivalence` mirrors the mapping's own relationship type's
+    `ComplianceMappingRelationshipTypeDefinition.implies_equivalence` at
+    read time (denormalised onto this row so a caller deciding what to pass
+    as `ProjectComplianceMigrationRequest.confirmed_replacement_requirement_
+    ids` doesn't need a second lookup against the relationship-types list)
+    — whether this specific pair is even eligible to be offered for
+    migration carry-forward. `False` means the migration endpoint will 400
+    if this pair's new-requirement id is submitted as confirmed."""
+
+    old_requirement: ComplianceRequirementSummaryOut
+    new_requirement: ComplianceRequirementSummaryOut
+    mapping_id: UUID
+    relationship_type_id: UUID
+    implies_equivalence: bool
+    """Mirrors the mapping's own `ComplianceMappingRelationshipTypeDefinition.
+    implies_equivalence` at read time (denormalised onto this row so a
+    caller deciding what to pass as `ProjectComplianceMigrationRequest.
+    confirmed_replacement_requirement_ids` doesn't need a second lookup
+    against the relationship-types list) — whether this specific `replaced`
+    pair is even eligible to be offered for migration carry-forward. `False`
+    here means the migration endpoint will 400 if this pair's new-
+    requirement id is submitted as confirmed."""
+
+
+class RemappedRequirementOut(BaseModel):
+    """One row of `StandardVersionDiffOut.re_mapped` (§27) — a lineage-
+    matched pair where the old requirement had one or more cross-standard/
+    cross-version mapping links that the new requirement does not fully
+    carry forward (mapping links are never auto-cloned — see `service.py::
+    diff_standard_versions`'s own docstring for why that is itself the
+    useful signal here, not a bug to fix)."""
+
+    old_requirement: ComplianceRequirementSummaryOut
+    new_requirement: ComplianceRequirementSummaryOut
+    old_mapping_target_requirement_ids: list[UUID]
+    new_mapping_target_requirement_ids: list[UUID]
+
+
+class StandardVersionDiffOut(BaseModel):
+    """Full response for `GET .../versions/{version_id}/diff/{other_version_id}`
+    (§27's "users should be able to see what changed between standard
+    versions" plus its own five named categories). `old_version_id`/
+    `new_version_id` are always the lower/higher `version_number` of the
+    two requested, regardless of which order they appeared in the URL —
+    see `router.py::get_standard_version_diff`'s own docstring."""
+
+    old_version_id: UUID
+    new_version_id: UUID
+    added: list[AddedRequirementOut]
+    removed: list[RemovedRequirementOut]
+    modified: list[ModifiedRequirementOut]
+    replaced: list[ReplacedRequirementOut]
+    re_mapped: list[RemappedRequirementOut]
+
+
+class ProjectComplianceMigrationRequest(BaseModel):
+    """Payload for `POST .../project-compliance/{id}/migrate-version`
+    (§27's "projects should be able to migrate/adopt a newer version
+    through an explicit action").
+
+    `confirmed_replacement_requirement_ids` is the compliance officer's own,
+    per-migration, per-requirement opt-in to carry an assessment forward
+    across a `replaced` version-diff pair (see `models.py`'s own Phase 11
+    notes on `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`
+    for the full two-gate design) — each id names a *new*-version
+    requirement (matching `ReplacedRequirementOut.new_requirement.id` from a
+    prior `GET .../diff/...` call, the natural "preview, then confirm" order
+    this is meant to be used in). The endpoint 400s if an id here isn't
+    actually part of this migration's `replaced` set, or is but its
+    mapping's relationship type has `implies_equivalence=False` — a stale
+    or invalid confirmation is rejected outright, never silently ignored.
+    Defaults to empty: an officer who does nothing gets this phase's
+    original behaviour (every `replaced` requirement lands at defaults)."""
+
+    new_standard_version_id: UUID
+    confirmed_replacement_requirement_ids: list[UUID] = []
+
+
+class ProjectComplianceMigrationRequirementImpact(BaseModel):
+    """One requirement's outcome of a version migration — §27's "identify
+    whether reassessment/reapproval is required," per requirement, not
+    just as an aggregate count. `"replaced"` covers every `replaced`-diff
+    requirement regardless of whether it was actually carried forward —
+    `carried_forward` (not `change`) is what distinguishes a confirmed,
+    eligible carry-forward from one left at defaults."""
+
+    project_compliance_requirement_id: UUID
+    requirement_id: UUID
+    requirement_reference: str | None
+    requirement_name: str
+    change: Literal["unchanged", "modified", "added", "replaced"]
+    carried_forward: bool
+    requires_reassessment: bool
+
+
+class ProjectComplianceMigrationResultOut(BaseModel):
+    """Response for the version-migration action — the new (post-migration)
+    `ProjectCompliance` assignment plus a full per-requirement breakdown of
+    what was carried forward vs. left to reassess. Does not repeat
+    `removed` requirements from the underlying diff (an old-version
+    requirement with no successor in the new version has no row on the
+    *new* assignment at all to report an impact against). `replaced`
+    requirements *are* included — their new-version requirement is part of
+    the new assignment and gets a materialised row like any other, whether
+    or not it was actually carried forward (corrected from this schema's
+    original docstring, which mistakenly grouped `replaced` with `removed`
+    — see `change`'s own docstring for the fix, made while adding the
+    `replaced` category itself). A caller wanting the full diff context
+    (including `removed`) calls `GET .../diff/...` first, the natural
+    "preview, then commit" order this action is meant to be used in."""
+
+    new_project_compliance: ProjectComplianceOut
+    previous_project_compliance_id: UUID
+    previous_standard_version_id: UUID
+    new_standard_version_id: UUID
+    total_requirements: int
+    carried_forward_count: int
+    requires_reassessment_count: int
+    added_count: int
+    modified_count: int
+    replaced_count: int
+    requirement_impacts: list[ProjectComplianceMigrationRequirementImpact]

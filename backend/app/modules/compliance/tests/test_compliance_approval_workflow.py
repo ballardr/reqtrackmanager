@@ -17,15 +17,15 @@ assessable requirement.
 
 from __future__ import annotations
 
-from tests.conftest import auth_headers, create_org_user, create_project, login
-from tests.test_compliance_evidence_api import _create_evidence
-from tests.test_project_compliance_api import (
+from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence
+from app.modules.compliance.tests.test_project_compliance_api import (
     _assign_project_role,
     _assign_standard_to_project,
     _grant_compliance_officer,
     _project_base,
     _setup_published_standard_with_tree,
 )
+from tests.conftest import auth_headers, create_org_user, create_project, login
 
 
 def _setup_assessed_pcr(client, admin_token, org_id, *, project_name="Approval Project", status="compliant", tree=None):

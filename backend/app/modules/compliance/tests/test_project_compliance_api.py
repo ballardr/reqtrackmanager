@@ -19,8 +19,7 @@ review.py` — this file's own job starts once a published version exists.
 
 from __future__ import annotations
 
-from tests.conftest import auth_headers, create_org_user, create_project, login
-from tests.test_compliance_standards_api import (
+from app.modules.compliance.tests.test_compliance_standards_api import (
     _base,
     _create_action_type,
     _create_required_action,
@@ -29,6 +28,7 @@ from tests.test_compliance_standards_api import (
     _create_version,
     _grant_compliance_manager,
 )
+from tests.conftest import auth_headers, create_org_user, create_project, login
 
 # --- Small API helpers -----------------------------------------------------------
 

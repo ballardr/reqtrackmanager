@@ -226,10 +226,10 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All eight of Compliance's tools (three from Phase 6, two more from
+    """All ten of Compliance's tools (three from Phase 6, two more from
     Phase 7, one more from Phase 8, one more from Phase 9, one more from
-    Phase 10) resolve, are read-only (`mutates=False`, all GET), and carry
-    exactly the path
+    Phase 10, two more from Phase 11) resolve, are read-only
+    (`mutates=False`, all GET), and carry exactly the path
     parameters their router endpoints require — the concrete proof that
     `module.py`'s declared `path_template`s actually match real routes on
     `compliance.router.router`/`compliance.project_router.router`, not just
@@ -308,12 +308,39 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     assert list_reviews_due.path_template == "/api/v1/projects/{project_id}/modules/compliance/reviews-due"
     assert {p["name"] for p in list_reviews_due.params} == {"project_id"}
 
+    # Phase 11's two tools: back on the org router (mapping/diff are
+    # standard/version-scoped concepts, not project-scoped).
+    list_requirement_mappings = by_name["compliance_list_requirement_mappings"]
+    assert list_requirement_mappings.mutates is False
+    assert list_requirement_mappings.path_template == (
+        "/api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/"
+        "requirements/{requirement_id}/mappings"
+    )
+    assert {p["name"] for p in list_requirement_mappings.params} == {
+        "organization_id", "standard_id", "version_id", "requirement_id",
+    }
+
+    get_version_diff = by_name["compliance_get_standard_version_diff"]
+    assert get_version_diff.mutates is False
+    assert get_version_diff.path_template == (
+        "/api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/diff/"
+        "{other_version_id}"
+    )
+    assert {p["name"] for p in get_version_diff.params} == {
+        "organization_id", "standard_id", "version_id", "other_version_id",
+    }
+
     # No mutating tool for publish/retire, applicability, assessment, any
-    # evidence mutation (create/update/archive/revalidate/link/upload), or
-    # any of Phase 9's own submit-for-approval/approve/reject actions is
+    # evidence mutation (create/update/archive/revalidate/link/upload), any
+    # of Phase 9's own submit-for-approval/approve/reject actions, mapping
+    # create/archive, or Phase 11's own version-migration action is
     # declared at all — this module's MCP surface stays deliberately
     # read-only across every phase so far.
     assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())
     assert not any(
-        name in {"compliance_submit_for_approval", "compliance_approve", "compliance_reject"} for name in by_name
+        name in {
+            "compliance_submit_for_approval", "compliance_approve", "compliance_reject",
+            "compliance_migrate_project_compliance_version", "compliance_migrate_version",
+        }
+        for name in by_name
     )

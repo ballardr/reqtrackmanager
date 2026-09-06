@@ -24,16 +24,16 @@ from app.modules.compliance.scheduler import (
     send_review_due_notifications,
     send_target_date_notifications,
 )
-from tests.conftest import auth_headers, create_org_user, create_project, login
-from tests.test_compliance_evidence_api import _create_evidence, _setup_project_with_assessment
-from tests.test_compliance_standards_api import _base
-from tests.test_project_compliance_api import (
+from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence, _setup_project_with_assessment
+from app.modules.compliance.tests.test_compliance_standards_api import _base
+from app.modules.compliance.tests.test_project_compliance_api import (
     _assign_project_role,
     _assign_standard_to_project,
     _grant_compliance_officer,
     _project_base,
     _setup_published_standard_with_tree,
 )
+from tests.conftest import auth_headers, create_org_user, create_project, login
 
 TODAY = date.today()
 

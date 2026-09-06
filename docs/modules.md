@@ -225,11 +225,35 @@ Getting your tables to actually *exist* in a real database is a separate
 step, and where it happens depends on how your module is loaded:
 
 - **First-party** (shipped inside `backend/app/modules/`, added to
-  `INSTALLED_MODULES`): ship a real Alembic migration in
-  `backend/alembic/versions/`, exactly like every other first-party
-  migration (Compliance's own `0026_compliance_data_model.py` is a worked
-  example) — reviewed in a normal PR. Leave `migrations_import_path` unset;
-  it is ignored for a first-party module even if you do set it.
+  `INSTALLED_MODULES`): ship a real Alembic migration and set
+  `migrations_dir` to its directory, relative to `backend/` (e.g.
+  `"app/modules/compliance/migrations"` — Compliance's own
+  `migrations/0026_compliance_data_model.py` is a worked example) —
+  reviewed in a normal PR, exactly like every other first-party migration.
+  Colocating it with the rest of your module's own code (models/service/
+  router/tests) rather than dropping it into the flat, shared
+  `backend/alembic/versions/` directory is a compliance-module-plan.md
+  Phase 11 follow-up: `app.modules.registry.configure_alembic_version_
+  locations` adds every registered module's `migrations_dir` to Alembic's
+  own multi-directory `version_locations`, so your migration still
+  participates in the exact same single, linear, reviewed chain — this is
+  a file-location convenience, not a second, less-reviewed path (see that
+  function's own docstring for why this doesn't reopen the trust-boundary
+  reasoning below). Number your revision file to continue the existing
+  chain's own sequence regardless of which directory the previous head
+  lives in (check `python scripts/db.py heads`, not just your own module's
+  directory, before picking the next number) — Alembic resolves the chain
+  by each file's own `down_revision` string, not by directory, but this
+  repo's own numbering convention is still project-wide sequential, for a
+  human skimming `python scripts/db.py history` to follow easily. Write
+  and run your migration via `python scripts/db.py revision`/`upgrade`/
+  `history`/etc. (from `backend/`), not bare `alembic <command>` — the
+  wrapper is what actually wires `configure_alembic_version_locations` in
+  before dispatching, so a bare `alembic` invocation using this repo's own
+  `alembic.ini` directly would only ever see the core directory, missing
+  every module's own migrations entirely; see `scripts/db.py`'s own module
+  docstring. Leave `migrations_import_path` unset; it is ignored for a
+  first-party module even if you do set it.
 - **External** (loaded via `EXTRA_MODULES_PATH` or a `pip`-installed entry
   point, only when the deployment operator has set `ALLOW_EXTERNAL_MODULES`):
   set `migrations_import_path` to a module exposing
@@ -239,6 +263,11 @@ step, and where it happens depends on how your module is loaded:
   repo already uses), since there's no per-module revision tracking. See
   "Adding an external module by mounting a directory" in
   [deployment.md](deployment.md) for the full operator-facing walkthrough.
+  (An external module *could* alternatively set `migrations_dir` instead,
+  since that mechanism is honoured for any registered module — but
+  `migrations_import_path` remains the documented, recommended path for an
+  external module specifically, since it needs no filesystem access to this
+  repo's own `backend/` tree at all, only an importable Python module.)
 
 **If your module lets users attach files** (reusing `services.files.
 upload_file`, per the project's own "reuse existing attachment mechanisms"
@@ -534,11 +563,14 @@ reaches the registry:
    `ModuleDefinition` so `Base.metadata` includes them automatically —
    no core-file edit needed for this part, regardless of discovery path.
    Getting a real database to match that shape differs by discovery path:
-   a first-party module ships a real, reviewed Alembic migration in
-   `backend/alembic/versions/`; an external module instead sets
-   `migrations_import_path` to an idempotent `run_migrations(connection)`,
-   applied automatically — but only when the deployment operator has set
-   `ALLOW_EXTERNAL_MODULES` (see [Security model](#security-model)).
+   a first-party module ships a real, reviewed Alembic migration in its own
+   `migrations_dir` (e.g. `app/modules/<key>/migrations/`, colocated with
+   the rest of your module's code — see above for the full worked
+   convention), authored/applied via `python scripts/db.py`, not bare
+   `alembic`; an external module instead sets `migrations_import_path` to
+   an idempotent `run_migrations(connection)`, applied automatically — but
+   only when the deployment operator has set `ALLOW_EXTERNAL_MODULES` (see
+   [Security model](#security-model)).
 2. Build an `APIRouter` for your endpoints. Gate each mutating/sensitive
    endpoint with `require_org_module_enabled(your_key)` /
    `require_project_module_enabled(your_key)`, or `require_module_role
@@ -574,7 +606,27 @@ backend test pinning your endpoints' behaviour (including the disabled/
 non-entitled 404 case and, if you declared roles, the grant/composition
 behaviour), and — if you have Tier A frontend — Storybook coverage plus a
 Playwright end-to-end test, per this repository's standing testing
-requirements.
+requirements. Put your module's own backend tests in `app/modules/<key>/
+tests/`, colocated with the rest of your module's code (Compliance's own
+`app/modules/compliance/tests/` is the worked example — a compliance-
+module-plan.md Phase 11 follow-up moved its tests there from the flat,
+shared `backend/tests/` directory) rather than the flat directory every
+core (non-module) test lives in. This needs no `conftest.py`/`pytest.ini`
+change on your part: `backend/conftest.py` (this project's pytest rootdir)
+already registers `tests/conftest.py` as a plugin
+(`pytest_plugins = ["tests.conftest"]`), so its fixtures (`client`,
+`admin_token`, `org_id`, etc.) apply to your module's own test directory
+automatically, the same as they do inside `tests/` itself — pytest's own
+directory-based fixture cascade wouldn't otherwise reach a sibling
+subtree like `app/modules/<key>/tests/` on its own, which is exactly why
+that one small top-level file exists. If your tests need to exercise your
+own migration's up/down behaviour directly (rather than just relying on
+`test_schema_migrations_match_models.py`'s drift check), build your
+`alembic.config.Config` via `tests.conftest.build_alembic_config()`, not a
+bare `Config(...)` — it's the one that already calls `configure_alembic_
+version_locations` for you, without which Alembic can't resolve `"head"`
+(or any revision id) at all once more than one module's migrations exist
+outside the core directory.
 
 ---
 

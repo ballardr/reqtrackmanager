@@ -190,6 +190,150 @@ Phase 9 design decisions:
   would just need reconciling away later, the same call Phase 5 already
   made about its own standard-level fields.
 
+Phase 11 design decisions:
+- `ComplianceRequirement.cloned_from_requirement_id` (nullable,
+  self-referential, `ondelete="SET NULL"`) is a new column recording which
+  requirement (if any) a given requirement was cloned from by `router.py::
+  _clone_requirement_tree` when a new standard version is created from an
+  existing one. Before this phase, cloning remapped old-id -> new-id only
+  in memory, for the duration of one clone operation, and persisted
+  nothing — §27's "identify requirements that are added/removed/modified/
+  replaced/re-mapped" between two versions cannot be answered precisely
+  without a durable lineage link: without it, a version diff could only
+  guess "same name/reference -> probably the same requirement," which
+  breaks the moment a requirement is renamed *and* content-edited in the
+  same version (indistinguishable from one being removed and an unrelated
+  one being added). `ondelete="SET NULL"`, not `CASCADE`, deliberately
+  mirrors `Project.parent_project_id`'s "detach, don't cascade" precedent
+  rather than this same file's own `parent_requirement_id` `CASCADE`
+  precedent one column up: `parent_requirement_id`'s `CASCADE` exists
+  because a compliance requirement has no "stand alone once detached"
+  concept *within its own tree* — deleting a section requirement should
+  take its subsections with it. Deleting the *source* requirement a later
+  version's requirement was cloned from is a different situation entirely:
+  the cloned requirement is a fully independent row in a different,
+  already-published version that must keep existing and keep its own
+  identity regardless of what later happens to the version it was cloned
+  from (a draft version can still have its unpublished requirements
+  deleted before publishing) — `SET NULL` simply means "the lineage record
+  is gone," which `service.py::diff_standard_versions` already treats
+  identically to "never had a lineage record" (i.e. `added`), the correct
+  fallback. See `service.py::diff_standard_versions`'s own docstring for
+  exactly how this column is walked (including the multi-hop case: diffing
+  two versions that are not directly adjacent, e.g. v1 vs. v3 when v3 was
+  cloned from v2, not v1).
+- `ComplianceMappingRelationshipTypeDefinition` is a new, organisation-
+  scoped, extensible vocabulary table for §19's "relationship types...
+  configurable or extensible where practical" (Equivalent, Satisfies,
+  Derived From, Related To, Overlaps, Conflicts With are examples, not a
+  fixed enum) — mirrors `ComplianceActionTypeDefinition`'s exact shape
+  (`organization_id`, unique `name`, `sort_order`), which this plan's own
+  Phase 5 notes already established as this module's precedent for "a
+  vocabulary chosen from within an org-level resource is itself org-
+  scoped." No rows are seeded by this phase, consistent with every other
+  vocabulary table in this module (`ComplianceActionTypeDefinition`'s own
+  Phase 5 notes) — seed data is Phase 15's job.
+  `__tablename__` is `compliance_mapping_relationship_types`, not
+  `..._type_definitions` (which every column name elsewhere in this class
+  would otherwise suggest, matching `ComplianceActionTypeDefinition`'s own
+  `compliance_action_type_definitions`): the longer name's auto-generated
+  `organization_id` index name (`ix_compliance_mapping_relationship_
+  type_definitions_organization_id`, 67 characters) exceeds Postgres's
+  63-byte identifier limit — the exact class of problem `Compliance
+  RequiredActionAssessment`'s own comment already documents for a
+  different table, solved there with an explicit shortened index name and
+  solved here instead by shortening the table name itself, which reads
+  more naturally than an oddly-abbreviated index alongside a normal-length
+  table name.
+- `ComplianceRequirementMapping` is a new table recording one directed
+  relationship between two `ComplianceRequirement` rows (`from_requirement_id`
+  -> `to_requirement_id`, typed by `relationship_type_id`) — the cross-
+  standard mapping §19 asks for. Deliberately **not** restricted to rows in
+  *different* standards: nothing about the mapping's own shape needs that
+  restriction, and §27's "re-mapped" version-diff category and this same
+  phase's "replaced" category (see `service.py::diff_standard_versions`'s
+  own docstring) both deliberately reuse this exact same table for a
+  same-standard, cross-*version* link — a Compliance Manager marking "the
+  new v2.0 clause 5.3 replaces the old v1.0 clause 4.9, which was removed
+  outright rather than cloned forward" is structurally the same fact
+  (\"these two requirement rows are related, and here's how\") as marking
+  an ISO 27001 clause equivalent to a corporate standard's clause, so one
+  mechanism serves both rather than inventing a second, parallel
+  "supersedes" table. Directed (not a symmetric/unordered pair) because
+  several of §19's own named relationship types are inherently directional
+  (\"B Derived From A\", \"B Satisfies A\") — a symmetric relationship
+  (Equivalent, Overlaps, Related To, Conflicts With) is simply stored with
+  an arbitrary but stable from/to order, since nothing about this table's
+  own semantics depends on treating one direction as more authoritative.
+  `organization_id` is stored directly (denormalised from the mapped
+  requirements' own standards) rather than derived through two joins on
+  every request, mirroring `ComplianceStandard.organization_id` itself
+  being the scoping anchor for every other org-scoped lookup in this
+  module — both endpoints creating/reading mappings need one flat,
+  indexed column to enforce cross-org isolation the same "404, not 403"
+  way as every other resource in this module (`router.py`'s own
+  docstring). A `CHECK (from_requirement_id != to_requirement_id)`
+  constraint rules out a self-referential mapping, which could never mean
+  anything (a requirement cannot be Equivalent To/Satisfies/etc. itself).
+  `is_archived`/`archived_at`/`archived_by` mirror every other entity in
+  this module's soft-delete convention — a mapping is auditable history
+  (§19: "must be... auditable") once created, so removing one is a
+  lifecycle transition, not a hard delete, exactly like `ComplianceStandard`/
+  `ComplianceEvidence`. A `UNIQUE (from_requirement_id, to_requirement_id,
+  relationship_type_id)` constraint prevents the exact same relationship
+  being recorded twice between the same pair, while still allowing more
+  than one relationship type to exist between the same pair (e.g. both
+  "Overlaps" and "Related To" recorded separately, if a Compliance Manager
+  judges both apply) — nothing in §19 suggests a pair of requirements can
+  only ever have one relationship between them.
+  Per §19's explicit "must not imply that satisfying one requirement
+  automatically satisfies another unless the relationship explicitly
+  supports that behaviour": this table and every endpoint that reads or
+  writes it are pure metadata for every purpose *except* one narrow,
+  deliberate exception — see `ComplianceMappingRelationshipTypeDefinition.
+  implies_equivalence` and the "carry-forward across a `replaced` mapping"
+  addition below. Outside that one path, no code anywhere in this module
+  reads a `ComplianceRequirementMapping` row to alter a
+  `ProjectComplianceRequirement.compliance_status`/`approval_state` value
+  on the other side of a mapping — mapping rows are otherwise only ever
+  read to *report* structure (the diff/re-mapped logic in `service.py`),
+  never to *write* an assessment value.
+- **Carrying an assessment forward across a `replaced` mapping is possible,
+  but only when both an org-level and a per-migration human decision agree
+  — never automatic, and never a general property of the mapping
+  mechanism.** Added after this phase's initial implementation, in
+  response to direct feedback that always forcing a `replaced` requirement
+  (e.g. an old "IPX6 water ingress" requirement explicitly linked to a new
+  "IP67 water ingress" requirement) back to blank defaults on migration
+  was too blunt when a Compliance Manager has already judged the two
+  genuinely equivalent. The mechanism has two independent gates, both of
+  which must be satisfied, so this never becomes the kind of automatic
+  cross-requirement inference §19 explicitly rules out:
+  (1) `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`
+  must be `True` on the specific mapping's relationship type — an org-
+  level, Compliance-Manager-only decision about which relationship types
+  are strong enough to ever be used this way (defaults `False`; "Related
+  To"/"Overlaps"/"Conflicts With" are never expected to be marked `True`,
+  though nothing stops an org from choosing to — this table's vocabulary
+  is deliberately theirs to define, per §19's own "configurable or
+  extensible" instruction, so this module doesn't hardcode a fixed allow-
+  list of type *names*).
+  (2) The compliance officer performing the *specific* migration must
+  separately, explicitly list that specific new-version requirement's id
+  in `ProjectComplianceMigrationRequest.confirmed_replacement_requirement_id
+  s` — a mapping existing and being of a strong-enough type only ever
+  makes carry-forward *possible*, never automatic; nothing carries forward
+  a project's own assessment without a human confirming it for that
+  project's own migration, exactly like every other consequential
+  decision in this module (assessment, applicability, approval). See
+  `service.py::migrate_project_compliance`'s own docstring for exactly
+  what is/isn't copied when both gates are satisfied, and why a
+  `replaced`-carried row's `requires_reassessment` is always `True`
+  regardless of its carried-forward `approval_state` (unlike an
+  `unchanged`-carried row, where it depends on whether `approval_state`
+  actually needed downgrading) — the underlying wording did change, even
+  if a human has judged the change immaterial.
+
 Phase 8 design decisions:
 - `ComplianceEvidence` is project-scoped (`project_id`), not standard- or
   requirement-scoped: evidence (a certificate, a test report) is a real
@@ -439,6 +583,17 @@ class ComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
             removes its subsections with it, unlike `Project`'s `SET NULL`
             (a compliance requirement has no "stand alone once detached"
             concept the way a project does).
+        cloned_from_requirement_id: The requirement (in an earlier version
+            of the same standard) this row was cloned from, if any — set by
+            `router.py::_clone_requirement_tree` when a new draft version
+            is created from an existing one; `None` for a requirement
+            authored directly (never cloned) or whose lineage record has
+            since been detached (see this module's own Phase 11 notes).
+            `ondelete="SET NULL"`, deliberately *not* `CASCADE` (unlike
+            `parent_requirement_id` above) — see this module's own Phase 11
+            notes for the full reasoning. Consumed by `service.py::
+            diff_standard_versions` (§27) to distinguish an unchanged/
+            modified requirement (has lineage) from an added one (doesn't).
         reference: Optional section/clause numbering (e.g. "3.2.1"),
             distinct from the row's own UUID `id`.
         name: The requirement's own text/title.
@@ -458,6 +613,9 @@ class ComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
     )
     parent_requirement_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    cloned_from_requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="SET NULL"), nullable=True, index=True
     )
     reference: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(500))
@@ -1000,3 +1158,111 @@ class ComplianceReviewEvidenceLink(UUIDPKMixin, Base):
     review_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_reviews.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Phase 11: Cross-standard mapping + version impact -----------------------------
+
+
+class ComplianceMappingRelationshipTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
+    """An organisation-defined cross-standard-mapping relationship type
+    (e.g. "Equivalent," "Satisfies," "Derived From," "Related To,"
+    "Overlaps," "Conflicts With") — mirrors `ComplianceActionTypeDefinition`'s
+    existing extensible-vocabulary pattern (§19: "exact relationship types
+    should be configurable or extensible where practical"); see this
+    module's own Phase 11 notes for why this uses a *shorter* table name
+    than its column names would otherwise suggest.
+
+    Attributes:
+        organization_id: The owning organisation.
+        name: Display name, unique within the organisation.
+        sort_order: Display/picker order among the organisation's
+            relationship types.
+        implies_equivalence: Whether this relationship type is strong
+            enough that a `replaced` version-diff pair linked by it (§27)
+            may have its project-specific assessment carried forward during
+            migration (`service.py::migrate_project_compliance`), subject
+            to the compliance officer's own explicit, per-requirement
+            confirmation at migration time — never automatic. Defaults
+            `False`: an org must deliberately mark a type (e.g. "Equivalent")
+            as strong enough for this before it can ever be offered, so a
+            weaker type (e.g. "Related To," "Overlaps") can never be used
+            this way by default. See this module's own Phase 11 notes
+            (below) for the full reasoning and why this doesn't reopen
+            §19's "must not imply... satisfying" guarantee.
+    """
+
+    __tablename__ = "compliance_mapping_relationship_types"
+    __table_args__ = (UniqueConstraint("organization_id", "name"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    implies_equivalence: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ComplianceRequirementMapping(UUIDPKMixin, TimestampMixin, Base):
+    """A directed relationship between two `ComplianceRequirement` rows
+    (§19's cross-standard mapping) — e.g. "ISO 27001 A.5.15 Equivalent
+    Corporate Security Standard 3.0 SEC-12." See this module's own Phase 11
+    notes for why this single table also serves §27's "replaced"/
+    "re-mapped" version-diff categories (a same-standard, cross-*version*
+    link), why the relationship is directed, and why the org scope is
+    denormalised onto this row directly.
+
+    Attributes:
+        organization_id: The organisation both mapped requirements belong
+            to (denormalised from their own standards) — the scoping
+            anchor for this module's usual "404, not 403" cross-org
+            isolation check.
+        from_requirement_id / to_requirement_id: The two mapped
+            `ComplianceRequirement` rows. `CheckConstraint` below rules out
+            `from_requirement_id == to_requirement_id`. `ondelete="CASCADE"`
+            on both — a mapping referencing a requirement that no longer
+            exists (only possible for a still-`DRAFT` version's
+            requirements, since a published version's requirements are
+            immutable and never deleted) has nothing left to mean.
+        relationship_type_id: Which `ComplianceMappingRelationshipTypeDefinition`
+            this mapping is. No `ondelete` (implicit RESTRICT), mirroring
+            `ComplianceRequiredAction.action_type_id` — an in-use
+            relationship type must not be deletable out from under it.
+        notes: Free-text notes (§19 names no specific field list beyond the
+            relationship type itself, but every other definitional entity
+            in this module carries a notes/description field for the same
+            "why this link exists" context).
+        created_by: The user who created this mapping (§19: "must be...
+            auditable" — this plus `TimestampMixin.created_at`/
+            `services.audit.log_event` on the creating endpoint satisfy
+            that, mirroring every other entity in this module rather than
+            a bespoke mapping-history mechanism).
+        is_archived / archived_at / archived_by: Soft-delete, mirroring
+            every other entity in this module — a mapping is retained
+            audit history once created, not hard-deleted.
+    """
+
+    __tablename__ = "compliance_requirement_mappings"
+    __table_args__ = (
+        UniqueConstraint("from_requirement_id", "to_requirement_id", "relationship_type_id"),
+        CheckConstraint(
+            "from_requirement_id != to_requirement_id", name="ck_compliance_requirement_mappings_no_self_link"
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    from_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
+    )
+    to_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
+    )
+    relationship_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_mapping_relationship_types.id")
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

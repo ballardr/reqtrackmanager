@@ -50,6 +50,22 @@ flat-with-parent-id requirement listing shape, the reference-immutability
 call, and every audit action-name string chosen) — this docstring gives the
 short version; that document is authoritative for the reasoning.
 
+Phase 11 (Cross-Standard Mapping + Version Impact, §19, §27) adds three
+things to this router: an org-scoped, extensible `/mapping-relationship-
+types` vocabulary (mirrors `/action-types` exactly, including delete-with-
+reassignment); `/requirement-mappings` CRUD (create/list/get/archive/
+unarchive) plus a requirement-scoped `.../requirements/{id}/mappings`
+convenience listing satisfying §19's "visible from both requirements"; and
+a read-only `.../versions/{id}/diff/{other_id}` endpoint for §27's version-
+diff. `_clone_requirement_tree` now also stamps `cloned_from_requirement_id`
+on every cloned requirement (see `models.py`'s own Phase 11 notes) — the
+one change to Phase 6's own existing code this phase makes. All of this is
+detailed in full in `service.py::diff_standard_versions`'s own docstring
+and `models.py`'s Phase 11 design-decisions section; this router's own job
+is thin: validate cross-org/-standard references (404, not 403, matching
+every other lookup here) and call into `service.py` for the actual
+computation.
+
 External dependencies: `app.services.rbac` (module-role/module-enabled
 gating), `app.services.audit` (mutation logging), `app.services.ordering`
 (sibling reordering), `app.services.definitions` (action-type delete-with-
@@ -74,8 +90,10 @@ from app.models.user import User
 from app.modules.compliance.enums import ComplianceReviewStatus, ComplianceStandardVersionStatus
 from app.modules.compliance.models import (
     ComplianceActionTypeDefinition,
+    ComplianceMappingRelationshipTypeDefinition,
     ComplianceRequiredAction,
     ComplianceRequirement,
+    ComplianceRequirementMapping,
     ComplianceReview,
     ComplianceStandard,
     ComplianceStandardVersion,
@@ -85,10 +103,15 @@ from app.modules.compliance.schemas import (
     ComplianceActionTypeCreate,
     ComplianceActionTypeOut,
     ComplianceActionTypeUpdate,
+    ComplianceMappingRelationshipTypeCreate,
+    ComplianceMappingRelationshipTypeOut,
+    ComplianceMappingRelationshipTypeUpdate,
     ComplianceRequiredActionCreate,
     ComplianceRequiredActionOut,
     ComplianceRequiredActionUpdate,
     ComplianceRequirementCreate,
+    ComplianceRequirementMappingCreate,
+    ComplianceRequirementMappingOut,
     ComplianceRequirementOut,
     ComplianceRequirementUpdate,
     ComplianceReviewCompleteRequest,
@@ -103,11 +126,14 @@ from app.modules.compliance.schemas import (
     ProjectComplianceCreate,
     ProjectComplianceOut,
     ProjectComplianceStatusOut,
+    StandardVersionDiffOut,
 )
 from app.modules.compliance.service import (
+    build_diff_out,
     build_review_out,
     build_status_out,
     complete_review,
+    diff_standard_versions,
     get_effective_compliance_officers,
     materialize_assessment_rows,
 )
@@ -331,7 +357,16 @@ def _clone_requirement_tree(
     — see that endpoint's docstring for why this exists. Processes
     requirements breadth-first from the roots down (`_clone_level`,
     recursive), so a child is never cloned before its own remapped parent
-    id exists to point at."""
+    id exists to point at.
+
+    Also stamps every new requirement's `cloned_from_requirement_id` at the
+    source requirement's own id (Phase 11, §27) — the durable lineage link
+    `service.py::diff_standard_versions` walks to tell an unchanged/
+    modified requirement apart from a genuinely added one; see `models.py`'s
+    own Phase 11 notes for why this column was added and `models.py`'s
+    docstring on the pre-existing in-memory old-id -> new-id remap this
+    function already performed for parent/child structure, which persisting
+    `cloned_from_requirement_id` piggybacks on directly."""
     source_requirements = db.scalars(
         select(ComplianceRequirement)
         .where(ComplianceRequirement.standard_version_id == source_version_id)
@@ -346,6 +381,7 @@ def _clone_requirement_tree(
             new_req = ComplianceRequirement(
                 standard_version_id=new_version_id,
                 parent_requirement_id=parent_new_id,
+                cloned_from_requirement_id=old_req.id,
                 reference=old_req.reference,
                 name=old_req.name,
                 description=old_req.description,
@@ -1005,6 +1041,347 @@ def delete_action_type(
         allow_empty=True,
     )
     db.commit()
+
+
+# --- Phase 11: Cross-standard mapping relationship-type vocabulary --------------
+
+
+@router.post(
+    "/mapping-relationship-types", response_model=ComplianceMappingRelationshipTypeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_mapping_relationship_type(
+    organization_id: UUID, payload: ComplianceMappingRelationshipTypeCreate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Creates a new organisation-scoped cross-standard-mapping
+    relationship type (§19's "configurable or extensible" relationship
+    vocabulary — Equivalent/Satisfies/Derived From/Related To/Overlaps/
+    Conflicts With are examples to seed later, Phase 15, not a fixed set).
+    Mirrors `create_action_type`, extended with `implies_equivalence`
+    (default `False`) — see `models.py`'s own Phase 11 notes for what this
+    flag gates (whether a `replaced` version-diff pair linked by this type
+    may ever be offered for migration carry-forward)."""
+    existing = db.scalar(
+        select(ComplianceMappingRelationshipTypeDefinition.id).where(
+            ComplianceMappingRelationshipTypeDefinition.organization_id == organization_id,
+            ComplianceMappingRelationshipTypeDefinition.name == payload.name,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A relationship type with this name already exists.")
+    count = len(
+        db.scalars(
+            select(ComplianceMappingRelationshipTypeDefinition.id).where(
+                ComplianceMappingRelationshipTypeDefinition.organization_id == organization_id
+            )
+        ).all()
+    )
+    relationship_type = ComplianceMappingRelationshipTypeDefinition(
+        organization_id=organization_id, name=payload.name, sort_order=count,
+        implies_equivalence=payload.implies_equivalence,
+    )
+    db.add(relationship_type)
+    db.flush()
+    log_event(db, entity_type="compliance_mapping_relationship_type", entity_id=relationship_type.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"name": relationship_type.name, "implies_equivalence": relationship_type.implies_equivalence})
+    db.commit()
+    db.refresh(relationship_type)
+    return relationship_type
+
+
+@router.get("/mapping-relationship-types", response_model=list[ComplianceMappingRelationshipTypeOut])
+def list_mapping_relationship_types(
+    organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists this organisation's cross-standard-mapping relationship
+    types — any org member with the module enabled may select one when
+    creating a mapping, so listing isn't manage-only, mirroring
+    `list_action_types`."""
+    return db.scalars(
+        select(ComplianceMappingRelationshipTypeDefinition)
+        .where(ComplianceMappingRelationshipTypeDefinition.organization_id == organization_id)
+        .order_by(ComplianceMappingRelationshipTypeDefinition.sort_order)
+    ).all()
+
+
+@router.post("/mapping-relationship-types/{relationship_type_id}/move", response_model=ComplianceMappingRelationshipTypeOut)
+def move_mapping_relationship_type(
+    organization_id: UUID, relationship_type_id: UUID, payload: MoveDirection,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Moves a relationship type up/down in display order."""
+    result = move_ordered(
+        db, ComplianceMappingRelationshipTypeDefinition,
+        [ComplianceMappingRelationshipTypeDefinition.organization_id == organization_id],
+        relationship_type_id, payload.direction,
+    )
+    log_event(db, entity_type="compliance_mapping_relationship_type", entity_id=relationship_type_id, action="reordered",
+              actor_id=current_user.id, organization_id=organization_id, detail={"direction": payload.direction})
+    db.commit()
+    return result
+
+
+@router.patch("/mapping-relationship-types/{relationship_type_id}", response_model=ComplianceMappingRelationshipTypeOut)
+def update_mapping_relationship_type(
+    organization_id: UUID, relationship_type_id: UUID, payload: ComplianceMappingRelationshipTypeUpdate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Renames a relationship type and/or sets its `implies_equivalence`
+    flag (§27's migration-carry-forward gate — see `models.py`'s own Phase
+    11 notes). Every `ComplianceRequirementMapping.relationship_type_id`
+    reference points at this row's id, never its name, so renaming has
+    zero effect on existing mappings; toggling `implies_equivalence`
+    likewise never touches any existing mapping row, only whether *future*
+    migrations may offer carry-forward for a `replaced` pair linked by it."""
+    relationship_type = db.get(ComplianceMappingRelationshipTypeDefinition, relationship_type_id)
+    if relationship_type is None or relationship_type.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Relationship type not found.")
+    existing = db.scalar(
+        select(ComplianceMappingRelationshipTypeDefinition.id).where(
+            ComplianceMappingRelationshipTypeDefinition.organization_id == organization_id,
+            ComplianceMappingRelationshipTypeDefinition.name == payload.name,
+            ComplianceMappingRelationshipTypeDefinition.id != relationship_type_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A relationship type with this name already exists.")
+    relationship_type.name = payload.name
+    relationship_type.implies_equivalence = payload.implies_equivalence
+    log_event(db, entity_type="compliance_mapping_relationship_type", entity_id=relationship_type.id, action="renamed",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"implies_equivalence": relationship_type.implies_equivalence})
+    db.commit()
+    db.refresh(relationship_type)
+    return relationship_type
+
+
+@router.delete("/mapping-relationship-types/{relationship_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_mapping_relationship_type(
+    organization_id: UUID, relationship_type_id: UUID, reassign_to_id: UUID | None = Query(None),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Deletes an organisation-scoped relationship type, applying the same
+    shared rename/delete/reassign rules `delete_action_type` uses — no
+    "must always retain at least one" floor (`allow_empty=True`), same
+    reasoning as that endpoint's own docstring. Requires an explicit
+    `reassign_to_id` to delete a type currently in use by any
+    `ComplianceRequirementMapping` (409 naming the count if omitted)."""
+    delete_definition_with_reassignment(
+        db, definition_model=ComplianceMappingRelationshipTypeDefinition,
+        scope_column=ComplianceMappingRelationshipTypeDefinition.organization_id, scope_id=organization_id,
+        item_id=relationship_type_id, reassign_to_id=reassign_to_id,
+        referencing_model=ComplianceRequirementMapping,
+        referencing_fk_column=ComplianceRequirementMapping.relationship_type_id,
+        referencing_fk_name="relationship_type_id", entity_type="compliance_mapping_relationship_type",
+        noun="relationship type", plural_noun="requirement mapping(s)", reassign_verb="move",
+        min_count_message="",  # unreachable: allow_empty=True skips the floor check that would use this
+        actor_id=current_user.id, organization_id=organization_id, project_id=None,
+        allow_empty=True,
+    )
+    db.commit()
+
+
+# --- Phase 11: Cross-standard requirement mapping (§19) -------------------------
+
+
+def _get_org_requirement_or_404(db: Session, organization_id: UUID, requirement_id: UUID) -> ComplianceRequirement:
+    """Resolves a bare `requirement_id` (no `standard_id`/`version_id` path
+    segments — a mapping's two endpoints may belong to entirely different
+    standards) to a `ComplianceRequirement`, walking up through its version
+    and standard to confirm it belongs to `organization_id` — 404, not 403,
+    on a mismatch, this module's usual cross-org-isolation convention."""
+    requirement = db.get(ComplianceRequirement, requirement_id)
+    if requirement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance requirement not found.")
+    version = db.get(ComplianceStandardVersion, requirement.standard_version_id)
+    standard = db.get(ComplianceStandard, version.standard_id) if version is not None else None
+    if standard is None or standard.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance requirement not found.")
+    return requirement
+
+
+def _get_mapping_or_404(db: Session, organization_id: UUID, mapping_id: UUID) -> ComplianceRequirementMapping:
+    mapping = db.get(ComplianceRequirementMapping, mapping_id)
+    if mapping is None or mapping.organization_id != organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement mapping not found.")
+    return mapping
+
+
+@router.post("/requirement-mappings", response_model=ComplianceRequirementMappingOut, status_code=status.HTTP_201_CREATED)
+def create_requirement_mapping(
+    organization_id: UUID, payload: ComplianceRequirementMappingCreate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Creates a mapping between two compliance requirements (§19) — a
+    Compliance Manager decision, mirroring standards/requirements
+    management generally. Both requirements (which may belong to different
+    standards, or to two versions of the *same* standard — see `models.py`'s
+    own Phase 11 notes) and the relationship type must all belong to this
+    organisation (404/400 otherwise). §19's "must not imply that satisfying
+    one requirement automatically satisfies another unless the relationship
+    explicitly supports that behaviour" is upheld structurally: nothing
+    here (or anywhere else in this module) reads a mapping to alter a
+    `ProjectComplianceRequirement`'s own assessment."""
+    if payload.from_requirement_id == payload.to_requirement_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A requirement cannot be mapped to itself.")
+    _get_org_requirement_or_404(db, organization_id, payload.from_requirement_id)
+    _get_org_requirement_or_404(db, organization_id, payload.to_requirement_id)
+    relationship_type = db.get(ComplianceMappingRelationshipTypeDefinition, payload.relationship_type_id)
+    if relationship_type is None or relationship_type.organization_id != organization_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "relationship_type_id must be a relationship type in this organisation.")
+    existing = db.scalar(
+        select(ComplianceRequirementMapping.id).where(
+            ComplianceRequirementMapping.from_requirement_id == payload.from_requirement_id,
+            ComplianceRequirementMapping.to_requirement_id == payload.to_requirement_id,
+            ComplianceRequirementMapping.relationship_type_id == payload.relationship_type_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This exact mapping already exists.")
+
+    mapping = ComplianceRequirementMapping(
+        organization_id=organization_id, from_requirement_id=payload.from_requirement_id,
+        to_requirement_id=payload.to_requirement_id, relationship_type_id=payload.relationship_type_id,
+        notes=payload.notes, created_by=current_user.id,
+    )
+    db.add(mapping)
+    db.flush()
+    log_event(db, entity_type="compliance_requirement_mapping", entity_id=mapping.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"from_requirement_id": str(mapping.from_requirement_id),
+                      "to_requirement_id": str(mapping.to_requirement_id),
+                      "relationship_type_id": str(mapping.relationship_type_id)})
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+@router.get("/requirement-mappings", response_model=list[ComplianceRequirementMappingOut])
+def list_requirement_mappings(
+    organization_id: UUID, requirement_id: UUID | None = Query(None), include_archived: bool = Query(False),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists this organisation's requirement mappings, optionally filtered
+    to those touching one specific requirement (either side of the
+    mapping — §19's "must be visible from both requirements") via
+    `?requirement_id=`."""
+    query = select(ComplianceRequirementMapping).where(ComplianceRequirementMapping.organization_id == organization_id)
+    if not include_archived:
+        query = query.where(ComplianceRequirementMapping.is_archived.is_(False))
+    if requirement_id is not None:
+        query = query.where(
+            (ComplianceRequirementMapping.from_requirement_id == requirement_id)
+            | (ComplianceRequirementMapping.to_requirement_id == requirement_id)
+        )
+    return db.scalars(query.order_by(ComplianceRequirementMapping.created_at)).all()
+
+
+@router.get("/requirement-mappings/{mapping_id}", response_model=ComplianceRequirementMappingOut)
+def get_requirement_mapping(
+    organization_id: UUID, mapping_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Fetches a single requirement mapping."""
+    return _get_mapping_or_404(db, organization_id, mapping_id)
+
+
+@router.get(
+    "/standards/{standard_id}/versions/{version_id}/requirements/{requirement_id}/mappings",
+    response_model=list[ComplianceRequirementMappingOut],
+)
+def list_mappings_for_requirement(
+    organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
+    include_archived: bool = Query(False),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """§19's "visible from both requirements"/"support navigation between
+    linked requirements," viewed from one specific requirement's own page
+    — a filtered, requirement-scoped view onto the same `/requirement-
+    mappings` data (mirrors `project_router.py::list_requirement_evidence`'s
+    identical "canonical CRUD lives at a flatter resource, this is a
+    read-only filtered view" shape). The `compliance_list_requirement_
+    mappings` MCP tool."""
+    _, _, requirement = _get_requirement_or_404(db, organization_id, standard_id, version_id, requirement_id)
+    query = select(ComplianceRequirementMapping).where(
+        ComplianceRequirementMapping.organization_id == organization_id,
+        (ComplianceRequirementMapping.from_requirement_id == requirement.id)
+        | (ComplianceRequirementMapping.to_requirement_id == requirement.id),
+    )
+    if not include_archived:
+        query = query.where(ComplianceRequirementMapping.is_archived.is_(False))
+    return db.scalars(query.order_by(ComplianceRequirementMapping.created_at)).all()
+
+
+@router.post("/requirement-mappings/{mapping_id}/archive", response_model=ComplianceRequirementMappingOut)
+def archive_requirement_mapping(
+    organization_id: UUID, mapping_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Soft-archives a requirement mapping (§19: "must be... auditable" —
+    retained, not hard-deleted, mirroring every other entity in this
+    module)."""
+    mapping = _get_mapping_or_404(db, organization_id, mapping_id)
+    if mapping.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This mapping is already archived.")
+    mapping.is_archived = True
+    mapping.archived_at = datetime.now(UTC)
+    mapping.archived_by = current_user.id
+    log_event(db, entity_type="compliance_requirement_mapping", entity_id=mapping.id, action="archived",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+@router.post("/requirement-mappings/{mapping_id}/unarchive", response_model=ComplianceRequirementMappingOut)
+def unarchive_requirement_mapping(
+    organization_id: UUID, mapping_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Restores an archived requirement mapping."""
+    mapping = _get_mapping_or_404(db, organization_id, mapping_id)
+    if not mapping.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This mapping is not archived.")
+    mapping.is_archived = False
+    mapping.archived_at = None
+    mapping.archived_by = None
+    log_event(db, entity_type="compliance_requirement_mapping", entity_id=mapping.id, action="unarchived",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    db.refresh(mapping)
+    return mapping
+
+
+# --- Phase 11: Version impact / diff (§27) --------------------------------------
+
+
+@router.get(
+    "/standards/{standard_id}/versions/{version_id}/diff/{other_version_id}",
+    response_model=StandardVersionDiffOut,
+)
+def get_standard_version_diff(
+    organization_id: UUID, standard_id: UUID, version_id: UUID, other_version_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """§27's "users should be able to see what changed between standard
+    versions" — computes the added/removed/modified/replaced/re-mapped
+    diff between the two named versions of this standard (both must belong
+    to `standard_id`; a 400 if the same version is named twice). The two
+    path segments may be given in either order — the response always
+    orders `old_version_id`/`new_version_id` by `version_number`, so a
+    caller doesn't need to already know which of two arbitrary versions is
+    older. The `compliance_get_standard_version_diff` MCP tool."""
+    _, version = _get_version_or_404(db, organization_id, standard_id, version_id)
+    _, other_version = _get_version_or_404(db, organization_id, standard_id, other_version_id)
+    if version.id == other_version.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot diff a version against itself.")
+    old_version, new_version = (
+        (version, other_version) if version.version_number < other_version.version_number else (other_version, version)
+    )
+    diff = diff_standard_versions(db, standard_id=standard_id, old_version=old_version, new_version=new_version)
+    return build_diff_out(diff)
 
 
 # --- Project compliance assignment (org-scoped: assigning IS a Compliance -------

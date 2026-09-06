@@ -33,6 +33,22 @@ nested under one specific `ProjectCompliance` assignment, since a single
 piece of evidence may support requirements across more than one of a
 project's standard assignments at once.
 
+Phase 11 (Cross-Standard Mapping + Version Impact, §27) adds one mutating
+action to the "Project compliance assignments" section below: `POST
+.../project-compliance/{id}/migrate-version`, the explicit, user-triggered
+action a project uses to adopt a newer, published version of the standard
+it's already assigned to. It creates a **new** `ProjectCompliance` row
+(the existing one stays pinned to its original version forever, per §27
+and this module's own Phase 7 design) and archives the old one — never a
+silent, in-place version swap. See `service.py::migrate_project_compliance`'s
+own docstring for exactly which requirements' assessments are carried
+forward vs. left to reassess, and why. No MCP tool is declared for this
+action (`module.py`'s own Phase 11 notes) — it is a significant mutation
+with wide side effects across many rows, and nothing in this phase's spec
+asks for one; the read-only version-diff endpoint on the org router
+(`router.py::get_standard_version_diff`) is this action's natural "preview
+before you commit" companion and *is* an MCP tool.
+
 Phase 9 (Approval/Sign-off, §12, §16, §27) adds the `submit-for-approval`/
 `approve`/`reject` state-machine actions and the `pending-approvals`
 cross-assignment listing to the per-requirement assessment section below.
@@ -105,6 +121,7 @@ from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApprovalState,
     ComplianceReviewStatus,
+    ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
@@ -142,6 +159,8 @@ from app.modules.compliance.schemas import (
     PendingApprovalOut,
     ProjectComplianceApplicabilityUpdate,
     ProjectComplianceAssessmentUpdate,
+    ProjectComplianceMigrationRequest,
+    ProjectComplianceMigrationResultOut,
     ProjectComplianceOut,
     ProjectComplianceRequirementOut,
     ProjectComplianceStatusOut,
@@ -149,16 +168,19 @@ from app.modules.compliance.schemas import (
 from app.modules.compliance.service import (
     advance_approval_state_on_assessment,
     build_evidence_out,
+    build_migration_result_out,
     build_requirement_out,
     build_review_out,
     build_status_out,
     complete_review,
     compute_review_schedule_state,
+    diff_standard_versions,
     find_pcrs_linked_to_evidence,
     get_effective_compliance_officers,
     invalidate_approval_if_in_flight,
     list_expiring_or_expired_evidence,
     load_pcrs_and_applicability,
+    migrate_project_compliance,
 )
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.audit import AuditEventOut
@@ -323,6 +345,154 @@ def get_project_compliance(
 ):
     """Fetches a single assignment."""
     return _get_project_compliance_or_404(db, project_id, project_compliance_id)
+
+
+@router.post(
+    "/project-compliance/{project_compliance_id}/migrate-version",
+    response_model=ProjectComplianceMigrationResultOut, status_code=status.HTTP_201_CREATED,
+)
+def migrate_project_compliance_version(
+    project_id: UUID, project_compliance_id: UUID, payload: ProjectComplianceMigrationRequest,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """§27's explicit, user-triggered version-migration action — adopts a
+    newer, published version of the standard this assignment already
+    tracks. Gated the same as every other mutating endpoint on this router
+    (`compliance_officer` or `PROJECT_MANAGER`), *not* `compliance_manager`
+    like the org router's own initial-assignment endpoint
+    (`router.py::create_project_compliance`) — a deliberate distinction:
+    choosing *which standard* a project tracks is a Compliance Manager
+    decision (§26), but rolling an *already-tracked* standard forward to a
+    newer version is project-level maintenance of an existing assignment,
+    the same class of action as everything else this router already gates
+    at the officer/PROJECT_MANAGER level.
+
+    Never mutates the existing assignment's own `standard_version_id`
+    (§27's "Existing Project Compliance assignments must remain associated
+    with their original version" — Phase 7's own pinned-forever design) —
+    creates a new `ProjectCompliance` row instead (`service.migrate_
+    project_compliance`) and archives the old one here, so the old row's
+    own `ProjectComplianceRequirement` history is retained completely
+    untouched. See that function's own docstring for exactly which
+    requirements' assessments are carried forward vs. left to reassess,
+    and why.
+
+    `payload.confirmed_replacement_requirement_ids` is the officer's own
+    per-migration opt-in to carry an assessment forward across a
+    `replaced` version-diff pair (§27; `models.py`'s own Phase 11 notes on
+    `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`).
+    Validated against a freshly computed diff *before* calling `service.
+    migrate_project_compliance` — every id must name a new-version
+    requirement that is actually part of this migration's `replaced` set
+    *and* whose mapping's relationship type has `implies_equivalence=True`,
+    or this 400s outright rather than silently ignoring a stale/invalid
+    confirmation (this module's usual "never silent" convention, applied
+    here to a client-supplied id list rather than a single path parameter)."""
+    old_project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
+    if old_project_compliance.is_archived:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This assignment is archived; unarchive it first, or assign the new version directly instead of migrating.",
+        )
+    old_version = db.get(ComplianceStandardVersion, old_project_compliance.standard_version_id)
+    new_version = db.get(ComplianceStandardVersion, payload.new_standard_version_id)
+    if new_version is None or new_version.standard_id != old_version.standard_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "new_standard_version_id must be another version of the same standard."
+        )
+    if new_version.status != ComplianceStandardVersionStatus.PUBLISHED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only a published standard version can be migrated to.")
+    if new_version.version_number <= old_version.version_number:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Migration must move to a newer version (a higher version_number) than the current assignment.",
+        )
+    existing = db.scalar(
+        select(ProjectCompliance.id).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.standard_version_id == new_version.id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project is already assigned to this standard version.")
+
+    confirmed_ids = frozenset(payload.confirmed_replacement_requirement_ids)
+    if confirmed_ids:
+        diff_preview = diff_standard_versions(
+            db, standard_id=new_version.standard_id, old_version=old_version, new_version=new_version
+        )
+        eligible_ids = {
+            new.id for _old, new, _mapping, relationship_type in diff_preview.replaced
+            if relationship_type.implies_equivalence
+        }
+        invalid_ids = confirmed_ids - eligible_ids
+        if invalid_ids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "confirmed_replacement_requirement_ids must each name a new-version requirement that is part of "
+                "this migration's 'replaced' set and whose mapping's relationship type has "
+                f"implies_equivalence=true: {sorted(str(i) for i in invalid_ids)}",
+            )
+
+    outcome = migrate_project_compliance(
+        db, old_project_compliance=old_project_compliance, new_version=new_version, actor_id=current_user.id,
+        confirmed_replacement_requirement_ids=confirmed_ids,
+    )
+
+    old_project_compliance.is_archived = True
+    old_project_compliance.archived_at = datetime.now(UTC)
+    old_project_compliance.archived_by = current_user.id
+    log_event(
+        db, entity_type="project_compliance", entity_id=old_project_compliance.id, action="archived",
+        actor_id=current_user.id, project_id=project_id,
+        detail={"reason": "version_migration", "migrated_to_project_compliance_id": str(outcome.new_project_compliance.id)},
+    )
+    log_event(
+        db, entity_type="project_compliance", entity_id=outcome.new_project_compliance.id, action="migrated",
+        actor_id=current_user.id, project_id=project_id,
+        detail={
+            "previous_project_compliance_id": str(old_project_compliance.id),
+            "previous_standard_version_id": str(old_version.id),
+            "new_standard_version_id": str(new_version.id),
+            "carried_forward_count": sum(1 for impact in outcome.impacts if impact.carried_forward),
+            "requires_reassessment_count": sum(1 for impact in outcome.impacts if impact.requires_reassessment),
+            "confirmed_replaced_carry_forward_count": sum(
+                1 for impact in outcome.impacts if impact.change == "replaced" and impact.carried_forward
+            ),
+        },
+    )
+    for new_pcr, previous_approval_state in outcome.invalidated:
+        log_event(
+            db, entity_type="project_compliance_requirement", entity_id=new_pcr.id, action="approval_invalidated",
+            actor_id=current_user.id, project_id=project_id,
+            detail={
+                "reason": "standard_version_migration",
+                "previous_approval_state": previous_approval_state.value,
+                "new_approval_state": new_pcr.approval_state.value,
+            },
+        )
+        _notify_approval_invalidated(db, project_id, new_pcr, actor_id=current_user.id)
+
+    for recipient_id in get_effective_compliance_officers(db, project_id):
+        recipient = db.get(User, recipient_id)
+        if recipient is None:
+            continue
+        notifications.notify(
+            db, recipient, notification_type=NotificationType.COMPLIANCE_ASSIGNMENT_CREATED,
+            title="Compliance assignment migrated to a new standard version",
+            body=f'This project\'s assignment to "{old_version.version_label}" was migrated to version '
+                 f'"{new_version.version_label}"; some requirements need (re-)assessment.',
+            project_id=project_id, entity_type="project_compliance", entity_id=str(outcome.new_project_compliance.id),
+            actor_id=current_user.id,
+        )
+
+    db.commit()
+    db.refresh(outcome.new_project_compliance)
+    for impact in outcome.impacts:
+        db.refresh(impact.new_pcr)
+
+    return build_migration_result_out(
+        outcome, previous_project_compliance_id=old_project_compliance.id, previous_standard_version_id=old_version.id
+    )
 
 
 @router.get("/status", response_model=list[ProjectComplianceStatusOut])

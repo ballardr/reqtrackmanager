@@ -48,11 +48,12 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import logging
+import os
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter
 from sqlalchemy import select
@@ -61,7 +62,19 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 
+if TYPE_CHECKING:
+    from alembic.config import Config
+
 logger = logging.getLogger(__name__)
+
+# `backend/` — the directory `alembic.ini`/`app.migrations.run_migrations`
+# already treat as this project's own migration-tooling root. `migrations_
+# dir` (on `ModuleDefinition`) and `configure_alembic_version_locations`
+# (below) resolve every path relative to this, the same root `app.
+# migrations._BACKEND_DIR` already anchors to, so both places agree on what
+# a module's declared path is relative to regardless of the caller's own
+# current working directory.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
 ENTRY_POINT_GROUP = "reqtrackmanager.modules"
 
@@ -522,16 +535,53 @@ class ModuleDefinition:
             Importing a model class is inert with respect to any real
             database — it only registers a table *shape* in-process. This
             attribute has no bearing on whether that shape is ever actually
-            applied to a live database; see `migrations_import_path` below
-            for the (much more restricted) mechanism that does that.
+            applied to a live database; see `migrations_dir`/`migrations_
+            import_path` below for the two (differently-restricted)
+            mechanisms that do that.
+        migrations_dir: Path (relative to `backend/`, e.g. `"app/modules/
+            compliance/migrations"`) to this **first-party** module's own
+            directory of real Alembic revision scripts, or `None` for a
+            module with no migration of its own. `configure_alembic_
+            version_locations` (below) adds every registered module's
+            declared directory, plus the core `alembic/versions` directory,
+            to Alembic's own multi-directory `version_locations` — added in
+            a compliance-module-plan.md Phase 11 follow-up, after Phase 1's
+            original design placed every first-party migration in
+            `backend/alembic/versions/` regardless of which module it
+            belonged to, and direct feedback observed that colocating a
+            module's migration alongside the rest of that module's own code
+            (models/service/router/tests) would read more coherently as
+            more first-party modules accumulate. **This does not reopen or
+            weaken the trust boundary Phase 1 established** — it is a pure
+            *file-location* change, not a change to *what gets reviewed or
+            how*: Alembic still builds exactly one linear revision graph,
+            tracked by exactly one `alembic_version` row in the target
+            database, regardless of how many directories its component
+            files are split across (each file's own `down_revision` string
+            is what defines chain order, not its directory); every first-
+            party module's migration file still goes through this repo's
+            normal PR review the same as any other in-repo Python file,
+            wherever it physically lives. `migrations_dir` is honoured for
+            *any* module present in the live registry — first-party or,
+            unlike `migrations_import_path` below, an externally-discovered
+            one too — since merely *locating* a directory of files Alembic
+            will scan is a categorically smaller trust grant than *executing
+            arbitrary SQL against a live database* (which is exactly what
+            `migrations_import_path` gates far more narrowly): an
+            externally-discovered module's migration files still only run
+            through Alembic's own normal apply-and-track-one-row-per-
+            revision mechanism, the same scrutiny every other revision in
+            the chain gets, not a silent side-channel.
         migrations_import_path: Dotted import path to a Python module
             exposing a `run_migrations(connection) -> None` function that
-            applies this module's own database schema changes — or `None`
-            for a module with no migration of its own (e.g. one with no
-            models, or a first-party module, which ships a real Alembic
-            migration in the reviewed core chain instead — see below).
-            Applied by `apply_external_module_migrations`, called once at
-            startup right after `alembic upgrade head` completes.
+            applies this module's own database schema changes outside the
+            Alembic-tracked chain entirely — or `None` for a module with no
+            migration of its own (e.g. one with no models, or a first-party
+            module, which always uses `migrations_dir` above instead — see
+            below for why these are two genuinely different mechanisms, not
+            two names for the same thing). Applied by `apply_external_
+            module_migrations`, called once at startup right after `alembic
+            upgrade head` completes.
 
             **This is honoured only for a module discovered via `Settings.
             allow_external_modules`'s entry-point/path sources — never for
@@ -539,20 +589,28 @@ class ModuleDefinition:
             this field: `apply_external_module_migrations` checks registry
             *source*, not merely presence of the field, and logs a warning
             and skips it for any module whose `key` is also in `INSTALLED_
-            MODULES`. First-party migrations must keep going through a
-            reviewed PR into `backend/alembic/versions/`, exactly as before
-            — this field exists to let an *externally discovered* module
-            (one the deployment operator has already, separately, opted
-            into via `allow_external_modules`) apply its own schema changes
-            without a second, per-module core-repo edit, not to give a
-            first-party module a second, less-reviewed path to the same
-            end. `run_migrations(connection)` must be idempotent (safe to
-            call on every process start, the same `CREATE TABLE IF NOT
-            EXISTS`/`CREATE INDEX IF NOT EXISTS` convention every migration
-            in `backend/alembic/versions/` already follows) — it is called
-            every startup, not tracked against a per-module revision
-            history the way Alembic tracks the core chain's own `alembic_
-            version` table.
+            MODULES`. A first-party module's schema changes must keep going
+            through a real, Alembic-tracked revision file reviewed the same
+            as any other in-repo Python file (`migrations_dir` above,
+            regardless of which directory that file happens to live in) —
+            this field exists to let an *externally discovered* module (one
+            the deployment operator has already, separately, opted into via
+            `allow_external_modules`) apply its own schema changes without
+            a second, per-module core-repo edit, not to give a first-party
+            module a second, less-reviewed path to the same end. The
+            categorical difference from `migrations_dir` is *tracking*, not
+            trust: a `migrations_dir` revision is a permanent, ordered node
+            in the one Alembic-tracked chain (applied once, ever, recorded
+            in `alembic_version`); `run_migrations(connection)` here is
+            **not** tracked against any revision history at all and must
+            therefore be idempotent (safe to call on every process start,
+            the same `CREATE TABLE IF NOT EXISTS`/`CREATE INDEX IF NOT
+            EXISTS` convention every Alembic revision in this project
+            already follows) — it runs fresh, unconditionally, every single
+            startup, which is precisely why this mechanism is reserved for
+            a module whose own code the deployment operator has *already*
+            separately decided to trust (`allow_external_modules`), not
+            extended to every module merely because it's convenient.
         resolve_file_owner_project_id: Optional hook (compliance-module-
             plan.md Phase 8) letting a module authorize downloads of files
             it owns through the single generic `GET /api/v1/files/{id}`
@@ -591,6 +649,7 @@ class ModuleDefinition:
     frontend_manifest: ModuleFrontendManifest | None = None
     mcp_tools: tuple[McpToolDefinition, ...] = field(default=())
     models_import_path: str | None = None
+    migrations_dir: str | None = None
     migrations_import_path: str | None = None
     get_project_router: Callable[[], APIRouter | None] | None = None
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
@@ -925,13 +984,16 @@ def import_all_module_models() -> None:
     it does not create, alter, or touch that table in any real database.
     Getting a real database's schema to actually match that shape is a
     separate, more restricted step: a first-party module's own migration
-    still lands in the single, reviewed, linear `backend/alembic/versions/`
-    chain exactly as before; an externally-discovered module's own schema
-    changes are applied by `apply_external_module_migrations` (below), a
-    materially more restricted mechanism than this one — see its own
-    docstring for why running SQL against a real database is a categorically
-    different risk than importing an inert Python class, and is gated
-    accordingly.
+    still lands in the single, reviewed, linear Alembic revision chain
+    exactly as before — see `configure_alembic_version_locations` below for
+    where its *file* now lives, a Phase 11 follow-up that changed nothing
+    about how many chains exist or how reviewed a revision is, only which
+    directory it's physically written in; an externally-discovered module's
+    own schema changes are applied by `apply_external_module_migrations`
+    (below), a materially more restricted mechanism than either — see its
+    own docstring for why running SQL against a real database is a
+    categorically different risk than importing an inert Python class, and
+    is gated accordingly.
     """
     for definition in get_module_registry().values():
         if not definition.models_import_path:
@@ -944,6 +1006,64 @@ def import_all_module_models() -> None:
                 "in Base.metadata",
                 definition.models_import_path, definition.key,
             )
+
+
+def configure_alembic_version_locations(cfg: Config) -> None:
+    """Points an Alembic `Config` at every registered module's own
+    `migrations_dir` (if any), in addition to the core `alembic/versions`
+    directory this project has always used — the mechanism `migrations_dir`
+    (on `ModuleDefinition`, above) describes, added in a compliance-module-
+    plan.md Phase 11 follow-up so a first-party module's own migration file
+    can live alongside the rest of that module's code instead of always
+    landing in one flat, ever-growing core directory shared by every module.
+
+    Call this on a freshly constructed `Config` — before it is used for
+    *any* Alembic operation (`command.upgrade`/`revision`/`history`/etc.) —
+    exactly once per `Config` instance. Every caller in this codebase
+    (`app.migrations.run_migrations` for the boot-time auto-upgrade;
+    `scripts/db.py` for the developer-facing CLI wrapper — see that script's
+    own module docstring for why bare `alembic <command>` is no longer this
+    project's documented way to touch migrations) goes through this
+    function rather than each hand-rolling the same `version_locations`
+    string, so a module's own migration directory only ever needs declaring
+    once, on its own `ModuleDefinition`, to be picked up everywhere.
+
+    Sets exactly two Alembic config options, both read by `ScriptDirectory.
+    from_config` when it is first built (i.e. before any module's own
+    `env.py`-level code could set them dynamically — this is why this must
+    run against the `Config` object itself, before it is handed to any
+    `alembic.command.*` call, not from inside `alembic/env.py`):
+    - `version_locations`: the core `alembic/versions` directory, followed
+      by every registered module's own `migrations_dir` (skipping `None`),
+      each an absolute path so this works regardless of the caller's own
+      current working directory.
+    - `version_path_separator`: `"os"` — required by Alembic whenever more
+      than one location is configured (its own default separator, `" "`,
+      cannot disambiguate a path containing a space; `"os"` uses `os.
+      pathsep`, this project's own operating convention, matching Alembic's
+      documented recommendation for exactly this multi-location case).
+
+    This does **not** recursively scan every file under `app/modules/` —
+    only the *specific* directories each module's own `ModuleDefinition`
+    names are added. Alembic's revision loader executes (not merely greps)
+    every `.py` file it finds in a configured location to read that file's
+    own `revision`/`down_revision` module-level assignments, so scanning
+    something as broad as the whole `app/modules/` tree would attempt to
+    execute this module's own `models.py`/`service.py`/`router.py` etc. as
+    if each were a candidate revision script — a real risk, deliberately
+    avoided by only ever adding the exact, finite list of directories the
+    registry actually declares, the same "explicit, not implicit" principle
+    `models_import_path`'s own dotted-path (not directory-scan) design
+    already applies one mechanism up.
+    """
+    core_versions_dir = _BACKEND_DIR / "alembic" / "versions"
+    locations = [str(core_versions_dir)]
+    for definition in get_module_registry().values():
+        if not definition.migrations_dir:
+            continue
+        locations.append(str(_BACKEND_DIR / definition.migrations_dir))
+    cfg.set_main_option("version_locations", os.pathsep.join(locations))
+    cfg.set_main_option("version_path_separator", "os")
 
 
 def apply_external_module_migrations(engine: Engine) -> None:

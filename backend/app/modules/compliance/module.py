@@ -68,6 +68,42 @@ endpoints this phase adds (`router.py`/`project_router.py`) — Phase 10's
 own plan spec asks only for the read-only "reviews due" listing, mirroring
 this module's existing cautious default of adding MCP tools narrowly.
 
+Phase 11 (Cross-Standard Mapping + Version Impact, §19, §27) adds two more
+read-only MCP tools: `compliance_list_requirement_mappings` (one
+requirement's cross-standard/cross-version mapping links) and `compliance_
+get_standard_version_diff` (the added/removed/modified/replaced/re-mapped
+diff between two versions of a standard) — both on the org router, both
+pure reads with no side effects. §27's own new mutating action, the
+project-scoped version-migration endpoint (`project_router.py::migrate_
+project_compliance_version`), is **deliberately never declared here** —
+this module's own established, repeatedly-stated principle (see Phase 9's
+notes above on approve/reject/submit-for-approval) is to add mutating MCP
+tools narrowly and only when the plan's own spec explicitly calls for one;
+nothing in Phase 11's spec asks for a migration tool, and migrating a
+project's entire compliance assignment to a new standard version — which
+touches every one of that assignment's requirement rows, can downgrade
+in-flight/decided approvals, and is explicitly required by §27 to be an
+"explicit action," never an implicit or automated one — is exactly the
+kind of significant, wide-blast-radius mutation this module has
+consistently kept off the tool surface even where doing so would have been
+technically straightforward (the read-only version-diff tool above is this
+action's intended "preview before you commit" companion instead). This
+holds regardless of the migration endpoint's own later addition of a
+`confirmed_replacement_requirement_ids` opt-in (carrying an assessment
+forward across a `replaced` mapping, gated by both an org-level
+`ComplianceMappingRelationshipTypeDefinition.implies_equivalence` flag and
+this per-call confirmation — see `models.py`'s own Phase 11 notes) — that
+addition makes the action *more* consequential, not less, so the same
+exclusion applies with no reconsideration needed.
+
+Phase 11 follow-up (same day): this module's six Alembic revisions
+(0026-0031) moved from the flat `backend/alembic/versions/` directory into
+`migrations/` alongside the rest of this module's own code, via the new
+`ModuleDefinition.migrations_dir` mechanism (`app.modules.registry.
+configure_alembic_version_locations`) — see that field's own docstring for
+why this doesn't reopen or weaken Phase 1's original trust-boundary design
+(still one linear, reviewed Alembic chain; only the file location changed).
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.service`/`.scheduler`
 (each imported lazily, inside `get_router()`/`get_project_router()`/
@@ -158,6 +194,7 @@ MODULE_DEFINITION = ModuleDefinition(
     get_router=get_router,
     get_project_router=get_project_router,
     models_import_path="app.modules.compliance.models",
+    migrations_dir="app/modules/compliance/migrations",
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     scheduled_jobs=(
         ModuleScheduledJob(
@@ -294,6 +331,47 @@ MODULE_DEFINITION = ModuleDefinition(
             params=[
                 {"name": "project_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The project whose due/overdue compliance reviews to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_requirement_mappings",
+            description=(
+                "Lists the cross-standard/cross-version mapping links for one compliance requirement, "
+                "visible from either side of each mapping."
+            ),
+            method="GET",
+            path_template=(
+                f"{_ROUTER_PREFIX}/standards/{{standard_id}}/versions/{{version_id}}/requirements/"
+                "{requirement_id}/mappings"
+            ),
+            params=[
+                {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The organisation that owns the standard."},
+                {"name": "standard_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The compliance standard."},
+                {"name": "version_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The specific version of the standard the requirement belongs to."},
+                {"name": "requirement_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The requirement whose mapping links to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="get_standard_version_diff",
+            description=(
+                "Computes the added/removed/modified/replaced/re-mapped requirement diff between two "
+                "versions of a compliance standard."
+            ),
+            method="GET",
+            path_template=f"{_ROUTER_PREFIX}/standards/{{standard_id}}/versions/{{version_id}}/diff/{{other_version_id}}",
+            params=[
+                {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The organisation that owns the standard."},
+                {"name": "standard_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The compliance standard."},
+                {"name": "version_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "One of the two versions to diff (order does not matter)."},
+                {"name": "other_version_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The other of the two versions to diff (order does not matter)."},
             ],
         ),
     ),
