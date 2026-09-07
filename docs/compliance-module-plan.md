@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-06 (Phase 12 complete).
+**Last updated:** 2026-09-07 (Phase 13 complete).
 
-**Overall progress:** 13 / 16 phases complete.
+**Overall progress:** 14 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -27,11 +27,11 @@ This document is the persistent, session-resumable implementation plan for the C
 | 10 | Scheduled reviews + notifications | [x] Complete |
 | 11 | Cross-standard mapping + version impact | [x] Complete |
 | 12 | Frontend — Compliance Manager surfaces | [x] Complete |
-| 13 | Frontend — Project Compliance view | [ ] Not started |
+| 13 | Frontend — Project Compliance view | [x] Complete |
 | 14 | Frontend — Org Compliance view + Dashboard | [ ] Not started |
 | 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
 
-**Next phase to pick up:** Phase 13.
+**Next phase to pick up:** Phase 14.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -499,6 +499,22 @@ Implemented as specified, with one significant deviation the spec text's own ter
 
 - Assign standards, applicability tree with visually distinct explicit/inherited/overridden states (§9's explicit UI requirement), assessment, evidence, approval/sign-off.
 - Storybook + Playwright.
+
+#### Phase 13 notes (completed 2026-09-07)
+
+Implemented as specified, with two real bugs found and fixed in the module system's own shared infrastructure (not Compliance-specific) plus a number of judgment calls — recorded here so a future session doesn't need to re-derive them:
+
+- **Unlike Phase 12, this phase's UI is genuinely project-scoped, so Phase 3's real `installedModules`/`buildModuleRoutes`/`useProjectEnabledModules`/`Layout.tsx` nav mechanism applies directly** — confirmed by reading Phase 3's own spec and implementation before designing anything, per this plan's own instruction. `frontend/src/modules/registry.ts`'s `installedModules` array (empty since Phase 3) got its first real entry.
+- **Found and fixed: `ModuleFrontendManifest.nav_path`'s own documented `"{project_id}"` placeholder syntax had never actually been interpolated by anything** — `backend/app/modules/compliance/module.py` needed its first `frontend_manifest` (Phase 12 never needed one), and `routers/projects.py::list_project_enabled_modules` was passing the literal placeholder string straight through uninterpolated (confirmed via `test_module_frontend_integration.py`'s existing fixture, which only ever used a plain literal `nav_path`). Fixed generically in that one project-scoped endpoint (the org-scoped `GET /orgs/{id}/modules` deliberately leaves the placeholder as-is, having no single project in scope) — two new tests added directly to that shared test file, not a Compliance-specific test file, since this is module-system infrastructure.
+- **Found and fixed a real race condition in `App.tsx`'s own route-splicing, invisible until a real Tier A project-scoped route existed to trigger it**: `useProjectEnabledModules` starts at `[]` while its fetch is in flight, so a fresh navigation straight to a module's nav-rail link could hit `<Routes>`'s wildcard `<Navigate to="/projects"/>` fallback before the fetch resolved and contributed the real route — bouncing the user straight back to `/projects` every time. Caught only by the Playwright spec below, not Storybook (`App.stories.tsx`'s `TierARoutingHarness` pre-seeds `enabledModules` synchronously, so the race has no window there). Fixed generically: the hook now returns `{ modules, loaded }`; `App.tsx`'s wildcard route renders a `Spinner` instead of `Navigate` specifically while `projectId` is set and `modulesLoaded` is still false, leaving every other path's behaviour (including every already-working non-module project page) completely unaffected. Also fixed, found in the same pass: `Layout.stories.tsx`'s own mock never covered `/enabled-modules`, throwing an uncaught rejection into every one of its project-route stories.
+- **A real UI staleness bug found by running the Playwright spec end to end**: the assignment detail's "Overall compliance status" card didn't refresh after assessing/approving a requirement, since it rendered a snapshot `status` prop fetched once by the parent list. Fixed by lifting it into local state, refreshed via a new optional `ApplicabilityTree` callback (`onAssessmentChanged`) fired whenever a nested mutation settles — the top-level assignment list itself is deliberately *not* live-synced the same way, matching this app's existing "only refresh a list on its own explicit triggers" precedent elsewhere (e.g. `StandardsPanel`).
+- **IA**: three top-level `Tabs` (Standards / Evidence / Outstanding) on `ProjectCompliancePage`, then a further two-`Tabs` drill-down (Requirements / Reviews) per selected assignment inside `ProjectComplianceDetail` — both groups well inside the style guide's `Tabs` threshold. "Outstanding" (non-compliant / pending-approval / reviews-due, all three already-built read-only cross-assignment endpoints with no prior frontend consumer) is new relative to Phase 12's IA, added specifically to satisfy §21's own "make it easy to determine what remains outstanding" without requiring every assignment to be opened in turn.
+- **§9's mandatory explicit/inherited/overridden visual distinction is one shared component, `ApplicabilityBadge.tsx`**, imported by both the tree and the requirement detail panel, with its own dedicated story proving all three states render distinctly.
+- **Deliberate scope trim, flagged rather than silently omitted (mirroring Phase 12's "owner reassignment" precedent): the §27 version-migration action has no frontend surface.** Not asked for by this phase's own spec bullets, not claimed by Phase 14 either, and a materially larger UI (diff preview, per-requirement carry-forward confirmation) than anything else this phase needed.
+- **Evidence linkage from a requirement is a plain filtered `<select>` + link/unlink, not a second evidence-specific picker component** — the canonical evidence CRUD/file-attachment surface (reusing `FileAttachmentList`/`ResourcePickerModal` verbatim, per §13's "reuse existing attachment mechanisms") stays the top-level Evidence tab.
+- **An archived assignment's requirement tree needed one small client-side join (`api.ts::resolveStandardIdForVersion`), not a new backend endpoint** — `GET .../status` (the normal source of `standard_id`) deliberately excludes archived assignments by design, so this walks the org's own standard/version catalogue instead, only for that one, rare case.
+- **No client-side "can I manage this" precomputation** — mutating controls always render; a 403 surfaces as a toast, continuing Phase 12's exact posture.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 13" entry for the full account, including both bug write-ups and the complete file/test list. Full backend suite (949 tests) and full Storybook suite (88 files/750 tests) both re-run clean after every fix; the Playwright spec (`tests/playwright/tests/modules/compliance/project-compliance-view.spec.ts`) run twice back-to-back against a rebuilt `tests/container` stack to confirm idempotency.
 
 ### Phase 14 — Frontend: Org Compliance View + Dashboard
 

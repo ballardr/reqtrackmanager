@@ -64,16 +64,87 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 };
 // Compliance module Phase 5/6/12 (compliance-module-plan.md) —
 // `ComplianceStandardVersion.status`'s lifecycle (backend
-// `app.modules.compliance.enums.ComplianceStandardVersionStatus`). The
-// module's other enums (compliance/approval/applicability status) are
-// project-assessment-facing (Phase 13), not needed until that phase's own
-// UI renders them — added here, not preemptively, per this file's own
-// "add a type/label pair when something actually needs to render it" norm.
+// `app.modules.compliance.enums.ComplianceStandardVersionStatus`).
 export type ComplianceStandardVersionStatus = "draft" | "published" | "retired";
 export const COMPLIANCE_STANDARD_VERSION_STATUS_LABEL: Record<ComplianceStandardVersionStatus, string> = {
   draft: "Draft",
   published: "Published",
   retired: "Retired",
+};
+// Compliance module Phase 7/8/9/10/13 — the project-assessment-facing
+// enums (backend `app.modules.compliance.enums`), added now that Phase 13's
+// Project Compliance View is the first UI to render them. Kept here (not
+// module-local `modules/compliance/types.ts`) per this repo's binding
+// label-map rule (CLAUDE.md, style guide Principle 12) and Phase 12's own
+// established split: plain data-shape interfaces live in the module, but
+// every enum a UI renders goes through a `*_LABEL` map in this file.
+export type ComplianceStatus =
+  | "not_started" | "in_progress" | "compliant" | "non_compliant" | "blocked" | "pending_review" | "rejected";
+export const COMPLIANCE_STATUS_LABEL: Record<ComplianceStatus, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  compliant: "Compliant",
+  non_compliant: "Non-compliant",
+  blocked: "Blocked",
+  pending_review: "Pending review",
+  rejected: "Rejected",
+};
+export type ComplianceApplicability = "applicable" | "not_applicable";
+export const COMPLIANCE_APPLICABILITY_LABEL: Record<ComplianceApplicability, string> = {
+  applicable: "Applicable",
+  not_applicable: "Not applicable",
+};
+// §9's hierarchical-applicability UI requirement: explicit/inherited/
+// overridden must be visually distinct, not just labelled differently —
+// see `ApplicabilityTree.tsx`'s own badge rendering, which pairs this label
+// with a colour/icon per source, not text alone.
+export type ComplianceApplicabilitySource = "explicit" | "inherited" | "overridden";
+export const COMPLIANCE_APPLICABILITY_SOURCE_LABEL: Record<ComplianceApplicabilitySource, string> = {
+  explicit: "Explicit",
+  inherited: "Inherited",
+  overridden: "Overridden",
+};
+export type ComplianceApprovalState =
+  | "not_assessed" | "assessed" | "pending_approval" | "approved" | "rejected" | "requires_reassessment";
+export const COMPLIANCE_APPROVAL_STATE_LABEL: Record<ComplianceApprovalState, string> = {
+  not_assessed: "Not assessed",
+  assessed: "Assessed",
+  pending_approval: "Pending approval",
+  approved: "Approved",
+  rejected: "Rejected",
+  requires_reassessment: "Requires re-assessment",
+};
+export type ComplianceEvidenceValidityState = "no_expiry" | "valid" | "expiring_soon" | "expired";
+export const COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL: Record<ComplianceEvidenceValidityState, string> = {
+  no_expiry: "No expiry",
+  valid: "Valid",
+  expiring_soon: "Expiring soon",
+  expired: "Expired",
+};
+export type ComplianceReviewStatus = "scheduled" | "completed";
+export const COMPLIANCE_REVIEW_STATUS_LABEL: Record<ComplianceReviewStatus, string> = {
+  scheduled: "Scheduled",
+  completed: "Completed",
+};
+export type ComplianceReviewOutcome = "satisfactory" | "action_required" | "unsatisfactory";
+export const COMPLIANCE_REVIEW_OUTCOME_LABEL: Record<ComplianceReviewOutcome, string> = {
+  satisfactory: "Satisfactory",
+  action_required: "Action required",
+  unsatisfactory: "Unsatisfactory",
+};
+export type ComplianceReviewScheduleState = "upcoming" | "due" | "overdue";
+export const COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL: Record<ComplianceReviewScheduleState, string> = {
+  upcoming: "Upcoming",
+  due: "Due",
+  overdue: "Overdue",
+};
+// §20's overall compliance state (`ProjectComplianceStatusOut.overall_compliance_state`).
+export type ComplianceOverallState = "compliant" | "non_compliant" | "in_progress" | "not_applicable";
+export const COMPLIANCE_OVERALL_STATE_LABEL: Record<ComplianceOverallState, string> = {
+  compliant: "Compliant",
+  non_compliant: "Non-compliant",
+  in_progress: "In progress",
+  not_applicable: "Not applicable",
 };
 
 // Sentence-cased per the Australian Government Style Manual's "minimal

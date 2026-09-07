@@ -37,7 +37,7 @@ function ProtectedRoutes() {
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
-  const enabledModules = useProjectEnabledModules(projectId);
+  const { modules: enabledModules, loaded: modulesLoaded } = useProjectEnabledModules(projectId);
 
   if (loading) {
     return (
@@ -74,7 +74,31 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />
         <Route path="/help" element={<HelpPage />} />
-        <Route path="*" element={<Navigate to="/projects" replace />} />
+        {/* Falls through here for any path that matches none of the routes
+            above, including every route `buildModuleRoutes` above would
+            contribute once loaded. While a project-scoped path's own
+            enabled-modules fetch is still in flight, that list is
+            genuinely `[]` (module system Phase 3's own hook) whether or
+            not this path is actually a module's route — redirecting to
+            /projects here is only correct once we actually know, so this
+            renders a brief loading state instead and lets `<Routes>`
+            re-match on the next render once `modulesLoaded` flips true and
+            the real module route (if any) is spliced in above. See
+            `useProjectEnabledModules`'s own docstring for the navigation
+            bug this fixes (a project module's own nav-rail link used to
+            bounce straight back to /projects on a fresh navigation). */}
+        <Route
+          path="*"
+          element={
+            projectId && !modulesLoaded ? (
+              <div className="container" style={{ marginTop: "3rem" }}>
+                <Spinner />
+              </div>
+            ) : (
+              <Navigate to="/projects" replace />
+            )
+          }
+        />
       </Routes>
     </Layout>
   );

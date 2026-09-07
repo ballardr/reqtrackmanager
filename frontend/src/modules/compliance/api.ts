@@ -8,40 +8,62 @@
  * CRUD/publish/retire (incl. cloning), the requirement tree, required
  * actions, the two extensible vocabularies (action types, mapping
  * relationship types), cross-standard requirement mappings, and the
- * version-diff endpoint (Phase 11, §27).
+ * version-diff endpoint (Phase 11, §27) — plus, since Phase 13, the
+ * project-router endpoints (`project_router.py`, mounted at
+ * `/api/v1/projects/{project_id}/modules/compliance`) the Project
+ * Compliance View needs: assignment viewing, per-requirement applicability/
+ * assessment/approval, required-action assessments, evidence CRUD/
+ * linkage/files, and scheduled reviews. Standard-to-project *assignment
+ * itself* (`POST .../projects/{project_id}/project-compliance`) stays on
+ * the org router per `router.py`'s own "assigning is a Compliance Manager
+ * decision" design (Phase 7 notes) even though the calling UI is
+ * project-scoped — see the "Assignment (org router)" section below.
  *
  * This codebase has no general "one API file per feature" convention —
  * every other page calls `api.get/post/...` directly inline
  * (`frontend/src/api/client.ts`). A dedicated file is used here purely
- * because of this module's sheer endpoint count (40+) — every function below
+ * because of this module's sheer endpoint count (70+) — every function below
  * is a direct, uninteresting pass-through to `api.*`, kept together so
- * `ComplianceAdminPanel.tsx` and its children read as UI logic, not fetch
- * plumbing. Deliberately NOT a generic per-module convention this repo now
- * expects elsewhere — see docs/compliance-module-plan.md's Phase 12 notes.
+ * `ComplianceAdminPanel.tsx`/`ProjectCompliancePage.tsx` and their children
+ * read as UI logic, not fetch plumbing. Deliberately NOT a generic
+ * per-module convention this repo now expects elsewhere — see
+ * docs/compliance-module-plan.md's Phase 12 notes.
  *
- * Endpoints intentionally NOT covered here (out of Phase 12's own scope,
- * confirmed against docs/compliance-module-plan.md's Phase 12 spec and the
- * requirements doc's §2-§6/§19 vs. §7-§10/§12/§17/§21-23 split): standard
- * reviews (§17, Phase 13/14 territory), project-compliance
- * assignment/archive (§7, explicitly Phase 13), and everything on
- * `project_router.py` (assessment, evidence, approval, migration — Phase
- * 13).
+ * Endpoints intentionally NOT covered here (out of this phase's own scope):
+ * the project-scoped version-migration action (§27, `migrate-version`) —
+ * deliberately not built into this phase's UI either, a flagged scope trim
+ * recorded in docs/compliance-module-plan.md's Phase 13 notes, mirroring how
+ * Phase 12 flagged owner reassignment rather than silently omitting it.
  */
 import { api } from "../../api/client";
 import type {
   ComplianceActionType,
+  ComplianceAuditEvent,
+  ComplianceEvidence,
+  ComplianceEvidenceRevalidation,
   ComplianceMappingRelationshipType,
   ComplianceRequiredAction,
+  ComplianceRequiredActionAssessment,
   ComplianceRequirement,
   ComplianceRequirementMapping,
   ComplianceRequirementNode,
+  ComplianceReview,
   ComplianceStandard,
   ComplianceStandardVersion,
+  NonCompliantRequirement,
+  PendingApproval,
+  ProjectCompliance,
+  ProjectComplianceRequirement,
+  ProjectComplianceStatus,
   StandardVersionDiff,
 } from "./types";
 
 function base(orgId: string): string {
   return `/api/v1/orgs/${orgId}/modules/compliance`;
+}
+
+function projectBase(projectId: string): string {
+  return `/api/v1/projects/${projectId}/modules/compliance`;
 }
 
 // --- Standards ---------------------------------------------------------------
@@ -288,4 +310,276 @@ export function buildRequirementTree(flat: ComplianceRequirement[]): ComplianceR
     }));
   }
   return build(null, 0);
+}
+
+/**
+ * Resolves the `standard_id` that owns a given `standard_version_id` —
+ * needed because every org-router requirement-tree endpoint is nested
+ * under `/standards/{standard_id}/versions/{version_id}/...` (no
+ * standalone "get version by id alone" endpoint exists, confirmed against
+ * `router.py`), while `ProjectCompliance` only stores `standard_version_id`.
+ * For an *active* assignment the caller already has this for free via
+ * `ProjectComplianceStatusOut.standard_id` (`getProjectComplianceStatus`);
+ * this fallback is for an *archived* one, which `GET .../status` excludes
+ * by design (see that endpoint's own docstring) — a client-side join over
+ * this organisation's (typically small) standard/version catalogue rather
+ * than a new backend endpoint for what should be a rare path (viewing an
+ * archived assignment's own requirement tree).
+ */
+export async function resolveStandardIdForVersion(orgId: string, standardVersionId: string): Promise<string | null> {
+  const standards = await listStandards(orgId, true);
+  for (const standard of standards) {
+    const versions = await listStandardVersions(orgId, standard.id);
+    if (versions.some((v) => v.id === standardVersionId)) return standard.id;
+  }
+  return null;
+}
+
+// --- Phase 13: Assignment (org router — "assigning is a Compliance Manager
+// decision", router.py's own Phase 7 design) ---------------------------------
+
+export function createProjectCompliance(
+  orgId: string, projectId: string,
+  payload: { standard_id: string; standard_version_id: string; target_compliance_date?: string | null }
+): Promise<ProjectCompliance> {
+  return api.post(`${base(orgId)}/projects/${projectId}/project-compliance`, payload);
+}
+
+export function archiveProjectCompliance(orgId: string, projectId: string, projectComplianceId: string): Promise<ProjectCompliance> {
+  return api.post(`${base(orgId)}/projects/${projectId}/project-compliance/${projectComplianceId}/archive`);
+}
+
+export function unarchiveProjectCompliance(orgId: string, projectId: string, projectComplianceId: string): Promise<ProjectCompliance> {
+  return api.post(`${base(orgId)}/projects/${projectId}/project-compliance/${projectComplianceId}/unarchive`);
+}
+
+// --- Phase 13: Project compliance assignments (project router, read + status) ---
+
+export function listProjectCompliance(projectId: string): Promise<ProjectCompliance[]> {
+  return api.get(`${projectBase(projectId)}/project-compliance`);
+}
+
+export function getProjectComplianceStatus(projectId: string): Promise<ProjectComplianceStatus[]> {
+  return api.get(`${projectBase(projectId)}/status`);
+}
+
+export function listNonCompliantRequirements(projectId: string): Promise<NonCompliantRequirement[]> {
+  return api.get(`${projectBase(projectId)}/non-compliant-requirements`);
+}
+
+export function listPendingApprovals(projectId: string): Promise<PendingApproval[]> {
+  return api.get(`${projectBase(projectId)}/pending-approvals`);
+}
+
+// --- Phase 13: Per-requirement assessment (§8-§10, §12, §16) ---------------------
+
+function pcrBase(projectId: string, projectComplianceId: string): string {
+  return `${projectBase(projectId)}/project-compliance/${projectComplianceId}/requirements`;
+}
+
+export function listProjectComplianceRequirements(
+  projectId: string, projectComplianceId: string
+): Promise<ProjectComplianceRequirement[]> {
+  return api.get(pcrBase(projectId, projectComplianceId));
+}
+
+export function updateRequirementApplicability(
+  projectId: string, projectComplianceId: string, pcrId: string,
+  payload: { applicability: "applicable" | "not_applicable"; justification?: string }
+): Promise<ProjectComplianceRequirement> {
+  return api.patch(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/applicability`, payload);
+}
+
+export function updateRequirementAssessment(
+  projectId: string, projectComplianceId: string, pcrId: string,
+  payload: { compliance_status: string; justification?: string; notes?: string }
+): Promise<ProjectComplianceRequirement> {
+  return api.patch(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/assessment`, payload);
+}
+
+export function submitRequirementForApproval(
+  projectId: string, projectComplianceId: string, pcrId: string
+): Promise<ProjectComplianceRequirement> {
+  return api.post(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/submit-for-approval`);
+}
+
+export function approveRequirement(
+  projectId: string, projectComplianceId: string, pcrId: string, decisionNote = ""
+): Promise<ProjectComplianceRequirement> {
+  return api.post(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/approve`, { decision_note: decisionNote });
+}
+
+export function rejectRequirement(
+  projectId: string, projectComplianceId: string, pcrId: string, decisionNote: string
+): Promise<ProjectComplianceRequirement> {
+  return api.post(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/reject`, { decision_note: decisionNote });
+}
+
+export function getRequirementHistory(
+  projectId: string, projectComplianceId: string, pcrId: string
+): Promise<ComplianceAuditEvent[]> {
+  return api.get(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/history`);
+}
+
+export function listRequirementEvidence(
+  projectId: string, projectComplianceId: string, pcrId: string
+): Promise<ComplianceEvidence[]> {
+  return api.get(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/evidence`);
+}
+
+// --- Phase 13: Required action assessments (§6/§25) ------------------------------
+
+function assessmentsBase(projectId: string, projectComplianceId: string, pcrId: string): string {
+  return `${pcrBase(projectId, projectComplianceId)}/${pcrId}/required-action-assessments`;
+}
+
+export function listRequiredActionAssessments(
+  projectId: string, projectComplianceId: string, pcrId: string
+): Promise<ComplianceRequiredActionAssessment[]> {
+  return api.get(assessmentsBase(projectId, projectComplianceId, pcrId));
+}
+
+export function updateRequiredActionAssessment(
+  projectId: string, projectComplianceId: string, pcrId: string, assessmentId: string,
+  payload: { assignee_id?: string | null; due_date?: string | null; notes?: string }
+): Promise<ComplianceRequiredActionAssessment> {
+  return api.patch(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}`, payload);
+}
+
+export function completeRequiredActionAssessment(
+  projectId: string, projectComplianceId: string, pcrId: string, assessmentId: string
+): Promise<ComplianceRequiredActionAssessment> {
+  return api.post(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}/complete`);
+}
+
+export function uncompleteRequiredActionAssessment(
+  projectId: string, projectComplianceId: string, pcrId: string, assessmentId: string
+): Promise<ComplianceRequiredActionAssessment> {
+  return api.post(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}/uncomplete`);
+}
+
+export function listRequiredActionAssessmentEvidence(
+  projectId: string, projectComplianceId: string, pcrId: string, assessmentId: string
+): Promise<ComplianceEvidence[]> {
+  return api.get(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}/evidence`);
+}
+
+// --- Phase 13: Evidence (§13-§15) -------------------------------------------------
+
+export function createEvidence(
+  projectId: string,
+  payload: {
+    title: string; description?: string; issuing_organisation?: string | null; issued_date?: string | null;
+    expiry_date?: string | null; notes?: string; project_compliance_requirement_ids?: string[];
+    required_action_assessment_ids?: string[];
+  }
+): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence`, payload);
+}
+
+export function listEvidence(projectId: string): Promise<ComplianceEvidence[]> {
+  return api.get(`${projectBase(projectId)}/evidence`);
+}
+
+export function getExpiringEvidence(projectId: string): Promise<ComplianceEvidence[]> {
+  return api.get(`${projectBase(projectId)}/expiring-evidence`);
+}
+
+export function updateEvidence(
+  projectId: string, evidenceId: string,
+  payload: { title: string; description?: string; issuing_organisation?: string | null; issued_date?: string | null; notes?: string }
+): Promise<ComplianceEvidence> {
+  return api.patch(`${projectBase(projectId)}/evidence/${evidenceId}`, payload);
+}
+
+export function archiveEvidence(projectId: string, evidenceId: string): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/archive`);
+}
+
+export function unarchiveEvidence(projectId: string, evidenceId: string): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/unarchive`);
+}
+
+export function revalidateEvidence(
+  projectId: string, evidenceId: string, payload: { new_expiry_date?: string | null; justification?: string }
+): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/revalidate`, payload);
+}
+
+export function listEvidenceRevalidations(projectId: string, evidenceId: string): Promise<ComplianceEvidenceRevalidation[]> {
+  return api.get(`${projectBase(projectId)}/evidence/${evidenceId}/revalidations`);
+}
+
+export function linkEvidenceToRequirement(projectId: string, evidenceId: string, pcrId: string): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/requirement-links`, { project_compliance_requirement_id: pcrId });
+}
+
+export function unlinkEvidenceFromRequirement(projectId: string, evidenceId: string, pcrId: string): Promise<void> {
+  return api.delete(`${projectBase(projectId)}/evidence/${evidenceId}/requirement-links/${pcrId}`);
+}
+
+export function linkEvidenceToActionAssessment(projectId: string, evidenceId: string, assessmentId: string): Promise<ComplianceEvidence> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/action-links`, { required_action_assessment_id: assessmentId });
+}
+
+export function unlinkEvidenceFromActionAssessment(projectId: string, evidenceId: string, assessmentId: string): Promise<void> {
+  return api.delete(`${projectBase(projectId)}/evidence/${evidenceId}/action-links/${assessmentId}`);
+}
+
+export function uploadEvidenceAttachment(projectId: string, evidenceId: string, file: File): Promise<import("../../api/types").FileAsset> {
+  return api.postFile(`${projectBase(projectId)}/evidence/${evidenceId}/files`, file);
+}
+
+export function linkEvidenceOrgResource(projectId: string, evidenceId: string, fileId: string): Promise<import("../../api/types").FileAsset> {
+  return api.post(`${projectBase(projectId)}/evidence/${evidenceId}/files/link`, { file_id: fileId });
+}
+
+export function listEvidenceFiles(projectId: string, evidenceId: string): Promise<import("../../api/types").FileAsset[]> {
+  return api.get(`${projectBase(projectId)}/evidence/${evidenceId}/files`);
+}
+
+export function unlinkEvidenceFile(projectId: string, evidenceId: string, fileId: string): Promise<void> {
+  return api.delete(`${projectBase(projectId)}/evidence/${evidenceId}/files/${fileId}`);
+}
+
+// --- Phase 13: Scheduled reviews, project-level (§17, §18, §28) -----------------
+
+export function createProjectReview(
+  projectId: string, projectComplianceId: string,
+  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner_id?: string | null; notes?: string }
+): Promise<ComplianceReview> {
+  return api.post(`${projectBase(projectId)}/project-compliance/${projectComplianceId}/reviews`, payload);
+}
+
+export function listProjectReviews(projectId: string, projectComplianceId: string): Promise<ComplianceReview[]> {
+  return api.get(`${projectBase(projectId)}/project-compliance/${projectComplianceId}/reviews`);
+}
+
+export function listReviewsDue(projectId: string): Promise<ComplianceReview[]> {
+  return api.get(`${projectBase(projectId)}/reviews-due`);
+}
+
+export function updateProjectReview(
+  projectId: string, reviewId: string,
+  payload: { frequency_label: string; recurrence_days?: number | null; next_due_date: string; owner_id?: string | null; notes?: string }
+): Promise<ComplianceReview> {
+  return api.patch(`${projectBase(projectId)}/reviews/${reviewId}`, payload);
+}
+
+export function deleteProjectReview(projectId: string, reviewId: string): Promise<void> {
+  return api.delete(`${projectBase(projectId)}/reviews/${reviewId}`);
+}
+
+export function completeProjectReview(
+  projectId: string, reviewId: string, payload: { outcome: string; notes?: string }
+): Promise<ComplianceReview> {
+  return api.post(`${projectBase(projectId)}/reviews/${reviewId}/complete`, payload);
+}
+
+export function linkReviewEvidence(projectId: string, reviewId: string, evidenceId: string): Promise<ComplianceReview> {
+  return api.post(`${projectBase(projectId)}/reviews/${reviewId}/evidence-links`, { evidence_id: evidenceId });
+}
+
+export function unlinkReviewEvidence(projectId: string, reviewId: string, evidenceId: string): Promise<void> {
+  return api.delete(`${projectBase(projectId)}/reviews/${reviewId}/evidence-links/${evidenceId}`);
 }

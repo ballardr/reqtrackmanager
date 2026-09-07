@@ -104,6 +104,21 @@ configure_alembic_version_locations`) — see that field's own docstring for
 why this doesn't reopen or weaken Phase 1's original trust-boundary design
 (still one linear, reviewed Alembic chain; only the file location changed).
 
+Phase 13 (Frontend: Project Compliance View) adds this module's
+`frontend_manifest` — a Tier A (`"installed"`) `ModuleFrontendManifest`
+(module system Phase 3) whose `nav_path` uses the `"{project_id}"`
+placeholder `ModuleFrontendManifest`'s own docstring names as an example
+but which, until this phase, no real module had ever actually populated:
+`app.routers.projects.list_project_enabled_modules` needed a small, generic
+fix (interpolating the real path parameter into that placeholder before
+returning it) to make the placeholder do anything — see that function's own
+docstring for the fix. `frontend/src/modules/registry.ts` registers the
+matching React Router path (`/projects/:projectId/modules/compliance`),
+proving Phase 3's real installed-module routing/nav-discovery mechanism for
+the first time (Phase 12's `ComplianceAdminPanel` — org-scoped — had no
+routing mechanism to plug into and was mounted directly by `OrgAdminPage.tsx`
+instead; see that phase's own notes).
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.service`/`.scheduler`
 (each imported lazily, inside `get_router()`/`get_project_router()`/
@@ -120,7 +135,13 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
-from app.modules.registry import McpToolDefinition, ModuleDefinition, ModuleRoleDefinition, ModuleScheduledJob
+from app.modules.registry import (
+    McpToolDefinition,
+    ModuleDefinition,
+    ModuleFrontendManifest,
+    ModuleRoleDefinition,
+    ModuleScheduledJob,
+)
 
 COMPLIANCE_MODULE_KEY = "compliance"
 
@@ -196,6 +217,11 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
     resolve_file_owner_project_id=resolve_file_owner_project_id,
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Compliance",
+        nav_path=f"/projects/{{project_id}}/modules/{COMPLIANCE_MODULE_KEY}",
+    ),
     scheduled_jobs=(
         ModuleScheduledJob(
             job_id="evidence_expiry_reminders", hour=2, minute=0, run=_run_evidence_expiry_notifications

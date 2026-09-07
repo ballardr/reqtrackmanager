@@ -39,6 +39,7 @@ from tests.conftest import auth_headers, create_project
 
 INSTALLED_MODULE_KEY = "fake_frontend_installed_module"
 REMOTE_MODULE_KEY = "fake_frontend_remote_module"
+PROJECT_SCOPED_MODULE_KEY = "fake_frontend_project_scoped_module"
 ALLOWED_ORIGIN = "https://trusted-module.example.com"
 NOT_ALLOWED_ORIGIN = "https://untrusted-module.example.com"
 
@@ -101,6 +102,32 @@ def remote_tier_module():
     yield REMOTE_MODULE_KEY
     module_registry.INSTALLED_MODULES[:] = [
         m for m in module_registry.INSTALLED_MODULES if m.key != REMOTE_MODULE_KEY
+    ]
+    build_registry(force=True)
+
+
+@pytest.fixture
+def project_scoped_installed_module():
+    """Registers a Tier A module whose `nav_path` uses the `"{project_id}"`
+    placeholder `ModuleFrontendManifest`'s own docstring names as an
+    example — the Compliance Module (Phase 13) is the first *real* module
+    to actually populate this placeholder; this fixture proves the generic
+    interpolation mechanism itself (`routers/projects.py::list_project_
+    enabled_modules`) rather than relying on Compliance's own real
+    endpoints/RBAC for the assertion."""
+    module_registry.INSTALLED_MODULES.append(
+        _fake_module(
+            key=PROJECT_SCOPED_MODULE_KEY, name="Fake Project-Scoped Module",
+            frontend_manifest=ModuleFrontendManifest(
+                tier="installed", nav_label="Fake Project Module",
+                nav_path="/projects/{project_id}/modules/fake-project-scoped",
+            ),
+        )
+    )
+    build_registry(force=True)
+    yield PROJECT_SCOPED_MODULE_KEY
+    module_registry.INSTALLED_MODULES[:] = [
+        m for m in module_registry.INSTALLED_MODULES if m.key != PROJECT_SCOPED_MODULE_KEY
     ]
     build_registry(force=True)
 
@@ -504,3 +531,36 @@ def test_project_enabled_modules_endpoint_lists_only_enabled_modules(
         f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token)
     )
     assert installed_tier_module not in {m["module_key"] for m in resp.json()}
+
+
+def test_project_enabled_modules_interpolates_project_id_placeholder(
+    client, admin_token, org_id, project_scoped_installed_module
+):
+    """Phase 13's own fix: `nav_path`'s literal `"{project_id}"` placeholder
+    must be replaced with the real project id before reaching the frontend
+    — otherwise `<Link to=...>` (`Layout.tsx`) would navigate to a
+    nonsensical, literal `/projects/{project_id}/...` URL. See `routers/
+    projects.py::list_project_enabled_modules`'s own docstring."""
+    project = create_project(client, admin_token, org_id, "Placeholder Interpolation Project")
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[project_scoped_installed_module]["frontend_manifest"]
+    assert manifest["nav_path"] == f"/projects/{project['id']}/modules/fake-project-scoped"
+    assert "{project_id}" not in manifest["nav_path"]
+
+
+def test_org_modules_endpoint_leaves_project_id_placeholder_uninterpolated(
+    client, admin_token, org_id, project_scoped_installed_module
+):
+    """`GET /orgs/{id}/modules` (`OrgModuleOut`, `routers/orgs.py`) has no
+    single concrete project in scope — it deliberately leaves the
+    placeholder as-is for its own admin-bookkeeping display, unlike the
+    project-scoped nav endpoint above."""
+    resp = client.get(f"/api/v1/orgs/{org_id}/modules", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[project_scoped_installed_module]["frontend_manifest"]
+    assert manifest["nav_path"] == "/projects/{project_id}/modules/fake-project-scoped"

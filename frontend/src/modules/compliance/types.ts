@@ -26,7 +26,29 @@
  * same convention every other frontend type in this codebase already uses).
  */
 
-import type { ComplianceStandardVersionStatus } from "../../api/types";
+import type {
+  ComplianceApplicability,
+  ComplianceApplicabilitySource,
+  ComplianceApprovalState,
+  ComplianceEvidenceValidityState,
+  ComplianceOverallState,
+  ComplianceReviewOutcome,
+  ComplianceReviewScheduleState,
+  ComplianceReviewStatus,
+  ComplianceStandardVersionStatus,
+  ComplianceStatus,
+  OrgUser,
+} from "../../api/types";
+
+/** Shared "id -> display name" lookup for the Project Compliance View's own
+ * assignee/actor/owner fields — mirrors `RequirementDetailPage.tsx`'s own
+ * inline `userDisplayName` helper, pulled out here since several Phase 13
+ * components need the same lookup over the same `orgUsers` list fetched
+ * once at `ProjectCompliancePage` and threaded down. */
+export function userDisplayName(orgUsers: OrgUser[], userId: string | null | undefined): string {
+  if (!userId) return "Unassigned";
+  return orgUsers.find((u) => u.user_id === userId)?.display_name ?? userId;
+}
 
 export interface ComplianceStandard {
   id: string;
@@ -173,4 +195,181 @@ export interface StandardVersionDiff {
 export interface ComplianceRequirementNode extends ComplianceRequirement {
   depth: number;
   children: ComplianceRequirementNode[];
+}
+
+// --- Phase 13: Project Compliance View (project_router.py) -----------------------
+//
+// Mirrors of the Phase 7-11 project-scoped Pydantic schemas
+// (backend/app/modules/compliance/schemas.py) that the Project Compliance
+// View needs — assignment, per-requirement assessment/applicability,
+// required-action assessments, §20 status summaries, evidence, approvals,
+// and scheduled reviews. Kept alongside the org-router types above per this
+// file's own documented convention (module-local data shapes; enums/label
+// maps live in `api/types.ts`).
+
+export interface ProjectCompliance {
+  id: string;
+  project_id: string;
+  standard_version_id: string;
+  assigned_at: string;
+  assigned_by: string;
+  target_compliance_date: string | null;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectComplianceRequirement {
+  id: string;
+  project_compliance_id: string;
+  requirement_id: string;
+  explicit_applicability: ComplianceApplicability | null;
+  effective_applicability: ComplianceApplicability;
+  applicability_source: ComplianceApplicabilitySource;
+  justification: string;
+  notes: string;
+  compliance_status: ComplianceStatus;
+  assessed_at: string | null;
+  assessed_by: string | null;
+  applicability_set_at: string | null;
+  applicability_set_by: string | null;
+  approval_state: ComplianceApprovalState;
+  approval_decided_at: string | null;
+  approval_decided_by: string | null;
+  decision_note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComplianceRequiredActionAssessment {
+  id: string;
+  project_compliance_requirement_id: string;
+  required_action_id: string;
+  assignee_id: string | null;
+  due_date: string | null;
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectComplianceStatus {
+  project_compliance_id: string;
+  project_id: string;
+  standard_id: string;
+  standard_reference: string;
+  standard_name: string;
+  standard_version_id: string;
+  version_label: string;
+  target_compliance_date: string | null;
+  assigned_at: string;
+  total_requirements: number;
+  applicable_count: number;
+  not_applicable_count: number;
+  counts_by_status: Record<string, number>;
+  compliance_percentage: number;
+  has_non_compliant: boolean;
+  overall_compliance_state: ComplianceOverallState;
+  overall_approval_state: ComplianceApprovalState;
+}
+
+export interface NonCompliantRequirement {
+  project_compliance_id: string;
+  standard_reference: string;
+  standard_name: string;
+  version_label: string;
+  project_compliance_requirement_id: string;
+  requirement_id: string;
+  requirement_reference: string | null;
+  requirement_name: string;
+  justification: string;
+  notes: string;
+  assessed_at: string | null;
+  assessed_by: string | null;
+}
+
+export interface PendingApproval {
+  project_compliance_id: string;
+  standard_reference: string;
+  standard_name: string;
+  version_label: string;
+  project_compliance_requirement_id: string;
+  requirement_id: string;
+  requirement_reference: string | null;
+  requirement_name: string;
+  compliance_status: ComplianceStatus;
+  assessed_at: string | null;
+  assessed_by: string | null;
+}
+
+export interface ComplianceEvidence {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  issuing_organisation: string | null;
+  issued_date: string | null;
+  expiry_date: string | null;
+  provided_by: string;
+  provided_at: string;
+  notes: string;
+  validity_state: ComplianceEvidenceValidityState;
+  is_archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+  created_at: string;
+  updated_at: string;
+  linked_requirement_ids: string[];
+  linked_required_action_assessment_ids: string[];
+}
+
+export interface ComplianceEvidenceRevalidation {
+  id: string;
+  evidence_id: string;
+  revalidated_by: string;
+  revalidated_at: string;
+  previous_expiry_date: string | null;
+  new_expiry_date: string | null;
+  justification: string;
+  created_at: string;
+}
+
+/** Mirrors the generic `AuditEventOut` (`backend/app/schemas/audit.py`) —
+ * no `actor_display_name`/`timestamp` the way `ChangeEntry` (`api/types.ts`,
+ * the activity-feed shape) has, since `get_requirement_history` returns raw
+ * `AuditEvent` rows rather than resolving them into an activity-feed shape;
+ * a dedicated type rather than reusing `ChangeEntry` for a differently-
+ * shaped response. */
+export interface ComplianceAuditEvent {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ComplianceReview {
+  id: string;
+  standard_id: string | null;
+  project_compliance_id: string | null;
+  frequency_label: string;
+  recurrence_days: number | null;
+  next_due_date: string;
+  owner_id: string | null;
+  status: ComplianceReviewStatus;
+  schedule_state: ComplianceReviewScheduleState | null;
+  notes: string;
+  outcome: ComplianceReviewOutcome | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  linked_evidence_ids: string[];
 }

@@ -44,6 +44,13 @@ function mockLayoutApis() {
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
+    // `useProjectEnabledModules` (module system Phase 3) — Layout's nav
+    // rail calls this whenever a project route is active, independently of
+    // whether any module is actually registered; found as a real,
+    // pre-existing gap (an unhandled promise rejection during the full
+    // Storybook suite) while verifying Phase 13's own changes here — fixed
+    // in passing rather than left, per this repo's "fix, don't defer" rule.
+    if (path.endsWith("/enabled-modules")) return [];
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
 }

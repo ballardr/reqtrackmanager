@@ -90,7 +90,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
-  const enabledModules = useProjectEnabledModules(projectId);
+  const { modules: enabledModules } = useProjectEnabledModules(projectId);
 
   useEffect(() => {
     if (!user) return;

@@ -396,6 +396,19 @@ component), used by the nav rail and route-splicing to know a module has a
 frontend surface and where it lives. `nav_path` must match the path used in
 the Tier A route registration above.
 
+For a **project-scoped** route, `nav_path` may contain a literal
+`"{project_id}"` placeholder (e.g.
+`"/projects/{project_id}/modules/compliance"`) — `GET /projects/{id}/enabled-
+modules` (`routers/projects.py::list_project_enabled_modules`) substitutes
+the real project id into it before returning it to the frontend, and the
+matching Tier A route registration should use React Router's own `:projectId`
+param syntax at the same position (`"/projects/:projectId/modules/..."`).
+`GET /orgs/{id}/modules` (the org-admin bookkeeping view) has no single
+project in scope and leaves the placeholder as literal text — don't rely on
+it being interpolated there. Compliance (Phase 13) is the first module to use
+this; see `docs/decisions.md`'s "Compliance module plan, Phase 13" entry if
+you need the full story of why this substitution exists.
+
 ### Tier B — remote (for a module that can't be compiled in)
 
 For a module genuinely not installed into the deployment — an org admin

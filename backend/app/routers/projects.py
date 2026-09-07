@@ -3218,6 +3218,17 @@ def list_project_enabled_modules(
     `require_project_view_or_manage`, the same dependency `list_project_
     module_roles`/`list_project_groups` use, for the same "structure, not
     content" reasoning.
+
+    `ModuleFrontendManifest.nav_path`/`.frame_url` may contain a literal
+    `"{project_id}"` placeholder (its own docstring gives exactly this as
+    an example, e.g. `"/projects/{project_id}/modules/compliance"`) — this
+    is the one endpoint that actually knows a concrete `project_id`, so it
+    interpolates the placeholder into every manifest field before returning
+    it (Phase 13, `docs/compliance-module-plan.md`: Compliance is the first
+    module to populate this placeholder for real). `GET /orgs/{id}/modules`
+    (`OrgModuleOut`, `routers/orgs.py`) has no single project in scope and
+    deliberately leaves the placeholder un-interpolated for its own
+    admin-bookkeeping display.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -3227,11 +3238,16 @@ def list_project_enabled_modules(
         if not is_module_enabled(db, project.organization_id, definition.key):
             continue
         manifest = get_frontend_manifest(definition.key)
-        result.append(
-            ModuleNavEntryOut(
-                module_key=definition.key, name=definition.name,
-                frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+        frontend_manifest_out = None
+        if manifest is not None:
+            frontend_manifest_out = ModuleFrontendManifestOut(
+                tier=manifest.tier,
+                nav_label=manifest.nav_label,
+                nav_path=manifest.nav_path.replace("{project_id}", str(project_id)),
+                frame_url=manifest.frame_url.replace("{project_id}", str(project_id)) if manifest.frame_url else None,
             )
+        result.append(
+            ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)
         )
     return result
 
