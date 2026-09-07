@@ -15,8 +15,7 @@
  * label strings, so the distinction survives a quick scan, not just a
  * hover.
  */
-import { COMPLIANCE_APPLICABILITY_LABEL } from "../../api/types";
-import type { ProjectComplianceRequirement } from "./types";
+import { COMPLIANCE_APPLICABILITY_LABEL, type ProjectComplianceRequirement } from "./types";
 
 export function ApplicabilityBadge({ pcr }: { pcr: ProjectComplianceRequirement }) {
   const label = COMPLIANCE_APPLICABILITY_LABEL[pcr.effective_applicability];

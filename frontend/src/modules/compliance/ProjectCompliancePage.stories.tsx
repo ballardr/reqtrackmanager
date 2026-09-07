@@ -131,5 +131,20 @@ export const AssignStandardFlow: Story = {
   },
 };
 
+export const DownloadReport: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports/pdf`
+    ));
+  },
+};
+
 export const LightTheme: Story = { ...ListsAssignedStandards };
 export const DarkTheme: Story = { ...ListsAssignedStandards, globals: { theme: "dark" } };

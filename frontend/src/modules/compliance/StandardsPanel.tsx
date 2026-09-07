@@ -19,7 +19,6 @@
  */
 import { useEffect, useState } from "react";
 
-import { COMPLIANCE_STANDARD_VERSION_STATUS_LABEL } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { DirectoryColumn } from "../../components/DirectoryTable";
 import { DirectoryTable } from "../../components/DirectoryTable";
@@ -29,7 +28,12 @@ import { SidePanel } from "../../components/SidePanel";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { VersionWorkspace } from "./VersionWorkspace";
-import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import {
+  COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
+  type ComplianceActionType,
+  type ComplianceStandard,
+  type ComplianceStandardVersion,
+} from "./types";
 
 export function StandardsPanel({ orgId, actionTypes }: { orgId: string; actionTypes: ComplianceActionType[] }) {
   const { showToast } = useToast();

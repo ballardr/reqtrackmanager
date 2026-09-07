@@ -32,6 +32,20 @@ exposure — especially for a cross-organisation import. Member emails are
 still included in the export for a human to re-populate manually. The
 importing user is always guaranteed project-manager access regardless
 (the same guarantee `POST /projects` gives its own caller).
+
+A registered module's own project-level bundle content (`app.modules.
+registry.get_all_module_project_bundle_hooks` — e.g. the Compliance
+module's own project *assessment* data) is folded into `collect_project_
+data`'s/`apply_project_data`'s own return value/`data` dict the same
+generic way `services.org_export` folds in each module's org-level content,
+via that module's own `ModuleProjectBundleHooks.export`/`import_` — this
+file never constructs a module's own entity types directly. See
+`app.modules.compliance.export`'s own module docstring for why Compliance's
+own project *assessment* content (which standards a project is assigned to,
+its per-requirement state, evidence, reviews) travels with *this* bundle
+while the *standard definitions* it assesses against stay organisation-
+level content in `services.org_export`'s bundle instead, resolved at import
+time by a portable `(standard reference, version label)` key.
 """
 
 from __future__ import annotations
@@ -90,6 +104,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.modules.registry import get_all_module_project_bundle_hooks
 from app.services.audit import log_event
 from app.services.bundle_common import (
     BundleImportWarnings,
@@ -452,6 +467,12 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         template = db.get(ReportTemplate, project.default_report_template_id)
         default_report_template_name = template.name if template else None
 
+    module_bundle_json: dict[str, Any] = {}
+    for _module_key, hooks in get_all_module_project_bundle_hooks():
+        module_json, module_file_assets = hooks.export(db, project)
+        module_bundle_json.update(module_json)
+        file_assets_by_id.update(module_file_assets)
+
     project_json = {
         "source_name": project.name, "summary": project.summary,
         "allow_member_change_requests": project.allow_member_change_requests, "terminology": project.terminology,
@@ -490,6 +511,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             }
             for ev in audit_events
         ],
+        **module_bundle_json,
     }
     return project_json, file_assets_by_id
 
@@ -911,6 +933,9 @@ def apply_project_data(
                 reviewed_at=_dt(rr["reviewed_at"]) or datetime.now(UTC), outcome=RequirementReviewOutcome(rr["outcome"]),
                 comment=rr.get("comment"),
             ))
+
+    for _module_key, hooks in get_all_module_project_bundle_hooks():
+        hooks.import_(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
     # Replays the source project's structural audit trail as its own
     # events (rather than trying to preserve original ids/timestamps

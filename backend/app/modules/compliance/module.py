@@ -130,6 +130,7 @@ registry import cycle via `app/modules/__init__.py`).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -139,14 +140,30 @@ from app.modules.registry import (
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
 )
+
+if TYPE_CHECKING:
+    from app.models.file import FileAsset
+    from app.models.organization import Organization
+    from app.models.project import Project
+    from app.models.user import User
+    from app.services.bundle_common import BundleImportWarnings, UserResolver
 
 COMPLIANCE_MODULE_KEY = "compliance"
 
 _ROUTER_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{COMPLIANCE_MODULE_KEY}"
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{COMPLIANCE_MODULE_KEY}"
+
+# Mirrors `export.ORG_MERGE_RESOLUTION_CHOICES` exactly — defined locally
+# (not imported from `export.py`) purely to keep `ModuleOrgBundleHooks`
+# construction below a static literal with zero import-cycle risk, the same
+# reasoning every callable hook on `MODULE_DEFINITION` already applies via
+# lazy, inside-the-function imports.
+_ORG_MERGE_RESOLUTION_CHOICES = {"compliance_standard": frozenset({"skip", "import_as_copy"})}
 
 
 def get_router() -> APIRouter | None:
@@ -176,6 +193,54 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     from app.modules.compliance.service import resolve_evidence_file_project_id
 
     return resolve_evidence_file_project_id(db, file_id)
+
+
+# `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` (module system follow-up,
+# self-containment pass — see `app.modules.compliance.export`'s own module
+# docstring) — each a thin wrapper delegating to `export.py`, imported
+# lazily for the same import-cycle reason as every other hook above.
+def _export_org_data(db: Session, org: Organization) -> dict[str, Any]:
+    from app.modules.compliance.export import export_org_data
+
+    return export_org_data(db, org)
+
+
+def _import_org_data(
+    db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
+    resolutions: dict[str, str] | None,
+) -> None:
+    from app.modules.compliance.export import import_org_data
+
+    import_org_data(db, org, data, users, warnings, resolutions)
+
+
+def _compute_org_merge_conflicts(db: Session, target_org: Organization, data: dict[str, Any]) -> list[dict[str, Any]]:
+    from app.modules.compliance.export import compute_org_merge_conflicts
+
+    return compute_org_merge_conflicts(db, target_org, data)
+
+
+def _summarize_org_merge(
+    data: dict[str, Any], conflicts: list[dict[str, Any]], resolutions: dict[str, str]
+) -> dict[str, int]:
+    from app.modules.compliance.export import summarize_org_merge
+
+    return summarize_org_merge(data, conflicts, resolutions)
+
+
+def _export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[UUID, FileAsset]]:
+    from app.modules.compliance.export import export_project_data
+
+    return export_project_data(db, project)
+
+
+def _import_project_data(
+    db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
+    current_user: User, users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    from app.modules.compliance.export import import_project_data
+
+    import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
 def _run_evidence_expiry_notifications(db: Session) -> None:
@@ -217,6 +282,17 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
     resolve_file_owner_project_id=resolve_file_owner_project_id,
+    org_bundle_hooks=ModuleOrgBundleHooks(
+        export=_export_org_data,
+        import_=_import_org_data,
+        compute_merge_conflicts=_compute_org_merge_conflicts,
+        merge_resolution_choices=_ORG_MERGE_RESOLUTION_CHOICES,
+        summarize_merge=_summarize_org_merge,
+    ),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=_export_project_data,
+        import_=_import_project_data,
+    ),
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
         nav_label="Compliance",

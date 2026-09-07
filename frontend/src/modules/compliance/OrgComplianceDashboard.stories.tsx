@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, waitFor, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
@@ -143,6 +143,21 @@ export const Populated: Story = {
     await expect(canvas.getByText(/Access control — assessed/)).toBeInTheDocument();
     await expect(canvas.getByText(/Standard audit/)).toBeInTheDocument();
     await expect(canvas.getByText(/ISO-27001 — 3 issues/)).toBeInTheDocument();
+  },
+};
+
+export const DownloadReport: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["csv"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Active compliance standards")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/csv`
+    ));
   },
 };
 

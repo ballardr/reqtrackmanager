@@ -514,6 +514,200 @@ def create_report_template(headers: dict, org_id: str, *, name: str, accent_colo
     return r.json()
 
 
+# --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
+
+
+def create_compliance_action_type(headers: dict, org_id: str, name: str) -> dict:
+    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/compliance/action-types", json={"name": name}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_standard(
+    headers: dict, org_id: str, *, reference: str, name: str, description: str = "",
+    issuing_organisation: str | None = None, owner_id: str | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards",
+        json={"reference": reference, "name": name, "description": description,
+              "issuing_organisation": issuing_organisation, "owner_id": owner_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_version(headers: dict, org_id: str, standard_id: str, *, version_label: str = "1.0", change_note: str = "") -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions",
+        json={"version_label": version_label, "change_note": change_note}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_requirement(
+    headers: dict, org_id: str, standard_id: str, version_id: str, *, name: str, reference: str | None = None,
+    description: str = "", reasoning: str = "", parent_requirement_id: str | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements",
+        json={"name": name, "reference": reference, "description": description, "reasoning": reasoning,
+              "parent_requirement_id": parent_requirement_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_required_action(
+    headers: dict, org_id: str, standard_id: str, version_id: str, requirement_id: str, action_type_id: str, *,
+    name: str, description: str = "", is_mandatory: bool = True,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements/"
+        f"{requirement_id}/required-actions",
+        json={"action_type_id": action_type_id, "name": name, "description": description, "is_mandatory": is_mandatory},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def publish_compliance_version(headers: dict, org_id: str, standard_id: str, version_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/publish",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def assign_compliance_standard(headers: dict, org_id: str, project_id: str, standard_id: str, version_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/projects/{project_id}/project-compliance",
+        json={"standard_id": standard_id, "standard_version_id": version_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> None:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/members/{user_id}/module-roles",
+        json={"module_key": "compliance", "role_key": "compliance_officer"}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def list_compliance_requirements(headers: dict, project_id: str, project_compliance_id: str) -> list[dict]:
+    r = httpx.get(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def update_compliance_assessment(
+    headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, *,
+    compliance_status: str, justification: str = "", notes: str = "",
+) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/assessment",
+        json={"compliance_status": compliance_status, "justification": justification, "notes": notes},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def submit_compliance_for_approval(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/submit-for-approval",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def approve_compliance_requirement(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, *, note: str = "") -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/approve",
+        json={"decision_note": note}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_required_action_assessments(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str) -> list[dict]:
+    r = httpx.get(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def update_required_action_assessment(
+    headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str, *,
+    assignee_id: str | None = None, due_date: str | None = None, notes: str = "",
+) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments/{assessment_id}",
+        json={"assignee_id": assignee_id, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def complete_required_action_assessment(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments/{assessment_id}/complete",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_evidence(
+    headers: dict, project_id: str, *, title: str, issuing_organisation: str | None = None,
+    issued_date: str | None = None, expiry_date: str | None = None, notes: str = "",
+    pcr_ids: list[str] | None = None, assessment_ids: list[str] | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/evidence",
+        json={
+            "title": title, "issuing_organisation": issuing_organisation, "issued_date": issued_date,
+            "expiry_date": expiry_date, "notes": notes,
+            "project_compliance_requirement_ids": pcr_ids or [], "required_action_assessment_ids": assessment_ids or [],
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_review(
+    headers: dict, project_id: str, project_compliance_id: str, *, frequency_label: str, next_due_date: str,
+    recurrence_days: int | None = None, owner_id: str | None = None, notes: str = "",
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/reviews",
+        json={"frequency_label": frequency_label, "next_due_date": next_due_date, "recurrence_days": recurrence_days,
+              "owner_id": owner_id, "notes": notes},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- Demo content --------------------------------------------------------
 
 DRONE_REQUIREMENTS = [
@@ -974,6 +1168,100 @@ def main() -> None:
         component_id=cloud_components["API"]["id"], category_id=cloud_categories["API"]["SEC"]["id"],
     )
     submit_change_request(h_pm, cloud["id"], audit_cr["id"])
+
+    print("Seeding Compliance Module data on Falcon-3 Inspection Drone...")
+    # A standard built around the same Part 107/flight-logging regulatory
+    # themes DRONE_REQUIREMENTS already narrates (remote_id_req, flight_log_req
+    # above) — a compliance standard is a distinct, organisation-level
+    # resource (§31: "A Compliance Standard is not a Project"), not another
+    # requirement, but reusing the same narrative keeps the demo coherent.
+    review_action_type = create_compliance_action_type(h_pm, org["id"], "Document Review")
+    test_action_type = create_compliance_action_type(h_pm, org["id"], "Test")
+    airworthiness_standard = create_compliance_standard(
+        h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
+        description="Solstice's internal airworthiness and regulatory-compliance standard for commercial "
+        "drone platforms, incorporating FAA Part 107 remote-ID obligations.",
+        issuing_organisation="Solstice Compliance Board", owner_id=demo_admin["user_id"],
+    )
+    airworthiness_version = create_compliance_version(
+        h_pm, org["id"], airworthiness_standard["id"], version_label="1.0", change_note="Initial release."
+    )
+    remote_id_section = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Remote Identification", reference="1",
+        description="Requirements ensuring continued compliance with FAA Part 107 remote-ID obligations.",
+    )
+    remote_id_compliance_req = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Broadcast Part 107 remote identification per FAA rule text", reference="1.1",
+        reasoning="Non-negotiable for the fleet to remain airworthy past the compliance deadline.",
+        parent_requirement_id=remote_id_section["id"],
+    )
+    remote_id_action = create_compliance_required_action(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        remote_id_compliance_req["id"], review_action_type["id"],
+        name="Review broadcast module against FAA rule text",
+        description="Line-by-line review of the broadcast module against the published rule text.",
+    )
+    logging_compliance_req = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Flight Data Logging", reference="2",
+        reasoning="Investigators expect a retrievable flight log independent of the telemetry uplink.",
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        logging_compliance_req["id"], test_action_type["id"],
+        name="Verify flight log retrieval from non-volatile storage on the updated firmware",
+    )
+    publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
+
+    drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
+    grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
+
+    compliance_pcrs = list_compliance_requirements(h_pm, drone["id"], drone_compliance["id"])
+    remote_id_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == remote_id_compliance_req["id"])
+    logging_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == logging_compliance_req["id"])
+
+    print("  Assessing and approving the remote-ID compliance requirement...")
+    update_compliance_assessment(
+        h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"], compliance_status="compliant",
+        notes="Verified against current rule text in firmware rev 2.3.1 (see the linked action review).",
+    )
+    submit_compliance_for_approval(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"])
+    approve_compliance_requirement(
+        h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"],
+        note="Verified against FAA rule text; approved for continued operation.",
+    )
+    remote_id_assessments = list_required_action_assessments(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"])
+    remote_id_assessment = next(a for a in remote_id_assessments if a["required_action_id"] == remote_id_action["id"])
+    complete_required_action_assessment(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"], remote_id_assessment["id"])
+
+    print("  Flagging the flight-data-logging requirement Non-Compliant (outstanding action, demonstrates the gap)...")
+    update_compliance_assessment(
+        h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], compliance_status="non_compliant",
+        justification="New logging firmware not yet verified to retain logs across a hard power cycle.",
+    )
+    logging_assessments = list_required_action_assessments(h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"])
+    logging_assessment = logging_assessments[0]
+    update_required_action_assessment(
+        h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], logging_assessment["id"],
+        assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=14)).isoformat(),
+        notes="Blocked on the new logging firmware build.",
+    )
+
+    print("  Attaching compliance evidence and scheduling the annual review...")
+    create_compliance_evidence(
+        h_pm, drone["id"], title="Firmware 2.3.1 Remote-ID Review Report",
+        issuing_organisation="Solstice Compliance Team", issued_date=date.today().isoformat(),
+        expiry_date=(date.today() + timedelta(days=300)).isoformat(),
+        notes="Supports the remote-ID requirement's compliant assessment above.",
+        pcr_ids=[remote_id_pcr["id"]], assessment_ids=[remote_id_assessment["id"]],
+    )
+    create_compliance_review(
+        h_pm, drone["id"], drone_compliance["id"], frequency_label="Annual", recurrence_days=365,
+        next_due_date=(date.today() + timedelta(days=330)).isoformat(), owner_id=demo_admin["user_id"],
+        notes="Annual review of continued Part 107 remote-ID compliance.",
+    )
 
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")

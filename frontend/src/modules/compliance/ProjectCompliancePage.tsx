@@ -34,6 +34,14 @@
  * established, since no "my effective roles including module roles" endpoint
  * exists to check against without adding one (flagged there, still true
  * here).
+ *
+ * The Standards tab's "Download PDF report"/"Download CSV report" buttons
+ * (Phase 15, §29) hit `GET .../modules/compliance/reports/{pdf,csv}`
+ * directly via `api.getForBlob` + `downloadBlob` — the exact same
+ * fetch-a-blob-and-save-it idiom `pages/ReportsPage.tsx`'s own PDF/CSV
+ * buttons already use for core requirement reports (that page's `generate`
+ * function), reused rather than reinvented for this module's own report
+ * generator (`app.modules.compliance.reports`).
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -45,6 +53,7 @@ import { Modal } from "../../components/Modal";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import { EvidencePanel } from "./EvidencePanel";
 import { OutstandingPanel } from "./OutstandingPanel";
@@ -73,6 +82,21 @@ export function ProjectCompliancePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ProjectCompliance | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [downloading, setDownloading] = useState<"pdf" | "csv" | null>(null);
+
+  async function downloadReport(kind: "pdf" | "csv") {
+    if (!projectId || !project) return;
+    setDownloading(kind);
+    try {
+      const blob = await api.getForBlob(`/api/v1/projects/${projectId}/modules/compliance/reports/${kind}`);
+      const safeName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
+      downloadBlob(blob, `${safeName}-compliance-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the compliance report."), "error");
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   async function reload() {
     if (!projectId) return;
@@ -167,9 +191,17 @@ export function ProjectCompliancePage() {
       />
       {tab === "standards" && (
         <div className="stack" {...tabPanelProps("project-compliance", "standards")}>
-          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setAssigning(true)}>
-            Assign standard
-          </button>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <button className="btn btn-primary" onClick={() => setAssigning(true)}>
+              Assign standard
+            </button>
+            <button className="btn" onClick={() => downloadReport("pdf")} disabled={downloading !== null}>
+              {downloading === "pdf" ? "…" : "Download PDF report"}
+            </button>
+            <button className="btn" onClick={() => downloadReport("csv")} disabled={downloading !== null}>
+              {downloading === "csv" ? "…" : "Download CSV report"}
+            </button>
+          </div>
           <DirectoryTable
             ariaLabel="Compliance standards assigned to this project"
             columns={columns}

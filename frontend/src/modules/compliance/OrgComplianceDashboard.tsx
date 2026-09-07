@@ -16,23 +16,31 @@
  * the non-compliant/pending-approval/outstanding-action rows per standard,
  * the same client-side-aggregation-over-a-flat-listing precedent
  * `OrgComplianceStandardsPanel`/Phase 12's `buildRequirementTree` both use.
+ *
+ * The "Download PDF report"/"Download CSV report" buttons (Phase 15, §29)
+ * hit `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}` directly via
+ * `api.getForBlob` + `downloadBlob` — see `ProjectCompliancePage.tsx`'s own
+ * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
+ * established fetch-a-blob-and-save-it idiom rather than a new one.
  */
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL } from "../../api/types";
+import { api } from "../../api/client";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
-import type {
-  ComplianceRecentActivity,
-  OrgExpiringEvidence,
-  OrgNonCompliantRequirement,
-  OrgPendingApproval,
-  OrgReviewDue,
-  OutstandingRequiredAction,
-  ProjectComplianceStatus,
+import {
+  COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
+  type ComplianceRecentActivity,
+  type OrgExpiringEvidence,
+  type OrgNonCompliantRequirement,
+  type OrgPendingApproval,
+  type OrgReviewDue,
+  type OutstandingRequiredAction,
+  type ProjectComplianceStatus,
 } from "./types";
 
 interface DashboardData {
@@ -78,6 +86,19 @@ function StatCard({ label, value, children }: { label: string; value: number; ch
 export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [downloading, setDownloading] = useState<"pdf" | "csv" | null>(null);
+
+  async function downloadReport(kind: "pdf" | "csv") {
+    setDownloading(kind);
+    try {
+      const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports/${kind}`);
+      downloadBlob(blob, `organisation-compliance-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the organisation compliance report."), "error");
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -125,6 +146,14 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
 
   return (
     <div className="stack">
+      <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+        <button className="btn" onClick={() => downloadReport("pdf")} disabled={downloading !== null}>
+          {downloading === "pdf" ? "…" : "Download PDF report"}
+        </button>
+        <button className="btn" onClick={() => downloadReport("csv")} disabled={downloading !== null}>
+          {downloading === "csv" ? "…" : "Download CSV report"}
+        </button>
+      </div>
       <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
         <StatCard label="Active compliance standards" value={activeStandardIds.size} />
         <StatCard label="Projects subject to compliance" value={projectsSubjectToCompliance.length}>

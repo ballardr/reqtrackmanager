@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-07 (Phase 14 complete).
+**Last updated:** 2026-09-07 (Phase 15 complete — plan complete).
 
-**Overall progress:** 15 / 16 phases complete.
+**Overall progress:** 16 / 16 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -29,9 +29,9 @@ This document is the persistent, session-resumable implementation plan for the C
 | 12 | Frontend — Compliance Manager surfaces | [x] Complete |
 | 13 | Frontend — Project Compliance view | [x] Complete |
 | 14 | Frontend — Org Compliance view + Dashboard | [x] Complete |
-| 15 | Reporting, export, seed data, docs close-out | [ ] Not started |
+| 15 | Reporting, export, seed data, docs close-out | [x] Complete |
 
-**Next phase to pick up:** Phase 15.
+**Next phase to pick up:** None — plan complete. See this phase's own "Phase 15 notes" subsection below for the two real gaps found and fixed during the §32 acceptance-criteria walk (evidence revalidation history/linkage not previously round-tripping through project export/import; no report existed at all), and `docs/decisions.md`'s "Compliance module plan, Phase 15" entry for the full account.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -554,6 +554,13 @@ Implemented as specified, with the judgment calls below recorded so a future ses
 - Finalize `docs/mcp-server.md`'s Phase 4 section with the actual compliance tools shipped (`compliance_list_standards(organization_id)`, `compliance_get_standard_version(organization_id, standard_id, version_id)`, `compliance_list_requirements(organization_id, standard_id, version_id)`, `compliance_get_project_status(project_id)`, `compliance_list_non_compliant_requirements(project_id)`, `compliance_list_expiring_evidence(project_id)`, `compliance_list_pending_approvals(project_id)` — update this list if any phase's actual tool names/params ended up differing), matching that doc's existing tool-table format.
 - Final SOC 2 identify→verify→remediate pass (this phase touches RBAC, audit, attachments, multi-tenant data — all policy-consultation triggers per `CLAUDE.md`).
 - Walk every line of `Compliance_Module_Requirements.md` §32 (Acceptance Criteria) off against what was actually built; fix any gap found rather than deferring it (per this repo's standing "fix, don't defer, found issues" rule).
+
+**Phase 15 notes (deviations from the spec above — see `docs/decisions.md`'s matching entry for the full account):**
+- The report generator was built as a new module-local file, `app/modules/compliance/reports.py`, not an extension of core `services/reports.py`/`routers/reports.py` — confirmed as the established convention by checking Phase 8's evidence file-upload integration and Phase 4's MCP manifest builder, per this section's own instruction to do so rather than guess.
+- `backend/scripts/seed_e2e_dataset.py` was deliberately **not** updated — all three Compliance Playwright specs already author their own dynamically-named fixtures via the UI rather than depending on fixed seeded compliance data, confirmed by reading the specs directly before deciding, per this section's own conditional instruction.
+- `docs/mcp-server.md` needed no edit — its existing ten-tool table was checked against `module.py`'s live `mcp_tools` tuple and found already fully accurate (this section's own list above is itself slightly stale, e.g. it names only seven of the ten actual tools — `docs/mcp-server.md` itself, not this plan doc, is the up-to-date source).
+- Two real gaps were found during the §32 walk and fixed as part of this phase (not left as separately-tracked follow-ups): evidence revalidation history and requirement/required-action evidence linkage had no representation in the project export bundle at all before this phase (Compliance had no export integration yet, so there was nothing to have carried it before); and no compliance report existed at all, which is this phase's own core deliverable rather than a pre-existing defect.
+- A small, proportionate frontend addition ("Download PDF/CSV report" buttons on `ProjectCompliancePage.tsx`/`OrgComplianceDashboard.tsx`) was added alongside the two new backend endpoints, with matching Storybook stories and Playwright coverage — not explicitly called for above, but the standing UI-feature testing rule applies once a UI entry point exists, and a report endpoint with no UI entry point anywhere in the product would have been a real, avoidable gap.
 
 ---
 

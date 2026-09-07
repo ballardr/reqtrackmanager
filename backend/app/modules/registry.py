@@ -50,10 +50,10 @@ import importlib.util
 import logging
 import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter
 from sqlalchemy import select
@@ -64,6 +64,11 @@ from app.config import get_settings
 
 if TYPE_CHECKING:
     from alembic.config import Config
+    from app.models.file import FileAsset
+    from app.models.organization import Organization
+    from app.models.project import Project
+    from app.models.user import User
+    from app.services.bundle_common import BundleImportWarnings, UserResolver
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +364,105 @@ class ModuleScheduledJob:
     hour: int
     minute: int
     run: Callable[[Session], None]
+
+
+@dataclass(frozen=True)
+class ModuleOrgBundleHooks:
+    """Declares a module's contribution to `app.services.org_export`'s
+    organisation export/import bundle — the same "core code shouldn't need
+    much modification per module" goal `get_router`/`resolve_file_owner_
+    project_id`/`scheduled_jobs` already serve, applied to bundle export/
+    import (added when Compliance's own Phase 15 content was pulled out of
+    `org_export.py` directly importing `app.modules.compliance`, mirroring
+    the same module-self-containment principle `resolve_file_owner_
+    project_id` already established one concern earlier).
+
+    A module with content that belongs at the *organisation* level in a
+    bundle (e.g. Compliance's standards/versions/requirements, which are
+    org-level reusable resources per its own §31) declares this; a module
+    with no org-level bundle content of its own simply leaves `ModuleDefinition.
+    org_bundle_hooks` at its default `None`.
+
+    Attributes:
+        export: `(db, org) -> dict` — collects this module's own
+            organisation-scoped content as plain JSON-serialisable data,
+            keyed however the module likes (Compliance uses `compliance_*`
+            keys); merged into `org_export.build_org_bundle`'s own returned
+            `org_json` dict via `**`, alongside every other registered
+            module's contribution and the core sections `org_export.py`
+            itself still owns directly (settings, members, groups, report
+            templates).
+        import_: `(db, org, data, users, warnings, resolutions) -> None` —
+            writes this module's content from a parsed bundle's `data` dict
+            into `org`, resolving user references via the shared `users`
+            (`app.services.bundle_common.UserResolver`) and recording
+            anything skipped/unresolved via `warnings`. Called by both
+            `org_export.import_org_bundle` (fresh organisation,
+            `resolutions=None`: every entity is new) and `org_export.
+            merge_org_bundle` (existing organisation, `resolutions` a real
+            conflict-id -> resolution-value map) — a hook implementation
+            branches on whether `resolutions` is `None` the same way
+            `org_export.py`'s own core `_import_*` helpers already do for
+            report templates/projects.
+        compute_merge_conflicts: Optional `(db, target_org, data) -> list[dict]`
+            — this module's own name/reference-collision conflicts (the
+            same `{"id", "kind", "name", "existing_id"}` shape `org_export.
+            _compute_merge_conflicts`'s core entries use), extended onto
+            that function's own `conflicts` list. `None` for a module whose
+            content is always purely additive on merge (never a namable
+            collision), like Compliance's own vocabulary import.
+        merge_resolution_choices: `{kind: {allowed resolution values}}` for
+            every conflict `kind` this module's `compute_merge_conflicts`
+            can report — merged into `org_export.merge_org_bundle`'s own
+            `_resolution_choices_by_kind` dict, so a conflict this module
+            reports is validated the same way a core `"project"`/`"report_
+            template"` conflict already is. Empty for a module with no
+            `compute_merge_conflicts` of its own.
+        summarize_merge: Optional `(data, conflicts, resolutions) -> dict[str, int]`
+            — this module's own named counts (e.g. `{"compliance_standards_
+            imported": ..., "compliance_standards_skipped": ...}`) merged
+            into `merge_org_bundle`'s own returned/audit-logged summary
+            dict. `None` for a module with nothing worth summarising
+            separately from its raw import.
+    """
+
+    export: Callable[[Session, Organization], dict[str, Any]]
+    import_: Callable[
+        [Session, Organization, dict[str, Any], UserResolver, BundleImportWarnings, dict[str, str] | None], None
+    ]
+    compute_merge_conflicts: Callable[[Session, Organization, dict[str, Any]], list[dict[str, Any]]] | None = None
+    merge_resolution_choices: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    summarize_merge: Callable[[dict[str, Any], list[dict[str, Any]], dict[str, str]], dict[str, int]] | None = None
+
+
+@dataclass(frozen=True)
+class ModuleProjectBundleHooks:
+    """Declares a module's contribution to `app.services.project_export`'s
+    project export/import bundle — `ModuleOrgBundleHooks`'s project-scoped
+    counterpart (a project's own compliance *assessment* content is
+    project-scoped per Compliance's own Phase 15 notes, unlike the standard
+    *definitions* `ModuleOrgBundleHooks` carries).
+
+    Attributes:
+        export: `(db, project) -> (dict, {file_id: FileAsset})` — collects
+            this module's own project-scoped content plus any `FileAsset`
+            rows it references, in the same `(json, file_assets_by_id)`
+            shape `project_export.collect_project_data` itself returns;
+            merged into that function's own two return values via `**`/
+            `dict.update` respectively.
+        import_: `(db, project, data, file_bytes_by_ref, current_user, users,
+            warnings) -> None` — writes this module's content from a parsed
+            bundle's `data` dict into `project`, resolving attachment bytes
+            via `file_bytes_by_ref` and user references via `users`
+            (`app.services.bundle_common.UserResolver`), called from
+            `project_export.apply_project_data` after every core section
+            has already run.
+    """
+
+    export: Callable[[Session, Project], tuple[dict[str, Any], dict[uuid.UUID, FileAsset]]]
+    import_: Callable[
+        [Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None
+    ]
 
 
 #: `openapi_extra` key a route's own author sets to mark it as an
@@ -715,6 +819,15 @@ class ModuleDefinition:
             start_scheduler`, job-id-prefixed with this module's own `key`.
             Empty tuple for a module with no scheduled processing of its
             own (every module before Phase 10).
+        org_bundle_hooks: Optional `ModuleOrgBundleHooks` — this module's
+            contribution to `app.services.org_export`'s organisation bundle
+            export/import, read via `get_all_module_org_bundle_hooks`.
+            `None` for a module with no org-level bundle content of its own.
+        project_bundle_hooks: Optional `ModuleProjectBundleHooks` — this
+            module's contribution to `app.services.project_export`'s
+            project bundle export/import, read via `get_all_module_
+            project_bundle_hooks`. `None` for a module with no project-level
+            bundle content of its own.
     """
 
     key: str
@@ -733,6 +846,8 @@ class ModuleDefinition:
     get_project_router: Callable[[], APIRouter | None] | None = None
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
     scheduled_jobs: tuple[ModuleScheduledJob, ...] = field(default=())
+    org_bundle_hooks: ModuleOrgBundleHooks | None = None
+    project_bundle_hooks: ModuleProjectBundleHooks | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1453,6 +1568,41 @@ def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:
         for job in definition.scheduled_jobs:
             jobs.append((definition.key, job))
     return jobs
+
+
+def get_all_module_org_bundle_hooks() -> list[tuple[str, ModuleOrgBundleHooks]]:
+    """Every registered module's declared `org_bundle_hooks`, each paired
+    with its declaring module's own `key` — what `app.services.org_export`
+    iterates to fold module-contributed content into an organisation bundle
+    export/import generically, without importing any specific module
+    directly. A module with no `org_bundle_hooks` of its own (the default
+    `None`) simply contributes nothing.
+
+    Returns:
+        A list of `(module_key, hooks)` pairs, in registry iteration order.
+    """
+    hooks: list[tuple[str, ModuleOrgBundleHooks]] = []
+    for definition in get_module_registry().values():
+        if definition.org_bundle_hooks is not None:
+            hooks.append((definition.key, definition.org_bundle_hooks))
+    return hooks
+
+
+def get_all_module_project_bundle_hooks() -> list[tuple[str, ModuleProjectBundleHooks]]:
+    """Every registered module's declared `project_bundle_hooks`, each
+    paired with its declaring module's own `key` — `app.services.
+    project_export`'s equivalent of `get_all_module_org_bundle_hooks`
+    above. A module with no `project_bundle_hooks` of its own (the default
+    `None`) simply contributes nothing.
+
+    Returns:
+        A list of `(module_key, hooks)` pairs, in registry iteration order.
+    """
+    hooks: list[tuple[str, ModuleProjectBundleHooks]] = []
+    for definition in get_module_registry().values():
+        if definition.project_bundle_hooks is not None:
+            hooks.append((definition.key, definition.project_bundle_hooks))
+    return hooks
 
 
 def list_enabled_module_roles(

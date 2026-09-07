@@ -101,6 +101,12 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     const nonCompliantCard = page.locator("div.card", { hasText: "Non-compliant projects" });
     await expect(nonCompliantCard.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toBeVisible();
 
+    // --- Phase 15: download the organisation-wide compliance report.
+    const pdfDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download PDF report" }).click();
+    const pdfDownload = await pdfDownloadPromise;
+    expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
+
     // --- "Compliance by standard" table: the standard groups the project,
     //     and drilling down opens the project's own Compliance page.
     await page.getByRole("tab", { name: "Compliance by standard" }).click();

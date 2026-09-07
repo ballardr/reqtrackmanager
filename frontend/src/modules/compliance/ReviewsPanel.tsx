@@ -17,14 +17,20 @@
  */
 import { useEffect, useState } from "react";
 
-import { COMPLIANCE_REVIEW_OUTCOME_LABEL, COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL, COMPLIANCE_REVIEW_STATUS_LABEL, type ComplianceReviewOutcome, type OrgUser } from "../../api/types";
+import type { OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
-import type { ComplianceReview } from "./types";
-import { userDisplayName } from "./types";
+import {
+  COMPLIANCE_REVIEW_OUTCOME_LABEL,
+  COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
+  COMPLIANCE_REVIEW_STATUS_LABEL,
+  type ComplianceReview,
+  type ComplianceReviewOutcome,
+  userDisplayName,
+} from "./types";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, orgUsers,

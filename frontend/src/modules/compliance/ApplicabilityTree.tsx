@@ -28,13 +28,18 @@
  */
 import { useEffect, useState } from "react";
 
-import { COMPLIANCE_APPROVAL_STATE_LABEL, COMPLIANCE_STATUS_LABEL, type OrgUser } from "../../api/types";
+import type { OrgUser } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { ApplicabilityBadge } from "./ApplicabilityBadge";
 import * as complianceApi from "./api";
 import { RequirementAssessmentPanel } from "./RequirementAssessmentPanel";
-import type { ComplianceRequirementNode, ProjectComplianceRequirement } from "./types";
+import {
+  COMPLIANCE_APPROVAL_STATE_LABEL,
+  COMPLIANCE_STATUS_LABEL,
+  type ComplianceRequirementNode,
+  type ProjectComplianceRequirement,
+} from "./types";
 
 interface Props {
   orgId: string;

@@ -22,13 +22,15 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { ComplianceOverallState } from "../../api/types";
-import { COMPLIANCE_OVERALL_STATE_LABEL } from "../../api/types";
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
-import type { ProjectComplianceStatus } from "./types";
+import {
+  COMPLIANCE_OVERALL_STATE_LABEL,
+  type ComplianceOverallState,
+  type ProjectComplianceStatus,
+} from "./types";
 
 interface StandardGroup {
   standardId: string;

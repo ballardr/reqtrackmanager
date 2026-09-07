@@ -107,7 +107,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -136,6 +136,11 @@ from app.modules.compliance.models import (
     ComplianceStandardVersion,
     ProjectCompliance,
     ProjectComplianceRequirement,
+)
+from app.modules.compliance.reports import (
+    collect_project_compliance_report,
+    generate_project_compliance_csv,
+    generate_project_compliance_pdf,
 )
 from app.modules.compliance.schemas import (
     ComplianceApprovalDecisionRequest,
@@ -189,6 +194,7 @@ from app.schemas.audit import AuditEventOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
 from app.services.rbac import require_module_role, require_project_module_enabled
 
@@ -555,6 +561,47 @@ def list_outstanding_required_actions(
     `service.py::list_outstanding_required_actions_for_project`, shared
     verbatim with the org-wide version."""
     return list_outstanding_required_actions_for_project(db, project_id=project_id)
+
+
+# --- Reports (Phase 15, §29) -----------------------------------------------------
+
+
+@router.get("/reports/pdf")
+def get_project_compliance_report_pdf(
+    project_id: UUID, include_archived: bool = Query(False),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Generates a PDF compliance report for this project (§29) — every
+    requirement's assessment across its assigned standards, plus evidence/
+    review/cross-standard-mapping appendices. View-gated like every other
+    read endpoint on this router (§26: "Other Project Users: Read access
+    according to existing project permissions") — a report never surfaces
+    anything this same caller couldn't already read via the JSON endpoints
+    it's built from (see `app.modules.compliance.reports`'s own module
+    docstring)."""
+    project = db.get(Project, project_id)
+    data = collect_project_compliance_report(db, project, include_archived=include_archived)
+    pdf_bytes = generate_project_compliance_pdf(project.name, data)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-compliance-report.pdf"'},
+    )
+
+
+@router.get("/reports/csv")
+def get_project_compliance_report_csv(
+    project_id: UUID, include_archived: bool = Query(False),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Generates a flat CSV export of this project's compliance assessments
+    (§29) — one row per requirement per assigned standard."""
+    project = db.get(Project, project_id)
+    data = collect_project_compliance_report(db, project, include_archived=include_archived)
+    csv_bytes = generate_project_compliance_csv(data)
+    return Response(
+        content=csv_bytes, media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-compliance-report.csv"'},
+    )
 
 
 # --- Per-requirement assessment -------------------------------------------------

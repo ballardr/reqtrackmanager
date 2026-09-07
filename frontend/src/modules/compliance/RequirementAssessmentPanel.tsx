@@ -18,29 +18,27 @@
  */
 import { useEffect, useState } from "react";
 
-import {
-  COMPLIANCE_APPLICABILITY_LABEL,
-  COMPLIANCE_APPROVAL_STATE_LABEL,
-  COMPLIANCE_STATUS_LABEL,
-  type ComplianceApplicability,
-  type ComplianceStatus,
-  type OrgUser,
-} from "../../api/types";
+import type { OrgUser } from "../../api/types";
 import { Modal } from "../../components/Modal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { ApplicabilityBadge } from "./ApplicabilityBadge";
-import type {
-  ComplianceAuditEvent,
-  ComplianceEvidence,
-  ComplianceRequiredAction,
-  ComplianceRequiredActionAssessment,
-  ComplianceRequirementNode,
-  ProjectComplianceRequirement,
+import {
+  COMPLIANCE_APPLICABILITY_LABEL,
+  COMPLIANCE_APPROVAL_STATE_LABEL,
+  COMPLIANCE_STATUS_LABEL,
+  type ComplianceApplicability,
+  type ComplianceAuditEvent,
+  type ComplianceEvidence,
+  type ComplianceRequiredAction,
+  type ComplianceRequiredActionAssessment,
+  type ComplianceRequirementNode,
+  type ComplianceStatus,
+  type ProjectComplianceRequirement,
+  userDisplayName,
 } from "./types";
-import { userDisplayName } from "./types";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [

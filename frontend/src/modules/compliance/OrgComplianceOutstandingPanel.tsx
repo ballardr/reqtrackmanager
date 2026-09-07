@@ -18,16 +18,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL, COMPLIANCE_STATUS_LABEL } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
-import type {
-  OrgExpiringEvidence,
-  OrgNonCompliantRequirement,
-  OrgPendingApproval,
-  OrgReviewDue,
-  OutstandingRequiredAction,
+import {
+  COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL,
+  COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
+  COMPLIANCE_STATUS_LABEL,
+  type OrgExpiringEvidence,
+  type OrgNonCompliantRequirement,
+  type OrgPendingApproval,
+  type OrgReviewDue,
+  type OutstandingRequiredAction,
 } from "./types";
 
 function ProjectLink({ projectId, projectName }: { projectId: string; projectName: string }) {

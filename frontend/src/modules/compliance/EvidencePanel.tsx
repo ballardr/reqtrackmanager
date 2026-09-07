@@ -22,7 +22,6 @@ import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { FileAsset } from "../../api/types";
-import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL } from "../../api/types";
 import { api } from "../../api/client";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -34,7 +33,11 @@ import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
-import type { ComplianceEvidence, ComplianceEvidenceRevalidation } from "./types";
+import {
+  COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL,
+  type ComplianceEvidence,
+  type ComplianceEvidenceRevalidation,
+} from "./types";
 
 export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();

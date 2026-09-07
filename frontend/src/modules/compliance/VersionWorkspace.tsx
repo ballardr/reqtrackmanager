@@ -14,13 +14,17 @@
  */
 import { useState } from "react";
 
-import { COMPLIANCE_STANDARD_VERSION_STATUS_LABEL } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { RequirementTree } from "./RequirementTree";
 import { VersionDiffModal } from "./VersionDiffModal";
-import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import {
+  COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
+  type ComplianceActionType,
+  type ComplianceStandard,
+  type ComplianceStandardVersion,
+} from "./types";
 
 interface Props {
   orgId: string;

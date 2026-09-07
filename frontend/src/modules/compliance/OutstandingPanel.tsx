@@ -22,11 +22,17 @@
  */
 import { useEffect, useState } from "react";
 
-import { COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL, COMPLIANCE_STATUS_LABEL } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
-import type { ComplianceReview, NonCompliantRequirement, OutstandingRequiredAction, PendingApproval } from "./types";
+import {
+  COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
+  COMPLIANCE_STATUS_LABEL,
+  type ComplianceReview,
+  type NonCompliantRequirement,
+  type OutstandingRequiredAction,
+  type PendingApproval,
+} from "./types";
 
 export function OutstandingPanel({ projectId }: { projectId: string }) {
   const { showToast } = useToast();

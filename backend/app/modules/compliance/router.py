@@ -79,12 +79,13 @@ import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.notification import NotificationType
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceReviewStatus, ComplianceStandardVersionStatus
@@ -99,6 +100,7 @@ from app.modules.compliance.models import (
     ComplianceStandardVersion,
     ProjectCompliance,
 )
+from app.modules.compliance.reports import collect_org_compliance_report, generate_org_compliance_csv, generate_org_compliance_pdf
 from app.modules.compliance.schemas import (
     ComplianceActionTypeCreate,
     ComplianceActionTypeOut,
@@ -154,6 +156,7 @@ from app.schemas.project import MoveDirection
 from app.services import notifications
 from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
+from app.services.downloads import filename_safe
 from app.services.ordering import move_ordered
 from app.services.rbac import require_module_role, require_org_module_enabled
 
@@ -1636,6 +1639,46 @@ def list_org_recent_activity(
     project in this organisation (§23's "Recently changed compliance
     assessments")."""
     return list_recent_compliance_activity(db, organization_id=organization_id, limit=limit)
+
+
+# --- Reports (Phase 15, §29) -----------------------------------------------------
+
+
+@router.get("/reports/pdf")
+def get_org_compliance_report_pdf(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Generates an organisation-wide PDF compliance roll-up (§29's
+    "organisation-level reporting") — one row per project/assigned-standard-
+    version pair, plus cross-project non-compliant/pending-approval/
+    expiring-evidence appendices. Manage-gated like every other Phase 14
+    org-wide aggregation on this router (§26: "View compliance across
+    projects" is a Compliance Manager capability, not general org
+    membership) — see this router's own Phase 14 comment for the full
+    reasoning, which applies identically to a report as to the live
+    dashboard listings it's built from."""
+    org = db.get(Organization, organization_id)
+    data = collect_org_compliance_report(db, organization_id)
+    pdf_bytes = generate_org_compliance_pdf(org.name, data)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.pdf"'},
+    )
+
+
+@router.get("/reports/csv")
+def get_org_compliance_report_csv(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Generates a flat CSV export of the organisation-wide compliance
+    roll-up (§29) — one row per project/assigned-standard-version pair."""
+    org = db.get(Organization, organization_id)
+    data = collect_org_compliance_report(db, organization_id)
+    csv_bytes = generate_org_compliance_csv(data)
+    return Response(
+        content=csv_bytes, media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.csv"'},
+    )
 
 
 @router.post(

@@ -82,6 +82,17 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await assignDialog.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
+    // --- Phase 15: download the project's own compliance report, PDF and CSV.
+    const pdfDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download PDF report" }).click();
+    const pdfDownload = await pdfDownloadPromise;
+    expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
+
+    const csvDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download CSV report" }).click();
+    const csvDownload = await csvDownloadPromise;
+    expect(csvDownload.suggestedFilename()).toContain("compliance-report.csv");
+
     // --- Drill into the assignment; the one requirement should be listed.
     await page.getByText(new RegExp(reference)).click();
     await expect(page.getByText(requirementName)).toBeVisible();

@@ -22,20 +22,21 @@
  */
 import { useEffect, useState } from "react";
 
-import {
-  COMPLIANCE_APPROVAL_STATE_LABEL,
-  COMPLIANCE_OVERALL_STATE_LABEL,
-  COMPLIANCE_STATUS_LABEL,
-  type ComplianceStatus,
-  type OrgUser,
-} from "../../api/types";
+import type { OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { ApplicabilityTree } from "./ApplicabilityTree";
 import * as complianceApi from "./api";
 import { ReviewsPanel } from "./ReviewsPanel";
-import type { ProjectCompliance, ProjectComplianceStatus } from "./types";
+import {
+  COMPLIANCE_APPROVAL_STATE_LABEL,
+  COMPLIANCE_OVERALL_STATE_LABEL,
+  COMPLIANCE_STATUS_LABEL,
+  type ComplianceStatus,
+  type ProjectCompliance,
+  type ProjectComplianceStatus,
+} from "./types";
 
 type DetailTabKey = "requirements" | "reviews";
 
