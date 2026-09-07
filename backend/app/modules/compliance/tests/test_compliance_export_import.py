@@ -34,7 +34,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
     _publish_version,
     _setup_published_standard_with_tree,
 )
-from tests.conftest import auth_headers, create_project
+from tests.conftest import auth_headers, create_org_admin_in, create_project
 
 TODAY = date.today()
 
@@ -44,6 +44,28 @@ def _find_pcr(client, token, project_id, assignment_id, requirement_id):
         f"{_project_base(project_id)}/project-compliance/{assignment_id}/requirements", headers=auth_headers(token)
     ).json()
     return next(p for p in pcrs if p["requirement_id"] == requirement_id)
+
+
+def _merge_preview(client, token, target_org_id, bundle_bytes):
+    resp = client.post(
+        f"/api/v1/orgs/{target_org_id}/import/preview",
+        files={"file": ("bundle.zip", bundle_bytes, "application/zip")},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["conflicts"]
+
+
+def _merge(client, token, target_org_id, bundle_bytes, resolutions):
+    import json
+
+    resp = client.post(
+        f"/api/v1/orgs/{target_org_id}/import/merge",
+        files={"file": ("bundle.zip", bundle_bytes, "application/zip")},
+        data={"resolutions": json.dumps(resolutions)},
+        headers=auth_headers(token),
+    )
+    return resp
 
 
 def test_project_export_import_round_trips_compliance_assessment(client, admin_token, org_id):
@@ -330,3 +352,100 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     new_relationship_type = next(t for t in new_relationship_types if t["name"] == "Equivalent")
     assert new_relationship_type["implies_equivalence"] is True
     assert new_mapping["relationship_type_id"] == new_relationship_type["id"]
+
+
+# --- Merging into an *existing* organisation (`ModuleOrgBundleHooks.compute_merge_conflicts`) ---
+
+
+def test_org_merge_with_no_conflict_adds_the_compliance_standard(client, admin_token):
+    """`POST /orgs/{id}/import/merge` (as opposed to the always-fresh-org
+    `POST /orgs/import` the round-trip test above exercises) folds a
+    bundle's compliance content into an *existing* organisation via
+    `ModuleOrgBundleHooks`/`export.py::import_org_data` — this path had no
+    test coverage of its own before this one, unlike the core project/
+    report-template merge conflicts `test_org_import_merge.py` already
+    covers."""
+    source_org, source_token = create_org_admin_in(client, admin_token, "Compliance Merge Source")
+    standard = _create_standard(client, source_token, source_org["id"], reference="MERGE-STD-A", name="Merge Standard A")
+    _create_version(client, source_token, source_org["id"], standard["id"], version_label="1.0")
+    bundle_bytes = client.get(f"/api/v1/orgs/{source_org['id']}/export", headers=auth_headers(source_token)).content
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Compliance Merge Target Clean")
+    conflicts = _merge_preview(client, target_token, target_org["id"], bundle_bytes)
+    assert conflicts == []
+
+    merge_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={})
+    assert merge_resp.status_code == 200, merge_resp.text
+    body = merge_resp.json()
+    assert body["compliance_standards_imported"] == 1
+    assert body["compliance_standards_skipped"] == 0
+
+    target_standards = client.get(f"{_base(target_org['id'])}/standards", headers=auth_headers(target_token)).json()
+    assert any(s["reference"] == "MERGE-STD-A" for s in target_standards)
+
+
+def test_org_merge_compliance_standard_reference_conflict_can_be_skipped_or_imported_as_a_copy(client, admin_token):
+    """Mirrors `test_org_import_merge.py::test_merge_project_name_conflict_
+    can_be_skipped_or_imported_as_a_copy`'s exact shape for a compliance
+    standard `reference` collision (`export.py::compute_org_merge_
+    conflicts`) — the target's existing standard is left alone on `skip`,
+    and the bundle's own standard is added as a second, distinct row on
+    `import_as_copy` rather than overwriting it (`ORG_MERGE_RESOLUTION_
+    CHOICES = {"compliance_standard": {"skip", "import_as_copy"}}`)."""
+    source_org, source_token = create_org_admin_in(client, admin_token, "Compliance Merge Conflict Source")
+    _create_standard(client, source_token, source_org["id"], reference="MERGE-STD-B", name="Shared Reference Standard")
+    bundle_bytes = client.get(f"/api/v1/orgs/{source_org['id']}/export", headers=auth_headers(source_token)).content
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Compliance Merge Conflict Target")
+    existing = _create_standard(client, target_token, target_org["id"], reference="MERGE-STD-B", name="Pre-existing Standard")
+
+    conflicts = _merge_preview(client, target_token, target_org["id"], bundle_bytes)
+    standard_conflicts = [c for c in conflicts if c["kind"] == "compliance_standard"]
+    assert len(standard_conflicts) == 1
+    conflict = standard_conflicts[0]
+    assert conflict["name"] == "MERGE-STD-B"
+    assert conflict["existing_id"] == existing["id"]
+
+    # Skip: the target's existing standard is untouched, nothing new added.
+    skip_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "skip"})
+    assert skip_resp.status_code == 200, skip_resp.text
+    assert skip_resp.json()["compliance_standards_imported"] == 0
+    assert skip_resp.json()["compliance_standards_skipped"] == 1
+    standards_after_skip = client.get(f"{_base(target_org['id'])}/standards", headers=auth_headers(target_token)).json()
+    assert len([s for s in standards_after_skip if s["reference"] == "MERGE-STD-B"]) == 1
+    assert next(s for s in standards_after_skip if s["reference"] == "MERGE-STD-B")["name"] == "Pre-existing Standard"
+
+    # Import as copy: the bundle's standard is added alongside the existing
+    # one, under a renamed reference (mirrors `export.py::_import_compliance_
+    # standards`'s "{reference} (imported)" convention — the project-name
+    # conflict's exact pattern, applied to a standard's `reference` instead
+    # of a project's `name`).
+    copy_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "import_as_copy"})
+    assert copy_resp.status_code == 200, copy_resp.text
+    assert copy_resp.json()["compliance_standards_imported"] == 1
+    standards_after_copy = client.get(f"{_base(target_org['id'])}/standards", headers=auth_headers(target_token)).json()
+    assert len([s for s in standards_after_copy if s["reference"] == "MERGE-STD-B"]) == 1
+    imported_copy = next(s for s in standards_after_copy if s["reference"] == "MERGE-STD-B (imported)")
+    assert imported_copy["name"] == "Shared Reference Standard"
+
+
+def test_org_merge_rejects_an_invalid_compliance_standard_resolution_value(client, admin_token):
+    """`org_export.merge_org_bundle` validates every conflict's resolution
+    against `_resolution_choices_by_kind` (core kinds merged with every
+    module's own `merge_resolution_choices`) *before* any hook's `import_`
+    runs — an unrecognised value for a `compliance_standard` conflict must
+    400, the same as an invalid value for a core `project`/`report_
+    template` conflict already does (`test_org_import_merge.py::test_merge_
+    rejects_an_invalid_resolution_value`)."""
+    source_org, source_token = create_org_admin_in(client, admin_token, "Compliance Merge Invalid Resolution Source")
+    _create_standard(client, source_token, source_org["id"], reference="MERGE-STD-C", name="Standard C")
+    bundle_bytes = client.get(f"/api/v1/orgs/{source_org['id']}/export", headers=auth_headers(source_token)).content
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Compliance Merge Invalid Resolution Target")
+    _create_standard(client, target_token, target_org["id"], reference="MERGE-STD-C", name="Existing Standard C")
+
+    conflicts = _merge_preview(client, target_token, target_org["id"], bundle_bytes)
+    conflict = next(c for c in conflicts if c["kind"] == "compliance_standard")
+
+    resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "overwrite"})
+    assert resp.status_code == 400, resp.text

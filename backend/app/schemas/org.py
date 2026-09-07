@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
 from app.schemas.report import ReportChapter
@@ -117,7 +117,24 @@ class OrgMergePreviewResult(BaseModel):
 class OrgMergeResult(BaseModel):
     """Outcome of `POST /orgs/{id}/import/merge` — human-readable warnings
     (same shape as `OrgImportResult`'s) plus counts of what happened to
-    each conflicting/non-conflicting project and report template."""
+    each conflicting/non-conflicting project and report template.
+
+    `extra="allow"` is required, not cosmetic: `services.org_export.
+    merge_org_bundle`'s own docstring documents its returned `summary` dict
+    as carrying "whatever each registered module's own `ModuleOrgBundleHooks.
+    summarize_merge` contributes" (e.g. Compliance's `compliance_standards_
+    imported`/`compliance_standards_skipped`), and the router endpoint
+    constructs this model via `OrgMergeResult(warnings=warnings, **summary)`
+    — without `extra="allow"`, Pydantic silently drops any key not declared
+    as a field below, so a module's own merge counts would validate fine
+    (no 500) but never actually reach the API response, contradicting that
+    docstring. Found via `test_compliance_export_import.py`'s own merge
+    tests, which is exactly why this module system's "core code shouldn't
+    need much modification per module" goal (`ModuleOrgBundleHooks`'s own
+    docstring) failed here — a module's summary silently needs a change to
+    this core schema too, unlike `summary`'s own dict, which needed none."""
+
+    model_config = ConfigDict(extra="allow")
 
     warnings: list[str] = []
     projects_imported: int

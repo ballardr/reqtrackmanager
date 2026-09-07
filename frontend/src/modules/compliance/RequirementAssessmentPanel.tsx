@@ -19,6 +19,7 @@
 import { useEffect, useState } from "react";
 
 import type { OrgUser } from "../../api/types";
+import { activityActionLabel } from "../../api/types";
 import { Modal } from "../../components/Modal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
@@ -442,7 +443,7 @@ export function RequirementAssessmentPanel({
                 {history.map((h) => (
                   <li key={h.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <span className="text-muted">{new Date(h.created_at).toLocaleString()}</span>{" "}
-                    — {userDisplayName(orgUsers, h.actor_id)} — {h.action}
+                    — {userDisplayName(orgUsers, h.actor_id)} — {activityActionLabel(h.action)}
                   </li>
                 ))}
               </ul>

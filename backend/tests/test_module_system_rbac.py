@@ -7,6 +7,15 @@ module entitlement policy setting it gates."""
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, login
 
 
+def _create_pat(client, token, org_ids):
+    resp = client.post(
+        "/api/v1/me/pats", json={"name": "test-token", "allowed_organization_ids": org_ids},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
 def _grant_module_administrator(client, admin_token, user_id):
     resp = client.post(
         f"/api/v1/system/users/{user_id}/server-roles", json={"role": "module_administrator"},
@@ -135,4 +144,29 @@ def test_org_admin_alone_cannot_access_entitlement_policy(client, admin_token, o
     a server-tier role check."""
     _, other_admin_token = create_org_admin_in(client, admin_token, "Org For Entitlement Policy Check")
     resp = client.get("/api/v1/system/module-entitlement-policy", headers=auth_headers(other_admin_token))
+    assert resp.status_code == 403
+
+
+def test_pat_rejected_for_module_administrator_endpoints_even_for_a_real_module_administrator(client, admin_token, org_id):
+    """`require_server_role`, like `require_server_admin`, must reject any
+    PAT-authenticated request outright: a PAT is an inherently org-scoped
+    credential, which is meaningless for the deployment-wide/cross-org
+    actions these endpoints gate. Without this, a MODULE_ADMINISTRATOR's own
+    org-scoped PAT could flip module entitlements for an org (or the global
+    default policy) well outside the PAT's allowed scope."""
+    user_id = create_org_user(client, admin_token, org_id, "pat_module_admin@example.com", role="member")
+    _grant_module_administrator(client, admin_token, user_id)
+    token = login(client, "pat_module_admin@example.com", "Password123!")
+    pat = _create_pat(client, token, [org_id])
+
+    resp = client.get("/api/v1/system/module-entitlement-policy", headers=auth_headers(pat["token"]))
+    assert resp.status_code == 403
+
+    resp = client.put(
+        "/api/v1/system/module-entitlement-policy", json={"default_module_entitlement_policy": "closed"},
+        headers=auth_headers(pat["token"]),
+    )
+    assert resp.status_code == 403
+
+    resp = client.get(f"/api/v1/system/orgs/{org_id}/module-entitlements", headers=auth_headers(pat["token"]))
     assert resp.status_code == 403

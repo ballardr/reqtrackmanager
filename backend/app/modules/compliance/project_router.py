@@ -196,7 +196,7 @@ from app.services import notifications
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
-from app.services.rbac import require_module_role, require_project_module_enabled
+from app.services.rbac import get_effective_org_roles, require_module_role, require_project_module_enabled
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/compliance", tags=["compliance"])
 
@@ -207,6 +207,24 @@ _require_view = require_project_module_enabled("compliance")
 
 
 # --- Cross-scope ownership-chain lookups (404, not 403, on a mismatch) ---------
+
+
+def _require_project_member_or_none(db: Session, project_id: UUID, user_id: UUID | None) -> None:
+    """400s unless `user_id` is `None` or an effective member of the
+    project's own organisation — guards every `assignee_id`/`owner_id`
+    field this router accepts so a scheduled reminder (`scheduler.py`'s
+    daily sweeps) can never be pointed at an arbitrary user with no
+    relationship to this project at all, mirroring the codebase-wide "the
+    user must be a member of this project's organisation first" convention
+    (`routers/projects.py::add_member_source`'s identical check). Deliberately
+    org-scoped rather than project-role-scoped: an assignee/owner (e.g. a
+    Compliance Manager overseeing several projects) is not required to hold
+    a formal `ProjectRole` on this specific project."""
+    if user_id is None:
+        return
+    project = db.get(Project, project_id)
+    if project is not None and not get_effective_org_roles(db, user_id, project.organization_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "assignee/owner must be a member of this project's organisation.")
 
 
 def _get_project_compliance_or_404(db: Session, project_id: UUID, project_compliance_id: UUID) -> ProjectCompliance:
@@ -993,6 +1011,7 @@ def update_required_action_assessment(
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
+    _require_project_member_or_none(db, project_id, payload.assignee_id)
     if assessment.due_date != payload.due_date:
         assessment.due_reminder_sent_at = None
         assessment.overdue_notified_at = None
@@ -1508,6 +1527,7 @@ def create_project_review(
 ):
     """Schedules a new review of a project's compliance assignment (§17)."""
     project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
+    _require_project_member_or_none(db, project_id, payload.owner_id)
     review = ComplianceReview(
         project_compliance_id=project_compliance.id, frequency_label=payload.frequency_label,
         recurrence_days=payload.recurrence_days, next_due_date=payload.next_due_date, owner_id=payload.owner_id,
@@ -1580,6 +1600,7 @@ def update_project_review(
     review = _get_project_review_or_404(db, project_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
+    _require_project_member_or_none(db, project_id, payload.owner_id)
     if review.next_due_date != payload.next_due_date:
         review.due_reminder_sent_at = None
         review.overdue_notified_at = None

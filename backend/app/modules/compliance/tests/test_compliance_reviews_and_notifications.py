@@ -33,7 +33,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
     _project_base,
     _setup_published_standard_with_tree,
 )
-from tests.conftest import auth_headers, create_org_user, create_project, login
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 TODAY = date.today()
 
@@ -273,6 +273,46 @@ def test_project_review_rbac_composition(client, admin_token, org_id):
     assert readable.status_code == 200
 
 
+def test_project_review_owner_must_be_a_member_of_the_projects_organisation(client, admin_token, org_id):
+    """A review's `owner_id` feeds directly into `scheduler.py`'s daily
+    due-date sweep (`send_review_due_notifications`), which notifies
+    whoever it names unconditionally — so a user with no relationship to
+    this project's organisation at all must be rejected on both create and
+    update, not silently accepted and later used as a scheduled-
+    notification target. Org-scoped, not project-role-scoped: a plain org
+    member with no formal `ProjectRole` on this project (e.g. a Compliance
+    Manager overseeing several projects) is still a valid owner."""
+    project, assignment, _pcr_id, _assessment_id = _setup_project_with_assessment(
+        client, admin_token, org_id, project_name="Review Owner Guard Project"
+    )
+    _other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Review Owner Guard Outsider Org")
+    outsider_id = client.get("/api/v1/auth/me", headers=auth_headers(other_org_admin_token)).json()["id"]
+
+    rejected = client.post(
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/reviews",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": outsider_id},
+        headers=auth_headers(admin_token),
+    )
+    assert rejected.status_code == 400, rejected.text
+
+    # A plain org member with no project role at all is still a valid owner.
+    member_id = create_org_user(client, admin_token, org_id, "review-owner-member@example.com", role="member")
+    created = client.post(
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/reviews",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": member_id},
+        headers=auth_headers(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    review_id = created.json()["id"]
+
+    rejected_update = client.patch(
+        f"{_project_base(project['id'])}/reviews/{review_id}",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": outsider_id},
+        headers=auth_headers(admin_token),
+    )
+    assert rejected_update.status_code == 400, rejected_update.text
+
+
 # --- Standard-level review CRUD (org router) --------------------------------------
 
 
@@ -306,6 +346,43 @@ def test_standard_review_rbac_and_lifecycle(client, admin_token, org_id):
     assert completed.status_code == 200
     history = client.get(f"{_base(org_id)}/standards/{standard['id']}/reviews", headers=auth_headers(admin_token)).json()
     assert len(history) == 2
+
+
+def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id):
+    """Sibling of `test_project_review_owner_must_be_a_member_of_the_
+    projects_organisation` — a standard-level review's `owner_id` feeds the
+    same unconditional `send_review_due_notifications` sweep; here the
+    review itself is org-scoped rather than project-scoped, so the same
+    org-membership guard applies directly rather than via a project's own
+    `organization_id`."""
+    tree = _setup_published_standard_with_tree(client, admin_token, org_id)
+    standard, _version, _parent, _child, _pa, _ca = tree
+
+    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Other Org For Review Owner Guard")
+    other_admin_id = client.get("/api/v1/auth/me", headers=auth_headers(other_admin_token)).json()["id"]
+
+    rejected = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/reviews",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": other_admin_id},
+        headers=auth_headers(admin_token),
+    )
+    assert rejected.status_code == 400, rejected.text
+
+    member_id = create_org_user(client, admin_token, org_id, "standard-review-owner@example.com", role="member")
+    created = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/reviews",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": member_id},
+        headers=auth_headers(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    review_id = created.json()["id"]
+
+    rejected_update = client.patch(
+        f"{_base(org_id)}/standards/{standard['id']}/reviews/{review_id}",
+        json={"frequency_label": "Annual", "next_due_date": TODAY.isoformat(), "owner_id": other_admin_id},
+        headers=auth_headers(admin_token),
+    )
+    assert rejected_update.status_code == 400, rejected_update.text
 
 
 # --- Unified reviews-due listing ---------------------------------------------------

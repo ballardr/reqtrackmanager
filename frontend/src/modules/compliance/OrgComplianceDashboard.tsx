@@ -28,6 +28,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../api/client";
+import { activityActionLabel } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
@@ -210,7 +211,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
                   <Link to={`/projects/${event.project_id}/modules/compliance`}>{event.project_name}</Link>
                   {" — "}
                   {event.requirement_reference ? `${event.requirement_reference} — ` : ""}
-                  {event.requirement_name} — {event.action.replace(/_/g, " ")}
+                  {event.requirement_name} — {activityActionLabel(event.action)}
                 </li>
               ))}
             </ul>

@@ -1713,14 +1713,19 @@ def require_server_role(*allowed: ServerRole):
     never checked against a `UserServerRole` row — see that enum member's
     docstring for why `is_server_admin` remains its sole source of truth.
 
-    Unlike `require_server_admin`, this has no PAT carve-out of its own:
-    PATs are already blocked from every server-admin-tier action by
-    `require_server_admin`, and nothing in this module system yet exposes a
-    PAT-reachable endpoint gated by this dependency — revisit if one does.
+    Like `require_server_admin`, PATs can never satisfy this: a PAT is an
+    inherently org-scoped credential (see `require_server_admin`'s
+    docstring), which is meaningless for the deployment-wide/cross-org
+    actions server-tier roles such as `MODULE_ADMINISTRATOR` gate — e.g.
+    `backend/app/routers/system.py`'s module-entitlement admin endpoints.
     """
 
-    def _dependency(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
+    def _dependency(
+        request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    ) -> User:
         """See the enclosing `require_server_role` factory's docstring."""
+        if getattr(request.state, "pat_allowed_org_ids", None) is not None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Personal access tokens cannot be used for server administration.")
         if current_user.is_server_admin:
             return current_user
         granted = set(

@@ -28,7 +28,7 @@ from app.modules.compliance.tests.test_compliance_standards_api import (
     _create_version,
     _grant_compliance_manager,
 )
-from tests.conftest import auth_headers, create_org_user, create_project, login
+from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 # --- Small API helpers -----------------------------------------------------------
 
@@ -458,6 +458,53 @@ def test_required_action_assessment_complete_and_uncomplete(client, admin_token,
     assert uncompleted.status_code == 200, uncompleted.text
     assert uncompleted.json()["is_completed"] is False
     assert uncompleted.json()["completed_at"] is None
+
+
+def test_required_action_assessment_assignee_must_be_a_member_of_the_projects_organisation(client, admin_token, org_id):
+    """A required action's `assignee_id` feeds directly into `scheduler.py`'s
+    daily overdue-reminder sweep (`send_required_action_due_notifications`),
+    which notifies whoever it names unconditionally — so a user with no
+    relationship to this project's organisation at all must be rejected
+    here rather than silently accepted and later used as a scheduled-
+    notification target. Org-scoped, not project-role-scoped (mirrors
+    `routers/projects.py`'s "must be a member of this project's
+    organisation first" convention): a plain org member with no formal
+    `ProjectRole` on this specific project is still a valid assignee."""
+    standard, version, _parent, child, _pa, child_action = _setup_published_standard_with_tree(client, admin_token, org_id)
+    project = create_project(client, admin_token, org_id, name="Assignee Guard Project")
+    assignment = _assign_standard_to_project(client, admin_token, org_id, project["id"], standard["id"], version["id"])
+    requirements = client.get(
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements",
+        headers=auth_headers(admin_token),
+    ).json()
+    child_pcr_id = next(r["id"] for r in requirements if r["requirement_id"] == child["id"])
+    assessments = client.get(
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements/{child_pcr_id}"
+        "/required-action-assessments",
+        headers=auth_headers(admin_token),
+    ).json()
+    assessment_id = assessments[0]["id"]
+    base = (
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements/{child_pcr_id}"
+        f"/required-action-assessments/{assessment_id}"
+    )
+
+    _other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "Assignee Guard Outsider Org")
+    outsider_id = client.get("/api/v1/auth/me", headers=auth_headers(other_org_admin_token)).json()["id"]
+    rejected = client.patch(
+        base, json={"assignee_id": outsider_id, "due_date": "2027-06-01", "notes": ""},
+        headers=auth_headers(admin_token),
+    )
+    assert rejected.status_code == 400, rejected.text
+
+    # A plain org member with no project role at all is still a valid assignee.
+    member_id = create_org_user(client, admin_token, org_id, "assignee-org-member@example.com", role="member")
+    accepted = client.patch(
+        base, json={"assignee_id": member_id, "due_date": "2027-06-01", "notes": ""},
+        headers=auth_headers(admin_token),
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["assignee_id"] == member_id
 
 
 # --- Cross-scope isolation --------------------------------------------------------

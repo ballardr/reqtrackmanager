@@ -158,7 +158,7 @@ from app.services.audit import log_event
 from app.services.definitions import delete_definition_with_reassignment
 from app.services.downloads import filename_safe
 from app.services.ordering import move_ordered
-from app.services.rbac import require_module_role, require_org_module_enabled
+from app.services.rbac import get_effective_org_roles, require_module_role, require_org_module_enabled
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}/modules/compliance", tags=["compliance"])
 
@@ -1727,6 +1727,17 @@ def unarchive_project_compliance(
 # --- Phase 10: Scheduled reviews (standard-level; §17, §18, §28) ----------------
 
 
+def _require_org_member_or_none(db: Session, organization_id: UUID, user_id: UUID | None) -> None:
+    """400s unless `user_id` is `None` or an effective member of
+    `organization_id` — org-scoped sibling of `project_router.py`'s
+    `_require_project_member_or_none`; see that function's own docstring
+    for why this guards every review `owner_id`."""
+    if user_id is None:
+        return
+    if not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "owner must be a member of this organisation.")
+
+
 def _get_standard_review_or_404(db: Session, organization_id: UUID, standard_id: UUID, review_id: UUID) -> ComplianceReview:
     """404s unless `review_id` is a *standard*-level review (`standard_id`
     set, not `project_compliance_id`) owned by `standard_id`/`organization_id`
@@ -1749,6 +1760,7 @@ def create_standard_review(
     """Schedules a new review of a compliance standard itself (§17) — e.g.
     "Annual audit of this standard.\""""
     standard = _get_standard_or_404(db, organization_id, standard_id)
+    _require_org_member_or_none(db, organization_id, payload.owner_id)
     review = ComplianceReview(
         standard_id=standard.id, frequency_label=payload.frequency_label, recurrence_days=payload.recurrence_days,
         next_due_date=payload.next_due_date, owner_id=payload.owner_id, notes=payload.notes,
@@ -1796,6 +1808,7 @@ def update_standard_review(
     review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed and cannot be edited.")
+    _require_org_member_or_none(db, organization_id, payload.owner_id)
     if review.next_due_date != payload.next_due_date:
         review.due_reminder_sent_at = None
         review.overdue_notified_at = None
