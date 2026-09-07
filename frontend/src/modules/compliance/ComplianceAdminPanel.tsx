@@ -16,26 +16,36 @@
  * `useToast()`), not a lookalike.
  *
  * Mounting mechanism (a deliberate deviation from Phase 3's own routing
- * plumbing, recorded in full in docs/compliance-module-plan.md's Phase 12
- * notes): Phase 3's `installedModules`/`buildModuleRoutes` registry is
- * project-scoped end to end (`useProjectEnabledModules` fetches
- * `GET /projects/{id}/enabled-modules`, and both the nav rail and route
- * splicing key off a `projectId` parsed from the current URL) — it has no
- * org-level equivalent, and Compliance's org-level catalogue naturally has
- * no owning project at all. Rather than build new generic org-level nav/
- * routing infrastructure as a side effect of this one module's UI, this
- * component is mounted directly by `OrgAdminPage.tsx`'s existing
- * `ResourceMenu` (a new "compliance" group, `/orgs/:orgId/admin/compliance`)
- * — the same page every org member (not just admins) already reaches via
- * `/orgs` regardless of role, and which already has an established pattern
- * for a section not every viewer can use (fetch, catch a 403/404, degrade
- * gracefully) that this panel's own children follow via
- * `require_org_module_enabled`'s 404-on-disabled response.
+ * plumbing — see below for the up-to-date mechanism, and
+ * docs/compliance-module-plan.md's Phase 12 notes for why Phase 12
+ * originally had to hardcode it): Phase 3's `installedModules`/
+ * `buildModuleRoutes` registry is project-scoped end to end
+ * (`useProjectEnabledModules` fetches `GET /projects/{id}/enabled-modules`,
+ * and both the nav rail and route splicing key off a `projectId` parsed
+ * from the current URL) — it has no org-level equivalent, and Compliance's
+ * org-level catalogue naturally has no owning project at all.
+ *
+ * **Updated by the module system follow-up (2026-09-07, see
+ * `docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
+ * registration" entry): this panel is no longer mounted by a hardcoded
+ * `OrgAdminPage.tsx` render block.** `./module.ts` declares it as one of
+ * this module's `orgAdminSections` (`modules/types.ts`), and
+ * `OrgAdminPage.tsx` renders whichever section matches the active
+ * `ResourceMenu` group generically — its own `activeGroup === "compliance"`
+ * check (and the matching static top-of-file import of this component) is
+ * gone. `OrgAdminPage.tsx` still owns the actual `<ResourceMenu>` — the
+ * same page every org member (not just admins) already reaches via `/orgs`
+ * regardless of role, with its established pattern for a section not every
+ * viewer can use (fetch, catch a 403/404, degrade gracefully) that this
+ * panel's own children still follow via `require_org_module_enabled`'s
+ * 404-on-disabled response — only *which module contributes which group*
+ * is no longer hand-wired there.
  *
  * This component still satisfies Tier A's actual definition — "installed at
  * build time, direct component imports, full consistency" — only the
- * *routing/nav-discovery* half of Phase 3's mechanism (which has no org-
- * scoped analogue) doesn't apply here.
+ * *project-scoped routing/nav-discovery* half of Phase 3's mechanism
+ * (which has no org-scoped analogue) doesn't apply here; `orgAdminSections`
+ * is that analogue now.
  */
 import { useEffect, useState } from "react";
 

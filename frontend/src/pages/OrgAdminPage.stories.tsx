@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -100,6 +101,47 @@ function mockOrgAdminApis(overrides: {
     }
     throw new Error(`unmocked getPage path: ${path}`);
   });
+}
+
+/**
+ * Module system follow-up (2026-09-07): a fixture module registered
+ * directly into the real `installedModules` (mirroring `App.stories.tsx`'s
+ * own `FIXTURE_MODULE_KEY` convention for the equivalent Tier A routing
+ * proof), contributing one `orgAdminSections` entry — proves the generic
+ * merge-and-render mechanism `OrgAdminPage.tsx` now uses works for a module
+ * other than Compliance, the same way `test_module_registry.py`'s
+ * `fake_module` fixture proves the backend registry without depending on a
+ * real module's own behaviour. Registered once, at module scope: nothing
+ * renders it unless a story's own `mockOrgAdminApis({ modules: [...] })`
+ * explicitly reports this key as enabled (see `moduleAdminSections`'s own
+ * enablement filter in `OrgAdminPage.tsx`), so its permanent presence here
+ * causes no cross-story interference — the same reasoning `App.stories.tsx`
+ * already documents for its own permanently-pushed fixture. `routes` is
+ * deliberately omitted (optional since this same follow-up), proving a
+ * module can contribute an org-admin section with no project-scoped UI of
+ * its own.
+ */
+const FIXTURE_ORG_MODULE_KEY = "fake_org_admin_fixture_module";
+const FIXTURE_ORG_ADMIN_SECTION_KEY = "fixture-admin-section";
+
+installedModules.push({
+  key: FIXTURE_ORG_MODULE_KEY,
+  orgAdminSections: [
+    {
+      key: FIXTURE_ORG_ADMIN_SECTION_KEY,
+      label: "Fixture admin section",
+      render: ({ orgId }) => <div>Fixture admin section content for org {orgId}</div>,
+    },
+  ],
+});
+
+function fixtureOrgModule(overrides: Partial<OrgModule> = {}): OrgModule {
+  return {
+    module_key: FIXTURE_ORG_MODULE_KEY, name: "Fixture Org Module",
+    description: "A fixture module used only by this story file's own org-admin-section assertions.",
+    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
+    frontend_manifest: null, ...overrides,
+  };
 }
 
 const meta: Meta<typeof OrgAdminPage> = {
@@ -1817,6 +1859,56 @@ export const ModulesSectionNotYetImplementedModuleIsDisabled: Story = {
 
     await expect(canvas.getByText("Not yet available in this version of the application.")).toBeInTheDocument();
     await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+  },
+};
+
+/** Module system follow-up (2026-09-07): a currently-*enabled* installed
+ * module's own `orgAdminSections` entry renders as a real `ResourceMenu`
+ * group, alongside the ten fixed core groups, and its `render({ orgId })`
+ * receives this org's real id — proving the generic mechanism
+ * `OrgAdminPage.tsx` now uses (no hardcoded `activeGroup === "..."` block
+ * or static import needed for this fixture module, unlike the pre-follow-up
+ * Compliance-specific approach this replaced). */
+export const ModuleContributedOrgAdminSectionRendersWhenEnabled: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [fixtureOrgModule()] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Fixture admin section" }));
+    await waitFor(() =>
+      expect(canvas.getByText(`Fixture admin section content for org ${ORG_ID}`)).toBeInTheDocument()
+    );
+  },
+};
+
+/** The other half of the same proof, and the actual bug this follow-up
+ * fixes: a module-contributed org-admin section must disappear from the
+ * nav the moment this org's own module-enablement toggle turns it off —
+ * before this follow-up, `"compliance"`/`"compliance-overview"` were
+ * unconditional, hardcoded `orgAdminGroups` entries that stayed visible
+ * even when Compliance was disabled for the org. Here the fixture module is
+ * reported entitled but *not* enabled (the Modules section's own
+ * "toggled off" state), and its section must not appear in the nav at
+ * all. */
+export const ModuleContributedOrgAdminSectionHiddenWhenModuleDisabled: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [fixtureOrgModule({ enabled: false })] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("link", { name: "Fixture admin section" })).not.toBeInTheDocument();
+  },
+};
+
+/** Same disappearance, for the case a module isn't reported at all (e.g. an
+ * older backend that predates this module's registration, or the fixture
+ * simply absent from `GET /orgs/{id}/modules`'s response) — not just the
+ * "present but disabled" case above. */
+export const ModuleContributedOrgAdminSectionHiddenWhenModuleNotReported: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("link", { name: "Fixture admin section" })).not.toBeInTheDocument();
   },
 };
 

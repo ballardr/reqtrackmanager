@@ -124,6 +124,18 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # Tier C ("federated" / Module Federation) frontend modules — module
+    # system follow-up, 2026-09-07. Uncomment to serve a self-built
+    # third-party module's remote bundle same-origin, at
+    # /external-modules/<your-module>/remoteEntry.js — no frontend rebuild
+    # required. Mirrors the backend's own equivalent EXTRA_MODULES_PATH
+    # bind-mount pattern (`docs/deployment.md`'s "Adding an external module
+    # by mounting a directory") applied to the frontend side; see that same
+    # doc's "Adding a Tier C (federated) frontend module" section for the
+    # full walkthrough, including the matching backend module.py your
+    # module also needs (router-less, `frontend_manifest.tier="federated"`).
+    # volumes:
+    #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 10s

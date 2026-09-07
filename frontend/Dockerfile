@@ -39,6 +39,18 @@ RUN chmod +x /docker/env-config-entrypoint.sh \
     && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx \
     && touch /var/run/nginx.pid \
     && chown nginx:nginx /var/run/nginx.pid
+
+# Tier C ("federated" / Module Federation) frontend modules — reserved,
+# normally-empty directory `nginx.conf`'s `/external-modules/` location
+# serves from. Created here (not left for an operator's bind-mount to
+# create implicitly) so the location always resolves even for a deployment
+# that never mounts anything into it — a missing directory would otherwise
+# make every request under this path fail at the filesystem level rather
+# than nginx's own clean, intended 404. An operator bind-mounting their own
+# built remote(s) here (see docs/deployment.md) mounts *over* this empty
+# directory, not instead of creating it.
+RUN mkdir -p /usr/share/nginx/external-modules \
+    && chown nginx:nginx /usr/share/nginx/external-modules
 USER nginx
 
 EXPOSE 3000

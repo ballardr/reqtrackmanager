@@ -76,7 +76,7 @@ flowchart TD
 | Entitlement | Server-tier: is this organisation *allowed* to use this module at all (the licensing/plan lever)? |
 | Enablement | Org-tier: has this organisation's own admin actually *turned it on*? |
 | Module-contributed role | An RBAC role a module defines for itself (e.g. "Compliance Manager"), without touching the core role enums. |
-| Tier A / Tier B | The two ways a module supplies frontend UI — compiled into the app (Tier A) or rendered in a sandboxed iframe (Tier B). |
+| Tier A / Tier B / Tier C | The three ways a module supplies frontend UI — compiled into the app (Tier A), rendered in a sandboxed iframe (Tier B), or dynamically loaded at runtime via Module Federation, with no rebuild and no sandbox (Tier C). |
 | Module MCP tools | AI-assistant tools (`mcp-server/`) a module contributes, proxied declaratively to its own REST endpoints. |
 
 ---
@@ -367,18 +367,33 @@ flowchart TD
 
 ### Tier A — installed (the primary path)
 
-A module ships default-exported route components and registers them in
-`frontend/src/modules/registry.ts`:
+A first-party module ships default-exported route components and registers
+them in its own `frontend/src/modules/<key>/module.ts` — **not** a hand-edit
+to a shared registry file. `frontend/src/modules/registry.ts` auto-discovers
+every such file at build time (`import.meta.glob('./*/module.ts', { eager:
+true })`, works identically under the real Vite build, Vitest, and
+Storybook's Vitest-based runner) and assembles `installedModules` from the
+results — dropping in a new `module.ts` is the entire registration step; see
+that file's own docstring for the mechanism (module system follow-up,
+2026-09-07; `docs/decisions.md`'s "Module system follow-up: frontend module
+auto-discovery" entry has the full account). This only covers first-party
+modules physically under `frontend/src/modules/*` — a third-party
+(npm-installed) Tier A module isn't discovered this way and would need its
+own registration mechanism, not built yet (no third-party Tier A module
+exists).
 
 ```ts
-export const installedModules: TierAModuleDefinition[] = [
-  {
-    key: "compliance",             // must match the backend ModuleDefinition.key
-    routes: [
-      { path: "/compliance", element: <ComplianceHomePage /> },
-    ],
-  },
-];
+// frontend/src/modules/compliance/module.ts
+export const moduleDefinition: TierAModuleDefinition = {
+  key: "compliance",             // must match the backend ModuleDefinition.key
+  routes: [
+    { path: "/compliance", element: <ComplianceHomePage /> },
+  ],
+  // Optional — see "Org-admin sections" below.
+  orgAdminSections: [
+    { key: "compliance", label: "Compliance", render: ({ orgId }) => <ComplianceAdminPanel orgId={orgId} /> },
+  ],
+};
 ```
 
 Because this is compiled directly into the same frontend bundle, the
@@ -408,6 +423,27 @@ project in scope and leaves the placeholder as literal text — don't rely on
 it being interpolated there. Compliance (Phase 13) is the first module to use
 this; see `docs/decisions.md`'s "Compliance module plan, Phase 13" entry if
 you need the full story of why this substitution exists.
+
+### Org-admin sections
+
+The routing/nav-discovery mechanism above is project-scoped end to end — a
+module with an org-level (not project-level) admin surface, like
+Compliance's own standards-management and cross-project-dashboard panels,
+declares it via `TierAModuleDefinition.orgAdminSections` instead (module
+system follow-up, 2026-09-07): a list of `{ key, label, render({ orgId }) }`
+entries. `OrgAdminPage.tsx` merges every *enabled* installed module's own
+`orgAdminSections` onto its ten fixed core `ResourceMenu` groups (Overview,
+Users, Groups, ...), builds the matching `/orgs/:orgId/admin/<key>` route
+segment automatically, and renders whichever section's `key` matches the
+active group by calling its `render({ orgId })` — no per-module edit to
+`OrgAdminPage.tsx` itself. A section's `key` must be unique across every
+installed module (and distinct from the ten core group keys); a colliding
+key is dropped, logged, rather than silently shadowing a core group. See
+`frontend/src/modules/compliance/module.ts` for a real example (two
+sections, `ComplianceAdminPanel` and `OrgCompliancePanel`) and
+`docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
+registration" entry for why this replaced Phase 12/14's original hardcoded
+approach.
 
 ### Tier B — remote (for a module that can't be compiled in)
 
@@ -460,6 +496,286 @@ A few details that make this safe, not just convenient:
   manifest entirely (logged, not trusted from the module's own declaration);
   the same allowlist drives the `Content-Security-Policy: frame-src` header
   as an independent, browser-enforced backstop.
+
+### Tier C — federated (a genuinely third-party module, no rebuild required)
+
+Module system follow-up, 2026-09-07 — requested directly by the repo owner,
+not part of a numbered `compliance-module-plan.md` phase. Tier A requires a
+rebuild of this frontend image (Vite bundles are static build artifacts —
+there is nothing to rescan once the image exists). Tier B can run without a
+build step, but only by giving up native component reuse for iframe
+isolation. **Tier C is for a self-hosted operator who wants to add a
+genuinely third-party frontend module — one never compiled into this
+image — the same way the backend has always supported for a Python module**
+(`Settings.allow_external_modules` + `Settings.extra_modules_path`,
+`ALLOW_EXTERNAL_MODULES=true`/`EXTRA_MODULES_PATH`, [§1](#1-the-registry-how-a-module-gets-discovered)
+above): the module author builds their own remote bundle, on their own
+schedule, with their own tooling, entirely outside this repository; the
+operator drops the built artifact somewhere this frontend can reach at
+runtime; the host dynamically `import()`s it, sharing its own React/
+component-library instances rather than an isolated iframe.
+
+```mermaid
+flowchart TD
+    AUTHOR["Module author's own build (Module Federation, outside this repo)"]
+    ARTIFACT["remoteEntry.js + module.py, no rebuild of this image"]
+    MOUNT["Operator mounts both: nginx /external-modules/, backend EXTRA_MODULES_PATH"]
+    DISCOVER{"ALLOW_EXTERNAL_MODULES=true?"}
+    MANIFEST["Backend registers module.py, serves federated frontend_manifest"]
+    LOAD["Host dynamically import()s remote_entry_url, merges into installedModules"]
+    NONE["Manifest never discovered/served — same as any other third-party module"]
+
+    AUTHOR --> ARTIFACT --> MOUNT --> DISCOVER
+    DISCOVER -->|yes| MANIFEST --> LOAD
+    DISCOVER -->|no| NONE
+```
+
+**A `federated` `ModuleFrontendManifest` is only ever legitimate for a
+module discovered through the existing third-party pipeline (entry points /
+`EXTRA_MODULES_PATH`) — never `INSTALLED_MODULES`.** A first-party module
+has no reason to use Tier C at all: it can use Tier A directly, with full
+build-time review. `get_frontend_manifest` enforces this mechanically (logs
+an `ERROR` and excludes the manifest) rather than trusting a module not to
+misdeclare it — the same "verify, don't trust a self-declared field"
+principle already applied to Tier B's `frame_url`. This is also why Tier C
+needed **no second, independently-configured frontend flag**: a `federated`
+manifest can only ever reach the frontend at all for a module that already
+came from the `ALLOW_EXTERNAL_MODULES`-gated discovery pipeline, so that
+existing gate — not a new one — is the whole gate. There is deliberately no
+`MODULE_FRAME_ALLOWED_ORIGINS`-equivalent allowlist for `remote_entry_url`
+either, for the same reason: unlike Tier B (which a first-party module can
+also legitimately use, and therefore does need its own separate origin
+check), a Tier C manifest reaching the frontend at all already implies the
+gated pipeline produced it.
+
+**The trust model — stated as plainly as the repo owner stated it when
+this was designed**: *"the trust falls to the server admin to review and
+vet any plugins they add to their deployment that isn't first party."*
+This is a materially **bigger** trust concession than either Tier A or Tier
+B — not a restatement of the same risk one level up:
+
+| | Tier A (installed) | Tier B (remote/iframe) | Tier C (federated) |
+|---|---|---|---|
+| Code review | This repo's own PR review, before the image is built | The module's own origin's own process — but sandboxed | **None at all** — code the operator never compiled or reviewed |
+| Isolation | N/A — genuinely part of the app | Sandboxed `<iframe>`, no DOM/cookie access to the host | **None** — same origin, same DOM, same cookies, same live component tree as the host |
+| Rebuild required | Yes | No | No |
+| Native component reuse | Full | Only via the Host UI Bridge's `postMessage` RPC | Full — shares the host's own React/component instances |
+
+A Tier C module's code runs with everything the current page's own script
+already has access to — the user's session (via whatever the page's own
+fetch/cookie context provides), the live DOM, every other component's
+state. There is no sandbox standing between "this manifest was served" and
+"this code runs with full page access." The mitigation is exactly the same
+shape as the backend's own third-party discovery gate
+(`ALLOW_EXTERNAL_MODULES`, off by default) — an explicit, logged, opt-in
+decision by the deployment operator — but the *consequence* of that
+decision is larger for Tier C than for a router-only third-party backend
+module, since a backend module's blast radius is still bounded by whatever
+the rest of the backend's own authorization checks allow it to do, while a
+Tier C frontend module's blast radius is "whatever the current user's
+browser session can do." See [soc2/policies/vendor-and-subprocessor-management-policy.md](soc2/policies/vendor-and-subprocessor-management-policy.md)
+point 8 for the SOC 2 framing in full, and do not understate this when
+advising an operator whether to enable it.
+
+**Runtime mechanism.** `ModuleFrontendManifest` gained a third `tier`,
+`"federated"`, plus two fields only meaningful for it:
+
+```python
+ModuleFrontendManifest(
+    tier="federated",
+    nav_label="My Third-Party Module",
+    nav_path="/projects/{project_id}/modules/my-module",
+    remote_entry_url="/external-modules/my-module/remoteEntry.js",  # same-origin, or any absolute URL
+    exposed_module="./Module",  # the Module Federation "exposed module" name
+)
+```
+
+`frontend/src/modules/federatedLoader.ts` is the frontend half: given a
+currently-enabled module's manifest, it dynamically `import()`s
+`remote_entry_url`, calls the loaded container's `init(sharedScope)` (handing
+it the host's own already-loaded `react`/`react-dom` instances) then
+`get(exposed_module)`, and merges the resulting `TierAModuleDefinition`
+straight into the **same** `installedModules` array Tier A's build-time
+`import.meta.glob` discovery populates (`registry.ts`) — so `getInstalledModule`,
+`buildModuleRoutes.tsx`, and `OrgAdminPage.tsx`'s `moduleAdminSections` all
+treat a Tier C module identically to one discovered at build time, with no
+second, parallel merge path to keep in sync. `useFederatedModules`
+(`frontend/src/hooks/useFederatedModules.ts`) is what `App.tsx` and
+`OrgAdminPage.tsx` each call, independently, with their own project-/
+org-scoped enabled-modules list — mirroring `useProjectEnabledModules`'s own
+"each concern fetches/derives its own data" convention — to trigger these
+loads and re-render once one settles.
+
+```mermaid
+sequenceDiagram
+    participant Host as Host frontend (federatedLoader.ts)
+    participant Nginx as nginx /external-modules/ (or an external host)
+    participant Remote as Module's own remoteEntry.js
+
+    Host->>Nginx: dynamic import(remote_entry_url)
+    Nginx-->>Host: remoteEntry.js (a plain ES module)
+    Host->>Remote: init(sharedScope) — hands it host's own react/react-dom
+    Host->>Remote: get(exposed_module)
+    Remote-->>Host: factory() -> { moduleDefinition }
+    Host->>Host: installedModules.push(moduleDefinition) if not already present
+    Host->>Host: buildModuleRoutes / moduleAdminSections now find it, same as any Tier A module
+```
+
+**A documented deviation from the plugin this mechanism was designed
+around, disclosed rather than silently substituted.** The design calls for
+a real Module Federation build plugin — `@originjs/vite-plugin-federation`
+(or an equivalent) — on both the host and a real module author's own build,
+configured for *dynamic* remotes (a Tier C remote's URL isn't known at
+host build time). **This repository's own sandboxed build/test environment
+had no network access to the npm registry** when Tier C was built
+(`npm view`/`npm install` both timed out against `registry.npmjs.org`), so
+that dependency could not be installed, built, or verified here — and
+shipping a `vite.config.ts` that imports a package not actually present in
+`node_modules` would break every frontend typecheck/lint/build/test run,
+not just this feature. `federatedLoader.ts` instead implements, by hand,
+the same minimal container contract a real Module Federation remote build
+produces (`init(sharedScope)` / `get(exposedModuleName) -> Promise<() =>
+Module>`), using only native dynamic `import()` — no new dependency. See
+that file's own docstring for the full account, including its explicitly
+named limitation (no real shared-dependency *version* negotiation — a Tier
+C remote must be built against a React version compatible with the host's
+own, with nothing automated standing behind that expectation) and the
+concrete, narrow upgrade path (swap this one file's own remote-loading
+calls for the real plugin's dynamic-remote runtime APIs — e.g.
+`__federation_method_setRemote`/`__federation_method_getRemote` for
+`@originjs/vite-plugin-federation` — once a deployment building this repo
+has normal registry access). `docs/decisions.md`'s "Module system
+follow-up: Tier C (Module Federation)" entries have the full account of
+what was verified for real (a genuinely separate, hand-authored fixture
+remote, dynamically `import()`-ed in a real browser via Storybook/Vitest —
+see `frontend/src/modules/federatedLoader.stories.tsx`) versus documented
+as a known limitation.
+
+#### Tier C: module-author guide
+
+A Tier C module author never touches this repository. Their own build
+produces two artifacts:
+
+1. **A `remoteEntry.js`** (or equivalent bundle name) exporting the
+   container contract above: `init(sharedScope)` and `get(exposedModuleName)`.
+   `get("./Module")` (or whatever name you choose — the backend's
+   `exposed_module` field must match exactly) must resolve to a **factory
+   function** (not the module object directly — call it once to get the
+   real module), whose return value has a `moduleDefinition` property
+   shaped exactly like a Tier A `TierAModuleDefinition`
+   (`frontend/src/modules/types.ts`): `{ key, routes?, orgAdminSections? }`.
+   `key` **must** match the `module_key` your backend `ModuleDefinition`
+   registers — a mismatch is rejected by the host loader (logged, and the
+   module simply doesn't appear), not silently accepted under a different
+   key.
+2. **Use the host's own shared dependencies, don't bundle your own.**
+   `sharedScope.react`/`sharedScope["react-dom"]` are the *host's own*
+   already-loaded instances, handed to your `init(sharedScope)` — building
+   your components against these (rather than your own bundled copy of
+   React) is what makes your module render through the same live component
+   tree as the host, avoiding the classic Module Federation footgun of two
+   different React instances fighting over one page (hooks silently
+   breaking, context providers not being seen by consumers in the "wrong"
+   copy). Once this repository has normal npm registry access and swaps in
+   a real Module Federation plugin (see the deviation note above), the
+   equivalent, more familiar way to express this on your own end is your
+   own `vite.config.ts` declaring `shared: ["react", "react-dom"]` in that
+   plugin's own `federation({...})` config — the host will accept either,
+   since the container contract itself is what matters, not how your own
+   build produced it.
+3. **What you may import directly, versus what you must receive via
+   `sharedScope`**: only `react`/`react-dom` need to come from the shared
+   scope (they're stateful singletons — the classic footgun above). This
+   repo's own shared component library (`Toast`, `Modal`, `SidePanel`,
+   `DirectoryTable`, form inputs, etc.) is **not** exposed to a Tier C
+   module the way it is to a Tier A module compiled into this bundle — a
+   Tier C module builds its own UI (using the host's shared React instance,
+   so at least hooks/context work correctly), styled to visually match
+   using this app's own CSS custom properties (the same design tokens Tier
+   B's `<ModuleFrame>` hands an iframe via its `init` message's `cssTokens`
+   — inspect `document.documentElement`'s computed style for the same
+   `--color-*` custom properties at runtime) rather than importing this
+   repo's own component source, which it has no access to.
+4. **Your backend counterpart** is a router-less `module.py` — see the
+   operator guide below for the exact shape; you'll typically supply both
+   the frontend bundle and this file to the operator together, as one
+   package.
+
+Nothing about your own build tooling, bundler choice, or repository
+structure is dictated beyond "produces a `remoteEntry.js` implementing this
+container contract" — you are not required to use Vite, or even Module
+Federation's own tooling by name, provided the contract is honoured.
+
+#### Tier C: operator guide
+
+None of this requires rebuilding either the backend or frontend Docker
+image.
+
+1. **Get the module's two artifacts from its author**: a frontend bundle
+   (`remoteEntry.js` + whatever else it references) and a backend
+   `module.py`. A router-less module needs no database migration of its
+   own either, but may have one (`migrations_import_path`) exactly like any
+   other externally-discovered module — see [§3](#3-moduledefinition-the-contract)
+   above.
+2. **Write (or receive from the author) the backend `module.py`**:
+
+   ```python
+   # my-modules/my_module/module.py
+   from app.modules.registry import ModuleDefinition, ModuleFrontendManifest
+
+   MODULE_DEFINITION = ModuleDefinition(
+       key="my_module",
+       name="My Third-Party Module",
+       description="What it does.",
+       version="1.0.0",
+       default_enabled=False,
+       implemented=True,
+       get_router=lambda: None,  # router-less — Tier C modules built purely
+                                 # for frontend UI need no backend endpoints
+                                 # of their own; add a real router the same
+                                 # way any other module does if yours needs one.
+       frontend_manifest=ModuleFrontendManifest(
+           tier="federated",
+           nav_label="My Third-Party Module",
+           nav_path="/projects/{project_id}/modules/my-module",
+           remote_entry_url="/external-modules/my-module/remoteEntry.js",
+           exposed_module="./Module",
+       ),
+   )
+   ```
+
+   This is the entire registration — it reuses 100% of the existing
+   third-party discovery pipeline (entitlement, org enablement, audit
+   logging, the Modules admin toggle) with **zero new backend discovery
+   code**: `get_router() -> None` is already an `Optional` field per this
+   system's own original Phase 1 design, so a frontend-only module is not a
+   special case the registry needed to learn about.
+3. **Place it under `EXTRA_MODULES_PATH`** (a directory the backend
+   container can see — see [Adding an external module by mounting a
+   directory](deployment.md#adding-an-external-module-by-mounting-a-directory)
+   above for the exact bind-mount pattern) **and set
+   `ALLOW_EXTERNAL_MODULES=true`** — the same two settings any other
+   third-party module needs; nothing Tier-C-specific about either.
+4. **Mount the frontend bundle into the frontend container's
+   `/external-modules/` directory** (nginx serves it same-origin — see
+   [deployment.md](deployment.md#adding-a-tier-c-federated-frontend-module)
+   for the exact bind-mount and the alternative of hosting it
+   externally instead and pointing `remote_entry_url` at an absolute URL).
+5. **Restart both containers** (or `docker compose up -d backend
+   frontend`) — no rebuild.
+6. **Enable it for an organisation** via the existing Modules admin UI
+   (`/orgs/:orgId/admin/modules`), exactly like any other module — an org
+   admin (or server admin, for entitlement) turns it on the same way they
+   would Compliance or any other module. Its nav entry/route (or org-admin
+   section) appears the next time an enabled project/org page loads it,
+   once the frontend's own dynamic import resolves.
+
+**Before enabling `ALLOW_EXTERNAL_MODULES` and mounting a Tier C module in
+particular** (more so than a router-only backend module — see the trust
+model above), review the module's own code, reputation, and maintenance
+posture the way [soc2/policies/vendor-and-subprocessor-management-policy.md](soc2/policies/vendor-and-subprocessor-management-policy.md)
+point 8 asks — its code will run with full access to whatever the current
+page's own session/DOM already has, with no sandbox.
 
 ---
 
@@ -597,15 +913,32 @@ reaches the registry:
 
 **Frontend (if you have a UI):**
 - Prefer **Tier A**: build your route components against the real shared
-  components, register them in `frontend/src/modules/registry.ts`, and set
-  `frontend_manifest=ModuleFrontendManifest(tier="installed", ...)` on your
-  backend definition with a matching `nav_path`.
-- Use **Tier B** only if your module genuinely can't be compiled into the
-  frontend bundle: host it yourself, set
+  components, add a first-party `frontend/src/modules/<key>/module.ts`
+  exporting `moduleDefinition` (auto-discovered — no `registry.ts` edit
+  needed), and set `frontend_manifest=ModuleFrontendManifest(tier=
+  "installed", ...)` on your backend definition with a matching `nav_path`.
+  If your module needs an org-level (not project-level) admin surface,
+  declare it via that same `moduleDefinition`'s `orgAdminSections` instead
+  of a project-scoped route — see "Org-admin sections" above.
+- Use **Tier B** if your module genuinely can't be compiled into the
+  frontend bundle but you're comfortable with an iframe boundary: host it
+  yourself, set
   `frontend_manifest=ModuleFrontendManifest(tier="remote", frame_url=...)`,
   get your origin added to `MODULE_FRAME_ALLOWED_ORIGINS`, and implement the
   iframe side of the `init` / `toast` / `confirm` / `confirm_result` message
   contract described above.
+- Use **Tier C** if your module is genuinely third-party (not installed
+  into this repo's own image at all) and an iframe boundary isn't
+  acceptable — e.g. it needs to render through the host's own live
+  component tree, not a sandboxed message contract. Requires `ALLOW_
+  EXTERNAL_MODULES=true` (your `ModuleDefinition` must be discovered via
+  entry points or `EXTRA_MODULES_PATH`, never `INSTALLED_MODULES`); set
+  `frontend_manifest=ModuleFrontendManifest(tier="federated",
+  remote_entry_url=..., exposed_module=...)`. See "Tier C" above for the
+  full module-author/operator split — **this is a materially bigger trust
+  concession than Tier A or Tier B, with no sandbox at all**, so weigh that
+  before choosing it over Tier B for a module that could tolerate an
+  iframe.
 
 **MCP tools (optional):** declare `McpToolDefinition` entries for whichever
 of your endpoints are safe to expose to an AI assistant. Mark any endpoint
@@ -670,6 +1003,19 @@ that way, not glossed over:
   installed," the same boundary as everything else here.
 - **Tier B tokens are narrowly scoped and can't escalate themselves** — see
   [§5](#5-frontend-integration-tier-a-and-tier-b) above.
+- **Tier C is a materially bigger trust concession than either Tier A or
+  Tier B, stated plainly rather than glossed over**: there is no build-time
+  review (the code was never in this repo, unlike Tier A) and no sandbox at
+  all (unlike Tier B's iframe) — a federated module shares the same origin,
+  DOM, cookies, and live component tree as the host the instant it loads.
+  The trust falls entirely to the deployment operator to review and vet any
+  such plugin before enabling it. A `"federated"` manifest is mechanically
+  restricted to modules discovered through the existing gated third-party
+  pipeline — never a first-party one — but that pipeline's own gate
+  (`ALLOW_EXTERNAL_MODULES`) is the *only* gate; there is deliberately no
+  second, Tier-C-specific allowlist the way Tier B has one for `frame_url`.
+  See "Tier C" [above](#tier-c--federated-a-genuinely-third-party-module-no-rebuild-required)
+  for the full account.
 
 For the full SOC 2 framing (which control-matrix gap this raises the stakes
 of, and the specific policy-document changes this system committed to), see

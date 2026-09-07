@@ -3228,7 +3228,11 @@ def list_project_enabled_modules(
     module to populate this placeholder for real). `GET /orgs/{id}/modules`
     (`OrgModuleOut`, `routers/orgs.py`) has no single project in scope and
     deliberately leaves the placeholder un-interpolated for its own
-    admin-bookkeeping display.
+    admin-bookkeeping display. `ModuleFrontendManifest.remote_entry_url`/
+    `.exposed_module` (Tier C, module system follow-up) are carried through
+    unchanged — neither is expected to ever contain the placeholder, since
+    `remote_entry_url` points at a static build artifact, not a per-project
+    route.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -3245,6 +3249,14 @@ def list_project_enabled_modules(
                 nav_label=manifest.nav_label,
                 nav_path=manifest.nav_path.replace("{project_id}", str(project_id)),
                 frame_url=manifest.frame_url.replace("{project_id}", str(project_id)) if manifest.frame_url else None,
+                # Tier C fields carried through unchanged: remote_entry_url
+                # points at a static build artifact (a JS file), never a
+                # per-project route, so the "{project_id}" placeholder
+                # interpolation above has nothing to substitute in either of
+                # these — unlike nav_path/frame_url, neither is expected to
+                # ever contain that placeholder.
+                remote_entry_url=manifest.remote_entry_url,
+                exposed_module=manifest.exposed_module,
             )
         result.append(
             ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)

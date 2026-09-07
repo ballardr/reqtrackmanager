@@ -128,7 +128,12 @@ class ModuleRoleDefinition:
 @dataclass(frozen=True)
 class ModuleFrontendManifest:
     """Declares a module's frontend integration (compliance-module-plan.md
-    Phase 3's two-tier frontend module system).
+    Phase 3's two-tier frontend module system, extended with a third tier —
+    "Tier C" — in a same-system follow-up, 2026-09-07: Module Federation for
+    a genuinely third-party, not-compiled-in, no-rebuild-required module.
+    See `docs/decisions.md`'s "Module system follow-up: Tier C (Module
+    Federation)" entries and `docs/modules.md`'s "Tier C" section for the
+    full account and worked examples.
 
     Attributes:
         tier: `"installed"` (Tier A — the module ships route components and
@@ -136,17 +141,46 @@ class ModuleFrontendManifest:
             registered in `frontend/src/modules/registry.ts`; this manifest
             carries only the nav-entry metadata, since the actual React
             components live in that frontend registry, not here — a Python
-            backend value has no way to reference a React component) or
+            backend value has no way to reference a React component),
             `"remote"` (Tier B — the module is rendered in a sandboxed
             `<ModuleFrame>` iframe pointed at `frame_url`, with the Host UI
-            Bridge relaying real shared-component chrome over `postMessage`).
+            Bridge relaying real shared-component chrome over `postMessage`),
+            or `"federated"` (Tier C — the module ships a self-contained
+            Module Federation remote, built entirely outside this repo's own
+            build, and is `import()`-ed at runtime by the host frontend,
+            sharing the host's own React/component-library instances rather
+            than an isolated iframe. **Only ever produced by a module
+            discovered through the third-party pipeline (`Settings.
+            allow_external_modules`'s entry-point/path sources) — never by
+            an `INSTALLED_MODULES` (first-party) entry.** `get_frontend_
+            manifest` mechanically enforces this (logs an error and excludes
+            the manifest, the same "verify, don't trust a self-declared
+            field" treatment Tier B's `frame_url` already gets) rather than
+            trusting a module not to misdeclare it, since a first-party
+            module has no legitimate reason to use Tier C at all — it can
+            use Tier A directly, with full build-time review. **This is a
+            materially wider trust concession than either Tier A or Tier
+            B**: unlike Tier A, the code was never in this repo and got no
+            build-time review at all; unlike Tier B, there is no iframe
+            sandbox whatsoever — a federated module shares the same origin,
+            DOM, cookies, and live component tree as the host. The trust
+            falls entirely to the deployment operator to review and vet any
+            such plugin before enabling it, exactly as `Settings.
+            allow_external_modules`'s own docstring and `docs/soc2/policies/
+            vendor-and-subprocessor-management-policy.md` already require
+            for any third-party module — Tier C raises the stakes of that
+            same existing gate rather than opening a new, separately-gated
+            one (see `remote_entry_url`/`exposed_module` below for why no
+            second, independent frontend flag was added).
         nav_label: Display label for this module's nav-rail entry.
         nav_path: The frontend route path this module's nav entry links to
             (e.g. `"/compliance"` or `"/projects/{project_id}/modules/
             compliance"`). For `"remote"` modules this is the path the host
             mounts the generic `<ModuleFrame>` route at; for `"installed"`
-            modules it must match the path the module's own Tier A route
-            registration in `frontend/src/modules/registry.ts` uses.
+            and `"federated"` modules it must match the path the module's
+            own Tier A/Tier C route registration uses (a `"federated"`
+            module registers its route the same way a Tier A module does —
+            see `remote_entry_url` below — once its remote entry has loaded).
         frame_url: Required (and only meaningful) when `tier == "remote"` —
             the full origin+path the sandboxed iframe loads. Must resolve to
             an origin present in `Settings.module_frame_allowed_origins`, or
@@ -154,19 +188,64 @@ class ModuleFrontendManifest:
             `None` instead of this manifest) — mechanically enforced at the
             point of use, not trusted from the module's own declaration,
             mirroring Phase 4's path-prefix enforcement for MCP tools.
-            `None` when `tier == "installed"`.
+            `None` for every other tier.
+        remote_entry_url: Required (and only meaningful) when `tier ==
+            "federated"` — the URL of the remote's Module Federation entry
+            script (e.g. `"/external-modules/my-module/remoteEntry.js"`, the
+            documented same-origin nginx-served convention — see `docs/
+            deployment.md`'s "Adding a Tier C (federated) frontend module" —
+            or an absolute URL at an externally-hosted location, mirroring
+            Tier B's `frame_url`-is-any-URL precedent). **Deliberately not
+            allowlist-checked the way Tier B's `frame_url` is**: there is no
+            `MODULE_FRAME_ALLOWED_ORIGINS`-equivalent setting for Tier C.
+            This is a considered omission, not an oversight — see `Settings.
+            allow_external_modules`'s own docstring for the reasoning
+            (`get_frontend_manifest` below can only ever see a `"federated"`
+            manifest at all for a module that already came from the gated
+            third-party discovery pipeline, so the discovery gate itself is
+            what stands in for a second, independent allowlist here; unlike
+            Tier B, which a first-party module can also legitimately use and
+            therefore does need a *separate* origin check). `None` for every
+            other tier.
+        exposed_module: Required (and only meaningful) when `tier ==
+            "federated"` — the Module Federation "exposed module" name the
+            remote publishes (e.g. `"./Module"`), `import()`-ed from the
+            container the host dynamically loads from `remote_entry_url`.
+            `None` for every other tier.
     """
 
-    tier: Literal["installed", "remote"]
+    tier: Literal["installed", "remote", "federated"]
     nav_label: str
     nav_path: str
     frame_url: str | None = None
+    remote_entry_url: str | None = None
+    exposed_module: str | None = None
 
     def __post_init__(self) -> None:
-        if self.tier == "remote" and not self.frame_url:
-            raise ValueError("ModuleFrontendManifest: tier 'remote' requires frame_url.")
-        if self.tier == "installed" and self.frame_url:
-            raise ValueError("ModuleFrontendManifest: tier 'installed' must not set frame_url.")
+        if self.tier == "remote":
+            if not self.frame_url:
+                raise ValueError("ModuleFrontendManifest: tier 'remote' requires frame_url.")
+            if self.remote_entry_url or self.exposed_module:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'remote' must not set remote_entry_url/exposed_module "
+                    "(those are Tier C 'federated'-only fields)."
+                )
+        elif self.tier == "installed":
+            if self.frame_url or self.remote_entry_url or self.exposed_module:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'installed' must not set frame_url/remote_entry_url/"
+                    "exposed_module."
+                )
+        elif self.tier == "federated":
+            if self.frame_url:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'federated' must not set frame_url (that is Tier B's "
+                    "field — use remote_entry_url/exposed_module instead)."
+                )
+            if not self.remote_entry_url or not self.exposed_module:
+                raise ValueError(
+                    "ModuleFrontendManifest: tier 'federated' requires both remote_entry_url and exposed_module."
+                )
 
 
 @dataclass(frozen=True)
@@ -1254,11 +1333,14 @@ def sync_module_role_definitions(db: Session) -> None:
 
 def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
     """Returns `module_key`'s `ModuleFrontendManifest`, or `None` if it has
-    none, the module itself isn't registered, or (Tier B only) its declared
+    none, the module itself isn't registered, (Tier B only) its declared
     `frame_url` doesn't resolve to an origin in `Settings.module_frame_
-    allowed_origins` (module system Phase 3).
+    allowed_origins`, or (Tier C only) it's declared by a first-party
+    `INSTALLED_MODULES` entry, which has no legitimate reason to use Tier C
+    at all (module system Phase 3, extended with Tier C in a same-system
+    follow-up — see `ModuleFrontendManifest`'s own docstring).
 
-    This last check is deliberately mechanical, at the point of use, rather
+    These checks are deliberately mechanical, at the point of use, rather
     than trusted from the module's own declaration — the same "verify,
     don't trust a self-declared field" principle Phase 4 already applies to
     MCP tools' `path_template`/`is_approval_action`. A misconfigured or
@@ -1268,20 +1350,45 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
     src` (built from the same allowlist, see `app.main`'s security-headers
     middleware) would refuse to load it anyway; this just gives a clear,
     attributable log line and an empty manifest instead of a
-    browser-blocked, confusing-to-debug broken iframe.
+    browser-blocked, confusing-to-debug broken iframe. A `"federated"`
+    manifest declared on a first-party module is a **config error to catch,
+    not a case to support** — logged at `ERROR` (louder than Tier B's
+    `WARNING`, since this is an authoring bug in reviewed in-repo code, not
+    an environment/deployment misconfiguration) and excluded the same way.
 
     Args:
         module_key: The module's registry key.
 
     Returns:
         The module's `ModuleFrontendManifest` if it declares one and (for
-        `tier == "remote"`) its origin is allowlisted; otherwise `None`.
+        `tier == "remote"`) its origin is allowlisted, or (for `tier ==
+        "federated"`) it was discovered via the third-party pipeline rather
+        than declared by a first-party module; otherwise `None`.
     """
     definition = get_module(module_key)
     if definition is None or definition.frontend_manifest is None:
         return None
     manifest = definition.frontend_manifest
     if manifest.tier == "installed":
+        return manifest
+
+    if manifest.tier == "federated":
+        installed_keys = {installed.key for installed in INSTALLED_MODULES}
+        if module_key in installed_keys:
+            logger.error(
+                "First-party module %r declares a Tier C 'federated' frontend_manifest; excluding it. "
+                "A first-party module has no reason to use Tier C — it can use Tier A directly, with full "
+                "build-time review. Fix this module's own module.py; this is a config error, not a "
+                "supported case.",
+                module_key,
+            )
+            return None
+        # Unlike Tier B's frame_url, there is no separate allowlist setting
+        # to check here — see ModuleFrontendManifest.remote_entry_url's own
+        # docstring for why: a "federated" manifest can only ever reach this
+        # point at all for a module that already came from the
+        # Settings.allow_external_modules-gated discovery pipeline (the
+        # check just above), so that existing gate is the whole gate.
         return manifest
 
     from urllib.parse import urlsplit

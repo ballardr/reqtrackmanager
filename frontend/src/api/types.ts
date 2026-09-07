@@ -1284,17 +1284,28 @@ export interface OrgAdvancedSettings {
  * enabled) computed server-side; a non-entitled module is still included
  * in the response rather than filtered out, so the Modules admin UI can
  * grey it out with an explanatory note instead of hiding it entirely. */
-/** A module's frontend integration manifest (module system Phase 3) — see
- * backend `app.modules.registry.ModuleFrontendManifest`'s docstring.
+/** A module's frontend integration manifest (module system Phase 3,
+ * extended with Tier C/`"federated"` in a same-system follow-up, see
+ * `docs/decisions.md`'s "Module system follow-up: Tier C (Module
+ * Federation)" entries) — see backend `app.modules.registry.
+ * ModuleFrontendManifest`'s docstring for the full account.
  * `tier === "installed"` (Tier A) means the module's route components ship
  * compiled into this bundle, registered in `src/modules/registry.ts`;
  * `tier === "remote"` (Tier B) means it's rendered via `<ModuleFrame>` at
- * `frame_url`, which is always non-null for that tier. */
+ * `frame_url`, which is always non-null for that tier; `tier === "federated"`
+ * (Tier C) means the module's own `TierAModuleDefinition` is loaded at
+ * runtime from `remote_entry_url`/`exposed_module` (see
+ * `src/modules/federatedLoader.ts`) rather than compiled into this bundle —
+ * `get_frontend_manifest` on the backend guarantees this tier only ever
+ * appears for a module discovered through the third-party pipeline, never a
+ * first-party one. */
 export interface ModuleFrontendManifest {
-  tier: "installed" | "remote";
+  tier: "installed" | "remote" | "federated";
   nav_label: string;
   nav_path: string;
   frame_url: string | null;
+  remote_entry_url: string | null;
+  exposed_module: string | null;
 }
 
 export interface OrgModule {

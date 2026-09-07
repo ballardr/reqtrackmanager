@@ -54,7 +54,7 @@ const enabledModules: ModuleNavEntry[] = [
     module_key: FIXTURE_MODULE_KEY, name: "Fixture Module",
     frontend_manifest: {
       tier: "installed", nav_label: "Fixture Module", nav_path: "/projects/:projectId/modules/fixture",
-      frame_url: null,
+      frame_url: null, remote_entry_url: null, exposed_module: null,
     },
   },
 ];

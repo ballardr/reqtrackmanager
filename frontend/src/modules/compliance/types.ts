@@ -260,6 +260,11 @@ export interface ComplianceRequiredActionAssessment {
 export interface ProjectComplianceStatus {
   project_compliance_id: string;
   project_id: string;
+  /** Added Phase 14 — see `schemas.py::ProjectComplianceStatusOut`'s own
+   * docstring for why this schema (uniquely among this module's
+   * cross-assignment schemas) is shared unmodified between project and
+   * org scope rather than getting a separate `Org*` variant. */
+  project_name: string;
   standard_id: string;
   standard_reference: string;
   standard_name: string;
@@ -372,4 +377,72 @@ export interface ComplianceReview {
   created_at: string;
   updated_at: string;
   linked_evidence_ids: string[];
+}
+
+// --- Phase 14: Org Compliance View + Dashboard (router.py's org-wide
+// aggregation endpoints) ---------------------------------------------------------
+//
+// `OutstandingRequiredAction` is new in Phase 14 and used unmodified at both
+// project and org scope (it carries `project_id`/`project_name` from the
+// start — see `schemas.py::OutstandingRequiredActionOut`'s own docstring).
+// `OrgNonCompliantRequirement`/`OrgPendingApproval`/`OrgExpiringEvidence`
+// extend their pre-existing project-scoped counterparts with the same two
+// fields, mirroring the backend's `Org*Out` subclasses rather than
+// retrofitting `NonCompliantRequirement`/`PendingApproval`/`ComplianceEvidence`
+// (which Phase 12/13 UI already consumes unchanged). `OrgReviewDue` wraps
+// `ComplianceReview` rather than extending it flat, since one standard-level
+// review can legitimately be "due" for more than one project at once.
+
+export interface OutstandingRequiredAction {
+  project_id: string;
+  project_name: string;
+  project_compliance_id: string;
+  standard_reference: string;
+  standard_name: string;
+  version_label: string;
+  project_compliance_requirement_id: string;
+  requirement_id: string;
+  requirement_reference: string | null;
+  requirement_name: string;
+  required_action_assessment_id: string;
+  required_action_id: string;
+  required_action_name: string;
+  is_mandatory: boolean;
+  assignee_id: string | null;
+  due_date: string | null;
+  notes: string;
+}
+
+export interface OrgNonCompliantRequirement extends NonCompliantRequirement {
+  project_id: string;
+  project_name: string;
+}
+
+export interface OrgPendingApproval extends PendingApproval {
+  project_id: string;
+  project_name: string;
+}
+
+export interface OrgExpiringEvidence extends ComplianceEvidence {
+  project_name: string;
+}
+
+export interface OrgReviewDue {
+  project_id: string;
+  project_name: string;
+  review: ComplianceReview;
+}
+
+export interface ComplianceRecentActivity {
+  id: string;
+  project_id: string;
+  project_name: string;
+  standard_reference: string;
+  standard_name: string;
+  version_label: string;
+  requirement_reference: string | null;
+  requirement_name: string;
+  action: string;
+  actor_id: string | null;
+  created_at: string;
 }

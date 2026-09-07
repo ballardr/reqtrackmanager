@@ -801,6 +801,13 @@ const en = {
     // disable toggle table any module gets, not a home for a specific
     // module's own content).
     groupCompliance: "Compliance",
+    // Compliance module Phase 14 (compliance-module-plan.md) — the org-
+    // wide compliance dashboard/reporting surface (§22/§23), a separate
+    // flat top-level group from "Compliance" above (standards management)
+    // rather than a fourth tab on that group's panel — the style guide's
+    // own "split into more flat groups, don't nest" addendum, since these
+    // are different jobs for a different (if overlapping) audience.
+    groupComplianceOverview: "Compliance overview",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,

@@ -106,6 +106,7 @@ from app.modules.compliance.schemas import (
     ComplianceMappingRelationshipTypeCreate,
     ComplianceMappingRelationshipTypeOut,
     ComplianceMappingRelationshipTypeUpdate,
+    ComplianceRecentActivityOut,
     ComplianceRequiredActionCreate,
     ComplianceRequiredActionOut,
     ComplianceRequiredActionUpdate,
@@ -123,6 +124,11 @@ from app.modules.compliance.schemas import (
     ComplianceStandardUpdate,
     ComplianceStandardVersionCreate,
     ComplianceStandardVersionOut,
+    OrgExpiringEvidenceOut,
+    OrgNonCompliantRequirementOut,
+    OrgPendingApprovalOut,
+    OrgReviewDueOut,
+    OutstandingRequiredActionOut,
     ProjectComplianceCreate,
     ProjectComplianceOut,
     ProjectComplianceStatusOut,
@@ -130,11 +136,18 @@ from app.modules.compliance.schemas import (
 )
 from app.modules.compliance.service import (
     build_diff_out,
+    build_evidence_out,
     build_review_out,
     build_status_out,
     complete_review,
     diff_standard_versions,
     get_effective_compliance_officers,
+    list_expiring_or_expired_evidence,
+    list_non_compliant_requirements_for_project,
+    list_outstanding_required_actions_for_project,
+    list_pending_approvals_for_project,
+    list_recent_compliance_activity,
+    list_reviews_due_for_project,
     materialize_assessment_rows,
 )
 from app.schemas.project import MoveDirection
@@ -1488,6 +1501,141 @@ def list_all_project_compliance(
         query = query.where(ProjectCompliance.is_archived.is_(False))
     assignments = db.scalars(query).all()
     return [build_status_out(db, pc) for pc in assignments]
+
+
+# --- Phase 14: Org Compliance View + Dashboard (§22, §23) ------------------------
+#
+# Org-wide aggregations of the same cross-assignment listings `project_
+# router.py` already offers per-project, mirroring `list_all_project_
+# compliance`'s own "join ProjectCompliance to Project on organization_id"
+# pattern just above. All five (plus `recent-activity`, which has no
+# per-project analogue) are `_require_manage`-gated like `list_all_project_
+# compliance` itself, not `_require_view` — §26 lists "View compliance
+# across projects" specifically under Compliance Manager, not under any
+# project role or general org membership, and §22's own looser-sounding
+# "Compliance Managers and authorised users" text does not override §26's
+# own dedicated Security and Permissions section, which is this module's
+# authoritative RBAC source (confirmed by reading both sections; see
+# docs/compliance-module-plan.md's Phase 14 notes for the full reasoning).
+# Each iterates every project in the organisation (not only ones with an
+# active assignment — the shared per-project service function already
+# returns an empty list for a project with none) and calls the exact same
+# per-project computation `project_router.py`'s own sibling endpoint uses,
+# so none of this module's cross-assignment business logic is duplicated
+# between scopes.
+
+
+def _org_projects(db: Session, organization_id: UUID) -> list[Project]:
+    """Every project in this organisation — the fixed iteration set every
+    Phase 14 org-wide aggregation below loops over."""
+    return list(db.scalars(select(Project).where(Project.organization_id == organization_id)).all())
+
+
+@router.get("/non-compliant-requirements", response_model=list[OrgNonCompliantRequirementOut])
+def list_org_non_compliant_requirements(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Every applicable, Non-Compliant requirement across every project in
+    this organisation (§22's "identifying projects with Non-Compliant
+    requirements" as its own drillable list, §23's related dashboard
+    count)."""
+    results: list[OrgNonCompliantRequirementOut] = []
+    for project in _org_projects(db, organization_id):
+        for row in list_non_compliant_requirements_for_project(db, project_id=project.id):
+            results.append(OrgNonCompliantRequirementOut(**row.model_dump(), project_id=project.id, project_name=project.name))
+    return results
+
+
+@router.get("/pending-approvals", response_model=list[OrgPendingApprovalOut])
+def list_org_pending_approvals(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Every requirement currently `PENDING_APPROVAL` across every project
+    in this organisation (§22's "compliance assessments awaiting approval",
+    §23's related dashboard count)."""
+    results: list[OrgPendingApprovalOut] = []
+    for project in _org_projects(db, organization_id):
+        for row in list_pending_approvals_for_project(db, project_id=project.id):
+            results.append(OrgPendingApprovalOut(**row.model_dump(), project_id=project.id, project_name=project.name))
+    return results
+
+
+@router.get("/outstanding-required-actions", response_model=list[OutstandingRequiredActionOut])
+def list_org_outstanding_required_actions(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Every incomplete required-action assessment whose owning requirement
+    is currently applicable, across every project in this organisation
+    (§22's "identifying projects with outstanding Required Actions", §23's
+    related dashboard count). `OutstandingRequiredActionOut` already
+    carries `project_id`/`project_name` (see that schema's own docstring),
+    so unlike the two endpoints above, no wrapping is needed here — this
+    endpoint's response rows are identical in shape to `project_router.py::
+    list_outstanding_required_actions`'s own, just gathered across every
+    project rather than one."""
+    results: list[OutstandingRequiredActionOut] = []
+    for project in _org_projects(db, organization_id):
+        results.extend(list_outstanding_required_actions_for_project(db, project_id=project.id))
+    return results
+
+
+@router.get("/expiring-evidence", response_model=list[OrgExpiringEvidenceOut])
+def list_org_expiring_evidence(
+    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Every non-archived piece of evidence approaching or past its expiry,
+    across every project in this organisation (§22's "identifying projects
+    with expired evidence", §23's "projects with expired evidence" and
+    "projects with evidence approaching expiry" — the frontend splits this
+    one list by `validity_state` for those two separate counts rather than
+    this endpoint offering two, mirroring how `compute_evidence_validity_
+    state` already treats `EXPIRED`/`EXPIRING_SOON` as two values of one
+    computed field, not two independently-queried concepts)."""
+    results: list[OrgExpiringEvidenceOut] = []
+    for project in _org_projects(db, organization_id):
+        for evidence in list_expiring_or_expired_evidence(db, project_id=project.id):
+            evidence_out = build_evidence_out(db, evidence)
+            results.append(OrgExpiringEvidenceOut(**evidence_out.model_dump(), project_name=project.name))
+    return results
+
+
+@router.get("/reviews-due", response_model=list[OrgReviewDueOut])
+def list_org_reviews_due(
+    organization_id: UUID, include_upcoming: bool = Query(False),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Scheduled compliance reviews across every project in this
+    organisation (§22's "identifying projects with overdue compliance
+    reviews", `include_upcoming=False` — the default, and this endpoint's
+    only mode until §23's dashboard needed more). §23's own "Upcoming
+    compliance deadlines/reviews" widget passes `include_upcoming=true` to
+    also get reviews not yet due, since a deadline that's merely upcoming
+    (not yet due or overdue) is exactly what that widget needs to show and
+    the plain `reviews-due` semantics deliberately exclude — see `service.
+    py::list_reviews_due_for_project`'s own docstring for the full
+    parameter rationale. Returns one `OrgReviewDueOut` per (project,
+    review) pair — a single standard-level review due for three assigned
+    projects appears three times, tagged with each project it's due for,
+    since it is a materially different fact (an outstanding item on three
+    separate projects' own compliance record) at this org-wide, per-project
+    scope, in contrast to `recent-activity`'s below, which is deliberately
+    per-audit-event rather than per-project."""
+    results: list[OrgReviewDueOut] = []
+    for project in _org_projects(db, organization_id):
+        for review in list_reviews_due_for_project(db, project_id=project.id, include_upcoming=include_upcoming):
+            results.append(OrgReviewDueOut(project_id=project.id, project_name=project.name, review=build_review_out(db, review)))
+    return results
+
+
+@router.get("/recent-activity", response_model=list[ComplianceRecentActivityOut])
+def list_org_recent_activity(
+    organization_id: UUID, limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """The most recent compliance-assessment audit events across every
+    project in this organisation (§23's "Recently changed compliance
+    assessments")."""
+    return list_recent_compliance_activity(db, organization_id=organization_id, limit=limit)
 
 
 @router.post(

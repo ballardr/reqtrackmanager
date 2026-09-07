@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
+import { useFederatedModules } from "./hooks/useFederatedModules";
 import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
 import { buildModuleRoutes } from "./modules/buildModuleRoutes";
 import { ActionDetailPage } from "./pages/ActionDetailPage";
@@ -38,6 +39,22 @@ function ProtectedRoutes() {
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
   const { modules: enabledModules, loaded: modulesLoaded } = useProjectEnabledModules(projectId);
+  // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
+  // project-scoped module whose manifest is `"federated"` needs its
+  // `TierAModuleDefinition` loaded at runtime before `buildModuleRoutes`
+  // below can find it in `installedModules` — see `useFederatedModules`'s
+  // own docstring. Called unconditionally, before this component's own
+  // `loading`/`!user` early returns.
+  const federatedModuleStates = useFederatedModules(enabledModules);
+  // Same navigation-race class of bug Phase 13's own notes describe for
+  // `modulesLoaded` below, one layer further out: `modulesLoaded` only
+  // means "the enabled-modules list itself was fetched," not "every
+  // federated module it named has finished its own async remote-entry
+  // load" — a fresh navigation straight to a Tier C module's own nav-rail
+  // link could otherwise still hit the wildcard `Navigate` below before
+  // that load resolves. Folded into the same gate rather than a second,
+  // parallel one.
+  const federatedModulesStillLoading = Object.values(federatedModuleStates).some((s) => s.status === "loading");
 
   if (loading) {
     return (
@@ -90,7 +107,7 @@ function ProtectedRoutes() {
         <Route
           path="*"
           element={
-            projectId && !modulesLoaded ? (
+            projectId && (!modulesLoaded || federatedModulesStillLoading) ? (
               <div className="container" style={{ marginTop: "3rem" }}>
                 <Spinner />
               </div>

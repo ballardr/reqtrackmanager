@@ -42,6 +42,7 @@ import type {
   ComplianceEvidence,
   ComplianceEvidenceRevalidation,
   ComplianceMappingRelationshipType,
+  ComplianceRecentActivity,
   ComplianceRequiredAction,
   ComplianceRequiredActionAssessment,
   ComplianceRequirement,
@@ -51,6 +52,11 @@ import type {
   ComplianceStandard,
   ComplianceStandardVersion,
   NonCompliantRequirement,
+  OrgExpiringEvidence,
+  OrgNonCompliantRequirement,
+  OrgPendingApproval,
+  OrgReviewDue,
+  OutstandingRequiredAction,
   PendingApproval,
   ProjectCompliance,
   ProjectComplianceRequirement,
@@ -279,6 +285,50 @@ export function getStandardVersionDiff(
   orgId: string, standardId: string, versionId: string, otherVersionId: string
 ): Promise<StandardVersionDiff> {
   return api.get(`${base(orgId)}/standards/${standardId}/versions/${versionId}/diff/${otherVersionId}`);
+}
+
+// --- Phase 14: Org Compliance View + Dashboard (§22, §23) -------------------------
+//
+// Org-wide aggregations across every project in the organisation, all
+// `_require_manage`-gated on the backend (§26 — see docs/compliance-module-
+// plan.md's Phase 14 notes for why this is manage-, not view-, gated despite
+// §22's own looser-sounding "Compliance Managers and authorised users"
+// text).
+
+export function listOrgProjectComplianceStatus(orgId: string, includeArchived = false): Promise<ProjectComplianceStatus[]> {
+  return api.get(`${base(orgId)}/project-compliance?include_archived=${includeArchived}`);
+}
+
+export function listOrgNonCompliantRequirements(orgId: string): Promise<OrgNonCompliantRequirement[]> {
+  return api.get(`${base(orgId)}/non-compliant-requirements`);
+}
+
+export function listOrgPendingApprovals(orgId: string): Promise<OrgPendingApproval[]> {
+  return api.get(`${base(orgId)}/pending-approvals`);
+}
+
+export function listOrgOutstandingRequiredActions(orgId: string): Promise<OutstandingRequiredAction[]> {
+  return api.get(`${base(orgId)}/outstanding-required-actions`);
+}
+
+export function listOrgExpiringEvidence(orgId: string): Promise<OrgExpiringEvidence[]> {
+  return api.get(`${base(orgId)}/expiring-evidence`);
+}
+
+export function listOrgReviewsDue(orgId: string, includeUpcoming = false): Promise<OrgReviewDue[]> {
+  return api.get(`${base(orgId)}/reviews-due?include_upcoming=${includeUpcoming}`);
+}
+
+export function listOrgRecentActivity(orgId: string, limit = 20): Promise<ComplianceRecentActivity[]> {
+  return api.get(`${base(orgId)}/recent-activity?limit=${limit}`);
+}
+
+// --- Phase 14: Project-level outstanding required actions (new alongside the
+// org-wide aggregation above; consistent with the existing non-compliant-
+// requirements/pending-approvals per-project listing family) ---------------------
+
+export function listOutstandingRequiredActions(projectId: string): Promise<OutstandingRequiredAction[]> {
+  return api.get(`${projectBase(projectId)}/outstanding-required-actions`);
 }
 
 // --- Client-side tree assembly ----------------------------------------------------

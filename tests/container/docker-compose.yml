@@ -163,6 +163,12 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # See the root docker-compose.yml's frontend service for the full
+    # explanation — Tier C (Module Federation) frontend module support,
+    # module system follow-up, 2026-09-07. Uncomment to test a Tier C
+    # module against this dev/test stack.
+    # volumes:
+    #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 10s

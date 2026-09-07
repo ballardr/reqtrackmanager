@@ -387,10 +387,24 @@ class ProjectComplianceStatusOut(BaseModel):
     documented calculation this schema exposes. Always includes the raw
     counts alongside the calculated percentage, per §20's explicit "the UI
     should always display the actual counts as well as any calculated
-    percentage so that the percentage cannot be misleading.\""""
+    percentage so that the percentage cannot be misleading.\"
+
+    `project_name` was added in Phase 14: this schema was already the one
+    exception to every other cross-assignment schema in this module in
+    being shared, unmodified, between project scope (`GET .../status`) and
+    org scope (`router.py::list_all_project_compliance`) since Phase 7 —
+    `project_id` has sat here, redundant at project scope, from the start
+    for exactly that reason. Phase 14's own org-wide "Standard | Projects |
+    Compliant | Non-Compliant | In Progress" table (§22) needs a project's
+    display name to group/label its rows, so it extends this schema's
+    existing dual-use design rather than introducing a third pattern next
+    to the `Org*Out` subclass approach used for the module's other,
+    project-scope-first schemas (see this file's own Phase 14 section,
+    below, for that approach and why it doesn't apply here)."""
 
     project_compliance_id: UUID
     project_id: UUID
+    project_name: str
     standard_id: UUID
     standard_reference: str
     standard_name: str
@@ -553,6 +567,42 @@ class PendingApprovalOut(BaseModel):
     compliance_status: ComplianceStatus
     assessed_at: datetime | None
     assessed_by: UUID | None
+
+
+class OutstandingRequiredActionOut(BaseModel):
+    """One row of `GET .../outstanding-required-actions` (Phase 14,
+    §22/§23's "outstanding Required Actions" — a flattened, cross-assignment
+    listing of every incomplete `ComplianceRequiredActionAssessment` whose
+    owning requirement is currently applicable, mirroring `NonCompliant
+    RequirementOut`/`PendingApprovalOut`'s exact shape/rationale for the
+    same kind of listing. This schema did not exist before Phase 14 — no
+    prior phase needed a *flattened* required-action listing (only the
+    per-requirement nested `.../required-action-assessments` endpoint,
+    Phase 7) — so unlike the two schemas above (which predate this phase
+    and already have passing Phase 12/13 consumers left untouched), this one
+    carries `project_id`/`project_name` from the start: it is used
+    unmodified by both `project_router.py`'s own new per-project endpoint
+    and `router.py`'s org-wide aggregation, rather than needing a separate
+    `Org*Out` subclass the way the two pre-existing schemas do (see
+    `router.py`'s Phase 14 section for that distinction)."""
+
+    project_id: UUID
+    project_name: str
+    project_compliance_id: UUID
+    standard_reference: str
+    standard_name: str
+    version_label: str
+    project_compliance_requirement_id: UUID
+    requirement_id: UUID
+    requirement_reference: str | None
+    requirement_name: str
+    required_action_assessment_id: UUID
+    required_action_id: UUID
+    required_action_name: str
+    is_mandatory: bool
+    assignee_id: UUID | None
+    due_date: date | None
+    notes: str
 
 
 # --- Phase 10: Scheduled reviews --------------------------------------------------
@@ -861,3 +911,74 @@ class ProjectComplianceMigrationResultOut(BaseModel):
     modified_count: int
     replaced_count: int
     requirement_impacts: list[ProjectComplianceMigrationRequirementImpact]
+
+
+# --- Phase 14: Org Compliance View + Dashboard (§22, §23) ------------------------
+#
+# Org-wide aggregations across every project in an organisation, mirroring
+# `router.py::list_all_project_compliance`'s existing "join ProjectCompliance
+# to Project on organization_id" pattern (§26 — Compliance Manager's "View
+# compliance across projects"). Each of `NonCompliantRequirementOut`/
+# `PendingApprovalOut`/`ComplianceEvidenceOut` already existed before this
+# phase with passing Phase 12/13 consumers at project scope; rather than
+# retrofit `project_id`/`project_name` onto those (a response-shape change
+# every existing caller would silently start receiving), each gets its own
+# `Org*Out` subclass here that adds exactly those two fields — the org
+# endpoints build these from the exact same per-project computation
+# (`service.py`'s newly-extracted `list_non_compliant_requirements_for_
+# project`/etc., shared with `project_router.py`'s own endpoints) with
+# `project_id`/`project_name` stamped on afterward, so the underlying
+# business logic is never duplicated between scopes. `ComplianceReviewOut`
+# gets a nested wrapper instead of a flat subclass (`OrgReviewDueOut`)
+# because a single review has genuine multiplicity across projects — a
+# standard-level review can be "due" simultaneously for every project
+# assigned to that standard, so it cannot honestly carry one `project_id`
+# field the way a `ProjectComplianceRequirement`-derived row can.
+
+
+class OrgNonCompliantRequirementOut(NonCompliantRequirementOut):
+    project_id: UUID
+    project_name: str
+
+
+class OrgPendingApprovalOut(PendingApprovalOut):
+    project_id: UUID
+    project_name: str
+
+
+class OrgExpiringEvidenceOut(ComplianceEvidenceOut):
+    project_name: str
+
+
+class OrgReviewDueOut(BaseModel):
+    """One review "due" for one project — see this section's own docstring
+    for why this wraps `ComplianceReviewOut` rather than subclassing it
+    flat: the same standard-level review can legitimately appear more than
+    once here, once per project it's currently due for."""
+
+    project_id: UUID
+    project_name: str
+    review: ComplianceReviewOut
+
+
+class ComplianceRecentActivityOut(BaseModel):
+    """One row of `GET .../recent-activity` (§23's "Recently changed
+    compliance assessments") — the most recent `project_compliance_
+    requirement` audit events across every project in the organisation
+    (assessed / applicability_changed / submitted_for_approval / approved /
+    rejected / approval_invalidated — every action `project_router.py`
+    logs against a `ProjectComplianceRequirement`), resolved to a
+    human-readable project/standard/requirement label rather than raw
+    entity ids. Built by `service.py::list_recent_compliance_activity`."""
+
+    id: UUID
+    project_id: UUID
+    project_name: str
+    standard_reference: str
+    standard_name: str
+    version_label: str
+    requirement_reference: str | None
+    requirement_name: str
+    action: str
+    actor_id: UUID | None
+    created_at: datetime

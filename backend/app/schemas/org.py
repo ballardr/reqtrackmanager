@@ -192,18 +192,22 @@ class OrgAdvancedSettingsUpdate(BaseModel):
 
 class ModuleFrontendManifestOut(BaseModel):
     """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
-    system Phase 3) — see that dataclass's docstring for what each field
-    means. Only ever constructed from `app.modules.registry.
-    get_frontend_manifest`'s return value, never a raw `ModuleDefinition.
-    frontend_manifest`, so a Tier B entry whose `frame_url` origin isn't
-    allowlisted never reaches the frontend at all (that function returns
-    `None` for it, and the containing `OrgModuleOut.frontend_manifest`/
-    `ModuleNavEntryOut.frontend_manifest` is simply omitted)."""
+    system Phase 3, extended with Tier C/`"federated"` in a same-system
+    follow-up) — see that dataclass's docstring for what each field means.
+    Only ever constructed from `app.modules.registry.get_frontend_manifest`'s
+    return value, never a raw `ModuleDefinition.frontend_manifest`, so a
+    Tier B entry whose `frame_url` origin isn't allowlisted, or a Tier C
+    entry declared by a first-party module, never reaches the frontend at
+    all (that function returns `None` for either, and the containing
+    `OrgModuleOut.frontend_manifest`/`ModuleNavEntryOut.frontend_manifest` is
+    simply omitted)."""
 
     tier: str
     nav_label: str
     nav_path: str
     frame_url: str | None = None
+    remote_entry_url: str | None = None
+    exposed_module: str | None = None
 
 
 class OrgModuleOut(BaseModel):

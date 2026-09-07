@@ -131,10 +131,8 @@ from app.modules.compliance.models import (
     ComplianceEvidenceRequirementLink,
     ComplianceEvidenceRevalidation,
     ComplianceRequiredActionAssessment,
-    ComplianceRequirement,
     ComplianceReview,
     ComplianceReviewEvidenceLink,
-    ComplianceStandard,
     ComplianceStandardVersion,
     ProjectCompliance,
     ProjectComplianceRequirement,
@@ -156,6 +154,7 @@ from app.modules.compliance.schemas import (
     ComplianceReviewOut,
     ComplianceReviewUpdate,
     NonCompliantRequirementOut,
+    OutstandingRequiredActionOut,
     PendingApprovalOut,
     ProjectComplianceApplicabilityUpdate,
     ProjectComplianceAssessmentUpdate,
@@ -173,12 +172,15 @@ from app.modules.compliance.service import (
     build_review_out,
     build_status_out,
     complete_review,
-    compute_review_schedule_state,
     diff_standard_versions,
     find_pcrs_linked_to_evidence,
     get_effective_compliance_officers,
     invalidate_approval_if_in_flight,
     list_expiring_or_expired_evidence,
+    list_non_compliant_requirements_for_project,
+    list_outstanding_required_actions_for_project,
+    list_pending_approvals_for_project,
+    list_reviews_due_for_project,
     load_pcrs_and_applicability,
     migrate_project_compliance,
 )
@@ -520,48 +522,10 @@ def list_non_compliant_requirements(
     """Every applicable, Non-Compliant requirement across this project's
     active standard assignments (§20/§21's "Non-Compliant requirements" as
     its own drillable list) — the `compliance_list_non_compliant_
-    requirements` MCP tool."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-
-    results: list[NonCompliantRequirementOut] = []
-    for project_compliance in assignments:
-        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
-        pcrs, applicability = load_pcrs_and_applicability(
-            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
-        )
-        requirements_by_id = {
-            r.id: r
-            for r in db.scalars(
-                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
-            ).all()
-        }
-        for pcr in pcrs:
-            effective, _source = applicability[pcr.requirement_id]
-            if effective != ComplianceApplicability.APPLICABLE or pcr.compliance_status != ComplianceStatus.NON_COMPLIANT:
-                continue
-            requirement = requirements_by_id[pcr.requirement_id]
-            results.append(
-                NonCompliantRequirementOut(
-                    project_compliance_id=project_compliance.id,
-                    standard_reference=standard.reference,
-                    standard_name=standard.name,
-                    version_label=version.version_label,
-                    project_compliance_requirement_id=pcr.id,
-                    requirement_id=requirement.id,
-                    requirement_reference=requirement.reference,
-                    requirement_name=requirement.name,
-                    justification=pcr.justification,
-                    notes=pcr.notes,
-                    assessed_at=pcr.assessed_at,
-                    assessed_by=pcr.assessed_by,
-                )
-            )
-    return results
+    requirements` MCP tool. Delegates to `service.py::list_non_compliant_
+    requirements_for_project`, shared verbatim with `router.py`'s Phase 14
+    org-wide aggregation (moved there in Phase 14; behaviour unchanged)."""
+    return list_non_compliant_requirements_for_project(db, project_id=project_id)
 
 
 @router.get("/pending-approvals", response_model=list[PendingApprovalOut])
@@ -571,46 +535,26 @@ def list_pending_approvals(
     """Every requirement currently `PENDING_APPROVAL` across this project's
     active standard assignments (§12's "Pending Approval" as its own
     drillable list) — the `compliance_list_pending_approvals` MCP tool.
-    Mirrors `list_non_compliant_requirements`'s exact loop shape above."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
+    Delegates to `service.py::list_pending_approvals_for_project`, shared
+    verbatim with `router.py`'s Phase 14 org-wide aggregation (moved there
+    in Phase 14; behaviour unchanged)."""
+    return list_pending_approvals_for_project(db, project_id=project_id)
 
-    results: list[PendingApprovalOut] = []
-    for project_compliance in assignments:
-        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
-        pcrs, _applicability = load_pcrs_and_applicability(
-            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
-        )
-        requirements_by_id = {
-            r.id: r
-            for r in db.scalars(
-                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
-            ).all()
-        }
-        for pcr in pcrs:
-            if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
-                continue
-            requirement = requirements_by_id[pcr.requirement_id]
-            results.append(
-                PendingApprovalOut(
-                    project_compliance_id=project_compliance.id,
-                    standard_reference=standard.reference,
-                    standard_name=standard.name,
-                    version_label=version.version_label,
-                    project_compliance_requirement_id=pcr.id,
-                    requirement_id=requirement.id,
-                    requirement_reference=requirement.reference,
-                    requirement_name=requirement.name,
-                    compliance_status=pcr.compliance_status,
-                    assessed_at=pcr.assessed_at,
-                    assessed_by=pcr.assessed_by,
-                )
-            )
-    return results
+
+@router.get("/outstanding-required-actions", response_model=list[OutstandingRequiredActionOut])
+def list_outstanding_required_actions(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Every incomplete required-action assessment whose owning requirement
+    is currently applicable, across this project's active standard
+    assignments (Phase 14, §22's "outstanding Required Actions" as its own
+    drillable list — added alongside the org-wide aggregation of the same
+    name in `router.py` since no flattened listing existed for this at
+    either scope before Phase 14, only the per-requirement nested
+    `.../required-action-assessments` endpoint from Phase 7). Delegates to
+    `service.py::list_outstanding_required_actions_for_project`, shared
+    verbatim with the org-wide version."""
+    return list_outstanding_required_actions_for_project(db, project_id=project_id)
 
 
 # --- Per-requirement assessment -------------------------------------------------
@@ -1559,40 +1503,13 @@ def list_reviews_due(
     standard this project is currently (non-archived-ly) assigned to — a
     standard-level review (e.g. "annual audit of this standard itself")
     affects every project assigned to it, so a project's own dashboard
-    should surface both. The `compliance_list_reviews_due` MCP tool."""
-    assignments = db.scalars(
-        select(ProjectCompliance).where(
-            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
-        )
-    ).all()
-    project_compliance_ids = [a.id for a in assignments]
-    standard_ids: set[UUID] = set()
-    for assignment in assignments:
-        version = db.get(ComplianceStandardVersion, assignment.standard_version_id)
-        if version is not None:
-            standard_ids.add(version.standard_id)
-
-    reviews: list[ComplianceReview] = []
-    if project_compliance_ids:
-        reviews.extend(
-            db.scalars(
-                select(ComplianceReview).where(
-                    ComplianceReview.project_compliance_id.in_(project_compliance_ids),
-                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
-                )
-            ).all()
-        )
-    if standard_ids:
-        reviews.extend(
-            db.scalars(
-                select(ComplianceReview).where(
-                    ComplianceReview.standard_id.in_(standard_ids),
-                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
-                )
-            ).all()
-        )
-    due_or_overdue = [review for review in reviews if compute_review_schedule_state(review) in ("due", "overdue")]
-    return [build_review_out(db, review) for review in due_or_overdue]
+    should surface both. The `compliance_list_reviews_due` MCP tool.
+    Delegates to `service.py::list_reviews_due_for_project` (`include_
+    upcoming=False`, this endpoint's pre-existing behaviour), shared with
+    `router.py`'s Phase 14 org-wide aggregation — moved there in Phase 14;
+    behaviour unchanged."""
+    reviews = list_reviews_due_for_project(db, project_id=project_id, include_upcoming=False)
+    return [build_review_out(db, review) for review in reviews]
 
 
 @router.get("/reviews/{review_id}", response_model=ComplianceReviewOut)

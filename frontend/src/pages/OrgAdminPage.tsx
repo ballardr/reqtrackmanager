@@ -64,7 +64,8 @@ import { cycleSort, type SortState } from "../components/SortableHeader";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
-import { ComplianceAdminPanel } from "../modules/compliance/ComplianceAdminPanel";
+import { useFederatedModules } from "../hooks/useFederatedModules";
+import { installedModules } from "../modules/registry";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
@@ -88,27 +89,19 @@ import { defaultResolutions } from "../utils/mergeConflicts";
  * test email), and "security" (2FA/self-signup/external-user policy, plus
  * Personal Access Tokens — see `docs/decisions.md` for the SCIM placement
  * call).
+ *
+ * Module system follow-up (2026-09-07, see `docs/decisions.md`'s "Module
+ * system follow-up: dynamic org-admin panel registration" entry): this used
+ * to also hardcode two more literals, `"compliance"`/`"compliance-overview"`
+ * — Phase 12/14's own groups, hand-mounted here since Phase 3's routing/
+ * nav-discovery mechanism is project-scoped only (see Phase 12's notes in
+ * `docs/compliance-module-plan.md`). Every *installed and enabled* module's
+ * own `orgAdminSections` (`modules/types.ts`) now contributes its own
+ * group(s) dynamically instead (built into `orgAdminGroups` below), so this
+ * type only names the ten groups genuinely fixed at this file's own compile
+ * time.
  */
-type OrgAdminGroupKey =
-  | "overview"
-  | "users"
-  | "groups"
-  | "projects-workflow"
-  | "branding-defaults"
-  | "templates-reports"
-  | "oauth-sso"
-  | "email"
-  | "security"
-  | "modules"
-  | "compliance";
-
-/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
- * — a real user or a not-yet-accepted org-only invite, merged client-side.
- * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
- * (Phase D) later applied one level down, for a project's own members. */
-type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
-
-const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
+const CORE_ORG_ADMIN_GROUP_KEYS = [
   "overview",
   "users",
   "groups",
@@ -119,8 +112,36 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "email",
   "security",
   "modules",
-  "compliance",
-];
+] as const;
+type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
+
+/**
+ * Widened from the closed `CoreOrgAdminGroupKey` literal union to `string`
+ * — a module-contributed `orgAdminSections` entry's `key` isn't known at
+ * this file's compile time, so a closed union can no longer describe every
+ * value `activeGroup` can actually take. **Tradeoff, spelled out per this
+ * repo's CLAUDE.md rather than left implicit**: TypeScript's "this
+ * comparison appears to be unintentional" check (which used to catch a typo
+ * like `activeGroup === "userz"` in one of the ten `activeGroup === "..."`
+ * blocks below, since `"userz"` wasn't assignable to the old closed union)
+ * no longer fires for any of those ten comparisons either, because the type
+ * now overlaps with every string. Accepted because the alternative —
+ * keeping the union closed — means hardcoding every installed module's own
+ * group keys back into this file, which is exactly the per-module
+ * `OrgAdminPage.tsx` edit this follow-up removes. `CoreOrgAdminGroupKey`
+ * itself stays a real closed literal type, so `CORE_ORG_ADMIN_GROUP_KEYS`'s
+ * own declaration (and anything else that intentionally types a value as
+ * `CoreOrgAdminGroupKey` rather than the wider `OrgAdminGroupKey`) still
+ * gets full typo protection — only the ten render-block comparisons against
+ * `activeGroup` lose it.
+ */
+type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
+
+/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
+ * — a real user or a not-yet-accepted org-only invite, merged client-side.
+ * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
+ * (Phase D) later applied one level down, for a project's own members. */
+type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 /**
  * Organisation administration: users (C-U-01), groups (C-U-08), shared
@@ -250,6 +271,19 @@ export function OrgAdminPage() {
   // which also correctly renders as "no modules" for a deployment with
   // none registered yet (there are zero implemented modules until Phase 5).
   const [modules, setModules] = useState<OrgModule[]>([]);
+  // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
+  // module effectively enabled for this org whose manifest is `"federated"`
+  // has no build-time `installedModules` entry to fall back on — its own
+  // `TierAModuleDefinition` must be loaded at runtime before
+  // `moduleAdminSections` (below) can find it there. Called unconditionally,
+  // right after `modules` itself is declared (a hook can't be called after
+  // this component's own early-return guards further down, e.g. `if (!org)
+  // return <Spinner />`) — filtered to *effectively enabled* modules only,
+  // so a disabled-but-installed Tier C module's remote code is never
+  // fetched just because it's greyed-out-visible on the Modules admin
+  // panel. See `useFederatedModules`'s own docstring and `frontend/src/
+  // modules/federatedLoader.ts` for the full mechanism.
+  useFederatedModules(modules.filter((m) => m.enabled));
   // Module system Phase 2: org-scoped module-contributed role definitions
   // currently available to grant in this org, fed into the Users table's
   // Roles column `MultiSelectDropdown` alongside the three fixed `OrgRole`
@@ -1666,9 +1700,37 @@ export function OrgAdminPage() {
   // the round trip instead of only after a 422.
   const selfSignupConflict = allowSelfSignup && ssoOnly;
 
-  const activeGroup: OrgAdminGroupKey = ORG_ADMIN_GROUP_KEYS.includes(groupParam as OrgAdminGroupKey)
-    ? (groupParam as OrgAdminGroupKey)
-    : "overview";
+  // Module system follow-up (2026-09-07): every *enabled* installed
+  // module's own `orgAdminSections` (`modules/types.ts`), flattened — the
+  // dynamic tail merged onto the ten fixed core groups below. Filtered by
+  // this org's actual module-enablement (`modules`, fetched by `reload()`
+  // above from `GET /orgs/{id}/modules` the same way the Modules group
+  // itself renders) rather than merely "is this module installed at all,"
+  // so disabling a module for this org correctly removes its nav entries —
+  // the bug this follow-up fixes: the two hardcoded Compliance groups used
+  // to render unconditionally regardless of that org's own enablement
+  // toggle.
+  const enabledModuleKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
+  const coreGroupKeys: readonly string[] = CORE_ORG_ADMIN_GROUP_KEYS;
+  const moduleAdminSections = installedModules
+    .filter((m) => enabledModuleKeys.has(m.key))
+    .flatMap((m) => m.orgAdminSections ?? [])
+    // Defensive: a module whose own section `key` collides with one of the
+    // ten fixed core groups above (or, in principle, with another module's
+    // section — not checked here since two modules colliding with each
+    // other is no worse than either alone colliding with a core group) is
+    // dropped rather than silently shadowing/duplicating a core group in
+    // the nav. Shouldn't happen for a reviewed first-party module, but
+    // costs nothing to guard against, unlike a core group silently
+    // becoming unreachable.
+    .filter((section) => {
+      if (coreGroupKeys.includes(section.key)) {
+        console.error(`Module-contributed org-admin section "${section.key}" collides with a core group key; ignoring it.`);
+        return false;
+      }
+      return true;
+    });
+
   const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
     { key: "users", label: strings.orgAdmin.groupUsers, href: `/orgs/${orgId}/admin/users` },
@@ -1680,8 +1742,15 @@ export function OrgAdminPage() {
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
-    { key: "compliance", label: strings.orgAdmin.groupCompliance, href: `/orgs/${orgId}/admin/compliance` },
+    ...moduleAdminSections.map((section) => ({
+      key: section.key,
+      label: section.label,
+      href: `/orgs/${orgId}/admin/${section.key}`,
+    })),
   ];
+  const activeGroup: OrgAdminGroupKey = orgAdminGroups.some((g) => g.key === groupParam)
+    ? (groupParam as OrgAdminGroupKey)
+    : "overview";
 
   // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
   // org-only invites are merged client-side into the same `DirectoryTable`
@@ -3388,11 +3457,20 @@ export function OrgAdminPage() {
           </div>
         )}
 
-        {activeGroup === "compliance" && (
-          <div className="stack">
-            <ComplianceAdminPanel orgId={org.id} />
-          </div>
-        )}
+        {/* Module system follow-up (2026-09-07): one generic lookup replaces
+            what used to be one hardcoded `activeGroup === "..."` render
+            block per module-contributed org-admin section (previously
+            `"compliance"` → `ComplianceAdminPanel`, `"compliance-overview"`
+            → `OrgCompliancePanel`, each with its own static top-of-file
+            import). A future installed module's own `orgAdminSections`
+            entry needs no corresponding edit here at all. */}
+        {moduleAdminSections
+          .filter((section) => section.key === activeGroup)
+          .map((section) => (
+            <div className="stack" key={section.key}>
+              {section.render({ orgId: org.id })}
+            </div>
+          ))}
       </ResourceMenu>
 
       {confirmRemoveUser && (

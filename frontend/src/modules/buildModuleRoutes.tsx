@@ -31,7 +31,10 @@ export function buildModuleRoutes(enabledModules: ModuleNavEntry[], projectId: s
     if (manifest.tier === "installed") {
       const installed = getInstalledModule(moduleEntry.module_key);
       if (!installed) return [];
-      return installed.routes.map((route) => (
+      // `routes` is optional (module system follow-up, 2026-09-07) — a
+      // module contributing only `orgAdminSections` and no project-scoped
+      // UI declares none.
+      return (installed.routes ?? []).map((route) => (
         <Route key={`${moduleEntry.module_key}:${route.path}`} path={route.path} element={route.element} />
       ));
     }

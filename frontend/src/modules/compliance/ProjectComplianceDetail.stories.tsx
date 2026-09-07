@@ -20,7 +20,7 @@ function assignment(overrides: Partial<ProjectCompliance> = {}): ProjectComplian
 
 function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectComplianceStatus {
   return {
-    project_compliance_id: "pc-1", project_id: PROJECT_ID, standard_id: "std-1",
+    project_compliance_id: "pc-1", project_id: PROJECT_ID, project_name: "Demo Project", standard_id: "std-1",
     standard_reference: "ISO-27001", standard_name: "ISO 27001", standard_version_id: "ver-1", version_label: "v1.0",
     target_compliance_date: "2026-12-31", assigned_at: "2026-01-01T00:00:00Z",
     total_requirements: 3, applicable_count: 3, not_applicable_count: 0,

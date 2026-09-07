@@ -81,6 +81,8 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.audit import AuditEvent
+from app.models.project import Project
 from app.modules.compliance.enums import (
     ComplianceApplicability,
     ComplianceApplicabilitySource,
@@ -110,9 +112,13 @@ from app.modules.compliance.models import (
 from app.modules.compliance.schemas import (
     AddedRequirementOut,
     ComplianceEvidenceOut,
+    ComplianceRecentActivityOut,
     ComplianceRequirementSummaryOut,
     ComplianceReviewOut,
     ModifiedRequirementOut,
+    NonCompliantRequirementOut,
+    OutstandingRequiredActionOut,
+    PendingApprovalOut,
     ProjectComplianceMigrationRequirementImpact,
     ProjectComplianceMigrationResultOut,
     ProjectComplianceOut,
@@ -463,6 +469,7 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
     calculation, two callers, never duplicated."""
     version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
     standard = db.get(ComplianceStandard, version.standard_id)
+    project = db.get(Project, project_compliance.project_id)
     pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=version.id
     )
@@ -470,6 +477,7 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
     return ProjectComplianceStatusOut(
         project_compliance_id=project_compliance.id,
         project_id=project_compliance.project_id,
+        project_name=project.name,
         standard_id=standard.id,
         standard_reference=standard.reference,
         standard_name=standard.name,
@@ -1588,3 +1596,330 @@ def build_migration_result_out(
         replaced_count=sum(1 for impact in outcome.impacts if impact.change == "replaced"),
         requirement_impacts=requirement_impacts,
     )
+
+
+# --- Phase 14: cross-assignment listings shared between project and org scope -----
+#
+# Each function below computes one project's slice of a cross-assignment
+# listing — extracted here (rather than left inline in `project_router.py`)
+# so `router.py`'s Phase 14 org-wide aggregation endpoints can call the
+# exact same per-project computation once per project in the organisation,
+# rather than re-implementing it. `list_non_compliant_requirements_for_
+# project`/`list_pending_approvals_for_project` are Phase 7/9's own
+# pre-existing loop bodies moved here verbatim (previously inline in
+# `project_router.py::list_non_compliant_requirements`/`list_pending_
+# approvals`) — behaviour is unchanged, only the location. `list_
+# outstanding_required_actions_for_project`/`list_recent_compliance_
+# activity` are new in Phase 14.
+
+
+def list_non_compliant_requirements_for_project(db: Session, *, project_id: uuid.UUID) -> list[NonCompliantRequirementOut]:
+    """Every applicable, Non-Compliant requirement across one project's
+    active standard assignments (§20/§21's "Non-Compliant requirements" as
+    its own drillable list) — shared by `project_router.py::list_non_
+    compliant_requirements` (the `compliance_list_non_compliant_
+    requirements` MCP tool) and `router.py`'s Phase 14 org-wide
+    aggregation."""
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+
+    results: list[NonCompliantRequirementOut] = []
+    for project_compliance in assignments:
+        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+        standard = db.get(ComplianceStandard, version.standard_id)
+        pcrs, applicability = load_pcrs_and_applicability(
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+        )
+        requirements_by_id = {
+            r.id: r
+            for r in db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
+            ).all()
+        }
+        for pcr in pcrs:
+            effective, _source = applicability[pcr.requirement_id]
+            if effective != ComplianceApplicability.APPLICABLE or pcr.compliance_status != ComplianceStatus.NON_COMPLIANT:
+                continue
+            requirement = requirements_by_id[pcr.requirement_id]
+            results.append(
+                NonCompliantRequirementOut(
+                    project_compliance_id=project_compliance.id,
+                    standard_reference=standard.reference,
+                    standard_name=standard.name,
+                    version_label=version.version_label,
+                    project_compliance_requirement_id=pcr.id,
+                    requirement_id=requirement.id,
+                    requirement_reference=requirement.reference,
+                    requirement_name=requirement.name,
+                    justification=pcr.justification,
+                    notes=pcr.notes,
+                    assessed_at=pcr.assessed_at,
+                    assessed_by=pcr.assessed_by,
+                )
+            )
+    return results
+
+
+def list_pending_approvals_for_project(db: Session, *, project_id: uuid.UUID) -> list[PendingApprovalOut]:
+    """Every requirement currently `PENDING_APPROVAL` across one project's
+    active standard assignments (§12's "Pending Approval" as its own
+    drillable list) — shared by `project_router.py::list_pending_approvals`
+    (the `compliance_list_pending_approvals` MCP tool) and `router.py`'s
+    Phase 14 org-wide aggregation. Mirrors `list_non_compliant_requirements_
+    for_project`'s exact loop shape above."""
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+
+    results: list[PendingApprovalOut] = []
+    for project_compliance in assignments:
+        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+        standard = db.get(ComplianceStandard, version.standard_id)
+        pcrs, _applicability = load_pcrs_and_applicability(
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+        )
+        requirements_by_id = {
+            r.id: r
+            for r in db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
+            ).all()
+        }
+        for pcr in pcrs:
+            if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
+                continue
+            requirement = requirements_by_id[pcr.requirement_id]
+            results.append(
+                PendingApprovalOut(
+                    project_compliance_id=project_compliance.id,
+                    standard_reference=standard.reference,
+                    standard_name=standard.name,
+                    version_label=version.version_label,
+                    project_compliance_requirement_id=pcr.id,
+                    requirement_id=requirement.id,
+                    requirement_reference=requirement.reference,
+                    requirement_name=requirement.name,
+                    compliance_status=pcr.compliance_status,
+                    assessed_at=pcr.assessed_at,
+                    assessed_by=pcr.assessed_by,
+                )
+            )
+    return results
+
+
+def list_outstanding_required_actions_for_project(
+    db: Session, *, project_id: uuid.UUID
+) -> list[OutstandingRequiredActionOut]:
+    """Every incomplete `ComplianceRequiredActionAssessment` whose owning
+    requirement is currently applicable, across one project's active
+    standard assignments (§22's "outstanding Required Actions" as its own
+    drillable list — no flattened listing existed for this before Phase 14,
+    only the per-requirement nested `.../required-action-assessments`
+    endpoint from Phase 7). Shared by `project_router.py::list_outstanding_
+    required_actions` and `router.py`'s Phase 14 org-wide aggregation.
+    Mirrors `list_non_compliant_requirements_for_project`'s exact loop
+    shape, one level deeper (per-PCR required-action assessments rather
+    than the PCR itself)."""
+    project = db.get(Project, project_id)
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+
+    results: list[OutstandingRequiredActionOut] = []
+    for project_compliance in assignments:
+        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+        standard = db.get(ComplianceStandard, version.standard_id)
+        pcrs, applicability = load_pcrs_and_applicability(
+            db, project_compliance_id=project_compliance.id, standard_version_id=version.id
+        )
+        requirements_by_id = {
+            r.id: r
+            for r in db.scalars(
+                select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
+            ).all()
+        }
+        required_actions_by_id = {
+            a.id: a
+            for a in db.scalars(
+                select(ComplianceRequiredAction).where(
+                    ComplianceRequiredAction.requirement_id.in_(requirements_by_id.keys())
+                )
+            ).all()
+        }
+        for pcr in pcrs:
+            effective, _source = applicability[pcr.requirement_id]
+            if effective != ComplianceApplicability.APPLICABLE:
+                continue
+            requirement = requirements_by_id[pcr.requirement_id]
+            assessments = db.scalars(
+                select(ComplianceRequiredActionAssessment).where(
+                    ComplianceRequiredActionAssessment.project_compliance_requirement_id == pcr.id,
+                    ComplianceRequiredActionAssessment.is_completed.is_(False),
+                )
+            ).all()
+            for assessment in assessments:
+                required_action = required_actions_by_id[assessment.required_action_id]
+                results.append(
+                    OutstandingRequiredActionOut(
+                        project_id=project_id,
+                        project_name=project.name,
+                        project_compliance_id=project_compliance.id,
+                        standard_reference=standard.reference,
+                        standard_name=standard.name,
+                        version_label=version.version_label,
+                        project_compliance_requirement_id=pcr.id,
+                        requirement_id=requirement.id,
+                        requirement_reference=requirement.reference,
+                        requirement_name=requirement.name,
+                        required_action_assessment_id=assessment.id,
+                        required_action_id=required_action.id,
+                        required_action_name=required_action.name,
+                        is_mandatory=required_action.is_mandatory,
+                        assignee_id=assessment.assignee_id,
+                        due_date=assessment.due_date,
+                        notes=assessment.notes,
+                    )
+                )
+    return results
+
+
+def list_reviews_due_for_project(
+    db: Session, *, project_id: uuid.UUID, include_upcoming: bool = False
+) -> list[ComplianceReview]:
+    """Unified review listing (§17/§28) across every review relevant to one
+    project: its own project-level reviews, plus every review of a standard
+    the project is currently (non-archived-ly) assigned to — shared by
+    `project_router.py::list_reviews_due` (the `compliance_list_reviews_
+    due` MCP tool, always `include_upcoming=False`) and `router.py`'s Phase
+    14 org-wide aggregation (which passes `include_upcoming=True` for
+    §23's "Upcoming compliance deadlines/reviews" widget, since that needs
+    reviews not yet due as well as ones already due/overdue).
+
+    Args:
+        db: Active session.
+        project_id: The project to gather reviews for.
+        include_upcoming: When `False` (the default, matching this
+            function's pre-Phase-14 behaviour), only `due`/`overdue`
+            reviews are returned. When `True`, `upcoming` reviews are
+            included too.
+    """
+    assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.is_archived.is_(False)
+        )
+    ).all()
+    project_compliance_ids = [a.id for a in assignments]
+    standard_ids: set[uuid.UUID] = set()
+    for assignment in assignments:
+        version = db.get(ComplianceStandardVersion, assignment.standard_version_id)
+        if version is not None:
+            standard_ids.add(version.standard_id)
+
+    reviews: list[ComplianceReview] = []
+    if project_compliance_ids:
+        reviews.extend(
+            db.scalars(
+                select(ComplianceReview).where(
+                    ComplianceReview.project_compliance_id.in_(project_compliance_ids),
+                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+                )
+            ).all()
+        )
+    if standard_ids:
+        reviews.extend(
+            db.scalars(
+                select(ComplianceReview).where(
+                    ComplianceReview.standard_id.in_(standard_ids),
+                    ComplianceReview.status == ComplianceReviewStatus.SCHEDULED,
+                )
+            ).all()
+        )
+    wanted_states = ("upcoming", "due", "overdue") if include_upcoming else ("due", "overdue")
+    return [review for review in reviews if compute_review_schedule_state(review) in wanted_states]
+
+
+#: `AuditEvent.action` values logged against a `project_compliance_
+#: requirement` entity that `list_recent_compliance_activity` surfaces —
+#: every action `project_router.py` logs against a `ProjectComplianceRequirement`
+#: row (§23's "Recently changed compliance assessments"). Kept as an
+#: explicit allowlist (not "every action for this entity_type") so a future,
+#: unrelated `project_compliance_requirement` audit action doesn't silently
+#: start appearing in this specific dashboard widget without a deliberate
+#: decision to include it.
+_RECENT_ACTIVITY_ACTIONS = (
+    "assessed",
+    "applicability_changed",
+    "submitted_for_approval",
+    "approved",
+    "rejected",
+    "approval_invalidated",
+)
+
+
+def list_recent_compliance_activity(
+    db: Session, *, organization_id: uuid.UUID, limit: int = 20
+) -> list[ComplianceRecentActivityOut]:
+    """The most recent `project_compliance_requirement` audit events across
+    every project in the organisation (§23's "Recently changed compliance
+    assessments"), resolved to a human-readable project/standard/
+    requirement label. `AuditEvent` rows logged by `project_router.py`
+    against a `ProjectComplianceRequirement` carry `project_id` but not
+    `organization_id` (see `AuditEvent`'s own docstring — project-scoped
+    mutations only ever set `project_id`), so this joins through `Project`
+    to scope by organisation, the same join `router.py::list_all_project_
+    compliance` already uses for its own org-wide query.
+
+    A `ProjectComplianceRequirement` referenced by a stale audit event that
+    can no longer be resolved (should not happen in practice — PCR rows are
+    never deleted, only their owning assignment is archived) is silently
+    skipped rather than raising, since this is a best-effort recency feed,
+    not a source of truth.
+    """
+    events = db.scalars(
+        select(AuditEvent)
+        .join(Project, Project.id == AuditEvent.project_id)
+        .where(
+            Project.organization_id == organization_id,
+            AuditEvent.entity_type == "project_compliance_requirement",
+            AuditEvent.action.in_(_RECENT_ACTIVITY_ACTIONS),
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(limit)
+    ).all()
+
+    results: list[ComplianceRecentActivityOut] = []
+    for event in events:
+        pcr = db.get(ProjectComplianceRequirement, uuid.UUID(event.entity_id))
+        if pcr is None:
+            continue
+        project_compliance = db.get(ProjectCompliance, pcr.project_compliance_id)
+        requirement = db.get(ComplianceRequirement, pcr.requirement_id)
+        if project_compliance is None or requirement is None:
+            continue
+        version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+        standard = db.get(ComplianceStandard, version.standard_id) if version is not None else None
+        project = db.get(Project, event.project_id)
+        if version is None or standard is None or project is None:
+            continue
+        results.append(
+            ComplianceRecentActivityOut(
+                id=event.id,
+                project_id=project.id,
+                project_name=project.name,
+                standard_reference=standard.reference,
+                standard_name=standard.name,
+                version_label=version.version_label,
+                requirement_reference=requirement.reference,
+                requirement_name=requirement.name,
+                action=event.action,
+                actor_id=event.actor_id,
+                created_at=event.created_at,
+            )
+        )
+    return results

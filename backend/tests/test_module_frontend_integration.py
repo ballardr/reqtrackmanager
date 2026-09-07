@@ -40,8 +40,11 @@ from tests.conftest import auth_headers, create_project
 INSTALLED_MODULE_KEY = "fake_frontend_installed_module"
 REMOTE_MODULE_KEY = "fake_frontend_remote_module"
 PROJECT_SCOPED_MODULE_KEY = "fake_frontend_project_scoped_module"
+FEDERATED_MODULE_KEY = "fake_frontend_federated_module"
 ALLOWED_ORIGIN = "https://trusted-module.example.com"
 NOT_ALLOWED_ORIGIN = "https://untrusted-module.example.com"
+FEDERATED_REMOTE_ENTRY_URL = "/external-modules/fake-federated/remoteEntry.js"
+FEDERATED_EXPOSED_MODULE = "./Module"
 
 
 class _FakeRequest:
@@ -212,6 +215,165 @@ def test_get_frontend_manifest_rejects_a_different_allowlisted_origin(remote_tie
         assert get_frontend_manifest(remote_tier_module) is None
     finally:
         get_settings.cache_clear()
+
+
+# --- Tier C ("federated" / Module Federation) validation ---------------------
+#
+# Module system follow-up, 2026-09-07: a third frontend integration kind for
+# a genuinely third-party, not-compiled-in, no-rebuild-required module (see
+# `ModuleFrontendManifest`'s own docstring). Two things need proving: (1) the
+# dataclass's own field validation (mirrors the existing tier="remote"/
+# "installed" tests above), and (2) `get_frontend_manifest`'s mechanical
+# enforcement that a "federated" manifest is only ever honoured for a module
+# discovered through the gated third-party pipeline — never a first-party
+# `INSTALLED_MODULES` entry, which has no legitimate reason to declare one.
+
+
+def test_federated_tier_requires_remote_entry_url_and_exposed_module():
+    with pytest.raises(ValueError, match="requires both remote_entry_url and exposed_module"):
+        ModuleFrontendManifest(tier="federated", nav_label="Bad", nav_path="/bad")
+
+
+def test_federated_tier_requires_exposed_module_even_with_remote_entry_url():
+    with pytest.raises(ValueError, match="requires both remote_entry_url and exposed_module"):
+        ModuleFrontendManifest(
+            tier="federated", nav_label="Bad", nav_path="/bad",
+            remote_entry_url="https://example.com/remoteEntry.js",
+        )
+
+
+def test_federated_tier_must_not_set_frame_url():
+    with pytest.raises(ValueError, match="must not set frame_url"):
+        ModuleFrontendManifest(
+            tier="federated", nav_label="Bad", nav_path="/bad",
+            frame_url="https://example.com/x",
+            remote_entry_url="https://example.com/remoteEntry.js", exposed_module="./Module",
+        )
+
+
+def test_remote_tier_must_not_set_federated_only_fields():
+    with pytest.raises(ValueError, match="must not set remote_entry_url/exposed_module"):
+        ModuleFrontendManifest(
+            tier="remote", nav_label="Bad", nav_path="/bad", frame_url="https://example.com/x",
+            exposed_module="./Module",
+        )
+
+
+def test_installed_tier_must_not_set_federated_only_fields():
+    with pytest.raises(ValueError, match="must not set frame_url/remote_entry_url/exposed_module"):
+        ModuleFrontendManifest(
+            tier="installed", nav_label="Bad", nav_path="/bad", remote_entry_url="https://example.com/remoteEntry.js"
+        )
+
+
+@pytest.fixture
+def federated_tier_module_via_entry_point(monkeypatch):
+    """Registers a Tier C ("federated") fixture module through the
+    *external* discovery pipeline (`_discover_entry_point_modules`,
+    monkeypatched — mirrors `test_module_registry.py`'s own convention for
+    exercising this path) rather than `INSTALLED_MODULES` directly — a
+    "federated" manifest is only ever legitimate for a module that reached
+    the registry this way, per `get_frontend_manifest`'s own enforcement, so
+    every "this tier actually works" test needs a module registered exactly
+    this way, not the shortcut every other tier's fixtures use."""
+    fake = _fake_module(
+        key=FEDERATED_MODULE_KEY, name="Fake Federated Module",
+        frontend_manifest=ModuleFrontendManifest(
+            tier="federated", nav_label="Fake Federated", nav_path="/fake-federated",
+            remote_entry_url=FEDERATED_REMOTE_ENTRY_URL, exposed_module=FEDERATED_EXPOSED_MODULE,
+        ),
+    )
+    monkeypatch.setattr(module_registry, "_discover_entry_point_modules", lambda: [fake])
+    monkeypatch.setenv("ALLOW_EXTERNAL_MODULES", "true")
+    get_settings.cache_clear()
+    build_registry(force=True)
+    yield FEDERATED_MODULE_KEY
+    monkeypatch.undo()
+    get_settings.cache_clear()
+    build_registry(force=True)
+
+
+def test_get_frontend_manifest_returns_federated_tier_for_externally_discovered_module(
+    federated_tier_module_via_entry_point,
+):
+    manifest = get_frontend_manifest(federated_tier_module_via_entry_point)
+    assert manifest is not None
+    assert manifest.tier == "federated"
+    assert manifest.remote_entry_url == FEDERATED_REMOTE_ENTRY_URL
+    assert manifest.exposed_module == FEDERATED_EXPOSED_MODULE
+    assert manifest.frame_url is None
+
+
+def test_get_frontend_manifest_rejects_federated_tier_declared_by_a_first_party_module(caplog):
+    """The exact case Tier C's own design treats as a config error, not a
+    supported case: a first-party `INSTALLED_MODULES` entry has no
+    legitimate reason to declare `tier="federated"` at all (it can use Tier
+    A directly, with full build-time review) — `get_frontend_manifest` must
+    catch this mechanically rather than trust the module not to misdeclare
+    it, the same "verify, don't trust a self-declared field" principle
+    Tier B's origin-allowlist check already applies one field over."""
+    module_registry.INSTALLED_MODULES.append(
+        _fake_module(
+            key=FEDERATED_MODULE_KEY, name="Misconfigured First-Party Federated Module",
+            frontend_manifest=ModuleFrontendManifest(
+                tier="federated", nav_label="Bad", nav_path="/bad",
+                remote_entry_url=FEDERATED_REMOTE_ENTRY_URL, exposed_module=FEDERATED_EXPOSED_MODULE,
+            ),
+        )
+    )
+    build_registry(force=True)
+    try:
+        with caplog.at_level("ERROR"):
+            manifest = get_frontend_manifest(FEDERATED_MODULE_KEY)
+        assert manifest is None
+        assert "has no reason to use Tier C" in caplog.text
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key != FEDERATED_MODULE_KEY
+        ]
+        build_registry(force=True)
+
+
+def test_federated_tier_needs_no_separate_allowlist_setting(federated_tier_module_via_entry_point, monkeypatch):
+    """Unlike Tier B's `frame_url`, a "federated" manifest is not checked
+    against any `MODULE_FRAME_ALLOWED_ORIGINS`-equivalent setting — the
+    `Settings.allow_external_modules`-gated discovery pipeline a "federated"
+    manifest can only ever reach `get_frontend_manifest` through (proven by
+    the two tests above) is the whole gate. Confirms this holds regardless
+    of whatever `MODULE_FRAME_ALLOWED_ORIGINS` happens to be set (or unset)
+    to — a Tier C manifest's fate must not depend on a Tier B-only setting."""
+    monkeypatch.delenv("MODULE_FRAME_ALLOWED_ORIGINS", raising=False)
+    get_settings.cache_clear()
+    try:
+        assert get_frontend_manifest(federated_tier_module_via_entry_point) is not None
+    finally:
+        get_settings.cache_clear()
+
+
+def test_federated_tier_absent_when_external_modules_disallowed(monkeypatch):
+    """The single-flag design's central claim: with `ALLOW_EXTERNAL_MODULES`
+    off, a "federated"-declaring module is never even discovered (source 2/3
+    scans aren't called at all — `build_registry`'s own existing guarantee),
+    so there is nothing for `get_frontend_manifest` to even consider —
+    proving the frontend needs no independent runtime flag of its own."""
+    fake = _fake_module(
+        key=FEDERATED_MODULE_KEY, name="Fake Federated Module",
+        frontend_manifest=ModuleFrontendManifest(
+            tier="federated", nav_label="Fake Federated", nav_path="/fake-federated",
+            remote_entry_url=FEDERATED_REMOTE_ENTRY_URL, exposed_module=FEDERATED_EXPOSED_MODULE,
+        ),
+    )
+    monkeypatch.setattr(module_registry, "_discover_entry_point_modules", lambda: [fake])
+    monkeypatch.delenv("ALLOW_EXTERNAL_MODULES", raising=False)
+    get_settings.cache_clear()
+    try:
+        build_registry(force=True)
+        assert get_frontend_manifest(FEDERATED_MODULE_KEY) is None
+        assert FEDERATED_MODULE_KEY not in build_registry()
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+        build_registry(force=True)
 
 
 # --- CSP frame-src header -----------------------------------------------------
@@ -486,6 +648,7 @@ def test_org_modules_endpoint_includes_frontend_manifest(client, admin_token, or
     manifest = by_key[installed_tier_module]["frontend_manifest"]
     assert manifest == {
         "tier": "installed", "nav_label": "Fake Frontend", "nav_path": "/fake-frontend", "frame_url": None,
+        "remote_entry_url": None, "exposed_module": None,
     }
 
 
@@ -564,3 +727,40 @@ def test_org_modules_endpoint_leaves_project_id_placeholder_uninterpolated(
     by_key = {m["module_key"]: m for m in resp.json()}
     manifest = by_key[project_scoped_installed_module]["frontend_manifest"]
     assert manifest["nav_path"] == "/projects/{project_id}/modules/fake-project-scoped"
+
+
+def test_org_modules_endpoint_carries_federated_fields(client, admin_token, org_id, federated_tier_module_via_entry_point):
+    """`OrgModuleOut.frontend_manifest` (`routers/orgs.py`, built via
+    `ModuleFrontendManifestOut(**vars(manifest))`) must carry the two new
+    Tier C fields through automatically — this pins that against a future
+    regression where a field gets added to the dataclass but the `**vars()`
+    construction silently drops it (it wouldn't — `vars()` reflects every
+    dataclass field — but the wire shape is what actually matters here)."""
+    resp = client.get(f"/api/v1/orgs/{org_id}/modules", headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[federated_tier_module_via_entry_point]["frontend_manifest"]
+    assert manifest["tier"] == "federated"
+    assert manifest["remote_entry_url"] == FEDERATED_REMOTE_ENTRY_URL
+    assert manifest["exposed_module"] == FEDERATED_EXPOSED_MODULE
+    assert manifest["frame_url"] is None
+
+
+def test_project_enabled_modules_endpoint_carries_federated_fields(
+    client, admin_token, org_id, federated_tier_module_via_entry_point
+):
+    """The project-scoped nav endpoint (`list_project_enabled_modules`)
+    must carry `remote_entry_url`/`exposed_module` through unchanged
+    (neither is expected to ever contain the `"{project_id}"` placeholder
+    `nav_path`/`frame_url` support) — a project member's own nav rail is
+    exactly what triggers a Tier C module's runtime load on the frontend."""
+    project = create_project(client, admin_token, org_id, "Federated Nav Project")
+    resp = client.get(
+        f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    by_key = {m["module_key"]: m for m in resp.json()}
+    manifest = by_key[federated_tier_module_via_entry_point]["frontend_manifest"]
+    assert manifest["tier"] == "federated"
+    assert manifest["remote_entry_url"] == FEDERATED_REMOTE_ENTRY_URL
+    assert manifest["exposed_module"] == FEDERATED_EXPOSED_MODULE
