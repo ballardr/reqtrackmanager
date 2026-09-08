@@ -44,8 +44,9 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  * not duplicated here — nested requirement/evidence/review fetches are
  * mocked to resolve empty so a drill-in story here settles cleanly, the
  * same "settle cleanly, don't duplicate coverage" approach
- * `StandardsPanel.stories.tsx` already established for its own
- * `VersionWorkspace` drill-in.
+ * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
+ * stories.tsx`'s successor, docs/compliance-module-plan.md Phase 18)
+ * already established for its own `VersionWorkspace` drill-in.
  */
 function mockApis(overrides: {
   assignments?: ProjectCompliance[];

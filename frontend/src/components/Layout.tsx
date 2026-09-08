@@ -1,5 +1,5 @@
 import { Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
@@ -11,6 +11,7 @@ import { FavouritesProvider, useFavourites } from "../context/FavouritesContext"
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
+import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
@@ -22,8 +23,16 @@ import { Tooltip } from "./Tooltip";
  * pure noise, exactly the complaint that motivated this. `.nav-link` itself
  * is `width: 100%` (see theme.css) so the whole row is clickable/highlit,
  * not just the icon+text's own shrink-wrapped width.
+ *
+ * Exported (module system follow-up, compliance-module-plan.md Phase 18) so
+ * a Tier A module's own `globalNavItems`/`standaloneWorkspaces` render
+ * functions (`modules/types.ts`) can build visually-consistent rail links
+ * themselves — `Layout.tsx` invites those contributions to render but has
+ * no reason to know what any specific one looks like beyond that shared
+ * shape, the same "module owns its own UI, core just mounts it" boundary
+ * `orgAdminSections` already establishes for `OrgAdminPage.tsx`.
  */
-function NavRailLink({
+export function NavRailLink({
   to, label, icon, exact = false, railCollapsed,
 }: { to: string; label: string; icon: ReactNode; exact?: boolean; railCollapsed: boolean }) {
   const location = useLocation();
@@ -91,6 +100,29 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
   const { modules: enabledModules } = useProjectEnabledModules(projectId);
+  // Every installed module's own top-level nav links (`globalNavItems`) and
+  // "standalone workspace" nav sections (`standaloneWorkspaces`,
+  // `modules/types.ts`) — a generic mechanism a module registers into
+  // (compliance-module-plan.md Phase 18 is its first user, "Compliance
+  // Standards"/"Standard"), the same "core doesn't hardcode a specific
+  // module's UI" boundary `orgAdminSections` already establishes for
+  // `OrgAdminPage.tsx`. Each global nav item owns its own visibility
+  // (returns `null` when not applicable, e.g. Compliance's own nav-
+  // visibility check) — `Layout.tsx` invites every one of them to render
+  // unconditionally rather than deciding on any module's behalf. At most
+  // one standalone workspace is active at a time: the first one (in
+  // installed-module order) whose own `matchPath` matches the current
+  // path, mirroring how the "Project" section above is likewise gated on a
+  // single regex match rather than several independent ones.
+  const globalNavItems = installedModules.flatMap((m) => m.globalNavItems ?? []);
+  let activeStandaloneWorkspace: { entityId: string; render: (props: { entityId: string; railCollapsed: boolean }) => ReactNode } | null = null;
+  for (const workspace of installedModules.flatMap((m) => m.standaloneWorkspaces ?? [])) {
+    const match = workspace.matchPath.exec(location.pathname);
+    if (match?.[1]) {
+      activeStandaloneWorkspace = { entityId: match[1], render: workspace.render };
+      break;
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -189,8 +221,21 @@ function LayoutShell({ children }: { children: ReactNode }) {
               )}
             </>
           )}
+          {/* A module-contributed "standalone workspace" section (Phase
+              18's "Standard" is the first one) — a sibling structural
+              pattern to "Project" above, not nested inside it. See this
+              file's own `activeStandaloneWorkspace` computation above. */}
+          {activeStandaloneWorkspace &&
+            activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed })}
           <div className="nav-section-label">Global</div>
           <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railCollapsed} />
+          {/* Module-contributed top-level nav links (Phase 18's "Compliance
+              Standards" is the first one) — each item owns its own
+              visibility and may render nothing at all; see this file's own
+              `globalNavItems` computation above. */}
+          {globalNavItems.map((item) => (
+            <Fragment key={item.key}>{item.render({ railCollapsed })}</Fragment>
+          ))}
           {hasFavourites && (
             <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railCollapsed} />
           )}

@@ -122,52 +122,6 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
 
   return (
     <div className="side-grid">
-      <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
-        <FilterField label="Standard">
-          <select
-            className="input"
-            value={standardFilter}
-            onChange={(e) => {
-              setStandardFilter(e.target.value);
-              setVersionFilter("");
-            }}
-          >
-            <option value="">All standards</option>
-            {standards.map((s) => (
-              <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label="Standard version">
-          <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)}>
-            <option value="">All versions</option>
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label="Project">
-          <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label="Compliance state">
-          <select
-            className="input"
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value as ComplianceOverallState | "")}
-          >
-            <option value="">All states</option>
-            {(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => (
-              <option key={state} value={state}>{COMPLIANCE_OVERALL_STATE_LABEL[state]}</option>
-            ))}
-          </select>
-        </FilterField>
-      </FilterPanel>
-
       <div className="stack">
         {groups.length === 0 ? (
           <p className="text-muted">No compliance assignments match these filters.</p>
@@ -241,6 +195,52 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
           </div>
         )}
       </div>
+
+      <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
+        <FilterField label="Standard">
+          <select
+            className="input"
+            value={standardFilter}
+            onChange={(e) => {
+              setStandardFilter(e.target.value);
+              setVersionFilter("");
+            }}
+          >
+            <option value="">All standards</option>
+            {standards.map((s) => (
+              <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Standard version">
+          <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)}>
+            <option value="">All versions</option>
+            {versions.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Project">
+          <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Compliance state">
+          <select
+            className="input"
+            value={stateFilter}
+            onChange={(e) => setStateFilter(e.target.value as ComplianceOverallState | "")}
+          >
+            <option value="">All states</option>
+            {(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => (
+              <option key={state} value={state}>{COMPLIANCE_OVERALL_STATE_LABEL[state]}</option>
+            ))}
+          </select>
+        </FilterField>
+      </FilterPanel>
     </div>
   );
 }

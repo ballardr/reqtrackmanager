@@ -119,13 +119,40 @@ the first time (Phase 12's `ComplianceAdminPanel` — org-scoped — had no
 routing mechanism to plug into and was mounted directly by `OrgAdminPage.tsx`
 instead; see that phase's own notes).
 
+Phase 18 ("Compliance Standards" as a first-class, cross-org, project-like
+nav entity) adds this module's third router, `get_global_router()` — a new
+`ModuleDefinition` field (`app.modules.registry`) mounted at the bare
+`/api/v1/compliance` prefix, no `organization_id`/`project_id` segment at
+all, since both of this router's endpoints (`nav-visibility`, `standards/
+{standard_id}`) genuinely have no single such id to key off — see
+`global_router.py`'s own module docstring and `app.modules.registry.
+ModuleDefinition.get_global_router`'s docstring for the full reasoning. No
+new MCP tools or roles were added for this phase — both endpoints are
+read-only, UI-navigation-shaped surfaces, not new data or actions.
+
+Module boundary cleanup (2026-09-08, see `docs/decisions.md`'s "Module
+system follow-up: on_org_created / project_nav_visible hooks" entry — found
+and fixed as pre-existing debt flagged during Phase 18's own review, not
+part of Phase 18 itself) adds two more hooks, both replacing a direct
+`from app.modules.compliance...` import a core file used to carry: `on_org_
+created` (`_seed_org_defaults`, below) — `app.routers.orgs.
+create_organization`/`app.services.bootstrap.run_bootstrap` used to import
+`seed_compliance_action_types` directly; both now call the generic `app.
+modules.registry.run_on_org_created_hooks` instead — and `project_nav_
+visible` (`_project_nav_visible`, below) — `app.routers.projects.
+list_project_enabled_modules` used to import this module's own models/enums
+inline to decide whether its nav entry has anything assignable yet; that
+query moved into `app.modules.compliance.service.has_assignable_standard`,
+called through the new hook instead.
+
 External dependencies: `app.modules.registry`'s own dataclasses;
-`app.modules.compliance.router`/`.project_router`/`.service`/`.scheduler`
-(each imported lazily, inside `get_router()`/`get_project_router()`/
-`resolve_file_owner_project_id`/the `scheduled_jobs` callables, to avoid any
-import-cycle risk with this module's own registration -- mirroring how
-Phase 5's own notes already document resolving the `MODULE_DEFINITION`/
-registry import cycle via `app/modules/__init__.py`).
+`app.modules.compliance.router`/`.project_router`/`.global_router`/
+`.service`/`.scheduler` (each imported lazily, inside `get_router()`/
+`get_project_router()`/`get_global_router()`/`resolve_file_owner_project_id`/
+`_seed_org_defaults`/`_project_nav_visible`/the `scheduled_jobs` callables,
+to avoid any import-cycle risk with this module's own registration --
+mirroring how Phase 5's own notes already document resolving the `MODULE_
+DEFINITION`/registry import cycle via `app/modules/__init__.py`).
 """
 
 from __future__ import annotations
@@ -186,6 +213,20 @@ def get_project_router() -> APIRouter | None:
     return compliance_project_router
 
 
+def get_global_router() -> APIRouter | None:
+    """Returns this module's third router (Phase 18 — "Compliance
+    Standards" as a first-class, cross-org, project-like nav entity),
+    mounted with no `organization_id`/`project_id` in its own path root at
+    all (`nav-visibility`, `standards/{standard_id}`) — see `app.modules.
+    registry.ModuleDefinition.get_global_router`'s own docstring for why
+    neither `get_router()` nor `get_project_router()` fits these two
+    endpoints. Imported inside the function body for the same import-cycle
+    reason as `get_router()`/`get_project_router()`."""
+    from app.modules.compliance.global_router import router as compliance_global_router
+
+    return compliance_global_router
+
+
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     """This module's `ModuleDefinition.resolve_file_owner_project_id` hook
     (Phase 8) — imported lazily for the same import-cycle reason as
@@ -193,6 +234,29 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     from app.modules.compliance.service import resolve_evidence_file_project_id
 
     return resolve_evidence_file_project_id(db, file_id)
+
+
+def _seed_org_defaults(db: Session, organization_id: UUID) -> None:
+    """This module's `ModuleDefinition.on_org_created` hook (module boundary
+    cleanup, 2026-09-08) — seeds this organisation's default compliance
+    action types, replacing what `app.routers.orgs.create_organization`/
+    `app.services.bootstrap.run_bootstrap` used to import and call directly.
+    Imported lazily for the same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import seed_compliance_action_types
+
+    seed_compliance_action_types(db, organization_id)
+
+
+def _project_nav_visible(db: Session, project: Project) -> bool:
+    """This module's `ModuleDefinition.project_nav_visible` hook (module
+    boundary cleanup, 2026-09-08) — hides this module's project nav entry
+    until its owning organisation has a standard actually assignable,
+    replacing what `app.routers.projects.list_project_enabled_modules` used
+    to compute inline via a direct import of this module's own models.
+    Imported lazily for the same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import has_assignable_standard
+
+    return has_assignable_standard(db, project.organization_id)
 
 
 # `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` (module system follow-up,
@@ -279,9 +343,12 @@ MODULE_DEFINITION = ModuleDefinition(
     implemented=True,
     get_router=get_router,
     get_project_router=get_project_router,
+    get_global_router=get_global_router,
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
     resolve_file_owner_project_id=resolve_file_owner_project_id,
+    on_org_created=_seed_org_defaults,
+    project_nav_visible=_project_nav_visible,
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=_export_org_data,
         import_=_import_org_data,

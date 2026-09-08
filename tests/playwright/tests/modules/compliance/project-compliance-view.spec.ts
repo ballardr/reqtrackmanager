@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { createStandardWithVersion } from "./helpers";
 
 /**
  * Job to be done: Compliance Module Phase 13 (docs/compliance-module-plan.md)
@@ -39,26 +40,13 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
-    // --- Author a published standard/version/requirement to assign (Phase 12 UI).
-    await page.goto("/orgs");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    await selectOrgAdminGroup(page, "Compliance");
+    // --- Author a published standard/version/requirement to assign, via
+    // the top-level `/standards` page (compliance-module-plan.md Phase 18 —
+    // supersedes Phase 12's org-admin "Compliance" group entirely).
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
-    // A standard's mandatory first (draft) version is now created alongside
-    // the standard itself in the same "New standard" dialog — a standard is
-    // never left with zero versions.
-    await page.getByRole("tab", { name: "Standards" }).click();
-    await page.getByRole("button", { name: "New standard" }).click();
-    await page.getByLabel("Standard reference").fill(reference);
-    await page.getByLabel("Standard name").fill(standardName);
-    await page.getByLabel("Initial version label").fill("v1.0");
-    await page.getByRole("dialog", { name: "New standard" }).getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("button", { name: reference })).toBeVisible();
-
-    await page.getByRole("button", { name: reference }).click();
+    await page.getByRole("link", { name: "Versions" }).click();
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
-
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Add requirement" }).click();
     await page.getByLabel("Requirement name").fill(requirementName);

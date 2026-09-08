@@ -40,7 +40,9 @@ function action(overrides: Partial<ComplianceRequiredAction> & { id: string; req
  * the backend's flat, DFS-ordered `GET .../requirements` list plus its
  * `required-actions` sub-resource, so a story's `play` function can assert
  * a real create/reorder/delete -> reload -> re-render round trip, matching
- * `ComplianceAdminPanel.stories.tsx`'s own standard.
+ * `StandardVersionsSection.stories.tsx`'s own standard (the retired
+ * `ComplianceAdminPanel.stories.tsx`'s successor, docs/compliance-module-
+ * plan.md Phase 18).
  *
  * Opening "View mappings" mounts `RequirementMappingsModal` as a child —
  * its endpoints are mocked here just enough to resolve emptily so that

@@ -995,3 +995,20 @@ class ComplianceRecentActivityOut(BaseModel):
     action: str
     actor_id: UUID | None
     created_at: datetime
+
+
+# --- Phase 18: cross-org, global (no org/project id in the path) endpoints --
+
+
+class ComplianceNavVisibilityOut(BaseModel):
+    """Response of `GET /api/v1/compliance/nav-visibility` (`global_router.
+    py`) — whether the caller should see the top-level "Compliance
+    Standards" nav-rail tab at all (compliance-module-plan.md Phase 18).
+    Deliberately a single boolean, not a per-org breakdown: the frontend
+    hook this feeds gates one nav item, not a list, and a per-org
+    breakdown would leak which specific orgs have compliance-relevant data
+    to a caller who may not otherwise be able to see into all of them."""
+
+    model_config = {"from_attributes": True}
+
+    visible: bool

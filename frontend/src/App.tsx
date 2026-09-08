@@ -6,6 +6,7 @@ import { useAuth } from "./context/AuthContext";
 import { useFederatedModules } from "./hooks/useFederatedModules";
 import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
 import { buildModuleRoutes } from "./modules/buildModuleRoutes";
+import { installedModules } from "./modules/registry";
 import { ActionDetailPage } from "./pages/ActionDetailPage";
 import { ChangeRequestDetailPage } from "./pages/ChangeRequestDetailPage";
 import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
@@ -74,6 +75,21 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        {/* Every installed module's own always-mounted top-level routes
+            (`TierAModuleDefinition.globalRoutes`, compliance-module-plan.md
+            Phase 18) — unlike `buildModuleRoutes` above (project-scoped,
+            gated on a specific project's own currently-enabled-modules
+            list), these are plain top-level routes the same as `/projects`/
+            `/orgs`, for a module surface with no single project/org to key
+            an enablement check off (Compliance's `/standards` and friends).
+            `App.tsx` never imports a specific module's page components
+            directly — each module registers its own `globalRoutes` in its
+            own `module.ts`, the same "core doesn't hardcode one module"
+            boundary `Layout.tsx`'s `globalNavItems`/`standaloneWorkspaces`
+            consumption already establishes. */}
+        {installedModules.flatMap((m) => m.globalRoutes ?? []).map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="/server/organisations" element={<ServerOrganisationsPage />} />
         <Route path="/server/management/:group?" element={<ServerManagementPage />} />
         <Route path="/my-reviews" element={<MyReviewsDuePage />} />

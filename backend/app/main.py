@@ -236,17 +236,23 @@ if settings.websocket_enabled:
 # also what produces this run's "every loaded module logged at startup"
 # operational record (see `app.modules.registry`'s module docstring) — no
 # separate lifespan-hook logging is needed for that. A module contributes up
-# to two routers — `get_router()` (org-scoped, `/api/v1/orgs/
-# {organization_id}/modules/<key>/...`) and, since Phase 7, an optional
-# `get_project_router()` (project-scoped, `/api/v1/projects/{project_id}/
-# modules/<key>/...`) — both mounted the same way here. A module's own
-# router(s) apply their own `require_org_module_enabled`/`require_project_
-# module_enabled`/`require_module_role` gating internally; there is no
-# second gate applied at this mount-loop level.
+# to three routers — `get_router()` (org-scoped, `/api/v1/orgs/
+# {organization_id}/modules/<key>/...`), an optional `get_project_router()`
+# (project-scoped, `/api/v1/projects/{project_id}/modules/<key>/...`, since
+# Phase 7), and, since Phase 18, an optional `get_global_router()` (no
+# org/project id in its path root at all — `/api/v1/<key>/...`, for an
+# endpoint like compliance's `nav-visibility` that aggregates across every
+# org the caller belongs to, or one that resolves its own org from some
+# other id, like `standards/{standard_id}`) — all three mounted the same
+# way here. A module's own router(s) apply their own `require_org_module_
+# enabled`/`require_project_module_enabled`/`require_module_role`/`require_
+# org_access_and_module_enabled` gating internally; there is no second gate
+# applied at this mount-loop level.
 for _module_definition in get_module_registry().values():
     for _module_router in (
         _module_definition.get_router(),
         _module_definition.get_project_router() if _module_definition.get_project_router is not None else None,
+        _module_definition.get_global_router() if _module_definition.get_global_router is not None else None,
     ):
         if _module_router is not None:
             app.include_router(_module_router)

@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-08 (Phase 17 complete).
+**Last updated:** 2026-09-08 (Phase 18 complete).
 
-**Overall progress:** 17 / 19 phases complete (18-19 not started).
+**Overall progress:** 18 / 19 phases complete (19 not started).
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -32,10 +32,10 @@ This document is the persistent, session-resumable implementation plan for the C
 | 15 | Reporting, export, seed data, docs close-out | [x] Complete |
 | 16 | Hardening pass | [x] Complete |
 | 17 | Post-review UX quick fixes | [x] Complete |
-| 18 | "Compliance Standards" as a first-class, cross-org, project-like nav entity | [ ] Not started |
+| 18 | "Compliance Standards" as a first-class, cross-org, project-like nav entity | [x] Complete |
 | 19 | "Organisation Overview" page | [ ] Not started |
 
-**Next phase to pick up:** Phase 18. Phase 17's five sub-items are all done (see its own checklist below for exactly what each one changed). Phases 18 and 19 are fully specified below but not started. Do Phase 18 before 19 (19's nav-visibility reasoning references Phase 18's new endpoint, though 19's own tab is deliberately *not* gated by it — see Phase 19's spec). For history: Phases 0-16 above were the original build; 17-19 originate from `docs/decisions.md`'s "Compliance module, human review follow-ups" entry — read that first for the full reasoning behind each design choice below (why Standards get a nav-rail section but Action Types/Mapping Types get a `ResourceMenu`, why Organisation Overview's stats are visibility-scoped except for org admins, etc.) rather than re-deriving it.
+**Next phase to pick up:** Phase 19. Phase 18 is complete (see its own "Phase 18 notes" subsection below for what deviated from spec, and `docs/decisions.md`'s "Phase 18 complete" entry for the full account — including the one thing NOT verified in that session: the updated/rewritten Playwright specs were not run against a live stack, no Docker Compose environment being available in that sandboxed session). Phase 19 is fully specified below but not started. For history: Phases 0-16 above were the original build; 17-19 originate from `docs/decisions.md`'s "Compliance module, human review follow-ups" entry — read that first for the full reasoning behind each design choice below (why Standards get a nav-rail section but Action Types/Mapping Types get a `ResourceMenu`, why Organisation Overview's stats are visibility-scoped except for org admins, etc.) rather than re-deriving it.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -605,6 +605,18 @@ Depends on Phase 17 being complete (relocates `StandardsPanel.tsx`/`ComplianceAd
 - **Retire the old location**: remove the `compliance` `orgAdminSection` (`module.ts`) and `ComplianceAdminPanel.tsx`'s org-admin-hosted wrapper — fully superseded.
 - **Docs**: record the IA decision in `docs/decisions.md`; check whether `docs/ux-style-guide.md` needs a new named pattern for this second "project-like drill-down" entity type; update `docs/solution-architecture.md` if this changes the documented navigation architecture.
 - **Tests**: backend permission-boundary tests for the two new endpoints; Playwright e2e for tab visibility on/off, one-step standard+version creation, standard workspace navigation, and org compliance settings; Storybook stories for new page-level components.
+
+#### Phase 18 notes (completed 2026-09-08)
+
+Implemented per the spec above, with three real deviations recorded here so a future session doesn't need to re-derive them:
+
+- **The nav-visibility hook and the "Standard" nav-rail section were not implemented as spec'd on first pass, and had to be corrected.** The spec's own "one hook fetched once at `Layout.tsx` shell level" and "`Layout.tsx`: when `standardId` is present..." language was read too literally on the first implementation pass — it hardcoded a `useComplianceNavVisibility()` Context import and an inline `/^\/standards\//` regex/"Standard" label directly into `Layout.tsx`, exactly the "module coupled into a core file" shape `docs/compliance-module-plan.md`'s own "Design history" section already records as rejected twice during the module system's original design. Caught and fixed before this phase was reported done (see `docs/decisions.md`'s "Phase 18 complete" entry for the full account): `frontend/src/modules/types.ts`'s `TierAModuleDefinition` gained `globalNavItems`/`standaloneWorkspaces`, mirroring `orgAdminSections`'s existing "module hands the parent a render function" shape; `Layout.tsx` now contains zero compliance-specific code. The nav-visibility value itself is served by a self-contained hook backed by a tiny module-level `useSyncExternalStore` store (`useComplianceNavVisibility.ts`), not a Context/Provider `Layout.tsx` would have to mount — closer in spirit to "fetched once, cached" than to `hasFavourites`'s literal Context shape, since nothing outside the compliance module needs to read this value.
+- **The identical mistake recurred once more, in `App.tsx`, and was caught in a second review pass after the `Layout.tsx` fix.** `App.tsx` directly imported `StandardListPage`/`StandardWorkspacePage`/`ComplianceSettingsPage` and hardcoded three `/standards*` routes for them, and those three page components lived under `frontend/src/pages/` despite depending heavily on `modules/compliance/` internals — unlike the correct existing precedent (`ProjectCompliancePage` lives inside `modules/compliance/` itself). Fixed the same way: `TierAModuleDefinition` gained `globalRoutes?: TierAModuleRoute[]` (the always-mounted counterpart to the existing project-gated `routes`), `App.tsx` now consumes it generically with no compliance import at all, and all three pages (+ stories) moved into `frontend/src/modules/compliance/`, registered via `module.ts`.
+- **A third small backend addition beyond the two the spec names**: `GET .../standards/{id}/history` (org-scoped, added to the *existing* `router.py`, not the new global router) backs the "History" section of the Standard workspace, which the spec requires but doesn't say how to serve. Mirrors `project_router.py::get_requirement_history`'s exact shape against `compliance_standard`-entity audit events.
+
+Also not literally spec'd but implied by "fully superseded": `StandardsPanel.tsx`/`ComplianceAdminPanel.tsx` were deleted outright (not left in place unused), and a pre-existing `.side-grid` order bug in the deleted `StandardsPanel.tsx` (FilterPanel before content, backwards from every other list page) was not carried forward into `StandardListPage.tsx` — found and fixed in the same pass, along with the identical bug in the still-live `OrgComplianceStandardsPanel.tsx`.
+
+Playwright e2e specs were rewritten/updated (`compliance-standards-management.spec.ts` fully rewritten for the new IA; `project-compliance-view.spec.ts`/`org-compliance-view.spec.ts` had their now-defunct org-admin setup steps replaced) but **not executed against a live stack in this session** — no Docker Compose stack was available in this sandboxed environment. Whoever next has the stack up should run them before treating this phase as fully closed end-to-end; see `docs/decisions.md`'s entry for exactly what was and wasn't verified.
 
 ---
 

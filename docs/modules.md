@@ -187,6 +187,7 @@ class ModuleDefinition:
     models_import_path: str | None = None       # dotted path to your ORM models module
     migrations_import_path: str | None = None   # dotted path to a module exposing run_migrations(connection)
     get_project_router: Callable[[], APIRouter | None] | None = None  # optional 2nd, project-scoped router
+    get_global_router: Callable[[], APIRouter | None] | None = None  # optional 3rd, id-less router
     resolve_file_owner_project_id: Callable[[Session, UUID], UUID | None] | None = None  # file-download auth hook
 ```
 
@@ -206,6 +207,20 @@ declaring a `path_template` under `get_project_router()`'s prefix is
 checked against that router, not `get_router()`'s. `app.main`'s mount loop
 mounts both the same way; leave this `None` if you have no project-scoped
 endpoints of your own (most modules).
+
+**`get_global_router` (compliance-module-plan.md Phase 18)** is a third,
+optional router for the rarer case where an endpoint has *no* single org or
+project id in its own path at all — Compliance's own example is `GET
+/api/v1/compliance/nav-visibility`, which aggregates across every org the
+caller belongs to, and `GET /api/v1/compliance/standards/{standard_id}`,
+which resolves its owning org from the standard's own id rather than a path
+parameter. `app.main`'s mount loop mounts it the same way as the other two,
+with no second gate applied at the mount-loop level — a route here must do
+its own org/project resolution and access check internally, using `app.
+services.rbac.require_org_access_and_module_enabled(db, current_user,
+organization_id, module_key)` once you've resolved the relevant org id from
+wherever your endpoint's own identifier leads to it. Leave this `None`
+unless you have a genuinely id-less endpoint (most modules never will).
 
 `key` and every `role_key` a module declares are load-bearing identifiers —
 they're used as plain string keys in database rows (entitlement, enablement,
@@ -439,11 +454,79 @@ active group by calling its `render({ orgId })` — no per-module edit to
 `OrgAdminPage.tsx` itself. A section's `key` must be unique across every
 installed module (and distinct from the ten core group keys); a colliding
 key is dropped, logged, rather than silently shadowing a core group. See
-`frontend/src/modules/compliance/module.ts` for a real example (two
-sections, `ComplianceAdminPanel` and `OrgCompliancePanel`) and
-`docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
-registration" entry for why this replaced Phase 12/14's original hardcoded
-approach.
+`frontend/src/modules/compliance/module.ts` for a real example
+(`OrgCompliancePanel`, the org-wide compliance dashboard — Compliance's own
+former second section, `ComplianceAdminPanel`, was retired in Phase 18, see
+below) and `docs/decisions.md`'s "Module system follow-up: dynamic org-admin
+panel registration" entry for why this replaced Phase 12/14's original
+hardcoded approach.
+
+### Global nav links, global routes, and standalone workspaces
+
+Three more optional `TierAModuleDefinition` fields (compliance-module-plan.md
+Phase 18), mirroring `orgAdminSections`' own "module hands the parent a
+render function" shape, for a module that needs a presence in `Layout.tsx`/
+`App.tsx` themselves rather than inside Org Admin or a specific project:
+
+```ts
+export const moduleDefinition: TierAModuleDefinition = {
+  key: "compliance",
+  // Always-mounted, top-level page routes — the same {path, element} shape
+  // as `routes` above, but spliced into App.tsx's <Routes> unconditionally
+  // for every installed module (like /projects, /orgs), not gated on any
+  // one project's/org's own currently-enabled-modules list the way `routes`
+  // is. For a cross-org, always-present surface with no single project/org
+  // to check enablement against (Compliance's own /standards and friends).
+  globalRoutes: [
+    { path: "/standards", element: <StandardListPage /> },
+    { path: "/standards/settings/:orgId/:group?", element: <ComplianceSettingsPage /> },
+    { path: "/standards/:standardId/:section?", element: <StandardWorkspacePage /> },
+  ],
+  // A top-level nav-rail link in Layout.tsx's Global section (sibling to
+  // Projects). Each item owns its own visibility and may render `null` —
+  // Layout.tsx invites every installed module's items to render and never
+  // itself decides whether a given one applies.
+  globalNavItems: [
+    { key: "compliance-standards", render: ({ railCollapsed }) => <ComplianceGlobalNavLink railCollapsed={railCollapsed} /> },
+  ],
+  // A left-nav section rendered as a sibling to Layout.tsx's own "Project"
+  // section, active whenever `matchPath` matches the current URL — for a
+  // project-like entity that isn't a Project (Compliance's own Standard:
+  // Overview/Versions/History). `matchPath`'s first capture group is
+  // passed to `render` as `entityId`.
+  standaloneWorkspaces: [
+    {
+      key: "standard",
+      matchPath: /^\/standards\/(?!settings\/)([^/]+)/,
+      render: ({ entityId, railCollapsed }) => <StandardNavSection entityId={entityId} railCollapsed={railCollapsed} />,
+    },
+  ],
+};
+```
+
+**Page components registered via `globalRoutes` (or `routes`) live inside
+your own module's directory (`frontend/src/modules/<key>/`), never under
+`frontend/src/pages/`** — `StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
+`ComplianceSettingsPage.tsx` all live in `frontend/src/modules/compliance/`,
+the same place `ProjectCompliancePage.tsx` (registered via `routes`) always
+has. `NavRailLink` (`components/Layout.tsx`) is exported so your own render
+functions can build visually-consistent links. Use these three fields, not a
+direct edit to `Layout.tsx`/`App.tsx`, for anything that needs a
+Global-section link, an always-mounted top-level route, or a Project-like
+left-nav section — an earlier Phase 18 implementation pass hardcoded the nav
+link/section directly into `Layout.tsx`, and — caught in a *second* review
+pass after that first fix — then repeated the identical mistake for the
+routes, importing the three page components straight into `App.tsx` and
+hardcoding their paths there. Both were corrected before the phase was
+accepted (see `docs/decisions.md`'s "Phase 18 complete" entry for the full
+account of both); the module system's own "Design history" already rejected
+this shape twice during its original design, before either of these. If
+your nav contribution needs its own gating logic (Compliance's link is
+hidden unless `GET /api/v1/compliance/nav-visibility` says otherwise), keep
+that logic self-contained inside your own module — a small hook backed by a
+module-level `useSyncExternalStore` store, not a React Context/Provider
+`Layout.tsx` would have to mount, is `useComplianceNavVisibility.ts`'s own
+pattern (`frontend/src/modules/compliance/`) if you need the same shape.
 
 ### Tier B — remote (for a module that can't be compiled in)
 

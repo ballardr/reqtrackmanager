@@ -66,6 +66,17 @@ is thin: validate cross-org/-standard references (404, not 403, matching
 every other lookup here) and call into `service.py` for the actual
 computation.
 
+Phase 18 ("Compliance Standards" as a first-class, cross-org, project-like
+nav entity) adds one read-only endpoint to this router,
+`.../standards/{id}/history` — this standard's own audit trail, backing the
+new `/standards/:standardId` workspace's "History" nav-rail section
+(`StandardWorkspacePage.tsx`). Added here, on the existing org-scoped
+router, rather than on the module's new global router (`global_router.py`,
+this same phase) because `organization_id` is already known by the time
+the frontend workspace reaches this call — the global router exists only
+for the two endpoints that genuinely have no such id in their own path
+(`nav-visibility`, `standards/{id}` itself).
+
 External dependencies: `app.services.rbac` (module-role/module-enabled
 gating), `app.services.audit` (mutation logging), `app.services.ordering`
 (sibling reordering), `app.services.definitions` (action-type delete-with-
@@ -84,6 +95,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.audit import AuditEvent
 from app.models.notification import NotificationType
 from app.models.organization import Organization
 from app.models.project import Project
@@ -152,6 +164,7 @@ from app.modules.compliance.service import (
     list_reviews_due_for_project,
     materialize_assessment_rows,
 )
+from app.schemas.audit import AuditEventOut
 from app.schemas.project import MoveDirection
 from app.services import notifications
 from app.services.audit import log_event
@@ -316,6 +329,28 @@ def get_standard(
 ):
     """Fetches a single compliance standard."""
     return _get_standard_or_404(db, organization_id, standard_id)
+
+
+@router.get("/standards/{standard_id}/history", response_model=list[AuditEventOut])
+def get_standard_history(
+    organization_id: UUID, standard_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """This standard's own audit history (compliance-module-plan.md Phase
+    18's "Standard" nav-rail workspace, "History" section) — every
+    `compliance_standard`-entity audit event logged against this row
+    (created/updated/archived/unarchived, see this router's own create/
+    update/archive/unarchive handlers above), oldest first. Mirrors
+    `project_router.py::get_requirement_history`'s identical shape/query
+    exactly, just against `compliance_standard` instead of
+    `project_compliance_requirement` — view-gated, not manage-gated, same
+    as every other read on this standard."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    return db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.entity_type == "compliance_standard", AuditEvent.entity_id == str(standard.id))
+        .order_by(AuditEvent.created_at)
+    ).all()
 
 
 @router.patch("/standards/{standard_id}", response_model=ComplianceStandardOut)

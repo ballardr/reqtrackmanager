@@ -2053,6 +2053,59 @@ def require_org_module_enabled_dynamic(
     return current_user
 
 
+def require_org_access_and_module_enabled(
+    db: Session, current_user: User, organization_id: UUID, module_key: str, request: Request | None = None,
+) -> None:
+    """Non-dependency-factory sibling of `require_org_module_enabled`, for a
+    module endpoint that resolves its owning `organization_id` from some
+    *other* identifier in the path rather than from `organization_id`
+    itself (compliance-module-plan.md Phase 18) — e.g. `GET /api/v1/
+    compliance/standards/{standard_id}`, mounted on a module's `get_global_
+    router()` (`app.modules.registry`) with no `organization_id` path
+    parameter at all, which resolves org membership only *after* looking
+    the standard up by id.
+
+    Runs the exact same checks `require_org_module_enabled`'s inner
+    dependency does, in the same order — PAT scope, org active, org 2FA,
+    caller membership, then effective module enablement — with the same
+    404-not-403 posture (a caller with no role in `organization_id` gets
+    the same "Not found" a caller in a disabled/non-entitled module would,
+    rather than a 403 that would confirm the standard exists in an org they
+    can't see into). The one behavioural difference from `require_org_
+    module_enabled` is unavoidable, not a relaxation: Tier B `<ModuleFrame>`
+    scope enforcement (`_enforce_module_frame_scope`) isn't applied here,
+    because a global-router route has no single `organization_id`/
+    `project_id` path parameter for a module-frame token to be scoped
+    against in the first place — a route calling this should depend on
+    plain `get_current_user`, not `get_current_user_or_module_frame`, for
+    exactly that reason.
+
+    Args:
+        db: An active database session.
+        current_user: The already-authenticated caller.
+        organization_id: The organisation owning the resource the caller's
+            request named (resolved by the caller of this function, e.g.
+            from a standard's own `organization_id` column).
+        module_key: The module's registry key to check enablement for.
+        request: The current request, for PAT-scope enforcement — `None`
+            skips that check (a route with no PAT-authenticatable use case
+            may omit it, though every real caller here has one available).
+
+    Raises:
+        HTTPException: 403 if a PAT is scoped to a different org. 404 if
+            the caller has no role in `organization_id`, or the module
+            isn't effectively enabled there for that org.
+    """
+    if request is not None:
+        check_pat_scope(request, organization_id)
+    _require_org_active(db, organization_id)
+    _require_org_2fa(db, organization_id, current_user)
+    if not get_effective_org_roles(db, current_user.id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    if not is_module_enabled(db, organization_id, module_key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+
+
 def require_project_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
     enabled for the organisation owning the project named by the

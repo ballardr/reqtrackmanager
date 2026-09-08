@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.models.enums import OrgRole
 from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
+from app.modules.registry import run_on_org_created_hooks
 from app.security import hash_password
 from app.services.definitions import seed_link_types, seed_project_statuses
 
@@ -51,12 +52,10 @@ def run_bootstrap(db: Session) -> None:
             db.flush()
             seed_project_statuses(db, org.id)
             seed_link_types(db, org.id)
-            # Local import: keeps this core bootstrap path from taking a
-            # module-level dependency on the compliance module — same
-            # reasoning as `routers.orgs.create_organization`.
-            from app.modules.compliance.service import seed_compliance_action_types
-
-            seed_compliance_action_types(db, org.id)
+            # Generic module-contributed org-creation seeding — same
+            # reasoning/mechanism as `routers.orgs.create_organization`
+            # (`ModuleDefinition.on_org_created`'s own docstring).
+            run_on_org_created_hooks(db, org.id)
             db.add(UserOrgRole(user_id=admin.id, organization_id=org.id, role=OrgRole.ORG_ADMIN))
 
     db.commit()

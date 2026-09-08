@@ -106,6 +106,31 @@ flowchart TD
 
 Two trees, same content, regrouped rather than trimmed — every leaf in the second diagram traces back to a section in the first. Two notes on the regrouping itself: **Overview** groups rare-and-consequential items (import/merge, the danger zone, shared resources) that don't share a subject, only a "you'd look at this on arrival or almost never" frequency; and the old **Advanced** accordion doesn't survive as one item — its seven previously-crammed-together settings domains split across the tree by what they actually govern (SMTP/email gets its own item, 2FA/self-signup/external-user-policy becomes "Security," PAT lifetime joins the existing PAT list).
 
+## Pattern: project-like drill-down entities
+
+Use this when a new entity type isn't a project, isn't a fixed settings screen, but still deserves to be found and opened the way a project is — this is the decision the Compliance Module's Standards needed (docs/compliance-module-plan.md Phase 18) and the first case since Projects themselves. It extends "Pattern: settings hierarchy" above rather than replacing it: that flowchart answers "what shape is this settings surface," this one answers a question one level up — "is this thing a *settings surface* at all, or a project-like entity that happens to have some settings of its own."
+
+```mermaid
+flowchart TD
+  Start{"What are you adding a home for?"}
+  Start -->|"a fixed, small set of org-wide settings screens (e.g. two vocabularies)"| RM["ResourceMenu page — like Org Admin/Project Admin"]
+  Start -->|"an entity: created many times, opened individually, own identity/history"| Entity{"Is it scoped to one org/project, or can any number exist across orgs?"}
+  Entity -->|"scoped to exactly one org or project already open"| Nested["Lives inside that org/project's own admin surface"]
+  Entity -->|"exists independently, cross-org, found the way Projects are found"| TopLevel["Own top-level nav-rail tab + cross-org list + Layout.tsx nav-rail section when one is open"]
+```
+
+The tell isn't "does it have settings" (Action Types and Mapping Types have settings too) — it's "do people create many of these, then come back and open one specific instance by name," the same shape Projects already have. Compliance Standards is the concrete test case: a Standard is created, versioned, revisited, and referenced independently of any one org admin session, the same way a Project is independent of any one org's admin page — so it gets the full "Projects" treatment:
+
+- Its own top-level nav-rail link, in `Layout.tsx`'s Global section (gated on relevance, unlike Projects' unconditional visibility — see the nav-visibility note below).
+- A cross-org list page, modelled directly on `ProjectListPage.tsx` (same `.side-grid` order, same `showOrgColumn` convention, same Modal-based create flow).
+- A `Layout.tsx` left-nav section — Overview/Details plus whatever else the entity needs (Standards: Versions, History) — triggered by the entity's own id in the URL, a sibling structural pattern to the existing "Project" section, never nested inside it.
+
+Action Types and Mapping Types, by contrast, are a fixed pair of org-wide vocabulary screens — there's always exactly one of each, per org, never individually created/found/opened by name — so they get a `ResourceMenu` page instead (`ComplianceSettingsPage.tsx`), the same shape Org Admin/Project Admin/Server Admin already use for "a handful of named sections, one page, persistent side menu." Building a nav-rail section for a fixed settings pair would be over-building; hosting a real drill-down entity inside a `ResourceMenu` group would under-build it (no cross-org list, no independent identity once you navigate away).
+
+**Extending `Layout.tsx` for a new drill-down entity must not hardcode it there.** The nav-rail link and the left-nav section are both declared by the *module* (`frontend/src/modules/types.ts`'s `GlobalNavItemDef`/`StandaloneWorkspaceDef`, mirroring `OrgAdminSectionDef`'s existing "module hands the parent a render function" shape exactly) — `Layout.tsx` invites every installed module's contributions to render and never itself contains a reference to "Standard," "Compliance," or any other specific entity name. This is not optional polish: an earlier pass on Phase 18 hardcoded exactly this into `Layout.tsx` directly and had to be corrected before the phase was accepted (see `docs/decisions.md`'s Phase 18 entry) — the module system's own "Design history" section already rejected this same shape twice during its original design.
+
+**A new drill-down entity's own nav-rail visibility is that module's decision, not `Layout.tsx`'s.** Compliance Standards is niche (unlike Projects, shown unconditionally) — visible only if the caller manages standards somewhere, or a relevant org already has one. The gating check itself is a small module-owned endpoint (`GET /api/v1/compliance/nav-visibility`) consulted by the module's own nav-link component, not a field bolted onto a core "my memberships" response — keep the same shape for the next entity type that needs conditional visibility rather than growing a generic-but-unused config surface for a sample size of two.
+
 ## Pattern: platform default vs. override
 
 One control, applied uniformly to every overridable setting (today: accent colour, header title, footer identity, logo, login background). A status pill states the current source in words, not just an input's blank-or-filled state; a reset action is always present when the value is custom.

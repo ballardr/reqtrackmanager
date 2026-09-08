@@ -29,6 +29,14 @@
  * per-module convention this repo now expects elsewhere — see
  * docs/compliance-module-plan.md's Phase 12 notes.
  *
+ * Phase 18 ("Compliance Standards" as a first-class, cross-org, project-like
+ * nav entity) adds the two global (no org/project id in the path) endpoints
+ * at the top of this file — `getNavVisibility`/`getStandardById` — plus
+ * `getStandardHistory` (an org-router addition, `router.py`'s new
+ * `GET .../standards/{id}/history`, mirroring `getRequirementHistory`'s
+ * existing shape) for the new `/standards/:standardId` workspace's
+ * "History" section.
+ *
  * Endpoints intentionally NOT covered here (out of this phase's own scope):
  * the project-scoped version-migration action (§27, `migrate-version`) —
  * deliberately not built into this phase's UI either, a flagged scope trim
@@ -72,6 +80,23 @@ function projectBase(projectId: string): string {
   return `/api/v1/projects/${projectId}/modules/compliance`;
 }
 
+// --- Phase 18: global (no org/project id in the path) endpoints -----------------
+//
+// Mounted via `ModuleDefinition.get_global_router` (`backend/app/modules/
+// compliance/global_router.py`) at the bare `/api/v1/compliance` prefix —
+// neither endpoint has a single org/project id of its own to key a path
+// off (`nav-visibility` aggregates across every org the caller belongs to;
+// `getStandardById` resolves a standard's owning org from its own id,
+// mirroring how a project's own id already resolves to its org).
+
+export function getNavVisibility(): Promise<{ visible: boolean }> {
+  return api.get(`/api/v1/compliance/nav-visibility`);
+}
+
+export function getStandardById(standardId: string): Promise<ComplianceStandard> {
+  return api.get(`/api/v1/compliance/standards/${standardId}`);
+}
+
 // --- Standards ---------------------------------------------------------------
 
 export function listStandards(orgId: string, includeArchived = false): Promise<ComplianceStandard[]> {
@@ -108,6 +133,10 @@ export function archiveStandard(orgId: string, standardId: string): Promise<Comp
 
 export function unarchiveStandard(orgId: string, standardId: string): Promise<ComplianceStandard> {
   return api.post(`${base(orgId)}/standards/${standardId}/unarchive`);
+}
+
+export function getStandardHistory(orgId: string, standardId: string): Promise<ComplianceAuditEvent[]> {
+  return api.get(`${base(orgId)}/standards/${standardId}/history`);
 }
 
 // --- Standard versions ---------------------------------------------------------

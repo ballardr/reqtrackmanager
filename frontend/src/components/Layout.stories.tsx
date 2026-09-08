@@ -51,6 +51,15 @@ function mockLayoutApis() {
     // Storybook suite) while verifying Phase 13's own changes here — fixed
     // in passing rather than left, per this repo's "fix, don't defer" rule.
     if (path.endsWith("/enabled-modules")) return [];
+    // Compliance's own `globalNavItems` contribution (compliance-module-
+    // plan.md Phase 18, `ComplianceGlobalNavLink.tsx`) fetches this
+    // unconditionally whenever a user is logged in, via `Layout.tsx`'s
+    // generic module-nav-item mechanism — not something Layout.tsx itself
+    // knows or cares about, but this mock intercepts every `api.get` call
+    // during the story regardless of which module made it. `false` keeps
+    // every existing story's nav-rail assertions unaffected; visibility
+    // itself is covered by `ComplianceGlobalNavLink.stories.tsx` instead.
+    if (path === "/api/v1/compliance/nav-visibility") return { visible: false };
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
 }

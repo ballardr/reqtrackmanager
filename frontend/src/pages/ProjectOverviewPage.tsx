@@ -1,18 +1,18 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
-import { getProjectComplianceStatus } from "../modules/compliance/api";
-import type { ProjectComplianceStatus } from "../modules/compliance/types";
+import { getInstalledModule } from "../modules/registry";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -37,23 +37,23 @@ export function ProjectOverviewPage() {
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Compliance summary tile(s) (Phase 17d): only fetched/shown once this
-  // project's org has the Compliance module enabled *and* at least one
-  // standard is actually assigned — a project with neither gets no tile at
-  // all, rather than an empty/zero-value one nobody asked to see.
+  // Extra module-contributed summary tiles (module boundary cleanup,
+  // 2026-09-08) — e.g. Compliance's own per-standard status tiles (Phase
+  // 17d), only shown once this project's org has the module enabled. This
+  // core page renders whatever each currently-enabled module's own
+  // `projectOverviewTiles` hands it and never imports a specific module
+  // itself; a module deciding it has nothing to show yet (e.g. no standards
+  // assigned) is that module's own `render` returning nothing, not
+  // something this page checks for.
   const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
-  const complianceEnabled = enabledModules.some((m) => m.module_key === "compliance");
-  const [complianceStatus, setComplianceStatus] = useState<ProjectComplianceStatus[]>([]);
-
-  useEffect(() => {
-    if (!projectId || !complianceEnabled) {
-      setComplianceStatus([]);
-      return;
-    }
-    getProjectComplianceStatus(projectId)
-      .then(setComplianceStatus)
-      .catch(() => setComplianceStatus([]));
-  }, [projectId, complianceEnabled]);
+  const contributedTiles = projectId
+    ? enabledModules.flatMap((entry) =>
+        (getInstalledModule(entry.module_key)?.projectOverviewTiles ?? []).map((tile) => ({
+          key: `${entry.module_key}:${tile.key}`,
+          node: tile.render({ projectId }),
+        }))
+      )
+    : [];
 
   useEffect(() => {
     if (!projectId) return;
@@ -90,16 +90,6 @@ export function ProjectOverviewPage() {
     [strings.overview.crProposed, metrics.change_requests_proposed, changeRequestsPath("active")],
     [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
     [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],
-    // One tile per standard assigned to this project (Phase 17d) — clicking
-    // through to the project's compliance page, matching every other tile
-    // on this page's own "click through to what was clicked" convention.
-    ...complianceStatus.map(
-      (s): [string, string, string] => [
-        s.standard_name,
-        `${Math.round(s.compliance_percentage)}%`,
-        `/projects/${projectId}/modules/compliance`,
-      ]
-    ),
   ];
 
   const statusEntries = Object.entries(metrics.requirements_by_status) as Array<[RequirementStatus, number]>;
@@ -146,13 +136,10 @@ export function ProjectOverviewPage() {
       </div>
       <div className="grid grid-metrics">
         {tiles.map(([label, value, to]) => (
-          <Link
-            key={label} to={to} className="card stack"
-            style={{ alignItems: "center", textAlign: "center", textDecoration: "none", color: "inherit" }}
-          >
-            <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</div>
-            <div className="text-muted">{label}</div>
-          </Link>
+          <MetricTile key={label} label={label} value={value} to={to} />
+        ))}
+        {contributedTiles.map((t) => (
+          <Fragment key={t.key}>{t.node}</Fragment>
         ))}
       </div>
 

@@ -37,7 +37,9 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  * resolve empty here so the drill-in settles cleanly without duplicating
  * `ApplicabilityTree.stories.tsx`'s own, deeper coverage of that behaviour
  * — the same "settle cleanly, don't duplicate" precedent
- * `StandardsPanel.stories.tsx` set for its own `VersionWorkspace` drill-in.
+ * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
+ * stories.tsx`'s successor, docs/compliance-module-plan.md Phase 18) set
+ * for its own `VersionWorkspace` drill-in.
  */
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {

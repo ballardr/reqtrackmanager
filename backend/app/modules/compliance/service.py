@@ -96,6 +96,7 @@ from app.modules.compliance.enums import (
     ComplianceEvidenceValidityState,
     ComplianceReviewOutcome,
     ComplianceReviewStatus,
+    ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
@@ -162,6 +163,43 @@ def seed_compliance_action_types(db: Session, organization_id: uuid.UUID) -> Non
     """
     for i, name in enumerate(DEFAULT_COMPLIANCE_ACTION_TYPES):
         db.add(ComplianceActionTypeDefinition(organization_id=organization_id, name=name, sort_order=i))
+
+
+def has_assignable_standard(db: Session, organization_id: uuid.UUID) -> bool:
+    """Whether `organization_id` has at least one `PUBLISHED` compliance
+    standard version — i.e. whether there is anything a project in this
+    organisation could actually be assigned (module boundary cleanup,
+    2026-09-08). A `DRAFT`-only standard has nothing assignable yet.
+
+    This module's `ModuleDefinition.project_nav_visible` hook
+    (`app.modules.compliance.module`) calls this to decide whether a
+    project's Compliance nav entry/route should show at all, rather than
+    sending the user to an empty "assign a standard" screen — moved here
+    from an inline query that used to live directly in
+    `app.routers.projects.list_project_enabled_modules`, a core,
+    module-agnostic endpoint that had no business importing this module's
+    own models/enums.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to check.
+
+    Returns:
+        `True` if at least one of the organisation's standards has a
+        `PUBLISHED` version.
+    """
+    return (
+        db.scalar(
+            select(ComplianceStandardVersion.id)
+            .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
+            .where(
+                ComplianceStandard.organization_id == organization_id,
+                ComplianceStandardVersion.status == ComplianceStandardVersionStatus.PUBLISHED,
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def resolve_applicability_for_version(

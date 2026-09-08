@@ -534,13 +534,15 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
             r for r in (
                 definition.get_router(),
                 definition.get_project_router() if definition.get_project_router is not None else None,
+                definition.get_global_router() if definition.get_global_router is not None else None,
             )
             if r is not None
         ]
         if not routers:
             logger.warning(
                 "Module %r declares %d MCP tool(s) but has no router (get_router()/"
-                "get_project_router()) to validate them against; excluding all of them",
+                "get_project_router()/get_global_router()) to validate them against; "
+                "excluding all of them",
                 definition.key, len(definition.mcp_tools),
             )
             continue
@@ -678,6 +680,37 @@ class ModuleDefinition:
             docstring. `app.main`'s mount loop mounts both, the same way,
             with no second gate applied at the mount-loop level (see this
             module's own docstring).
+        get_global_router: Like `get_router`, but for a third, optional
+            router mounted at a path root carrying **neither** an
+            `organization_id` nor a `project_id` placeholder at all
+            (compliance-module-plan.md Phase 18). `get_router`/`get_
+            project_router` both assume the module's endpoint is reachable
+            through *some* resource id already present in the URL; Phase 18
+            needed two endpoints with no such id to key off in the first
+            place — `GET /api/v1/compliance/nav-visibility` (aggregates
+            across every org the caller belongs to, so no single
+            `organization_id` applies) and `GET /api/v1/compliance/
+            standards/{standard_id}` (deliberately un-prefixed by org,
+            mirroring how a project's own id already resolves to its org
+            without an `organization_id` segment — see `app.routers.
+            projects.get_project`). `None` for a module with no such
+            router of its own (every module before Phase 18). Mounted by
+            `app.main`'s mount loop exactly like the other two, with no
+            second gate applied at the mount-loop level; a route in this
+            router must therefore perform whatever org/project resolution
+            and access checks it needs *internally*, the same way `get_
+            router`'s/`get_project_router`'s own routes already do for
+            their path-parameter-derived scope — see `app.services.rbac.
+            require_org_access_and_module_enabled` for the reusable,
+            non-dependency-factory sibling of `require_org_module_enabled`
+            this shape needs (a route here resolves its own
+            `organization_id` from some other identifier first, so it
+            can't bind a FastAPI dependency directly off an
+            `organization_id` path parameter the way `get_router`'s routes
+            do). `build_mcp_tool_manifest` validates a tool's
+            `path_template` against **any** of a module's three router
+            prefixes, not just `get_router`'s/`get_project_router`'s — see
+            that function's own docstring.
         roles: Module-contributed RBAC role declarations (module system
             Phase 2) — each a `ModuleRoleDefinition`. Synced into the
             `module_role_definitions` table at startup by
@@ -828,6 +861,41 @@ class ModuleDefinition:
             project bundle export/import, read via `get_all_module_
             project_bundle_hooks`. `None` for a module with no project-level
             bundle content of its own.
+        on_org_created: Optional hook (module boundary cleanup, 2026-09-08 —
+            see `docs/decisions.md`'s "Module system follow-up: on_org_created
+            / project_nav_visible hooks" entry) called once, synchronously,
+            right after a brand-new `Organization` row is flushed —
+            `app.routers.orgs.create_organization` and
+            `app.services.bootstrap.run_bootstrap` (the only two places an
+            organisation is ever created outside a bundle import) both call
+            `run_on_org_created_hooks` (below) instead of importing any
+            specific module to seed its own org-scoped defaults, the same
+            "core code shouldn't need to know a specific module exists" goal
+            `resolve_file_owner_project_id` already serves for file
+            downloads. Takes `(db, organization_id)`, returns nothing;
+            the module owns its own transaction participation (add rows,
+            don't commit — the caller commits once for the whole org-creation
+            transaction, same convention `seed_project_statuses`/
+            `seed_link_types` already follow). `None` for a module with
+            nothing to seed at org-creation time (every module before
+            Compliance's `seed_compliance_action_types`). Deliberately not
+            an "on module enabled" hook — the module system has no such
+            callback (enablement is a boolean row toggle, not an event), and
+            org-creation time is the one deterministic point that can't race
+            or double-seed regardless of a module's own default-enabled
+            policy; see `seed_compliance_action_types`'s own docstring.
+        project_nav_visible: Optional hook (same 2026-09-08 cleanup) letting
+            a module hide its own already-enabled project-scoped nav
+            entry/route for a specific project, beyond simple enablement
+            (which `app.routers.projects.list_project_enabled_modules`
+            already checks via `is_module_enabled` before ever consulting
+            this) — e.g. Compliance hides its nav entry until its owning
+            organisation has at least one `PUBLISHED` standard version, so a
+            project isn't sent to an "assign a standard" screen with nothing
+            to pick from. Takes `(db, project)`, returns `True` if the
+            already-enabled entry should still show. `None` (the default)
+            means "always visible once enabled," preserving every module's
+            prior behaviour without needing to declare this hook at all.
     """
 
     key: str
@@ -844,10 +912,13 @@ class ModuleDefinition:
     migrations_dir: str | None = None
     migrations_import_path: str | None = None
     get_project_router: Callable[[], APIRouter | None] | None = None
+    get_global_router: Callable[[], APIRouter | None] | None = None
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
     scheduled_jobs: tuple[ModuleScheduledJob, ...] = field(default=())
     org_bundle_hooks: ModuleOrgBundleHooks | None = None
     project_bundle_hooks: ModuleProjectBundleHooks | None = None
+    on_org_created: Callable[[Session, uuid.UUID], None] | None = None
+    project_nav_visible: Callable[[Session, Project], bool] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1550,6 +1621,33 @@ def resolve_module_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID
         if project_id is not None:
             return project_id
     return None
+
+
+def run_on_org_created_hooks(db: Session, organization_id: uuid.UUID) -> None:
+    """Calls every registered module's `on_org_created` hook (module
+    boundary cleanup, 2026-09-08), in registry iteration order, right after
+    a brand-new `Organization` row is flushed — the mechanism
+    `app.routers.orgs.create_organization` and `app.services.bootstrap.
+    run_bootstrap` both call instead of importing a specific module (e.g.
+    Compliance's `seed_compliance_action_types`) to seed its own org-scoped
+    defaults, mirroring `resolve_module_file_project_id`'s identical
+    "core code shouldn't need to know a specific module exists" reasoning.
+
+    A module with no `on_org_created` of its own (the default `None`) is
+    simply skipped. Does not commit — each hook only adds rows, the same
+    convention `seed_project_statuses`/`seed_link_types` already follow;
+    the caller commits once for the whole org-creation transaction.
+
+    Args:
+        db: An active database session, mid-transaction (the new
+            `Organization` row must already be flushed so hooks can
+            reference its id via foreign keys).
+        organization_id: The newly created organisation's id.
+    """
+    for definition in get_module_registry().values():
+        if definition.on_org_created is None:
+            continue
+        definition.on_org_created(db, organization_id)
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

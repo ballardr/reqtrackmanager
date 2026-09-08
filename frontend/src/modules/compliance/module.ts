@@ -2,9 +2,14 @@ import { createElement } from "react";
 
 import { t } from "../../i18n/strings";
 import type { TierAModuleDefinition } from "../types";
-import { ComplianceAdminPanel } from "./ComplianceAdminPanel";
+import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
+import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
+import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
 import { OrgCompliancePanel } from "./OrgCompliancePanel";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
+import { StandardListPage } from "./StandardListPage";
+import { StandardNavSection } from "./StandardNavSection";
+import { StandardWorkspacePage } from "./StandardWorkspacePage";
 
 /**
  * Module: modules/compliance/module
@@ -31,20 +36,61 @@ import { ProjectCompliancePage } from "./ProjectCompliancePage";
  * backend interpolates with a concrete id before sending it to the frontend
  * (`routers/projects.py::list_project_enabled_modules`).
  *
- * `orgAdminSections` (module system follow-up, 2026-09-07): the two
- * org-scoped panels Phase 12/14 each mounted by hand into
- * `OrgAdminPage.tsx` — `ComplianceAdminPanel` (Phase 12, standards/action
- * types/mapping types management) and `OrgCompliancePanel` (Phase 14, the
- * cross-project dashboard/table/outstanding view) — now declared here
- * instead, so `OrgAdminPage.tsx` no longer needs a hardcoded `"compliance"`/
- * `"compliance-overview"` group entry, static import, or render block per
- * module. Labels are read from `i18n/strings.ts`'s own `t()` (the same
- * static English table `useStrings()` layers terminology substitution on
- * top of) rather than duplicated as literals here — `groupCompliance`/
- * `groupComplianceOverview` contain no `{term}` tokens, so the plain,
- * unsubstituted `t()` call (this file isn't a component and can't call the
- * `useStrings()` hook) already returns the exact same string `OrgAdminPage`
- * itself would resolve for every other group's label.
+ * `orgAdminSections` (module system follow-up, 2026-09-07): originally two
+ * org-scoped panels Phase 12/14 each mounted by hand into `OrgAdminPage.
+ * tsx` — `ComplianceAdminPanel` (Phase 12, standards/action types/mapping
+ * types management) and `OrgCompliancePanel` (Phase 14, the cross-project
+ * dashboard/table/outstanding view). Phase 18 ("Compliance Standards" as a
+ * first-class, cross-org, project-like nav entity, docs/compliance-module-
+ * plan.md) retires the `"compliance"` entry entirely — standards/action
+ * types/mapping types management moves to its own top-level `/standards`
+ * nav-rail tab (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
+ * `ComplianceSettingsPage.tsx`), fully superseding `ComplianceAdminPanel`
+ * (deleted). `"compliance-overview"` is untouched here — Phase 19's
+ * "Organisation Overview" page, out of this phase's scope. Labels are read
+ * from `i18n/strings.ts`'s own `t()` (the same static English table
+ * `useStrings()` layers terminology substitution on top of) rather than
+ * duplicated as literals here — `groupComplianceOverview` contains no
+ * `{term}` tokens, so the plain, unsubstituted `t()` call (this file isn't
+ * a component and can't call the `useStrings()` hook) already returns the
+ * exact same string `OrgAdminPage` itself would resolve for every other
+ * group's label.
+ *
+ * `globalNavItems`/`standaloneWorkspaces` (Phase 18, `modules/types.ts`):
+ * the "Compliance Standards" top-level nav-rail tab and the "Standard"
+ * left-nav section, each a thin `createElement` wrapper around a real
+ * compliance-owned component (`ComplianceGlobalNavLink.tsx`/
+ * `StandardNavSection.tsx`) — mirroring `orgAdminSections`' own "module
+ * hands the parent a render function producing real components" shape
+ * exactly, generalised to the two new nav-contribution kinds this phase
+ * needed. `Layout.tsx` never imports either component directly; this file
+ * is the only place they're referenced outside their own module.
+ *
+ * `globalRoutes` (Phase 18, `modules/types.ts`): this module's always-
+ * mounted top-level page routes — `StandardListPage.tsx` (`/standards`),
+ * `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?`), and
+ * `ComplianceSettingsPage.tsx` (`/standards/settings/:orgId/:group?`).
+ * These live inside this module's own directory (not `frontend/src/
+ * pages/`) and are registered here, not imported/hardcoded into `App.tsx`
+ * — the first implementation pass got this wrong (`App.tsx` imported all
+ * three page components directly and hardcoded their routes, the exact
+ * same core-imports-a-specific-module mistake `Layout.tsx`'s
+ * `globalNavItems`/`standaloneWorkspaces` above were already introduced to
+ * fix, just on the routing side instead of the nav side); see
+ * `docs/decisions.md`'s "Phase 18 complete" entry for the corrected
+ * account. `App.tsx` consumes `globalRoutes` the same generic way it
+ * already consumes `buildModuleRoutes`'s project-scoped output.
+ *
+ * `projectOverviewTiles` (module boundary cleanup, 2026-09-08): this
+ * module's per-standard compliance-status tiles on `ProjectOverviewPage
+ * .tsx` (Phase 17d) — previously a direct `getProjectComplianceStatus`/
+ * `ProjectComplianceStatus` import baked into that core page, the same
+ * violation as the two above, found and fixed alongside the backend's
+ * `on_org_created`/`project_nav_visible` hooks (see `docs/decisions.md`'s
+ * "Module system follow-up: on_org_created / project_nav_visible hooks"
+ * entry). `ComplianceProjectOverviewTiles.tsx` owns the fetch and renders
+ * zero or more `MetricTile`s; `ProjectOverviewPage.tsx` renders it without
+ * knowing compliance exists.
  */
 const strings = t();
 
@@ -53,16 +99,39 @@ export const moduleDefinition: TierAModuleDefinition = {
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
   ],
+  globalRoutes: [
+    { path: "/standards", element: createElement(StandardListPage) },
+    { path: "/standards/settings/:orgId/:group?", element: createElement(ComplianceSettingsPage) },
+    { path: "/standards/:standardId/:section?", element: createElement(StandardWorkspacePage) },
+  ],
   orgAdminSections: [
-    {
-      key: "compliance",
-      label: strings.orgAdmin.groupCompliance,
-      render: ({ orgId }) => createElement(ComplianceAdminPanel, { orgId }),
-    },
     {
       key: "compliance-overview",
       label: strings.orgAdmin.groupComplianceOverview,
       render: ({ orgId }) => createElement(OrgCompliancePanel, { orgId }),
+    },
+  ],
+  globalNavItems: [
+    {
+      key: "compliance-standards",
+      render: ({ railCollapsed }) => createElement(ComplianceGlobalNavLink, { railCollapsed }),
+    },
+  ],
+  standaloneWorkspaces: [
+    {
+      key: "standard",
+      // Excludes `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`)
+      // — that path also starts with `/standards/` but names an org, not a
+      // standard, and has no "Standard" nav section of its own (it's a
+      // `ResourceMenu` page, not a project-like drill-down).
+      matchPath: /^\/standards\/(?!settings\/)([^/]+)/,
+      render: ({ entityId, railCollapsed }) => createElement(StandardNavSection, { entityId, railCollapsed }),
+    },
+  ],
+  projectOverviewTiles: [
+    {
+      key: "status",
+      render: ({ projectId }) => createElement(ComplianceProjectOverviewTiles, { projectId }),
     },
   ],
 };

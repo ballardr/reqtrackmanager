@@ -33,6 +33,7 @@ from app.modules.registry import (
     apply_external_module_migrations,
     build_registry,
     import_all_module_models,
+    run_on_org_created_hooks,
 )
 from app.services.rbac import require_org_module_enabled, require_project_module_enabled
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
@@ -678,3 +679,48 @@ def test_system_org_module_entitlements_reflects_override_state(client, admin_to
     by_key = {m["module_key"]: m for m in resp.json()}
     assert by_key[fake_module]["entitled"] is False
     assert by_key[fake_module]["has_override"] is True
+
+
+# --- `on_org_created` generic hook dispatch (module boundary cleanup, 2026-09-08) --------------
+
+
+def test_run_on_org_created_hooks_calls_every_registered_hook(org_id):
+    """`run_on_org_created_hooks` (`app.modules.registry`) is what
+    `routers.orgs.create_organization`/`services.bootstrap.run_bootstrap`
+    call instead of importing a specific module (e.g. Compliance) to seed
+    its own org-scoped defaults — pins that the generic dispatch actually
+    reaches a module's declared `on_org_created` hook, with the right
+    arguments, and leaves a module with none (the default `None`) alone."""
+    calls: list[tuple] = []
+    module_registry.INSTALLED_MODULES.append(
+        _fake_module(on_org_created=lambda db, organization_id: calls.append((db, organization_id)))
+    )
+    build_registry(force=True)
+    try:
+        db = SessionLocal()
+        try:
+            org_uuid = uuid_lib.UUID(org_id)
+            run_on_org_created_hooks(db, org_uuid)
+            assert calls == [(db, org_uuid)]
+        finally:
+            db.close()
+    finally:
+        module_registry.INSTALLED_MODULES[:] = [
+            m for m in module_registry.INSTALLED_MODULES if m.key != FAKE_MODULE_KEY
+        ]
+        build_registry(force=True)
+
+
+def test_run_on_org_created_hooks_skips_modules_with_no_hook(org_id, fake_module):
+    """A module declaring no `on_org_created` (the default `None` — every
+    module before this cleanup, and most modules generally) is simply
+    skipped, not treated as an error — the same "declare nothing, get
+    skipped" shape every other optional hook/field on `ModuleDefinition`
+    already has."""
+    db = SessionLocal()
+    try:
+        # Would raise if the dispatch loop tried to call `None` as a
+        # function for `fake_module` (which declares no `on_org_created`).
+        run_on_org_created_hooks(db, uuid_lib.UUID(org_id))
+    finally:
+        db.close()
