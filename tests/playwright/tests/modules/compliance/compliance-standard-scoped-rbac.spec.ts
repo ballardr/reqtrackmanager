@@ -54,7 +54,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
     // Add `memberAlphaBeta` as a Standards Contributor.
     await page.getByRole("button", { name: "Add member" }).click();
     const addDialog = page.getByRole("dialog", { name: "Add a member" });
-    await addDialog.getByLabel("User").selectOption({ label: new RegExp(PERSONAS.memberAlphaBeta.name) });
+    await addDialog.getByLabel("User").selectOption({ label: `${PERSONAS.memberAlphaBeta.name} (${PERSONAS.memberAlphaBeta.email})` });
     await addDialog.getByLabel("Role").selectOption({ label: "Standards Contributor" });
     await addDialog.getByRole("button", { name: "Add" }).click();
 
@@ -68,8 +68,11 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
     // A contributor grant never touches the manager floor -> always freely revocable.
     await expect(contributorCheckbox).toBeEnabled();
 
-    // Revoke it — the row disappears (no roles left on this standard).
-    await contributorCheckbox.uncheck();
+    // Revoke it — the row disappears entirely (no roles left on this
+    // standard), so a plain `.click()` is used rather than `.uncheck()`:
+    // the latter re-verifies the checkbox is still present and unchecked
+    // after clicking, which never resolves once its whole row is gone.
+    await contributorCheckbox.click();
     await expect(page.getByText(PERSONAS.memberAlphaBeta.name)).toHaveCount(0);
   });
 });

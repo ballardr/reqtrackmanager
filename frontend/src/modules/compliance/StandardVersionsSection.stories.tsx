@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withToast, withStatefulAuth } from "../../testing/storybook-helpers";
 import { StandardVersionsSection } from "./StandardVersionsSection";
 import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion } from "./types";
 
@@ -49,18 +50,34 @@ function mockVersionApis(versions: ComplianceStandardVersion[] = [version()]) {
  * `StandardsPanel.tsx`'s old `SidePanel`/`VersionWorkspace` drill-in.
  * `VersionWorkspace`'s own publish/retire/requirement-tree behaviour is
  * covered by `VersionWorkspace.stories.tsx`, not duplicated here.
+ *
+ * Phase 23 moved "which version is open" from local state to the URL
+ * (`initialVersionId`, the real `StandardWorkspacePage.tsx`'s own
+ * `:versionId?` route param) — `Harness` below stands in for that parent,
+ * reading the same param straight out of a real router so a story can
+ * exercise the full open/navigate/back round trip, not just call the
+ * prop directly.
  */
+function Harness(props: { orgId: string; standard: ComplianceStandard; actionTypes: ComplianceActionType[] }) {
+  const { versionId } = useParams<{ versionId?: string }>();
+  return <StandardVersionsSection {...props} initialVersionId={versionId ?? null} />;
+}
+
 const meta: Meta<typeof StandardVersionsSection> = {
   title: "Modules/Compliance/StandardVersionsSection",
   component: StandardVersionsSection,
-  args: { orgId: ORG_ID, standard: STANDARD, actionTypes: ACTION_TYPES },
-  decorators: [withToast()],
+  args: { orgId: ORG_ID, standard: STANDARD, actionTypes: ACTION_TYPES, initialVersionId: null },
+  render: (args) => <Harness orgId={args.orgId} standard={args.standard} actionTypes={args.actionTypes} />,
+  decorators: [withToast(), withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
 
 type Story = StoryObj<typeof StandardVersionsSection>;
 
+const VERSIONS_ROUTE = "/standards/:standardId/versions/:versionId?";
+
 export const ListsVersions: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions`, VERSIONS_ROUTE)],
   beforeEach: () => mockVersionApis([version(), version({ id: "ver-2", version_label: "v1.1", version_number: 2 })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -70,6 +87,7 @@ export const ListsVersions: Story = {
 };
 
 export const CreateVersionClonedFromExisting: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions`, VERSIONS_ROUTE)],
   beforeEach: () => mockVersionApis([version(), version({ id: "ver-2", version_label: "v1.1", version_number: 2 })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -89,13 +107,33 @@ export const CreateVersionClonedFromExisting: Story = {
 };
 
 export const DrillIntoVersionOpensWorkspace: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions`, VERSIONS_ROUTE)],
   beforeEach: () => mockVersionApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "v1.0" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "v1.0" }));
 
+    // Opening a version navigates to its own URL (`/versions/:versionId`)
+    // rather than only flipping local state — `Harness` re-derives
+    // `initialVersionId` from that same route param.
     await waitFor(() => expect(canvas.getByRole("button", { name: "← Back to ISO 27001" })).toBeInTheDocument());
     await expect(canvas.getByText("ISO-27001 — v1.0")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "← Back to ISO 27001" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "v1.0" })).toBeInTheDocument());
+  },
+};
+
+export const DeepLinksDirectlyIntoVersionWorkspace: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions/ver-1`, VERSIONS_ROUTE)],
+  beforeEach: () => mockVersionApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Landing on the URL directly (e.g. from `StandardNavSection.tsx`'s
+    // expandable Versions group) opens the workspace straight away, never
+    // showing the plain version list first.
+    await waitFor(() => expect(canvas.getByText("ISO-27001 — v1.0")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "v1.0" })).not.toBeInTheDocument();
   },
 };

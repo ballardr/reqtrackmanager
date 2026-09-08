@@ -7,13 +7,23 @@
  * full-width drill-in to `VersionWorkspace` when one is opened. Used as the
  * content of `StandardWorkspacePage.tsx`'s "Versions" nav-rail section.
  *
- * Owns its own `versions`/`activeVersion` state and reloads the version list
- * after a create/publish/retire, exactly as `StandardsPanel.tsx` did — this
- * is a pure extraction, not a behavioural change, so the version-management
- * flow (create, optionally cloned from an existing version; publish/retire)
- * is unchanged from Phase 12/4's original design.
+ * Owns its own `versions` state and reloads the version list after a
+ * create/publish/retire, exactly as `StandardsPanel.tsx` did — this is a
+ * pure extraction, not a behavioural change, so the version-management flow
+ * (create, optionally cloned from an existing version; publish/retire) is
+ * unchanged from Phase 12/4's original design.
+ *
+ * Phase 23 moves "which version is open" from local component state to the
+ * URL (`/standards/:id/versions/:versionId`, `StandardWorkspacePage.tsx`'s
+ * new trailing route param, passed down here as `initialVersionId`) — the
+ * same "a real route, not client-only state" convention this module's own
+ * section switching already established — so `StandardNavSection.tsx`'s
+ * new expandable Versions group can deep-link straight to one version, and
+ * opening/leaving a version here updates the address bar to match rather
+ * than leaving it on the plain `/versions` URL the whole time.
  */
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -30,15 +40,20 @@ export function StandardVersionsSection({
   orgId,
   standard,
   actionTypes,
+  initialVersionId,
 }: {
   orgId: string;
   standard: ComplianceStandard;
   actionTypes: ComplianceActionType[];
+  /** The `:versionId` route param, if the URL names one directly (e.g. a
+   * `StandardNavSection.tsx` expandable-versions link, or the Overview's
+   * "Requirements" tile) — `null` for the plain `/versions` list URL. */
+  initialVersionId: string | null;
 }) {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [versions, setVersions] = useState<ComplianceStandardVersion[] | null>(null);
   const [creatingVersion, setCreatingVersion] = useState(false);
-  const [activeVersion, setActiveVersion] = useState<ComplianceStandardVersion | null>(null);
 
   async function reloadVersions() {
     try {
@@ -50,12 +65,17 @@ export function StandardVersionsSection({
 
   useEffect(() => {
     setVersions(null);
-    setActiveVersion(null);
     void reloadVersions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, standard.id]);
 
-  if (activeVersion) {
+  const activeVersion = initialVersionId ? versions?.find((v) => v.id === initialVersionId) ?? null : null;
+
+  function openVersion(versionId: string) {
+    navigate(`/standards/${standard.id}/versions/${versionId}`);
+  }
+
+  if (initialVersionId && activeVersion) {
     return (
       <VersionWorkspace
         orgId={orgId}
@@ -63,9 +83,8 @@ export function StandardVersionsSection({
         version={activeVersion}
         versions={versions ?? []}
         actionTypes={actionTypes}
-        onBack={() => setActiveVersion(null)}
+        onBack={() => navigate(`/standards/${standard.id}/versions`)}
         onVersionChanged={(updated) => {
-          setActiveVersion(updated);
           setVersions((prev) => (prev ? prev.map((v) => (v.id === updated.id ? updated : v)) : prev));
         }}
       />
@@ -86,7 +105,7 @@ export function StandardVersionsSection({
               className="row"
               style={{ justifyContent: "space-between", padding: "0.5rem 0", borderBottom: "1px solid var(--color-border)" }}
             >
-              <button className="btn" onClick={() => setActiveVersion(v)}>
+              <button className="btn" onClick={() => openVersion(v.id)}>
                 {v.version_label}
               </button>
               <span className="text-muted">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[v.status]}</span>

@@ -76,8 +76,12 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  *
  * `globalRoutes` (Phase 18, `modules/types.ts`): this module's always-
  * mounted top-level page routes — `StandardListPage.tsx` (`/standards`),
- * `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?`), and
- * `ComplianceSettingsPage.tsx` (`/standards/settings/:orgId/:group?`).
+ * `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?/
+ * :versionId?` — the trailing `:versionId?` added by Phase 23 so a specific
+ * version can be deep-linked/opened directly from `StandardNavSection.tsx`'s
+ * new expandable Versions group, rather than always landing on the version
+ * list first), and `ComplianceSettingsPage.tsx`
+ * (`/standards/settings/:orgId/:group?`).
  * These live inside this module's own directory (not `frontend/src/
  * pages/`) and are registered here, not imported/hardcoded into `App.tsx`
  * — the first implementation pass got this wrong (`App.tsx` imported all
@@ -110,7 +114,7 @@ export const moduleDefinition: TierAModuleDefinition = {
   globalRoutes: [
     { path: "/standards", element: createElement(StandardListPage) },
     { path: "/standards/settings/:orgId/:group?", element: createElement(ComplianceSettingsPage) },
-    { path: "/standards/:standardId/:section?", element: createElement(StandardWorkspacePage) },
+    { path: "/standards/:standardId/:section?/:versionId?", element: createElement(StandardWorkspacePage) },
   ],
   orgOverviewSections: [
     {

@@ -40,14 +40,27 @@
  * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
  * `StandardListPage.tsx`'s "Import standard" entry point.
+ *
+ * Phase 23 replaces the Overview's plain description-only card with a
+ * `.grid.grid-metrics` row of `MetricTile`s (versions/requirements/
+ * projects/compliant counts — the same clickable-stat-tile convention
+ * `ProjectOverviewPage.tsx`/`OrgOverviewPage.tsx` already established), and
+ * adds a `"projects"` section (`StandardProjectsPanel.tsx`) the "Projects"/
+ * "Compliant" tiles link into. It also threads an optional `versionId`
+ * route param down to `StandardVersionsSection`/`VersionWorkspace` so
+ * `StandardNavSection.tsx`'s new expandable Versions group — and the
+ * "Requirements" tile here, which links straight at this standard's
+ * current (latest published, else latest draft) version — can open a
+ * specific version directly instead of always landing on the version list.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import type { OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { MetricTile } from "../../components/MetricTile";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
@@ -56,14 +69,34 @@ import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
 import { StandardFormModal } from "./StandardFormModal";
 import { StandardMembersSection } from "./StandardMembersSection";
+import { StandardProjectsPanel } from "./StandardProjectsPanel";
 import { StandardVersionsSection } from "./StandardVersionsSection";
-import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard } from "./types";
+import type {
+  ComplianceActionType,
+  ComplianceAuditEvent,
+  ComplianceStandard,
+  ComplianceStandardVersion,
+  ProjectComplianceStatus,
+} from "./types";
 import { userDisplayName } from "./types";
 
-type StandardWorkspaceSection = "overview" | "versions" | "members" | "history";
+type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
+
+/** The version an Overview click-through should land on: the latest
+ * published version, or (nothing published yet) the latest version overall
+ * — mirrors `service.py::get_latest_published_version`'s own fallback-free
+ * "published only" semantics for the *primary* case, but a brand-new
+ * standard with only a draft still needs somewhere for the "Requirements"
+ * tile to point. */
+function currentVersion(versions: ComplianceStandardVersion[]): ComplianceStandardVersion | null {
+  if (versions.length === 0) return null;
+  const published = versions.filter((v) => v.status === "published");
+  const pool = published.length > 0 ? published : versions;
+  return pool.reduce((latest, v) => (v.version_number > latest.version_number ? v : latest));
+}
 
 export function StandardWorkspacePage() {
-  const { standardId, section: sectionParam } = useParams<{ standardId: string; section?: string }>();
+  const { standardId, section: sectionParam, versionId } = useParams<{ standardId: string; section?: string; versionId?: string }>();
   const { showToast } = useToast();
 
   const [standard, setStandard] = useState<ComplianceStandard | null>(null);
@@ -75,9 +108,12 @@ export function StandardWorkspacePage() {
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [history, setHistory] = useState<ComplianceAuditEvent[] | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [versions, setVersions] = useState<ComplianceStandardVersion[] | null>(null);
+  const [requirementCount, setRequirementCount] = useState<number | null>(null);
+  const [projectSummary, setProjectSummary] = useState<ProjectComplianceStatus[] | null>(null);
 
   const section: StandardWorkspaceSection =
-    sectionParam === "versions" || sectionParam === "members" || sectionParam === "history"
+    sectionParam === "versions" || sectionParam === "members" || sectionParam === "history" || sectionParam === "projects"
       ? sectionParam
       : "overview";
 
@@ -105,6 +141,31 @@ export function StandardWorkspacePage() {
     api.get<OrgUser[]>(`/api/v1/orgs/${standard.organization_id}/users`).then(setOrgUsers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id]);
+
+  // Phase 23 Overview stats: version count, this standard's own slice of
+  // §20 project-compliance status (projects/compliant tiles), and the
+  // current version's requirement count (fetched once the version list
+  // resolves which version counts as "current" — a second, small request
+  // rather than a new backend field, since `listRequirements` already
+  // exists and is cheap for the tile's purposes).
+  useEffect(() => {
+    if (!standard) return;
+    setVersions(null);
+    setRequirementCount(null);
+    complianceApi.listStandardVersions(standard.organization_id, standard.id).then(setVersions);
+    complianceApi.getStandardProjectSummary(standard.organization_id, standard.id).then(setProjectSummary);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [standard?.organization_id, standard?.id]);
+
+  const latestVersion = useMemo(() => (versions ? currentVersion(versions) : null), [versions]);
+
+  useEffect(() => {
+    if (!standard || !latestVersion) return;
+    complianceApi
+      .listRequirements(standard.organization_id, standard.id, latestVersion.id)
+      .then((requirements) => setRequirementCount(requirements.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [standard?.organization_id, standard?.id, latestVersion?.id]);
 
   useEffect(() => {
     if (section !== "history" || !standard) return;
@@ -159,6 +220,20 @@ export function StandardWorkspacePage() {
 
       {section === "overview" && (
         <div className="stack">
+          <div className="grid grid-metrics">
+            <MetricTile label="Versions" value={versions?.length ?? "…"} to={`/standards/${standard.id}/versions`} />
+            <MetricTile
+              label="Requirements"
+              value={requirementCount ?? (latestVersion ? "…" : 0)}
+              to={latestVersion ? `/standards/${standard.id}/versions/${latestVersion.id}` : `/standards/${standard.id}/versions`}
+            />
+            <MetricTile label="Projects" value={projectSummary?.length ?? "…"} to={`/standards/${standard.id}/projects`} />
+            <MetricTile
+              label="Compliant"
+              value={projectSummary ? projectSummary.filter((p) => p.overall_compliance_state === "compliant").length : "…"}
+              to={`/standards/${standard.id}/projects?state=compliant`}
+            />
+          </div>
           <div className="card stack">
             <p>{standard.description || <span className="text-muted">No description.</span>}</p>
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
@@ -177,11 +252,15 @@ export function StandardWorkspacePage() {
       )}
 
       {section === "versions" && (
-        <StandardVersionsSection orgId={standard.organization_id} standard={standard} actionTypes={actionTypes} />
+        <StandardVersionsSection orgId={standard.organization_id} standard={standard} actionTypes={actionTypes} initialVersionId={versionId ?? null} />
       )}
 
       {section === "members" && (
         <StandardMembersSection orgId={standard.organization_id} standard={standard} orgUsers={orgUsers} />
+      )}
+
+      {section === "projects" && (
+        <StandardProjectsPanel orgId={standard.organization_id} standard={standard} />
       )}
 
       {section === "history" && (

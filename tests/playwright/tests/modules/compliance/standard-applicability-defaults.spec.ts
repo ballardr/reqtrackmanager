@@ -41,7 +41,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // Manager access via the existing org-admin override).
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await createStandardWithVersion(page, { orgName: ORG_NAMES.gamma, reference, name: standardName, versionLabel: "v1.0" });
-    await page.getByRole("link", { name: "Versions" }).click();
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
@@ -71,7 +71,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
 
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await createStandardWithVersion(page, { orgName: ORG_NAMES.gamma, reference, name: standardName, versionLabel: "v1.0" });
-    await page.getByRole("link", { name: "Versions" }).click();
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();

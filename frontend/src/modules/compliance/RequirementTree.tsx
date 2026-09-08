@@ -22,14 +22,31 @@
  * specific enough to this module that following `ProjectTree`'s pattern
  * (not its component) is the right level of reuse, matching how
  * `ProjectTree` itself is not shared beyond project hierarchy either.
+ *
+ * Phase 23 (Standard workspace UX overhaul) adds a `ViewToggle` between
+ * this tree (unchanged — still the authoring/reordering view, hierarchy
+ * intact) and a new flat list view for scanning/searching a large
+ * standard, with a `FilterPanel` (search text, mandatory-only, action
+ * type) that applies to the list view only — filtering the flat list
+ * before the tree is built would silently hide a matching child whose
+ * ancestor didn't match, so the tree itself stays deliberately unfiltered,
+ * matching this phase's own "the tree is for authoring, the list is for
+ * scanning" framing. Clicking a list-view row opens a `SidePanel` detail
+ * view (`RequirementDetailPanel` below) with `AutoGrowTextarea` fields for
+ * description/reasoning, the same component `RequirementsPage.tsx`'s own
+ * detail editing already uses, editable only while `isDraft`.
  */
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Modal } from "../../components/Modal";
+import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
+import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import * as complianceApi from "./api";
 import { RequirementMappingsModal } from "./RequirementMappingsModal";
 import type { ComplianceActionType, ComplianceRequiredAction, ComplianceRequirement, ComplianceRequirementNode } from "./types";
@@ -48,6 +65,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [actionsByRequirement, setActionsByRequirement] = useState<Record<string, ComplianceRequiredAction[]>>({});
+  const [viewMode, setViewMode] = useViewMode("complianceRequirementTree", "tree");
+  const [search, setSearch] = useState("");
+  const [mandatoryOnly, setMandatoryOnly] = useState(false);
+  const [actionTypeFilter, setActionTypeFilter] = useState("");
+  const [detailRequirement, setDetailRequirement] = useState<ComplianceRequirement | null>(null);
 
   const [editingRequirement, setEditingRequirement] = useState<{ parentId: string | null; requirement?: ComplianceRequirement } | null>(null);
   const [deletingRequirement, setDeletingRequirement] = useState<ComplianceRequirement | null>(null);
@@ -182,10 +204,47 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
     }
   }
 
+  // List view's search/mandatory/action-type filters all need every
+  // requirement's required actions loaded, not just the (lazily-expanded)
+  // ones the tree view has fetched so far — fetch whatever's missing once
+  // the list view is active, rather than a new "all actions for this
+  // version" backend endpoint the tree view has never needed.
+  useEffect(() => {
+    if (viewMode !== "list" || !requirements) return;
+    const missing = requirements.filter((r) => !actionsByRequirement[r.id]);
+    if (missing.length === 0) return;
+    void Promise.all(
+      missing.map((r) =>
+        complianceApi
+          .listRequiredActions(orgId, standardId, versionId, r.id)
+          .then((actions) => [r.id, actions] as const)
+      )
+    ).then((entries) => {
+      setActionsByRequirement((prev) => {
+        const next = { ...prev };
+        for (const [id, actions] of entries) next[id] = actions;
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, requirements]);
+
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (requirements === null) return <Spinner />;
 
   const tree = complianceApi.buildRequirementTree(requirements);
+
+  const searchLower = search.trim().toLowerCase();
+  const filteredRequirements = requirements.filter((r) => {
+    if (searchLower) {
+      const haystack = `${r.reference ?? ""} ${r.name} ${r.description}`.toLowerCase();
+      if (!haystack.includes(searchLower)) return false;
+    }
+    const actions = actionsByRequirement[r.id];
+    if (mandatoryOnly && !actions?.some((a) => a.is_mandatory)) return false;
+    if (actionTypeFilter && !actions?.some((a) => a.action_type_id === actionTypeFilter)) return false;
+    return true;
+  });
 
   function renderNode(node: ComplianceRequirementNode, siblings: ComplianceRequirementNode[], index: number) {
     const isExpanded = expandedIds.has(node.id);
@@ -323,15 +382,103 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
 
   return (
     <div className="stack">
-      {isDraft && (
-        <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setEditingRequirement({ parentId: null })}>
-          <Plus size={14} /> Add requirement
-        </button>
-      )}
-      {tree.length === 0 ? (
-        <p className="text-muted">No requirements defined for this version yet.</p>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        {isDraft ? (
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setEditingRequirement({ parentId: null })}>
+            <Plus size={14} /> Add requirement
+          </button>
+        ) : (
+          <span />
+        )}
+        <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showTreeOption />
+      </div>
+
+      {viewMode === "tree" ? (
+        tree.length === 0 ? (
+          <p className="text-muted">No requirements defined for this version yet.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{tree.map((node, index) => renderNode(node, tree, index))}</ul>
+        )
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{tree.map((node, index) => renderNode(node, tree, index))}</ul>
+        <div className="side-grid">
+          <div className="stack">
+            {filteredRequirements.length === 0 ? (
+              <p className="text-muted">No requirements match these filters.</p>
+            ) : (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {filteredRequirements.map((req) => (
+                  <li key={req.id} style={{ borderBottom: "1px solid var(--color-border)" }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", padding: "0.6rem 0.5rem" }}
+                      onClick={() => setDetailRequirement(req)}
+                    >
+                      <span className="stack" style={{ gap: "0.1rem" }}>
+                        <strong>
+                          {req.reference && <span className="text-muted">{req.reference} — </span>}
+                          {req.name}
+                        </strong>
+                        {req.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{req.description}</span>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <FilterPanel
+            sectionKey="complianceRequirementTree"
+            matching={filteredRequirements.length}
+            total={requirements.length}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search requirements…"
+          >
+            <FilterCheckbox label="Mandatory action only" checked={mandatoryOnly} onChange={setMandatoryOnly} />
+            <FilterField label="Action type">
+              <select className="input" value={actionTypeFilter} onChange={(e) => setActionTypeFilter(e.target.value)}>
+                <option value="">All action types</option>
+                {actionTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FilterField>
+          </FilterPanel>
+        </div>
+      )}
+
+      {detailRequirement && (
+        <RequirementDetailPanel
+          requirement={detailRequirement}
+          actions={actionsByRequirement[detailRequirement.id]}
+          actionTypes={actionTypes}
+          isDraft={isDraft}
+          onClose={() => setDetailRequirement(null)}
+          onSave={async (values) => {
+            try {
+              await complianceApi.updateRequirement(orgId, standardId, versionId, detailRequirement.id, {
+                reference: values.reference || null,
+                name: values.name,
+                description: values.description,
+                reasoning: values.reasoning,
+              });
+              showToast("Requirement updated.");
+              const updated = await complianceApi.listRequirements(orgId, standardId, versionId);
+              setRequirements(updated);
+              // Functional update, not a blind overwrite: if the panel was
+              // already closed (or switched to a different requirement)
+              // while this save's own round trip was still in flight, this
+              // must not reopen it — a real race a fast Save-then-Close
+              // hit in practice.
+              setDetailRequirement((current) =>
+                current?.id === detailRequirement.id ? updated.find((r) => r.id === detailRequirement.id) ?? null : current
+              );
+            } catch (err) {
+              showToast(toErrorMessage(err, "Could not save requirement."), "error");
+            }
+          }}
+        />
       )}
 
       {editingRequirement && (
@@ -377,6 +524,115 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The list view's "open full detail" panel (Phase 23) — a `SidePanel`
+ * reusing `AutoGrowTextarea` for description/reasoning, the same field
+ * component `RequirementsPage.tsx`'s own detail editing already uses.
+ * Reference/name/description/reasoning are editable while `isDraft`
+ * (mirrors `RequirementFormModal`'s own draft-only editability); required
+ * actions are shown read-only here — the tree view's existing expand-row
+ * add/edit/delete/move controls remain the one place that manages them,
+ * rather than this panel duplicating that whole CRUD surface a second
+ * time.
+ */
+function RequirementDetailPanel({
+  requirement,
+  actions,
+  actionTypes,
+  isDraft,
+  onClose,
+  onSave,
+}: {
+  requirement: ComplianceRequirement;
+  actions: ComplianceRequiredAction[] | undefined;
+  actionTypes: ComplianceActionType[];
+  isDraft: boolean;
+  onClose: () => void;
+  onSave: (values: { reference: string; name: string; description: string; reasoning: string }) => void;
+}) {
+  const [reference, setReference] = useState(requirement.reference ?? "");
+  const [name, setName] = useState(requirement.name);
+  const [description, setDescription] = useState(requirement.description);
+  const [reasoning, setReasoning] = useState(requirement.reasoning);
+
+  const dirty =
+    reference !== (requirement.reference ?? "") || name !== requirement.name ||
+    description !== requirement.description || reasoning !== requirement.reasoning;
+
+  return (
+    <SidePanel title={requirement.name} onClose={onClose}>
+      <div className="stack">
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Reference</span>
+          {isDraft ? (
+            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
+          ) : (
+            <span>{requirement.reference || <span className="text-muted">None</span>}</span>
+          )}
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Name</span>
+          {isDraft ? (
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
+          ) : (
+            <span>{requirement.name}</span>
+          )}
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Description</span>
+          {isDraft ? (
+            <AutoGrowTextarea value={description} onChange={setDescription} />
+          ) : (
+            <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
+          )}
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Reasoning</span>
+          {isDraft ? (
+            <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
+          ) : (
+            <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
+          )}
+        </label>
+
+        {isDraft && (
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-primary"
+              disabled={!dirty || !name.trim()}
+              onClick={() => onSave({ reference, name, description, reasoning })}
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        <h4 style={{ margin: "0.5rem 0 0" }}>Required actions</h4>
+        {actions === undefined ? (
+          <Spinner />
+        ) : actions.length === 0 ? (
+          <p className="text-muted" style={{ margin: 0 }}>No required actions yet.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {actions.map((action) => (
+              <li key={action.id} style={{ padding: "0.25rem 0" }}>
+                {action.name}
+                {action.is_mandatory && <span className="text-muted"> (mandatory)</span>}
+                <span className="text-muted"> — {actionTypes.find((t) => t.id === action.action_type_id)?.name ?? "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {isDraft && (
+          <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            Switch to tree view to add, edit, or reorder required actions.
+          </p>
+        )}
+      </div>
+    </SidePanel>
   );
 }
 

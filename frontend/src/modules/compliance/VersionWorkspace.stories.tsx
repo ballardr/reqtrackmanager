@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { VersionWorkspace } from "./VersionWorkspace";
 import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion, StandardVersionDiff } from "./types";
 
@@ -59,7 +59,7 @@ const meta: Meta<typeof VersionWorkspace> = {
   title: "Modules/Compliance/VersionWorkspace",
   component: VersionWorkspace,
   args: { orgId: ORG_ID, standard: STANDARD, actionTypes: ACTION_TYPES, onBack: fn(), onVersionChanged: fn() },
-  decorators: [withToast()],
+  decorators: [withToast(), withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
 

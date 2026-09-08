@@ -152,6 +152,16 @@ export function getStandardHistory(orgId: string, standardId: string): Promise<C
   return api.get(`${base(orgId)}/standards/${standardId}/history`);
 }
 
+// --- Phase 23: standard workspace Overview stats --------------------------------
+
+/** This standard's own slice of `listOrgProjectComplianceStatus` — the
+ * exact same `ProjectComplianceStatus` rows, narrowed server-side to this
+ * one standard, backing the Overview's "Projects"/"Compliant" stat tiles
+ * and their filtered drill-down list (`StandardProjectsPanel.tsx`). */
+export function getStandardProjectSummary(orgId: string, standardId: string): Promise<ProjectComplianceStatus[]> {
+  return api.get(`${base(orgId)}/standards/${standardId}/project-summary`);
+}
+
 // --- Phase 21: standard-level import/export -----------------------------------
 
 export function exportStandard(orgId: string, standardId: string): Promise<Blob> {

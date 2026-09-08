@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-09 (Phase 22 complete — standard-level RBAC).
+**Last updated:** 2026-09-09 (Phase 23 complete — standard workspace UX overhaul).
 
-**Overall progress:** 22 / 26 phases complete.
+**Overall progress:** 23 / 26 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -37,12 +37,12 @@ This document is the persistent, session-resumable implementation plan for the C
 | 20 | Standard applicability defaults, exceptions, and Project-Manager assignment | [x] Complete |
 | 21 | Standard-level import/export | [x] Complete |
 | 22 | Standard-level RBAC — Standards Manager / Standards Contributor roles | [x] Complete |
-| 23 | Standard workspace UX overhaul — Overview stats, expandable Versions nav, requirement browsing parity | [ ] Not started |
+| 23 | Standard workspace UX overhaul — Overview stats, expandable Versions nav, requirement browsing parity | [x] Complete |
 | 24 | Post-publish clarification edits + editable version descriptions | [ ] Not started |
 | 25 | Post-review UX quick fixes, round 2 | [ ] Not started |
 | 26 | Default seed standards (EN 60529, ISO 27001) | [ ] Not started |
 
-**Next phase to pick up:** Phase 23. Phases 0-19 (above this line) are the original build plus the first round of post-review UX fixes — see their own notes and `docs/decisions.md`'s "Compliance module, human review follow-ups" entry for that history; nothing about them changes here. **Phases 20-26 are new**, added 2026-09-08 from a second, direct round of human review of the shipped module (recorded in full in each phase's own spec below; Phase 20/21/22's own implementations are now also recorded in `docs/decisions.md`'s "Compliance module plan, Phase 20"/"Phase 21"/"Phase 22" entries, per this file's standing "Instructions for whoever picks up the next phase" above). Unlike 0-19, this round has **no single linear dependency chain**, but it isn't fully order-free either — Phases 20, 21, and 22 are now done; 23 is independent and can be picked up next; **24 now has what it needs from Phase 22** (its "only `standards_manager` may edit post-publish content" RBAC gate can use Phase 22's real `standards_manager` role directly — its own sequencing note's `compliance_manager`-only interim fallback is no longer needed); 23 and 24 both touch `StandardWorkspacePage.tsx`/`VersionWorkspace.tsx`/`RequirementTree.tsx` and should ideally not be worked in parallel sessions; 26 should come after 24 (Phase 20's own applicability-defaults feature is already shipped, so only Phase 24's version-description feature remains a reason to sequence 26 after it) so its seed data can actually exercise both features rather than needing revisiting. See each phase's own text for specifics.
+**Next phase to pick up:** Phase 24. Phases 0-19 (above this line) are the original build plus the first round of post-review UX fixes — see their own notes and `docs/decisions.md`'s "Compliance module, human review follow-ups" entry for that history; nothing about them changes here. **Phases 20-26 are new**, added 2026-09-08 from a second, direct round of human review of the shipped module (recorded in full in each phase's own spec below; Phase 20/21/22/23's own implementations are now also recorded in `docs/decisions.md`'s "Compliance module plan, Phase 20"/"Phase 21"/"Phase 22"/"Phase 23" entries, per this file's standing "Instructions for whoever picks up the next phase" above). Unlike 0-19, this round has **no single linear dependency chain**, but it isn't fully order-free either — Phases 20, 21, 22, and 23 are now done; **24 now has what it needs from both Phase 22 and Phase 23** (its "only `standards_manager` may edit post-publish content" RBAC gate can use Phase 22's real `standards_manager` role directly — its own sequencing note's `compliance_manager`-only interim fallback is no longer needed; and it touches the same `RequirementTree.tsx`/`VersionWorkspace.tsx` Phase 23 just reworked, so read Phase 23's own notes above — the list-view/tree-view split and the new `RequirementDetailPanel` — before adding the "Clarify" action and editable version descriptions, rather than assuming Phase 12's pre-Phase-23 shape); 26 should come after 24 (Phase 20's own applicability-defaults feature is already shipped, so only Phase 24's version-description feature remains a reason to sequence 26 after it) so its seed data can actually exercise both features rather than needing revisiting. See each phase's own text for specifics.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -749,6 +749,17 @@ The new Playwright spec (`compliance-standard-scoped-rbac.spec.ts`) was not run 
 - **Docs**: update `docs/ux-style-guide.md`'s "Pattern: project-like drill-down entities" section with what this phase found — the Overview-stats convention and the new expandable-nav-rail pattern — so the next drill-down entity (per that section's own framing, the tell being "created many times, opened individually, own identity/history") starts from these as defaults rather than reinventing them, directly satisfying the human-review request that these become style-guide standards for future modules, not one-off fixes.
 - Coordinate with Phase 22 if implemented in a different session order — both touch `StandardNavSection.tsx`/`StandardWorkspacePage.tsx`.
 - Tests: Storybook stories for the new stat tiles/expandable nav group/filtered requirement view; Playwright e2e for stat-tile navigation and the expanded-versions nav-rail interaction.
+
+#### Phase 23 notes (completed 2026-09-09)
+
+Implemented as specified, with a few decisions the spec above left implicit:
+- Used `MetricTile`, not `StatCard` as the spec's own prose named — `StatCard`'s own docstring documents it as the *non*-clickable variant, and every one of these four stat tiles needs a real destination link, which is exactly `MetricTile`'s job. Recorded as a deliberate reconciliation in `docs/decisions.md`'s Phase 23 entry, not a silent deviation.
+- The new `GET .../standards/{id}/project-summary` endpoint is view-gated (`require_org_module_enabled`), not manage-gated like the cross-standard `list_all_project_compliance` it reuses — this is the standard's own Overview stat, visible to anyone who can already view the standard.
+- Filtering (search/mandatory/action-type) in `RequirementTree.tsx` applies to the new list view only, never the tree — filtering the flat list before building the tree would silently hide a matching child whose ancestor didn't match. The plan's own "consider a ViewToggle" language left this open; this is the resolution.
+- A real race condition was found and fixed during Playwright verification (not left as a known gap): a fast Save-then-Close on the new requirement detail panel could reopen it, because the async save's own reload callback unconditionally re-set the open requirement. Fixed with a functional state update that checks the panel is still open on the same requirement before reapplying. See `docs/decisions.md`'s Phase 23 entry for the exact mechanism.
+- Running the full compliance Playwright suite against this phase's changes surfaced (and fixed) an unrelated ambiguous-locator regression in four *other* specs (the new "N Versions" stat tile's accessible name substring-matched the existing plain nav-rail link) and two pre-existing, unrelated bugs in `compliance-standard-scoped-rbac.spec.ts` (an invalid `selectOption({label: RegExp})` call and a `.uncheck()` that can never resolve once its whole row disappears) — all fixed per this repo's standing "fix, don't defer" rule. Full detail in `docs/decisions.md`.
+- `org-overview.spec.ts`'s "scoped totals" test failed independently of this phase's own changes (reproduced in isolation, unrelated code paths) — stale cumulative state in this session's long-lived dev-stack database, not a regression this phase introduced. Left unaddressed; flagged in `docs/decisions.md` rather than silently fixed by touching shared dev-database state.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 23" entry for the full account, and `docs/ux-style-guide.md`'s new "Pattern: expandable nav-rail group" section (plus the Overview-stats addendum to "Pattern: project-like drill-down entities") for the style-guide changes this phase committed to.
 
 ### Phase 24 — Post-Publish Clarification Edits + Editable Version Descriptions
 

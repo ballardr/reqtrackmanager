@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard, ComplianceStandardVersion } from "./types";
 
@@ -37,6 +37,7 @@ function mockWorkspaceApis() {
     if (path.endsWith("/versions")) return [VERSION];
     if (path.endsWith("/history")) return HISTORY;
     if (path.endsWith("/exclusions")) return [];
+    if (path.endsWith("/project-summary")) return [];
     if (path.startsWith("/api/v1/projects?")) return [];
     if (path.includes("/requirements") && !path.includes("required-actions")) return [];
     throw new Error(`unmocked GET: ${path}`);
@@ -53,14 +54,14 @@ function mockWorkspaceApis() {
 const meta: Meta<typeof StandardWorkspacePage> = {
   title: "Modules/Compliance/StandardWorkspacePage",
   component: StandardWorkspacePage,
-  decorators: [withToast()],
+  decorators: [withToast(), withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
 
 type Story = StoryObj<typeof StandardWorkspacePage>;
 
 export const Overview: Story = {
-  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?")],
+  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?/:versionId?")],
   beforeEach: mockWorkspaceApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -69,11 +70,32 @@ export const Overview: Story = {
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
     // Phase 20: the applicability-default panel renders in Overview too.
     await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
+
+    // Phase 23: clickable stat tiles — one version, zero requirements (the
+    // mock's empty `/requirements` list), zero assigned projects.
+    await waitFor(() => {
+      const tile = canvas.getByRole("link", { name: /Versions/ });
+      expect(within(tile).getByText("1")).toBeInTheDocument();
+      expect(tile).toHaveAttribute("href", `/standards/${STANDARD.id}/versions`);
+    });
+    await waitFor(() => {
+      const tile = canvas.getByRole("link", { name: /Requirements/ });
+      expect(within(tile).getByText("0")).toBeInTheDocument();
+      expect(tile).toHaveAttribute("href", `/standards/${STANDARD.id}/versions/${VERSION.id}`);
+    });
+    await waitFor(() => {
+      expect(canvas.getByRole("link", { name: /^0 Projects$/ })).toHaveAttribute("href", `/standards/${STANDARD.id}/projects`);
+    });
+    await waitFor(() => {
+      expect(canvas.getByRole("link", { name: /Compliant/ })).toHaveAttribute(
+        "href", `/standards/${STANDARD.id}/projects?state=compliant`
+      );
+    });
   },
 };
 
 export const ExportsStandard: Story = {
-  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?")],
+  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?/:versionId?")],
   beforeEach: () => {
     mockWorkspaceApis();
     spyOn(api, "getForBlob").mockResolvedValue(new Blob(["{}"], { type: "application/json" }));
@@ -91,7 +113,7 @@ export const ExportsStandard: Story = {
 };
 
 export const VersionsSection: Story = {
-  decorators: [withRouter(`/standards/${STANDARD.id}/versions`, "/standards/:standardId/:section?")],
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions`, "/standards/:standardId/:section?/:versionId?")],
   beforeEach: mockWorkspaceApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -99,8 +121,28 @@ export const VersionsSection: Story = {
   },
 };
 
+export const VersionDeepLink: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions/${VERSION.id}`, "/standards/:standardId/:section?/:versionId?")],
+  beforeEach: mockWorkspaceApis,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Landing directly on `/versions/:versionId` opens `VersionWorkspace`
+    // straight away, rather than the plain version list.
+    await waitFor(() => expect(canvas.getByText(`ISO-27001 — ${VERSION.version_label}`)).toBeInTheDocument());
+  },
+};
+
+export const ProjectsSection: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/projects`, "/standards/:standardId/:section?/:versionId?")],
+  beforeEach: mockWorkspaceApis,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("No projects match this filter.")).toBeInTheDocument());
+  },
+};
+
 export const HistorySection: Story = {
-  decorators: [withRouter(`/standards/${STANDARD.id}/history`, "/standards/:standardId/:section?")],
+  decorators: [withRouter(`/standards/${STANDARD.id}/history`, "/standards/:standardId/:section?/:versionId?")],
   beforeEach: mockWorkspaceApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -112,7 +154,7 @@ export const HistorySection: Story = {
 };
 
 export const NotFound: Story = {
-  decorators: [withRouter("/standards/does-not-exist", "/standards/:standardId/:section?")],
+  decorators: [withRouter("/standards/does-not-exist", "/standards/:standardId/:section?/:versionId?")],
   beforeEach: () => {
     spyOn(api, "get").mockRejectedValue(new Error("404"));
   },

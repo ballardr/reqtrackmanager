@@ -89,8 +89,10 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
     // --- Standard workspace navigation: Overview (landed here already) ->
-    // Versions -> drill into v1.0.
-    await page.getByRole("link", { name: "Versions" }).click();
+    // Versions -> drill into v1.0. `exact: true` disambiguates the plain
+    // nav-rail link from Phase 23's own "N Versions" Overview stat tile,
+    // whose accessible name ("1 Versions") otherwise substring-matches too.
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions$/);
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
     await page.getByRole("button", { name: "v1.0" }).click();
@@ -120,5 +122,91 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await page.getByRole("link", { name: "History" }).click();
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/history$/);
     await expect(page.getByRole("listitem").filter({ hasText: "created" })).toBeVisible();
+  });
+
+  test("Overview stat tiles, expandable Versions nav group, and requirement list-view detail panel (Phase 23)", async ({ page }) => {
+    const suffix = Date.now();
+    const reference = `E2E-23-${suffix}`;
+    const standardName = `E2E Workspace UX Standard ${suffix}`;
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
+
+    // --- Overview: freshly created standard has one (draft) version, zero
+    // requirements, and no assigned projects yet — each stat is its own
+    // clickable tile, not a plain number.
+    const versionsTile = page.getByRole("link", { name: /Versions/ }).filter({ hasText: "1" });
+    await expect(versionsTile).toBeVisible();
+    const requirementsTile = page.getByRole("link", { name: /Requirements/ }).filter({ hasText: "0" });
+    await expect(requirementsTile).toBeVisible();
+    await expect(page.getByRole("link", { name: /^0 Projects$/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Compliant/ }).filter({ hasText: "0" })).toBeVisible();
+
+    // The "Requirements" tile jumps straight into the version workspace
+    // (the same place the "Versions" tile's own list would drill into),
+    // not just the plain version list.
+    await requirementsTile.click();
+    await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
+    await expect(page.getByText(`${reference} — v1.0`)).toBeVisible();
+
+    // --- Expandable "Versions" nav-rail group: collapsed by default, shows
+    // this standard's one version once expanded, and deep-links straight
+    // into that version's own workspace URL — the nav-rail's own route,
+    // not just a visual affordance.
+    await page.getByRole("button", { name: "Expand versions" }).click();
+    const versionNavLink = page.getByRole("link", { name: /v1\.0/ }).filter({ hasText: "Draft" });
+    await expect(versionNavLink).toBeVisible();
+    await versionNavLink.click();
+    await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
+    await expect(page.getByText(`${reference} — v1.0`)).toBeVisible();
+
+    // Collapsing the group hides the version links again, and the choice
+    // persists (a reload keeps it collapsed).
+    await page.getByRole("button", { name: "Collapse versions" }).click();
+    await expect(page.getByRole("link", { name: /v1\.0/ }).filter({ hasText: "Draft" })).toHaveCount(0);
+
+    // --- Requirement browsing: add two requirements, then use the new
+    // list view's search filter and detail panel (distinct from the tree
+    // view's own inline expand/edit, which the earlier test in this file
+    // already covers).
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill("Access control policy");
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Access control policy")).toBeVisible();
+
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill("Asset inventory");
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Asset inventory")).toBeVisible();
+
+    // View mode (`useViewMode`) is a per-user preference shared across
+    // every standard this shared `orgAdminAlphaBeta` persona ever opens —
+    // not scoped to this one test — so this switches back to tree view in
+    // a `finally` regardless of what happens in between, rather than
+    // leaving a later, unrelated spec run to unexpectedly land on list
+    // view for this persona if an assertion here ever throws first.
+    await page.getByRole("button", { name: "List view" }).click();
+    try {
+      await page.getByPlaceholder("Search requirements…").fill("access");
+      await expect(page.getByText("Asset inventory")).toHaveCount(0);
+      await expect(page.getByText("Access control policy")).toBeVisible();
+
+      await page.getByText("Access control policy").click();
+      const detailPanel = page.getByRole("dialog", { name: "Access control policy" });
+      await expect(detailPanel).toBeVisible();
+      await detailPanel.getByLabel("Description").fill("Who may access what, and how it's reviewed.");
+      await detailPanel.getByRole("button", { name: "Save" }).click();
+      // The panel stays open after a successful save (showing the saved
+      // value, not forcing a re-open to confirm it stuck) — closed
+      // explicitly here via its own ✕ control.
+      await expect(detailPanel.getByLabel("Description")).toHaveValue("Who may access what, and how it's reviewed.");
+      await detailPanel.getByRole("button", { name: "Close" }).click();
+      await expect(detailPanel).toHaveCount(0);
+    } finally {
+      // Switching back to tree view shows the same edit — one requirement,
+      // two views onto it.
+      await page.getByRole("button", { name: "Tree view" }).click();
+    }
+    await expect(page.getByText("Who may access what, and how it's reviewed.")).toBeVisible();
   });
 });

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { RequirementTree } from "./RequirementTree";
 import type { ComplianceActionType, ComplianceRequiredAction, ComplianceRequirement } from "./types";
 
@@ -155,7 +155,7 @@ const meta: Meta<typeof RequirementTree> = {
   title: "Modules/Compliance/RequirementTree",
   component: RequirementTree,
   args: { orgId: ORG_ID, standardId: STANDARD_ID, versionId: VERSION_ID, isDraft: true, actionTypes: ACTION_TYPES },
-  decorators: [withToast()],
+  decorators: [withToast(), withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
 
@@ -382,6 +382,74 @@ export const LoadErrorShowsInlineMessage: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Could not load requirements.")).toBeInTheDocument());
+  },
+};
+
+export const ListViewSearchFiltersAndOpensDetailPanel: Story = {
+  beforeEach: () => mockRequirementTreeApis([
+    req({ id: "req-1", reference: "A.5.1", name: "Access control policy", description: "Who may access what." }),
+    req({ id: "req-2", reference: "A.8.1", name: "Asset inventory", description: "Track every asset." }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Access control policy")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByText("Asset inventory")).toBeInTheDocument();
+
+    await userEvent.type(canvas.getByPlaceholderText("Search requirements…"), "access");
+    await waitFor(() => expect(canvas.queryByText("Asset inventory")).not.toBeInTheDocument());
+    await expect(canvas.getByText("Access control policy")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByText("Access control policy"));
+    const panel = within(document.body).getByRole("dialog", { name: "Access control policy" });
+    await expect(within(panel).getByText("Who may access what.")).toBeInTheDocument();
+  },
+};
+
+export const ListViewDetailPanelEditsDescription: Story = {
+  beforeEach: () => mockRequirementTreeApis([
+    req({ id: "req-1", reference: "A.5.1", name: "Access control policy", description: "Original description." }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Access control policy")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.click(canvas.getByText("Access control policy"));
+
+    const panel = within(document.body).getByRole("dialog", { name: "Access control policy" });
+    const descriptionField = within(panel).getByDisplayValue("Original description.");
+    await userEvent.clear(descriptionField);
+    await userEvent.type(descriptionField, "Updated description.");
+    await userEvent.click(within(panel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `${REQUIREMENTS_BASE}/req-1`,
+      { reference: "A.5.1", name: "Access control policy", description: "Updated description.", reasoning: "" }
+    ));
+  },
+};
+
+export const ListViewMandatoryOnlyFilter: Story = {
+  beforeEach: () => mockRequirementTreeApis(
+    [
+      req({ id: "req-1", name: "Has a mandatory action" }),
+      req({ id: "req-2", name: "Has no mandatory action" }),
+    ],
+    {
+      "req-1": [action({ id: "act-1", requirement_id: "req-1", action_type_id: "at-1", name: "Review", is_mandatory: true, sort_order: 0 })],
+      "req-2": [action({ id: "act-2", requirement_id: "req-2", action_type_id: "at-1", name: "Optional check", is_mandatory: false, sort_order: 0 })],
+    }
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Has a mandatory action")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await waitFor(() => expect(canvas.getByText("Has no mandatory action")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Mandatory action only" }));
+    await waitFor(() => expect(canvas.queryByText("Has no mandatory action")).not.toBeInTheDocument());
+    await expect(canvas.getByText("Has a mandatory action")).toBeInTheDocument();
   },
 };
 

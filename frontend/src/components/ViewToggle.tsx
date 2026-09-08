@@ -25,27 +25,38 @@ export function useViewMode(pageKey: string, defaultMode: ViewMode = "tiles"): [
  * becomes unavailable, they've already been switched back to list by the
  * page (see `ProjectListPage`/`FavouritesPage`'s own `useEffect`), so this
  * component doesn't need to handle that fallback itself.
+ *
+ * `showTilesOption` (compliance-module-plan.md Phase 23): the mirror-image
+ * case — a caller whose two real view modes are "tree" and "list" only
+ * (`RequirementTree.tsx`'s authoring-tree vs. scanning-list toggle), where
+ * a "tiles" mode means nothing at all, not just "nothing to show a
+ * hierarchy for." Defaults `true` (every existing caller keeps its tiles
+ * button) so this is additive, not a behaviour change for tile/list pages.
  */
 export function ViewToggle({
   mode,
   onChange,
   showTreeOption = false,
+  showTilesOption = true,
 }: {
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
   showTreeOption?: boolean;
+  showTilesOption?: boolean;
 }) {
   return (
     <div className="row" style={{ gap: "0.25rem" }}>
-      <button
-        className={`btn ${mode === "tiles" ? "btn-primary" : ""}`}
-        onClick={() => onChange("tiles")}
-        title="Tile view"
-        aria-label="Tile view"
-        aria-pressed={mode === "tiles"}
-      >
-        <LayoutGrid size={16} />
-      </button>
+      {showTilesOption && (
+        <button
+          className={`btn ${mode === "tiles" ? "btn-primary" : ""}`}
+          onClick={() => onChange("tiles")}
+          title="Tile view"
+          aria-label="Tile view"
+          aria-pressed={mode === "tiles"}
+        >
+          <LayoutGrid size={16} />
+        </button>
+      )}
       <button
         className={`btn ${mode === "list" ? "btn-primary" : ""}`}
         onClick={() => onChange("list")}

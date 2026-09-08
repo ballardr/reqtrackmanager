@@ -520,6 +520,45 @@ def test_project_status_calculation(client, admin_token, org_id):
     assert any(row["project_compliance_id"] == assignment["id"] for row in cross_project.json())
 
 
+def test_standard_project_summary_filters_to_one_standard_and_is_view_gated(client, admin_token, org_id):
+    """docs/compliance-module-plan.md Phase 23: `GET .../standards/{id}/
+    project-summary` is the same §20 per-assignment status `list_all_
+    project_compliance` computes org-wide, narrowed to one standard's own
+    assignments — a project assigned to a *different* standard must not
+    appear, and the returned row's own calculation must match what the
+    per-project `/status` endpoint already reports for the same assignment.
+    View-gated (any org member with the module enabled), not manage-gated
+    like the cross-standard `/project-compliance` listing — a plain member
+    with no compliance role can call it."""
+    standard_a = _create_standard(client, admin_token, org_id, reference="SUMMARY-A")
+    version_a = _create_version(client, admin_token, org_id, standard_a["id"])
+    _create_requirement(client, admin_token, org_id, standard_a["id"], version_a["id"], name="Req A1")
+    _publish_version(client, admin_token, org_id, standard_a["id"], version_a["id"])
+
+    standard_b = _create_standard(client, admin_token, org_id, reference="SUMMARY-B")
+    version_b = _create_version(client, admin_token, org_id, standard_b["id"])
+    _create_requirement(client, admin_token, org_id, standard_b["id"], version_b["id"], name="Req B1")
+    _publish_version(client, admin_token, org_id, standard_b["id"], version_b["id"])
+
+    project_a = create_project(client, admin_token, org_id, name="Summary Project A")
+    project_b = create_project(client, admin_token, org_id, name="Summary Project B")
+    assignment_a = _assign_standard_to_project(client, admin_token, org_id, project_a["id"], standard_a["id"], version_a["id"])
+    _assign_standard_to_project(client, admin_token, org_id, project_b["id"], standard_b["id"], version_b["id"])
+
+    expected = client.get(f"{_project_base(project_a['id'])}/status", headers=auth_headers(admin_token)).json()[0]
+
+    create_org_user(client, admin_token, org_id, "plain.viewer@example.com", role="member")
+    plain_token = login(client, "plain.viewer@example.com", "Password123!")
+    resp = client.get(f"{_base(org_id)}/standards/{standard_a['id']}/project-summary", headers=auth_headers(plain_token))
+    assert resp.status_code == 200, resp.text
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["project_compliance_id"] == assignment_a["id"]
+    assert rows[0]["standard_id"] == standard_a["id"]
+    assert rows[0]["compliance_percentage"] == expected["compliance_percentage"]
+    assert rows[0]["overall_compliance_state"] == expected["overall_compliance_state"]
+
+
 # --- Required action assessment completion --------------------------------------
 
 

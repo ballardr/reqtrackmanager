@@ -50,7 +50,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // supersedes Phase 12's org-admin "Compliance" group entirely).
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
-    await page.getByRole("link", { name: "Versions" }).click();
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Add requirement" }).click();

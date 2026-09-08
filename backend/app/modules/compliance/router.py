@@ -93,6 +93,13 @@ data` for the actual document shape and reference-collision handling —
 this router's own job is thin, mirroring `routers.orgs`' bundle-endpoint
 shape (`Response` with a `Content-Disposition` header for the download,
 `UploadFile`/`Form` for the upload).
+
+Phase 23 (Standard workspace UX overhaul) adds one read-only endpoint,
+`GET .../standards/{id}/project-summary` — the standard's own Overview
+"projects this applies to" / "compliant" stat tiles, a narrower,
+view-gated slice of the exact same `build_status_out` computation
+`list_all_project_compliance` already runs org-wide; see that endpoint's
+own docstring for why no new counting logic was needed.
 """
 
 from __future__ import annotations
@@ -505,6 +512,38 @@ def get_standard_history(
         .where(AuditEvent.entity_type == "compliance_standard", AuditEvent.entity_id == str(standard.id))
         .order_by(AuditEvent.created_at)
     ).all()
+
+
+@router.get("/standards/{standard_id}/project-summary", response_model=list[ProjectComplianceStatusOut])
+def get_standard_project_summary(
+    organization_id: UUID, standard_id: UUID, include_archived: bool = Query(False),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """This standard's own slice of §20's per-assignment status (Phase 23's
+    Overview "projects this standard applies to" / "compliant" stat tiles)
+    — the exact same per-project computation `list_all_project_compliance`
+    already runs across every standard in the org (`build_status_out`),
+    narrowed to just the assignments whose version belongs to this one
+    standard. No new counting logic: this is a narrower query plus the same
+    `build_status_out` call, not a reimplementation of §20's percentage/
+    state calculation.
+
+    View-gated like every other read on this standard (`get_standard`,
+    `list_standards`) rather than manage-gated like `list_all_project_
+    compliance` itself — this is this standard's own Overview stats,
+    visible to anyone who can already view the standard, not the
+    Compliance Manager's cross-standard reporting §26 restricts."""
+    _get_standard_or_404(db, organization_id, standard_id)
+    query = (
+        select(ProjectCompliance)
+        .join(ComplianceStandardVersion, ComplianceStandardVersion.id == ProjectCompliance.standard_version_id)
+        .join(Project, Project.id == ProjectCompliance.project_id)
+        .where(Project.organization_id == organization_id, ComplianceStandardVersion.standard_id == standard_id)
+    )
+    if not include_archived:
+        query = query.where(ProjectCompliance.is_archived.is_(False))
+    assignments = db.scalars(query).all()
+    return [build_status_out(db, pc) for pc in assignments]
 
 
 @router.patch("/standards/{standard_id}", response_model=ComplianceStandardOut)
