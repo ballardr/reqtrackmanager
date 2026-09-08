@@ -1,16 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
  * Job to be done: Compliance Module Phase 14 (docs/compliance-module-plan.md)
  * — the org-level Organisation Compliance View + Dashboard (§22/§23),
- * mounted as a new flat top-level `OrgAdminPage` resource-menu group
- * ("Compliance overview", `/orgs/:orgId/admin/compliance-overview`)
- * alongside Phase 12's own "Compliance" (standards management) group — see
+ * mounted as a `ResourceMenu` group ("Compliance overview") on the core
+ * "Organisation Overview" page (Phase 19, `/orgs/:orgId/overview`) — see
  * `frontend/src/modules/compliance/OrgCompliancePanel.tsx`'s own docstring
- * for why this is a separate group rather than a fourth tab on that panel.
+ * for why this is a separate group rather than a fourth tab, and
+ * `frontend/src/modules/compliance/module.ts`'s `orgOverviewSections` for
+ * how it moved off `OrgAdminPage.tsx` (where it originally lived) onto
+ * this new page.
  *
  * Covers the read/drill-down path: author and publish a standard (Phase 12
  * UI), assign it to a project and assess a requirement Non-Compliant
@@ -87,9 +89,9 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await page.getByRole("button", { name: "Close" }).click();
 
     // --- Org-wide Dashboard: the non-compliant project is listed.
-    await page.goto("/orgs");
+    await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgAdminGroup(page, "Compliance overview");
+    await selectOrgOverviewGroup(page, "Compliance overview");
     await expect(page.getByText("Active compliance standards")).toBeVisible();
     await expect(page.getByText("Non-compliant projects")).toBeVisible();
     const nonCompliantCard = page.locator("div.card", { hasText: "Non-compliant projects" });
@@ -114,9 +116,9 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
 
     // --- Outstanding tab: the non-compliant requirement is listed, tagged
     //     with the project it belongs to.
-    await page.goto("/orgs");
+    await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgAdminGroup(page, "Compliance overview");
+    await selectOrgOverviewGroup(page, "Compliance overview");
     await page.getByRole("tab", { name: "Outstanding" }).click();
     await expect(page.getByText(requirementName)).toBeVisible();
     await expect(page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).first()).toBeVisible();

@@ -508,6 +508,35 @@ class OrgProjectSummaryOut(BaseModel):
     is_archived: bool
 
 
+class OrgOverviewStatsOut(BaseModel):
+    """The "Organisation Overview" page's stats header (compliance-module-
+    plan.md Phase 19) — project/requirement/member counts and total
+    uploaded file size.
+
+    `is_full_org_total` tells the frontend which of the two meanings the
+    numbers above have: an org admin or server admin gets the organisation's
+    real, unfiltered totals; anyone else gets counts scoped to what they can
+    actually see (`_accessible_project_ids`, the same visibility computation
+    `GET /projects` already uses), per the product decision recorded in
+    `docs/decisions.md`'s "Compliance module, human review follow-ups"
+    entry — "a user can't see the number of all projects if they themselves
+    can't see them all." Member count is never scoped (see that same entry):
+    any caller who can reach this endpoint at all already has permission to
+    browse the full member directory (`GET /{organization_id}/users`).
+
+    Known gap (see `get_org_overview_stats`'s own docstring for the full
+    reasoning): a scoped (non-admin) caller's `total_file_size_bytes`
+    excludes discussion-comment attachments (`CommentFile`) — a strict
+    undercount, never an over-exposure.
+    """
+
+    project_count: int
+    requirement_count: int
+    member_count: int
+    total_file_size_bytes: int
+    is_full_org_total: bool
+
+
 class DisplayNameLockUpdate(BaseModel):
     """Locks or unlocks a user's ability to change their own display name (C-U-16)."""
 

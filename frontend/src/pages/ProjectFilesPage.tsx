@@ -6,25 +6,9 @@ import type { ProjectFile } from "../api/types";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
+import { formatFileSize } from "../utils/formatFileSize";
 
 const PAGE_SIZE = 50;
-
-/** Human-readable file size (e.g. "12.4 KB") — no existing shared helper for
- * this (`size_bytes` was never actually rendered anywhere before this page:
- * `FileAttachmentList.tsx`'s per-requirement/action lists only ever show a
- * filename link). Kept local rather than promoted to a shared util until a
- * second call site needs it. */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
 
 /**
  * Project-wide file browser (`GET /projects/{id}/files`) — fills the gap

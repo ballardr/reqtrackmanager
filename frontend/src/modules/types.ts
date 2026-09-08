@@ -181,4 +181,15 @@ export interface TierAModuleDefinition {
    * own `enabled-modules` list. Omitted (or empty) for a module with no
    * project-overview summary of its own. */
   projectOverviewTiles?: ProjectOverviewTileDef[];
+  /** This module's `ResourceMenu` groups on `pages/OrgOverviewPage.tsx`
+   * (compliance-module-plan.md Phase 19 — the "Organisation Overview"
+   * page), below that page's own core stats header. Reuses
+   * `OrgAdminSectionDef`'s exact `{key, label, render({orgId})}` shape —
+   * the two pages need identical things from a module (a `ResourceMenu`
+   * group's own menu item plus the content it renders) — rather than
+   * declaring a second, identically-shaped interface. `OrgOverviewPage.tsx`
+   * filters these to this org's actually-enabled modules the same way
+   * `OrgAdminPage.tsx` already filters `orgAdminSections`. Omitted (or
+   * empty) for a module with no org-overview surface of its own. */
+  orgOverviewSections?: OrgAdminSectionDef[];
 }

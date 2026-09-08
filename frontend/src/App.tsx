@@ -19,6 +19,7 @@ import { OidcCompletePage } from "./pages/OidcCompletePage";
 import { OrgAdminPage } from "./pages/OrgAdminPage";
 import { OrgListPage } from "./pages/OrgListPage";
 import { OrgLoginPage } from "./pages/OrgLoginPage";
+import { OrgOverviewPage } from "./pages/OrgOverviewPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
@@ -75,6 +76,12 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        {/* "Organisation Overview" (compliance-module-plan.md Phase 19) —
+            reuses `OrgListPage`'s single-org/multi-org auto-redirect
+            convention (`target="overview"`) as its own entry point, the
+            same way `/orgs` already does for `/orgs/:orgId/admin`. */}
+        <Route path="/org-overview" element={<OrgListPage target="overview" />} />
+        <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
         {/* Every installed module's own always-mounted top-level routes
             (`TierAModuleDefinition.globalRoutes`, compliance-module-plan.md
             Phase 18) — unlike `buildModuleRoutes` above (project-scoped,

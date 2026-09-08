@@ -34,7 +34,7 @@ function mockApis(overrides: {
 const meta: Meta<typeof OrgComplianceOutstandingPanel> = {
   title: "Modules/Compliance/OrgComplianceOutstandingPanel",
   component: OrgComplianceOutstandingPanel,
-  decorators: [withRouter("/orgs/org-1/admin/compliance-overview"), withToast()],
+  decorators: [withRouter("/orgs/org-1/overview/compliance-overview"), withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;

@@ -1,4 +1,4 @@
-import { Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -6,7 +6,7 @@ import { api, fileUrl } from "../api/client";
 import type { SystemVersion } from "../api/types";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
-import { BrandingProvider, useBranding, useOrgLabelPlural } from "../context/BrandingContext";
+import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
@@ -92,6 +92,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
+  const orgLabelCap = useOrgLabelCapitalized();
   // Reactive to a favourite being toggled anywhere in the app, not just on
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
@@ -229,6 +230,16 @@ function LayoutShell({ children }: { children: ReactNode }) {
             activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed })}
           <div className="nav-section-label">Global</div>
           <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railCollapsed} />
+          {/* "Organisation Overview" (Phase 19) — a core, always-visible
+              nav-rail link (unlike Phase 18's "Compliance Standards" tab
+              below, this one carries general-purpose org stats every org
+              has regardless of compliance, so it's shown unconditionally,
+              the same precedent as the always-shown Projects link above —
+              see docs/decisions.md's "Compliance module, human review
+              follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
+              single-org/multi-org auto-redirect convention as its entry
+              point, the same way `/orgs` already does for org admin. */}
+          <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railCollapsed} />
           {/* Module-contributed top-level nav links (Phase 18's "Compliance
               Standards" is the first one) — each item owns its own
               visibility and may render nothing at all; see this file's own

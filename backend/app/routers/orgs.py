@@ -14,14 +14,14 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
-from app.models.file import FileAsset, RequirementFile
+from app.models.file import FileAsset, RequirementActionFile, RequirementFile
 from app.models.module import OrganizationModuleEnablement
 from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
@@ -29,7 +29,8 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, Pend
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.project_status import ProjectStatusDefinition
-from app.models.requirement import RequirementLink
+from app.models.requirement import Requirement, RequirementLink
+from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import (
@@ -40,6 +41,21 @@ from app.modules.registry import (
     list_enabled_module_roles,
     run_on_org_created_hooks,
 )
+
+# `_accessible_project_ids` (Phase 19's overview-stats endpoint reuses the
+# exact same project-visibility computation `GET /projects` already uses,
+# rather than duplicating it here) — this codebase already has precedent
+# for importing an underscore-prefixed helper across a module boundary
+# (`routers/projects.py` itself imports `_direct_project_member_ids_base`/
+# `_descendant_org_group_ids` from `services/rbac.py`); `docs/compliance-
+# module-plan.md` Phase 19's own spec offers "move it to a shared service
+# (or import it)" as the two options and this repo has no existing
+# convention of one router importing from another, but moving ~150 lines of
+# heavily-documented, actively-relied-on RBAC logic out of `projects.py`
+# for one new read-only endpoint is a disproportionate risk for this
+# change — importing it is the lower-risk option the plan explicitly
+# sanctions.
+from app.routers.projects import _accessible_project_ids
 from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
@@ -70,6 +86,7 @@ from app.schemas.org import (
     OrgMergeResult,
     OrgModuleEnablementUpdate,
     OrgModuleOut,
+    OrgOverviewStatsOut,
     OrgPendingInviteCreate,
     OrgPendingInviteOut,
     OrgProjectSummaryOut,
@@ -1691,6 +1708,130 @@ def create_org_group(
     return OrgGroupOut(
         id=group.id, name=group.name, member_user_ids=[], member_org_group_ids=[],
         idp_synced_group_name=group.idp_synced_group_name, granted_org_role=group.granted_org_role,
+    )
+
+
+@router.get("/{organization_id}/overview-stats", response_model=OrgOverviewStatsOut)
+def get_org_overview_stats(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """The "Organisation Overview" page's stats header (compliance-module-
+    plan.md Phase 19): project count, requirement count, org member count,
+    and total uploaded file size.
+
+    Gated the same way `list_org_users` is (`ORG_ADMIN`/`PROJECT_CREATOR`/
+    `MEMBER` — i.e. any real role in this org) rather than
+    `require_org_admin_or_server_admin`: I-M-05 is explicit that the server
+    admin role "does not give access to data within organisations," and
+    `require_org_admin_or_server_admin`'s own docstring restricts that
+    dependency to the one documented carve-out (creating an org's initial
+    user) — a server admin with no genuine role in this org still gets 403
+    here, same as anyone else. `is_full_org_total` below only ever applies
+    *after* that gate has already been passed.
+
+    Per `docs/decisions.md`'s "Compliance module, human review follow-ups"
+    entry ("a user can't see the number of all projects if they themselves
+    can't see them all... an org admin is the exception and should see the
+    raw proper totals"): an org admin, or a server admin who already holds
+    some role in this org, sees the organisation's real, unfiltered totals;
+    everyone else sees counts scoped to `_accessible_project_ids` (the same
+    visibility computation `GET /projects` uses — direct/group/org-wide
+    roles plus hierarchical inheritance). Member count is never scoped —
+    `list_org_users`'s own permission already lets any caller who reaches
+    this endpoint at all see the full member directory, so scoping it
+    further here would only invent a restriction nothing else enforces.
+    """
+    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
+    sees_full_totals = current_user.is_server_admin or OrgRole.ORG_ADMIN in org_roles
+
+    member_count = db.scalar(
+        select(func.count(func.distinct(User.id)))
+        .select_from(User)
+        .join(UserOrgRole, UserOrgRole.user_id == User.id)
+        .where(UserOrgRole.organization_id == organization_id, User.is_archived.is_(False))
+    ) or 0
+
+    if sees_full_totals:
+        project_count = db.scalar(
+            select(func.count()).select_from(Project).where(Project.organization_id == organization_id)
+        ) or 0
+        requirement_count = db.scalar(
+            select(func.count())
+            .select_from(Requirement)
+            .join(Project, Project.id == Requirement.project_id)
+            .where(Project.organization_id == organization_id)
+        ) or 0
+        total_file_size_bytes = db.scalar(
+            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
+                FileAsset.organization_id == organization_id
+            )
+        ) or 0
+    else:
+        accessible_ids = _accessible_project_ids(db, current_user.id)
+        org_project_ids = set(
+            db.scalars(
+                select(Project.id).where(
+                    Project.organization_id == organization_id, Project.id.in_(accessible_ids)
+                )
+            ).all()
+        ) if accessible_ids else set()
+        project_count = len(org_project_ids)
+        requirement_count = (
+            db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id.in_(org_project_ids)))
+            if org_project_ids
+            else 0
+        ) or 0
+
+        # Distinct files this member can account for: this org's own shared
+        # resources (`is_org_resource`, visible to any member regardless of
+        # per-project access — same as `GET /{organization_id}/resources`)
+        # plus files attached to a requirement/action within their
+        # accessible-project set. A file could match both a requirement
+        # attachment and (if it's also an org resource) the first clause —
+        # `union()` de-duplicates by file id so it's never double-counted.
+        #
+        # Known, deliberate gap: `CommentFile` (a file attached to a
+        # `ReviewComment`, C-M-02's discussion-thread attachment path) is
+        # NOT included here. `ReviewComment.target_id` is polymorphic
+        # (`ReviewTargetType.REQUIREMENT`/`ACTION`/`CHANGE_REQUEST`, no FK),
+        # so resolving it back to a project id for scoping would need a
+        # three-way branch per target type — a disproportionate amount of
+        # complexity for what these comment-thread attachments actually
+        # weigh, versus the admin branch above (a plain per-org sum, which
+        # *does* include every `CommentFile`'s underlying `FileAsset`
+        # regardless of type). This makes a scoped member's own total a
+        # strict undercount, never an over-exposure — the safe direction
+        # for a visibility boundary — but it is a real, known accuracy gap:
+        # revisit if comment attachments turn out to matter for this figure.
+        org_resource_file_ids = select(FileAsset.id.label("file_id")).where(
+            FileAsset.organization_id == organization_id, FileAsset.is_org_resource.is_(True)
+        )
+        if org_project_ids:
+            requirement_ids = select(Requirement.id).where(Requirement.project_id.in_(org_project_ids))
+            action_ids = select(RequirementAction.id).where(RequirementAction.project_id.in_(org_project_ids))
+            file_ids_via_requirement = select(RequirementFile.file_id).where(
+                RequirementFile.requirement_id.in_(requirement_ids)
+            )
+            file_ids_via_action = select(RequirementActionFile.file_id).where(
+                RequirementActionFile.action_id.in_(action_ids)
+            )
+            distinct_file_ids = org_resource_file_ids.union(file_ids_via_requirement, file_ids_via_action).subquery()
+        else:
+            distinct_file_ids = org_resource_file_ids.subquery()
+        total_file_size_bytes = db.scalar(
+            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
+                FileAsset.id.in_(select(distinct_file_ids.c.file_id))
+            )
+        ) or 0
+
+    return OrgOverviewStatsOut(
+        project_count=project_count,
+        requirement_count=requirement_count,
+        member_count=member_count,
+        total_file_size_bytes=total_file_size_bytes,
+        is_full_org_total=sees_full_totals,
     )
 
 

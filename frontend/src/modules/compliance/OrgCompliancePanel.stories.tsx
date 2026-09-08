@@ -45,7 +45,7 @@ function mockApis() {
 const meta: Meta<typeof OrgCompliancePanel> = {
   title: "Modules/Compliance/OrgCompliancePanel",
   component: OrgCompliancePanel,
-  decorators: [withRouter("/orgs/org-1/admin/compliance-overview"), withToast()],
+  decorators: [withRouter("/orgs/org-1/overview/compliance-overview"), withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;

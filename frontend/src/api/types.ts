@@ -805,6 +805,18 @@ export interface OrgProjectSummary {
   is_archived: boolean;
 }
 
+/** `pages/OrgOverviewPage.tsx`'s stats header (compliance-module-plan.md
+ * Phase 19). `is_full_org_total` distinguishes the two meanings the counts
+ * below can have — see `OrgOverviewStatsOut`'s own backend docstring
+ * (`backend/app/schemas/org.py`) for the full scoping rules. */
+export interface OrgOverviewStats {
+  project_count: number;
+  requirement_count: number;
+  member_count: number;
+  total_file_size_bytes: number;
+  is_full_org_total: boolean;
+}
+
 export interface ProjectGroup {
   id: string;
   name: string;

@@ -23,13 +23,13 @@
  * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
  * established fetch-a-blob-and-save-it idiom rather than a new one.
  */
-import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import { Spinner } from "../../components/Spinner";
+import { StatCard } from "../../components/StatCard";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
@@ -71,16 +71,6 @@ function ProjectList({ projects }: { projects: { id: string; name: string }[] })
         </li>
       ))}
     </ul>
-  );
-}
-
-function StatCard({ label, value, children }: { label: string; value: number; children?: ReactNode }) {
-  return (
-    <div className="card stack" style={{ minWidth: 220 }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</span>
-      {children}
-    </div>
   );
 }
 

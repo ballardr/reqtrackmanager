@@ -42,19 +42,27 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * types management) and `OrgCompliancePanel` (Phase 14, the cross-project
  * dashboard/table/outstanding view). Phase 18 ("Compliance Standards" as a
  * first-class, cross-org, project-like nav entity, docs/compliance-module-
- * plan.md) retires the `"compliance"` entry entirely — standards/action
- * types/mapping types management moves to its own top-level `/standards`
+ * plan.md) retired the `"compliance"` entry entirely — standards/action
+ * types/mapping types management moved to its own top-level `/standards`
  * nav-rail tab (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
  * `ComplianceSettingsPage.tsx`), fully superseding `ComplianceAdminPanel`
- * (deleted). `"compliance-overview"` is untouched here — Phase 19's
- * "Organisation Overview" page, out of this phase's scope. Labels are read
- * from `i18n/strings.ts`'s own `t()` (the same static English table
- * `useStrings()` layers terminology substitution on top of) rather than
- * duplicated as literals here — `groupComplianceOverview` contains no
- * `{term}` tokens, so the plain, unsubstituted `t()` call (this file isn't
- * a component and can't call the `useStrings()` hook) already returns the
- * exact same string `OrgAdminPage` itself would resolve for every other
- * group's label.
+ * (deleted). Phase 19 ("Organisation Overview" page) retires the remaining
+ * `"compliance-overview"` entry the same way — `orgAdminSections` is now
+ * empty; see `orgOverviewSections` below for where `OrgCompliancePanel`
+ * moved to. Labels are read from `i18n/strings.ts`'s own `t()` (the same
+ * static English table `useStrings()` layers terminology substitution on
+ * top of) rather than duplicated as literals here — `groupComplianceOverview`
+ * contains no `{term}` tokens, so the plain, unsubstituted `t()` call (this
+ * file isn't a component and can't call the `useStrings()` hook) already
+ * returns the exact same string `OrgAdminPage`/`OrgOverviewPage` would
+ * resolve for every other group's label.
+ *
+ * `orgOverviewSections` (Phase 19, `modules/types.ts`): `OrgCompliancePanel`
+ * — previously mounted via `orgAdminSections`' `"compliance-overview"`
+ * entry — now renders below `pages/OrgOverviewPage.tsx`'s own core stats
+ * header instead, reusing the exact same `{key, label, render({orgId})}`
+ * shape `orgAdminSections` already established (the label constant is
+ * reused unchanged; only the hosting page moved).
  *
  * `globalNavItems`/`standaloneWorkspaces` (Phase 18, `modules/types.ts`):
  * the "Compliance Standards" top-level nav-rail tab and the "Standard"
@@ -104,7 +112,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     { path: "/standards/settings/:orgId/:group?", element: createElement(ComplianceSettingsPage) },
     { path: "/standards/:standardId/:section?", element: createElement(StandardWorkspacePage) },
   ],
-  orgAdminSections: [
+  orgOverviewSections: [
     {
       key: "compliance-overview",
       label: strings.orgAdmin.groupComplianceOverview,
