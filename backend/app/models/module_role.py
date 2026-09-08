@@ -101,6 +101,18 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
     project-scoped grant (`ModuleRoleDefinition.scope == "project"`) and
     left `NULL` for an org-scoped one.
 
+    `scope_entity_id` (module system Phase 22) is the generalised sibling
+    of `project_id` for a module-owned entity scope (any `ModuleRoleDefinition.
+    scope` value other than `"org"`/`"project"` — e.g. compliance's own
+    `"standard"` scope, one role per `ComplianceStandard` row): set to that
+    entity's own id for such a grant, `NULL` for every `"org"`/`"project"`
+    grant. Deliberately a bare `UUID` column, not a foreign key — like
+    `module_key`/`role_key`, this table records a grant against a
+    code-defined scope whose *meaning* (which table `scope_entity_id`
+    points into) is owned entirely by the declaring module, not by this
+    core table (see `ModuleRoleDefinition.scope`'s own docstring on why a
+    module is free to declare its own scope name at all).
+
     The `UniqueConstraint` below is a backstop, not the actual dedup
     mechanism — Postgres treats `NULL` as distinct from every other value
     in a unique constraint, so two org-scoped grants (both with
@@ -132,11 +144,13 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
             composition), for audit attribution independent of
             `AuditEvent.actor_id`, mirroring `UserServerRole.granted_by`'s
             identical rationale.
+        scope_entity_id: See this class's own docstring above — set only
+            for a module-owned entity-scoped grant.
     """
 
     __tablename__ = "user_module_roles"
     __table_args__ = (
-        UniqueConstraint("user_id", "module_key", "role_key", "organization_id", "project_id"),
+        UniqueConstraint("user_id", "module_key", "role_key", "organization_id", "project_id", "scope_entity_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -151,3 +165,4 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    scope_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)

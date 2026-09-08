@@ -161,6 +161,18 @@ new module roles (this phase widens *who may call an existing kind of
 endpoint* — `ProjectRole.PROJECT_MANAGER`, already this module's existing
 `_require_officer` composition — rather than introducing a new named role).
 
+Phase 22 (Standard-Level RBAC, §3) adds two more module-contributed roles,
+`standards_manager`/`standards_contributor`, both declared with a new,
+module-owned `scope="standard"` — the first user of `app.modules.registry.
+ModuleRoleDefinition`'s generalised entity-scope mechanism (`overridden_by`,
+`resolve_entity_organization_id`), added by this same phase specifically so
+a *future* module's own first-class entity gets the identical per-row-role
+capability without teaching core `app.services.rbac` a second hardcoded
+scope literal — see that dataclass's own docstring and `docs/modules.md`'s
+"Module-contributed RBAC" section for the full mechanism. No new MCP tools
+(member-list management is exactly the kind of broad, membership-mutating
+action this module has consistently kept off the tool surface).
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.global_router`/
 `.service`/`.scheduler` (each imported lazily, inside `get_router()`/
@@ -276,6 +288,15 @@ def _project_nav_visible(db: Session, project: Project) -> bool:
     return has_assignable_standard(db, project.organization_id)
 
 
+def _resolve_standard_organization_id(db: Session, standard_id: UUID) -> UUID | None:
+    """This module's `ModuleRoleDefinition.resolve_entity_organization_id`
+    hook for the `"standard"` scope (Phase 22) — imported lazily for the
+    same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import resolve_standard_organization_id
+
+    return resolve_standard_organization_id(db, standard_id)
+
+
 def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> None:
     """This module's `ModuleDefinition.on_project_created` hook (Phase 20)
     — reconciles a brand-new project against every `applies_to_all_
@@ -286,6 +307,19 @@ def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> Non
     from app.modules.compliance.service import reconcile_new_project_for_all_standards
 
     reconcile_new_project_for_all_standards(db, project=project, actor_id=actor_id)
+
+
+def _validate_org_group_member_removal(db: Session, org_group_id: UUID, member_user_id: UUID) -> str | None:
+    """This module's `ModuleDefinition.validate_org_group_member_removal`
+    hook (Phase 22) — blocks removing a user from this organisation's
+    designated fallback compliance-managers group when they're its last
+    remaining member and at least one standard in that organisation
+    currently relies on the fallback for its own `standards_manager` floor
+    (no explicit per-standard grant of its own). Imported lazily for the
+    same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import validate_fallback_group_member_removal
+
+    return validate_fallback_group_member_removal(db, org_group_id, member_user_id)
 
 
 # `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` (module system follow-up,
@@ -379,6 +413,7 @@ MODULE_DEFINITION = ModuleDefinition(
     on_org_created=_seed_org_defaults,
     project_nav_visible=_project_nav_visible,
     on_project_created=_reconcile_new_project,
+    validate_org_group_member_removal=_validate_org_group_member_removal,
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=_export_org_data,
         import_=_import_org_data,
@@ -423,6 +458,39 @@ MODULE_DEFINITION = ModuleDefinition(
                 "authorised approval/sign-off for the projects they are assigned to (§11/§26)."
             ),
             scope="project",
+        ),
+        # Phase 22 (docs/compliance-module-plan.md): standard-scoped
+        # working-group roles, distinct from org-wide `compliance_manager`
+        # (every standard) and project-scoped `compliance_officer`
+        # (assessment, not the standard's own content). Both declare
+        # `overridden_by=(("org", "compliance_manager"),)` so an org-wide
+        # Compliance Manager never needs a redundant per-standard grant —
+        # `require_module_role`'s own `OrgRole.ORG_ADMIN`/`is_server_admin`
+        # overrides apply automatically to every scope, including this one
+        # (see `services.rbac.user_satisfies_module_role`'s own docstring).
+        ModuleRoleDefinition(
+            role_key="standards_manager",
+            name="Standards Manager",
+            description=(
+                "Full management of one specific compliance standard — requirements, versions, "
+                "publish/retire, and this standard's own member list — scoped to just this "
+                "standard rather than every standard in the organisation."
+            ),
+            scope="standard",
+            overridden_by=(("org", "compliance_manager"),),
+            resolve_entity_organization_id=_resolve_standard_organization_id,
+        ),
+        ModuleRoleDefinition(
+            role_key="standards_contributor",
+            name="Standards Contributor",
+            description=(
+                "May edit a draft version's requirements and required actions on one specific "
+                "compliance standard, but may not publish/retire a version or manage the "
+                "standard's own member list."
+            ),
+            scope="standard",
+            overridden_by=(("org", "compliance_manager"),),
+            resolve_entity_organization_id=_resolve_standard_organization_id,
         ),
     ),
     mcp_tools=(

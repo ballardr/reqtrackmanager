@@ -1166,6 +1166,183 @@ def get_effective_compliance_managers(db: Session, organization_id: uuid.UUID) -
     return ids
 
 
+# --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) ----
+
+
+def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uuid.UUID | None:
+    """This module's `ModuleRoleDefinition.resolve_entity_organization_id`
+    hook for the `"standard"` scope (Phase 22) — `app.services.rbac.
+    require_module_role`'s generic module-owned-entity-scope branch calls
+    this to resolve a `standard_id` path parameter to its owning
+    organisation, exactly the same role a project's own id already plays
+    for `"project"`-scoped roles (`app.services.rbac._project_organization_id`)."""
+    standard = db.get(ComplianceStandard, standard_id)
+    return standard.organization_id if standard is not None else None
+
+
+def _effective_org_group_member_ids(db: Session, org_group_id: uuid.UUID) -> set[uuid.UUID]:
+    """Every user who is a direct or transitively-nested member of
+    `org_group_id` (BFS through `OrgGroupMember.member_org_group_id`,
+    mirroring `services.rbac._descendant_org_group_ids`'s own directionality
+    but resolved down to user ids rather than group ids).
+
+    A narrow, compliance-owned helper — **not** a generalisation of
+    `services.rbac`'s own group-membership resolution (which today only
+    ever walks *up* from a user to their groups, never *down* from a group
+    to its members) — deliberately scoped to this one, single use (Phase
+    22's fallback-group floor check), per that phase's own "narrow, not a
+    reopening of Phase 2's deferred general group-based-module-role-grants
+    capability" boundary. See docs/compliance-module-plan.md Phase 22's own
+    notes."""
+    from app.models.organization import OrgGroupMember
+
+    seen_group_ids = {org_group_id}
+    frontier = {org_group_id}
+    user_ids: set[uuid.UUID] = set()
+    while frontier:
+        rows = db.execute(
+            select(OrgGroupMember.user_id, OrgGroupMember.member_org_group_id).where(
+                OrgGroupMember.org_group_id.in_(frontier)
+            )
+        ).all()
+        next_frontier: set[uuid.UUID] = set()
+        for user_id, member_group_id in rows:
+            if user_id is not None:
+                user_ids.add(user_id)
+            elif member_group_id is not None and member_group_id not in seen_group_ids:
+                seen_group_ids.add(member_group_id)
+                next_frontier.add(member_group_id)
+        frontier = next_frontier
+    return user_ids
+
+
+def get_default_standards_manager_group_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:
+    """This organisation's designated fallback compliance-managers group
+    (Phase 22, `ComplianceOrgSettings.default_standards_manager_group_id`),
+    or `None` if never configured."""
+    from app.modules.compliance.models import ComplianceOrgSettings
+
+    settings = db.scalar(
+        select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == organization_id)
+    )
+    return settings.default_standards_manager_group_id if settings is not None else None
+
+
+def fallback_standards_manager_ids(db: Session, organization_id: uuid.UUID) -> set[uuid.UUID]:
+    """Current members of this organisation's designated fallback
+    compliance-managers group (Phase 22) — empty if none is configured, or
+    if the configured group currently has no members."""
+    group_id = get_default_standards_manager_group_id(db, organization_id)
+    if group_id is None:
+        return set()
+    return _effective_org_group_member_ids(db, group_id)
+
+
+def standard_has_direct_manager_grant(db: Session, standard_id: uuid.UUID) -> bool:
+    """Whether `standard_id` has at least one direct `standards_manager`
+    `UserModuleRole` grant of its own (Phase 22) — the primary way a
+    standard's manager floor is satisfied; see `standard_manager_floor_
+    covered_by_fallback` for the secondary, group-based way."""
+    from app.models.module_role import UserModuleRole
+
+    return (
+        db.scalar(
+            select(UserModuleRole.id).where(
+                UserModuleRole.module_key == "compliance",
+                UserModuleRole.role_key == "standards_manager",
+                UserModuleRole.scope_entity_id == standard_id,
+            )
+        )
+        is not None
+    )
+
+
+def standard_manager_floor_covered_by_fallback(db: Session, organization_id: uuid.UUID) -> bool:
+    """Whether this organisation's designated fallback compliance-managers
+    group currently has at least one member (Phase 22) — if so, removing a
+    standard's last remaining explicit `standards_manager` grant is safe,
+    since the floor ("a standard must always have at least one
+    standards_manager") is still genuinely satisfied by a real,
+    resolvable set of people rather than merely a theoretical `OrgRole.
+    ORG_ADMIN`/`compliance_manager` override."""
+    return len(fallback_standards_manager_ids(db, organization_id)) > 0
+
+
+def validate_fallback_group_member_removal(
+    db: Session, org_group_id: uuid.UUID, member_user_id: uuid.UUID
+) -> str | None:
+    """This module's `ModuleDefinition.validate_org_group_member_removal`
+    hook body (Phase 22) — mirrors the project/org "last manager" floor's
+    own "can't leave zero" shape one level up: if `org_group_id` is some
+    organisation's designated fallback compliance-managers group,
+    `member_user_id` is currently its *only* member, and at least one
+    standard in that organisation has no explicit `standards_manager`
+    grant of its own (i.e. is currently relying entirely on this group to
+    satisfy its manager floor), removing that last member is blocked.
+
+    Returns a human-readable block message, or `None` to allow the
+    removal — `app.routers.orgs.remove_org_group_member` 400s with
+    whatever this returns."""
+    from app.modules.compliance.models import ComplianceOrgSettings
+
+    settings = db.scalar(
+        select(ComplianceOrgSettings).where(
+            ComplianceOrgSettings.default_standards_manager_group_id == org_group_id
+        )
+    )
+    if settings is None:
+        return None
+    current_members = _effective_org_group_member_ids(db, org_group_id)
+    if current_members != {member_user_id}:
+        return None
+
+    standard_ids = db.scalars(
+        select(ComplianceStandard.id).where(
+            ComplianceStandard.organization_id == settings.organization_id,
+            ComplianceStandard.is_archived.is_(False),
+        )
+    ).all()
+    for standard_id in standard_ids:
+        if not standard_has_direct_manager_grant(db, standard_id):
+            return (
+                "This group is this organisation's designated fallback compliance-managers group, and at "
+                "least one compliance standard has no other explicit Standards Manager. Assign a direct "
+                "Standards Manager to that standard, or designate a different fallback group, before "
+                "removing this group's last member."
+            )
+    return None
+
+
+def get_effective_standard_managers(db: Session, standard_id: uuid.UUID, organization_id: uuid.UUID) -> set[uuid.UUID]:
+    """Users who currently satisfy this standard's `standards_manager`
+    floor (Phase 22) — direct `standards_manager` grants on this standard,
+    union the fallback group's current members when this standard has no
+    direct grant of its own (the fallback covers *every standard with no
+    explicit grant*, not every standard unconditionally — a standard with
+    its own explicit manager(s) is governed by exactly those people, not
+    silently also by the whole fallback group). Does **not** include the
+    org-wide `compliance_manager`/`OrgRole.ORG_ADMIN` override tier — see
+    `docs/compliance-module-plan.md` Phase 22's own reasoning for why the
+    floor is deliberately about a *dedicated, per-standard working group*,
+    not merely "someone with access, one way or another." Not an
+    authorization check — see this module's own docstring's "not an
+    authorization check" convention for `get_effective_compliance_*`."""
+    from app.models.module_role import UserModuleRole
+
+    direct = set(
+        db.scalars(
+            select(UserModuleRole.user_id).where(
+                UserModuleRole.module_key == "compliance",
+                UserModuleRole.role_key == "standards_manager",
+                UserModuleRole.scope_entity_id == standard_id,
+            )
+        ).all()
+    )
+    if direct:
+        return direct
+    return fallback_standards_manager_ids(db, organization_id)
+
+
 # --- Phase 11: Cross-standard mapping + version impact -----------------------------
 
 

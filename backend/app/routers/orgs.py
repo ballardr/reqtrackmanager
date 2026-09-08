@@ -40,6 +40,7 @@ from app.modules.registry import (
     is_module_entitled,
     list_enabled_module_roles,
     run_on_org_created_hooks,
+    run_org_group_member_removal_hooks,
 )
 
 # `_accessible_project_ids` (Phase 19's overview-stats endpoint reuses the
@@ -2099,8 +2100,24 @@ def remove_org_group_member(
 ):
     """Removes a member from an organisation group — `member_id` is matched
     against either a user member or a nested-group member (whichever it
-    is), same generic-id convention as `remove_project_group_member`."""
+    is), same generic-id convention as `remove_project_group_member`.
+
+    Phase 22 (docs/compliance-module-plan.md): when `member_id` names a
+    genuine *user* member (never a nested-group member — a module-owned
+    floor concept is about real people, not group structure), every
+    registered module gets a chance to block this specific removal via
+    `run_org_group_member_removal_hooks` (e.g. Compliance's own "this group
+    is a standard's last fallback compliance-manager coverage" check) —
+    core code deciding to ask, without importing any specific module's own
+    models, per the Modular Feature System Boundary."""
     _get_org_group_in_org(db, organization_id, group_id)
+    is_user_member = db.scalar(
+        select(OrgGroupMember.id).where(OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == member_id)
+    ) is not None
+    if is_user_member:
+        block_message = run_org_group_member_removal_hooks(db, group_id, member_id)
+        if block_message is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, block_message)
     db.execute(
         OrgGroupMember.__table__.delete().where(
             OrgGroupMember.org_group_id == group_id,

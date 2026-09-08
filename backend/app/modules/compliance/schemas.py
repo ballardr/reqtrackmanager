@@ -1075,3 +1075,60 @@ class ComplianceNavVisibilityOut(BaseModel):
     model_config = {"from_attributes": True}
 
     visible: bool
+
+
+# --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) ----
+
+
+class ComplianceStandardMemberOut(BaseModel):
+    """One user holding at least one direct standard-scoped role grant on a
+    given standard (Phase 22) — `GET .../standards/{id}/members`. Built
+    from a plain dict in `router.py` (not `from_attributes`, since this is
+    an aggregation across `User`/`UserModuleRole`, not one ORM row)."""
+
+    user_id: UUID
+    display_name: str
+    email: str
+    role_keys: list[Literal["standards_manager", "standards_contributor"]]
+
+
+class ComplianceStandardMembersOut(BaseModel):
+    """Response of `GET .../standards/{id}/members` (Phase 22)."""
+
+    members: list[ComplianceStandardMemberOut]
+    # Whether this standard's manager floor is *also* satisfied by the
+    # org's designated fallback compliance-managers group currently having
+    # at least one member — when `True`, the frontend may let the last
+    # explicit `standards_manager` grant be revoked (the backend re-checks
+    # this independently regardless of what the frontend renders).
+    manager_floor_covered_by_fallback: bool
+
+
+class ComplianceOrgSettingsOut(BaseModel):
+    """Response of `GET .../modules/compliance/settings` (Phase 22) —
+    `app.modules.compliance.models.ComplianceOrgSettings`, or the all-`None`
+    default when this organisation has never set anything (no row yet, see
+    that model's own docstring on lazy row creation)."""
+
+    default_standards_manager_group_id: UUID | None = None
+
+
+class ComplianceOrgSettingsUpdate(BaseModel):
+    """Payload for `PUT .../modules/compliance/settings` (Phase 22) —
+    `None` explicitly un-sets the fallback group (distinct from omitting
+    the field, which Pydantic would otherwise also treat as `None` here
+    since this is the only field; a future second field would need
+    `exclude_unset` handling, not needed yet with just one)."""
+
+    default_standards_manager_group_id: UUID | None = None
+
+
+class ComplianceStandardMemberRoleAssign(BaseModel):
+    """Body for `POST .../standards/{id}/members/{user_id}/roles` (Phase
+    22) — mirrors `ModuleRoleAssign`'s "URL, not body, is authoritative"
+    convention for `user_id`, but narrowed to this module's own two
+    standard-scoped role keys (unlike `ModuleRoleAssign`'s generic
+    `module_key`/`role_key` pair) since this endpoint only ever grants a
+    role of this one module, at this one scope."""
+
+    role_key: Literal["standards_manager", "standards_contributor"]

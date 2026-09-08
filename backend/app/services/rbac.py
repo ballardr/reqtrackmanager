@@ -2178,16 +2178,22 @@ def _has_module_role_grant(
     *,
     organization_id: UUID | None = None,
     project_id: UUID | None = None,
+    scope_entity_id: UUID | None = None,
 ) -> bool:
     """Returns whether `user_id` holds a direct `UserModuleRole` grant for
     `(module_key, role_key)`, optionally scoped to a specific
-    `organization_id`/`project_id` (module system Phase 2).
+    `organization_id`/`project_id`/`scope_entity_id` (module system
+    Phase 2; `scope_entity_id` added by Phase 22 for a module-owned entity
+    scope).
 
     Direct-grant lookup only — no group/hierarchy inheritance, matching
     `UserModuleRole`'s own documented V1 scope boundary (see that model's
-    docstring). `organization_id`/`project_id` are applied as equality
-    filters only when given; `require_module_role`'s own callers always
-    supply exactly one of them, matching the role's declared scope.
+    docstring). Each of `organization_id`/`project_id`/`scope_entity_id` is
+    applied as an equality filter only when given; `require_module_role`'s
+    own callers always supply the combination matching the role's declared
+    scope (`organization_id` alone for `"org"`, `organization_id` +
+    `project_id` for `"project"`, `organization_id` + `scope_entity_id` for
+    a module-owned entity scope).
     """
     query = select(UserModuleRole.id).where(
         UserModuleRole.user_id == user_id,
@@ -2198,7 +2204,99 @@ def _has_module_role_grant(
         query = query.where(UserModuleRole.organization_id == organization_id)
     if project_id is not None:
         query = query.where(UserModuleRole.project_id == project_id)
+    if scope_entity_id is not None:
+        query = query.where(UserModuleRole.scope_entity_id == scope_entity_id)
     return db.scalar(query) is not None
+
+
+def user_satisfies_module_role(
+    db: Session,
+    current_user: User,
+    module_key: str,
+    role_key: str,
+    *,
+    organization_id: UUID,
+    project_id: UUID | None = None,
+    scope_entity_id: UUID | None = None,
+) -> bool:
+    """Returns whether `current_user` satisfies module-contributed role
+    `(module_key, role_key)` — the composed predicate `require_module_
+    role`'s own three scope branches each apply, factored out here (module
+    system Phase 22) so a module's own router can compose **two or more**
+    of its own roles into a single check (e.g. compliance's "standards_
+    manager OR standards_contributor may edit a draft" gate,
+    `modules.compliance.router._require_standard_edit`) without duplicating
+    this composition logic or re-deriving it by hand.
+
+    Does **not** perform module-enablement/2FA/frame-scope/PAT-scope
+    checks — those are the caller's responsibility, performed exactly once
+    by whichever `require_module_role`-family dependency (or module-owned
+    equivalent) established `organization_id` in the first place, not
+    repeated per role-key here.
+
+    A caller is satisfied if **any** of the following hold, mirroring
+    `require_module_role`'s own composition exactly:
+      - `current_user.is_server_admin`.
+      - `OrgRole.ORG_ADMIN` on `organization_id`, for a `"org"`-scoped role
+        and for any other (module-owned entity) scope alike — an org's own
+        admin already outranks every role scoped inside that org, the same
+        "a higher tier already retains full access" principle applied one
+        tier further down than `"org"` itself.
+      - `ProjectRole.PROJECT_MANAGER` on `project_id`, for a `"project"`-
+        scoped role only.
+      - The specific `(module_key, role_key)` grant itself, scoped to
+        whichever of `organization_id`/`project_id`/`scope_entity_id`
+        matches the role's declared scope (`_has_module_role_grant`).
+      - Any role named in this role's own `overridden_by` — checked at
+        that override role's own natural scope: `"org"` uses
+        `organization_id` alone, `"project"` uses `project_id`.
+
+    Raises:
+        ValueError: If `module_key`/`role_key` doesn't name a real,
+            currently-registered role — same construction-time-style
+            failure `require_module_role` raises, just realised at call
+            time here since this helper has no separate construction step.
+    """
+    if current_user.is_server_admin:
+        return True
+    definition = get_module(module_key)
+    if definition is None:
+        raise ValueError(f"user_satisfies_module_role: no module registered with key {module_key!r}.")
+    role = next((r for r in definition.roles if r.role_key == role_key), None)
+    if role is None:
+        raise ValueError(
+            f"user_satisfies_module_role: module {module_key!r} declares no role with key {role_key!r}."
+        )
+
+    if role.scope == "project":
+        if project_id is not None and ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
+            db, current_user.id, project_id
+        ):
+            return True
+    elif OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id):
+        # "org"-scoped roles, and every module-owned entity scope, both
+        # sit inside exactly one organisation — an org admin there already
+        # outranks either kind, mirroring `"project"`'s own PROJECT_MANAGER
+        # override one tier further down.
+        return True
+
+    if _has_module_role_grant(
+        db, current_user.id, module_key, role_key,
+        organization_id=organization_id, project_id=project_id, scope_entity_id=scope_entity_id,
+    ):
+        return True
+
+    for override_scope, override_role_key in role.overridden_by:
+        if override_scope == "org" and _has_module_role_grant(
+            db, current_user.id, module_key, override_role_key, organization_id=organization_id
+        ):
+            return True
+        if override_scope == "project" and project_id is not None and _has_module_role_grant(
+            db, current_user.id, module_key, override_role_key, project_id=project_id
+        ):
+            return True
+
+    return False
 
 
 def require_module_role(module_key: str, role_key: str):
@@ -2251,6 +2349,19 @@ def require_module_role(module_key: str, role_key: str):
     it is the mechanism every future module's own RBAC gating will use,
     proven here against `tests/test_module_contributed_roles.py`'s fixture
     module in the absence of a real one yet.
+
+    Module system Phase 22 generalised this beyond the two core-recognised
+    scopes: a `scope` value other than `"org"`/`"project"` is a
+    **module-owned entity scope** (compliance's own `"standard"` scope is
+    the first example — one role per `ComplianceStandard` row) — see the
+    third branch below and `ModuleRoleDefinition.scope`'s own docstring for
+    the full design. The actual authorization predicate for all three
+    branches is `user_satisfies_module_role`, factored out there so a
+    module's own router can compose more than one of its own roles into a
+    single check (e.g. "standards_manager OR standards_contributor") — this
+    function's three branches differ only in *how each resolves
+    `organization_id`/`project_id`/`scope_entity_id` from the request*
+    before calling that shared predicate.
     """
     definition = get_module(module_key)
     if definition is None:
@@ -2282,45 +2393,86 @@ def require_module_role(module_key: str, role_key: str):
             _require_org_2fa(db, organization_id, current_user)
             if not is_module_enabled(db, organization_id, module_key):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-            if current_user.is_server_admin:
-                return current_user
-            if OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id):
-                return current_user
-            if _has_module_role_grant(
-                db, current_user.id, module_key, role_key, organization_id=organization_id
+            if user_satisfies_module_role(
+                db, current_user, module_key, role_key, organization_id=organization_id
             ):
                 return current_user
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
         return _org_dependency
 
-    def _project_dependency(
-        project_id: UUID,
+    if scope == "project":
+
+        def _project_dependency(
+            project_id: UUID,
+            request: Request,
+            current_user: User = Depends(get_current_user_or_module_frame(module_key)),
+            db: Session = Depends(get_db),
+        ) -> User:
+            """See the enclosing `require_module_role` factory's docstring
+            (project-scoped branch). Also accepts a Tier B `<ModuleFrame>`
+            token scoped to this exact `module_key`/`project_id`, checked by
+            `_enforce_module_frame_scope` before any admin-override bypass
+            below — see `require_org_module_enabled`'s docstring for the full
+            rationale, which applies identically here."""
+            _enforce_module_frame_scope(request, project_id=project_id)
+            check_pat_scope_for_project(request, db, project_id)
+            organization_id = _project_organization_id(db, project_id)
+            if organization_id is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+            _require_org_active(db, organization_id)
+            _require_org_2fa(db, organization_id, current_user)
+            if not is_module_enabled(db, organization_id, module_key):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+            if user_satisfies_module_role(
+                db, current_user, module_key, role_key, organization_id=organization_id, project_id=project_id
+            ):
+                return current_user
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+        return _project_dependency
+
+    # A module-owned entity scope (module system Phase 22) — any `scope`
+    # string other than the two core-recognised ones above (compliance's
+    # own `"standard"` scope is the first). There is no path parameter
+    # literally named `organization_id`/`project_id` to bind here the way
+    # the two branches above can (the caller's route names its own entity
+    # id, e.g. `standard_id`, not a generic one) — the entity id is instead
+    # read directly off the request's own resolved path parameters at the
+    # conventional key `f"{scope}_id"`, then resolved to an owning
+    # organisation via the role's own `resolve_entity_organization_id`
+    # (required for this branch — see that field's docstring).
+    if role.resolve_entity_organization_id is None:
+        raise ValueError(
+            f"require_module_role: module {module_key!r} role {role_key!r} declares scope {scope!r} "
+            "but no resolve_entity_organization_id — required for any scope other than 'org'/'project'."
+        )
+    path_param_name = f"{scope}_id"
+
+    def _entity_dependency(
         request: Request,
         current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
         """See the enclosing `require_module_role` factory's docstring
-        (project-scoped branch). Also accepts a Tier B `<ModuleFrame>`
-        token scoped to this exact `module_key`/`project_id`, checked by
-        `_enforce_module_frame_scope` before any admin-override bypass
-        below — see `require_org_module_enabled`'s docstring for the full
-        rationale, which applies identically here."""
-        _enforce_module_frame_scope(request, project_id=project_id)
-        check_pat_scope_for_project(request, db, project_id)
-        organization_id = _project_organization_id(db, project_id)
+        (module-owned entity-scope branch)."""
+        raw_entity_id = request.path_params.get(path_param_name)
+        if raw_entity_id is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Not found.")
+        entity_id = raw_entity_id if isinstance(raw_entity_id, UUID) else UUID(str(raw_entity_id))
+        organization_id = role.resolve_entity_organization_id(db, entity_id)
         if organization_id is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        _enforce_module_frame_scope(request, organization_id=organization_id)
+        check_pat_scope(request, organization_id)
         _require_org_active(db, organization_id)
         _require_org_2fa(db, organization_id, current_user)
         if not is_module_enabled(db, organization_id, module_key):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-        if current_user.is_server_admin:
-            return current_user
-        if ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id):
-            return current_user
-        if _has_module_role_grant(db, current_user.id, module_key, role_key, project_id=project_id):
+        if user_satisfies_module_role(
+            db, current_user, module_key, role_key, organization_id=organization_id, scope_entity_id=entity_id
+        ):
             return current_user
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
-    return _project_dependency
+    return _entity_dependency

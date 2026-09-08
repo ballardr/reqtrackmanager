@@ -102,14 +102,16 @@ import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user_or_module_frame
 from app.models.audit import AuditEvent
+from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
-from app.models.organization import Organization
+from app.models.organization import Organization, OrgGroup
 from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import (
@@ -121,6 +123,7 @@ from app.modules.compliance.export import export_standard_data, import_standard_
 from app.modules.compliance.models import (
     ComplianceActionTypeDefinition,
     ComplianceMappingRelationshipTypeDefinition,
+    ComplianceOrgSettings,
     ComplianceRequiredAction,
     ComplianceRequirement,
     ComplianceRequirementMapping,
@@ -138,6 +141,8 @@ from app.modules.compliance.schemas import (
     ComplianceMappingRelationshipTypeCreate,
     ComplianceMappingRelationshipTypeOut,
     ComplianceMappingRelationshipTypeUpdate,
+    ComplianceOrgSettingsOut,
+    ComplianceOrgSettingsUpdate,
     ComplianceRecentActivityOut,
     ComplianceRequiredActionCreate,
     ComplianceRequiredActionOut,
@@ -155,6 +160,9 @@ from app.modules.compliance.schemas import (
     ComplianceStandardCreate,
     ComplianceStandardDefaultExclusionCreate,
     ComplianceStandardDefaultExclusionOut,
+    ComplianceStandardMemberOut,
+    ComplianceStandardMemberRoleAssign,
+    ComplianceStandardMembersOut,
     ComplianceStandardOut,
     ComplianceStandardUpdate,
     ComplianceStandardVersionCreate,
@@ -187,6 +195,7 @@ from app.modules.compliance.service import (
     list_reviews_due_for_project,
     materialize_assessment_rows,
     reconcile_standard_applicability,
+    standard_manager_floor_covered_by_fallback,
 )
 from app.schemas.audit import AuditEventOut
 from app.schemas.project import MoveDirection
@@ -206,6 +215,53 @@ router = APIRouter(prefix="/api/v1/orgs/{organization_id}/modules/compliance", t
 # — not re-constructed per request.
 _require_manage = require_module_role("compliance", "compliance_manager")
 _require_view = require_org_module_enabled("compliance")
+
+# Phase 22 (docs/compliance-module-plan.md): standard-scoped gates, built
+# from the same `require_module_role` factory as `_require_manage` above —
+# `standards_manager`/`standards_contributor` are declared with the new
+# generalised `scope="standard"` (`app.modules.registry.ModuleRoleDefinition`),
+# so this reads `standard_id` off the request's own path parameters and
+# resolves its owning organisation via `resolve_entity_organization_id`
+# (`service.py::resolve_standard_organization_id`) rather than trusting a
+# separate `organization_id` path segment — see `services.rbac.require_
+# module_role`'s own docstring (module-owned entity-scope branch). Composes
+# identically to `_require_manage`: `is_server_admin`, `OrgRole.ORG_ADMIN`,
+# and (via each role's own `overridden_by`) org-scoped `compliance_manager`
+# all satisfy either check with no per-standard grant needed — deliberately
+# **not** built on top of `_require_view`, which additionally requires org
+# *membership* (`require_org_module_enabled`'s own `get_effective_org_roles`
+# check) — `_require_manage`'s own admin/grant bypass has never required
+# membership, and building on `_require_view` here would have silently
+# narrowed that for every standard-scoped action, a real, unintended
+# behaviour change caught by this phase's own test suite.
+_require_standard_manage = require_module_role("compliance", "standards_manager")
+_require_standard_contribute = require_module_role("compliance", "standards_contributor")
+
+
+def _require_standard_manage_or_contribute(
+    request: Request,
+    current_user: User = Depends(get_current_user_or_module_frame("compliance")),
+    db: Session = Depends(get_db),
+) -> User:
+    """Manager-**or**-contributor, standard-scoped gate (Phase 22) — for
+    the draft-only requirement/required-action content mutations a
+    `standards_contributor` may also make; `_require_draft_version` still
+    separately enforces the "only while the version is still a draft"
+    restriction this dependency does not know about. Tries `_require_
+    standard_manage` first, falling back to `_require_standard_contribute`
+    on a 403 (never on a 404 — module-disabled/entity-absent should
+    propagate immediately, not be masked by trying the second check)."""
+    try:
+        return _require_standard_manage(request=request, current_user=current_user, db=db)
+    except HTTPException as manage_exc:
+        if manage_exc.status_code != status.HTTP_403_FORBIDDEN:
+            raise
+        try:
+            return _require_standard_contribute(request=request, current_user=current_user, db=db)
+        except HTTPException as contribute_exc:
+            if contribute_exc.status_code != status.HTTP_403_FORBIDDEN:
+                raise
+            raise manage_exc from contribute_exc
 
 
 # --- Cross-org ownership-chain lookups (404, not 403, on a mismatch) --------
@@ -279,6 +335,59 @@ def _require_draft_version(version: ComplianceStandardVersion) -> None:
         )
 
 
+# --- Phase 22: org-level compliance settings (default fallback group) ------
+
+
+@router.get("/settings", response_model=ComplianceOrgSettingsOut)
+def get_compliance_org_settings(
+    organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """This organisation's own Compliance-module settings (Phase 22) — just
+    the designated fallback compliance-managers group so far. View-gated:
+    any org member with the module enabled may see which group (if any) is
+    designated, the same "the option itself isn't sensitive" reasoning
+    `list_org_module_roles` already applies. Returns the all-`None` default
+    when no settings row exists yet for this organisation (see
+    `ComplianceOrgSettings`'s own docstring on lazy row creation)."""
+    settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == organization_id))
+    if settings is None:
+        return ComplianceOrgSettingsOut()
+    return ComplianceOrgSettingsOut(default_standards_manager_group_id=settings.default_standards_manager_group_id)
+
+
+@router.put("/settings", response_model=ComplianceOrgSettingsOut)
+def update_compliance_org_settings(
+    organization_id: UUID, payload: ComplianceOrgSettingsUpdate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Sets (or clears) this organisation's designated fallback compliance-
+    managers group (Phase 22) — org-wide `compliance_manager`-or-higher
+    only, since this is an org-level setting, not scoped to any one
+    standard. 400s if `default_standards_manager_group_id` doesn't name a
+    real `OrgGroup` belonging to this same organisation."""
+    if payload.default_standards_manager_group_id is not None:
+        group = db.get(OrgGroup, payload.default_standards_manager_group_id)
+        if group is None or group.organization_id != organization_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a group in this organisation.")
+    settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == organization_id))
+    if settings is None:
+        settings = ComplianceOrgSettings(organization_id=organization_id)
+        db.add(settings)
+    previous = settings.default_standards_manager_group_id
+    settings.default_standards_manager_group_id = payload.default_standards_manager_group_id
+    log_event(
+        db, entity_type="compliance_org_settings", entity_id=organization_id, action="updated",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={
+            "previous_group_id": str(previous) if previous else None,
+            "new_group_id": str(settings.default_standards_manager_group_id)
+            if settings.default_standards_manager_group_id else None,
+        },
+    )
+    db.commit()
+    return ComplianceOrgSettingsOut(default_standards_manager_group_id=settings.default_standards_manager_group_id)
+
+
 # --- Standards ---------------------------------------------------------------
 
 
@@ -290,7 +399,15 @@ def create_standard(
     """Creates a new organisation-level compliance standard (§2), together
     with its mandatory first version (version 1), in a single transaction —
     a standard is never left with zero versions. `owner_id` defaults to the
-    creating user when omitted."""
+    creating user when omitted.
+
+    The creator is also granted a direct `standards_manager` role on this
+    standard (Phase 22) — mirrors `create_project`'s own already-established
+    "on creation, the creator is granted a direct PROJECT_MANAGER" precedent
+    (`routers/projects.py:403`) exactly, applied one level down, so a
+    standard's manager floor (§3: "a standard must always have at least one
+    standards_manager") is satisfied from the moment it exists, not left to
+    a separate follow-up grant."""
     existing = db.scalar(
         select(ComplianceStandard.id).where(
             ComplianceStandard.organization_id == organization_id,
@@ -313,6 +430,18 @@ def create_standard(
     log_event(db, entity_type="compliance_standard", entity_id=standard.id, action="created",
               actor_id=current_user.id, organization_id=organization_id,
               detail={"reference": standard.reference, "name": standard.name})
+
+    db.add(
+        UserModuleRole(
+            user_id=current_user.id, module_key="compliance", role_key="standards_manager",
+            organization_id=organization_id, scope_entity_id=standard.id, granted_by=current_user.id,
+        )
+    )
+    log_event(
+        db, entity_type="user_module_role", entity_id=current_user.id, action="granted",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": "compliance", "role_key": "standards_manager", "standard_id": str(standard.id)},
+    )
 
     version = ComplianceStandardVersion(
         standard_id=standard.id,
@@ -381,7 +510,7 @@ def get_standard_history(
 @router.patch("/standards/{standard_id}", response_model=ComplianceStandardOut)
 def update_standard(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardUpdate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Updates a standard's name/description/issuing_organisation/owner_id.
     `reference` is immutable after creation — see `schemas.py`'s module
@@ -401,7 +530,7 @@ def update_standard(
 @router.post("/standards/{standard_id}/archive", response_model=ComplianceStandardOut)
 def archive_standard(
     organization_id: UUID, standard_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Soft-archives a standard (§2's "Status" attribute), mirroring
     `Requirement`/`Project`'s own `is_archived`/`archived_at`/`archived_by`
@@ -420,7 +549,7 @@ def archive_standard(
 @router.post("/standards/{standard_id}/unarchive", response_model=ComplianceStandardOut)
 def unarchive_standard(
     organization_id: UUID, standard_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Restores an archived standard. Idempotent, like `unarchive_project`/
     `restore_requirement` — calling this on an already-active standard is a
@@ -442,7 +571,7 @@ def unarchive_standard(
 @router.get("/standards/{standard_id}/export")
 def export_standard(
     organization_id: UUID, standard_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Exports a single compliance standard (Phase 21, §29) as a portable,
     self-contained JSON document — every version's full requirement/
@@ -535,7 +664,7 @@ def _get_exclusion_or_404(
 @router.patch("/standards/{standard_id}/applicability-default", response_model=ComplianceStandardOut)
 def update_standard_applicability_default(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardApplicabilityDefaultUpdate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Switches a standard's default project-assignment mode (Phase 20,
     §3) — Compliance-Manager-only (or org admin/server admin, via
@@ -611,7 +740,7 @@ def list_standard_default_exclusions(
 )
 def exclude_project_from_standard_default(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardDefaultExclusionCreate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Excepts `payload.project_id` out of this standard's
     `applies_to_all_projects` default — `reason` is mandatory (400 if
@@ -676,7 +805,7 @@ def exclude_project_from_standard_default(
 @router.delete("/standards/{standard_id}/exclusions/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_standard_default_exclusion(
     organization_id: UUID, standard_id: UUID, project_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Removes a project from a standard's exclusion list — if the standard
     is currently `APPLIES_TO_ALL_PROJECTS`, the project is immediately
@@ -703,6 +832,152 @@ def remove_standard_default_exclusion(
                 )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Phase 22: standard-scoped RBAC — this standard's own member list -----------
+
+
+@router.get("/standards/{standard_id}/members", response_model=ComplianceStandardMembersOut)
+def list_standard_members(
+    organization_id: UUID, standard_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists this standard's own direct `standards_manager`/`standards_
+    contributor` role grants (Phase 22) — the standard's dedicated working
+    group — plus whether this standard's manager floor is *also* covered
+    by the org's designated fallback compliance-managers group currently
+    having at least one member. View-gated, same as every other read on a
+    standard. Deliberately excludes the org-wide `compliance_manager`/
+    `OrgRole.ORG_ADMIN` override tier and fallback-group members
+    themselves as rows — this is a roster of this standard's own *direct*
+    grants, not every user who happens to currently have access to it."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    grants = db.scalars(
+        select(UserModuleRole).where(
+            UserModuleRole.module_key == "compliance",
+            UserModuleRole.role_key.in_(["standards_manager", "standards_contributor"]),
+            UserModuleRole.scope_entity_id == standard.id,
+        )
+    ).all()
+    role_keys_by_user: dict[UUID, list[str]] = {}
+    for grant in grants:
+        role_keys_by_user.setdefault(grant.user_id, []).append(grant.role_key)
+    members = []
+    for user_id, role_keys in role_keys_by_user.items():
+        user = db.get(User, user_id)
+        if user is None:
+            continue
+        members.append(
+            ComplianceStandardMemberOut(
+                user_id=user_id, display_name=user.display_name, email=user.email, role_keys=role_keys
+            )
+        )
+    return ComplianceStandardMembersOut(
+        members=members,
+        manager_floor_covered_by_fallback=standard_manager_floor_covered_by_fallback(db, organization_id),
+    )
+
+
+@router.post("/standards/{standard_id}/members/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+def assign_standard_member_role(
+    organization_id: UUID, standard_id: UUID, user_id: UUID, payload: ComplianceStandardMemberRoleAssign,
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
+):
+    """Grants a direct `standards_manager`/`standards_contributor` role on
+    this standard (Phase 22) — manager-tier-only, mirroring `assign_org_
+    module_role`'s own `ORG_ADMIN`-only gate one tier down (a standards
+    manager already implicitly holds this via `require_module_role`'s own
+    composition, so it's consistent that a standards manager is also who
+    explicitly grants/revokes this standard's own membership). Silent
+    no-op if the grant already exists, matching every other module-role
+    grant endpoint's own idempotency."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    if target.is_banned:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
+        )
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id, UserModuleRole.module_key == "compliance",
+            UserModuleRole.role_key == payload.role_key, UserModuleRole.scope_entity_id == standard.id,
+        )
+    )
+    if existing is None:
+        db.add(
+            UserModuleRole(
+                user_id=user_id, module_key="compliance", role_key=payload.role_key,
+                organization_id=organization_id, scope_entity_id=standard.id, granted_by=current_user.id,
+            )
+        )
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, organization_id=organization_id,
+            detail={"module_key": "compliance", "role_key": payload.role_key, "standard_id": str(standard.id)},
+        )
+        notifications.notify(
+            db, target, notification_type=NotificationType.PERMISSION_GRANTED,
+            title="Compliance standard permission granted",
+            body=f"You were granted the '{payload.role_key}' role on '{standard.name}'.",
+            actor_id=current_user.id,
+        )
+        db.commit()
+
+
+@router.delete("/standards/{standard_id}/members/{user_id}/roles/{role_key}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_standard_member_role(
+    organization_id: UUID, standard_id: UUID, user_id: UUID, role_key: str,
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
+):
+    """Revokes a direct standard-scoped role grant (Phase 22) — blocks
+    removing this standard's *last remaining* `standards_manager` grant
+    (§3's manager floor) unless the org's fallback compliance-managers
+    group currently has at least one member, mirroring `revoke_project_
+    role`'s own "last manager" guard (`routers/projects.py`) one tier down,
+    including its same "the floor must be satisfied by a real, resolvable
+    set of people, not merely a theoretical admin override" reasoning —
+    see `service.py::standard_manager_floor_covered_by_fallback`'s own
+    docstring. Silent no-op if the grant doesn't exist, matching every
+    other module-role revoke endpoint's own idempotency."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    if role_key not in ("standards_manager", "standards_contributor"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such role.")
+    if role_key == "standards_manager":
+        is_a_manager = db.scalar(
+            select(UserModuleRole.id).where(
+                UserModuleRole.user_id == user_id, UserModuleRole.module_key == "compliance",
+                UserModuleRole.role_key == "standards_manager", UserModuleRole.scope_entity_id == standard.id,
+            )
+        ) is not None
+        other_managers_exist = db.scalar(
+            select(UserModuleRole.id).where(
+                UserModuleRole.module_key == "compliance", UserModuleRole.role_key == "standards_manager",
+                UserModuleRole.scope_entity_id == standard.id, UserModuleRole.user_id != user_id,
+            )
+        ) is not None
+        if is_a_manager and not other_managers_exist and not standard_manager_floor_covered_by_fallback(
+            db, organization_id
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This standard must always have at least one Standards Manager. Assign another manager, or "
+                "configure a fallback compliance-managers group in this organisation's Compliance settings, "
+                "before removing the last one.",
+            )
+    db.execute(
+        UserModuleRole.__table__.delete().where(
+            UserModuleRole.user_id == user_id, UserModuleRole.module_key == "compliance",
+            UserModuleRole.role_key == role_key, UserModuleRole.scope_entity_id == standard.id,
+        )
+    )
+    log_event(
+        db, entity_type="user_module_role", entity_id=user_id, action="revoked",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": "compliance", "role_key": role_key, "standard_id": str(standard.id)},
+    )
+    db.commit()
 
 
 # --- Standard versions ---------------------------------------------------------
@@ -783,7 +1058,7 @@ def _clone_requirement_tree(
 )
 def create_standard_version(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardVersionCreate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Creates a new (always `DRAFT`) version of a standard (§4).
     `version_number` is always the next sequential number for this
@@ -906,7 +1181,7 @@ def _notify_projects_of_standard_update(
 )
 def publish_standard_version(
     organization_id: UUID, standard_id: UUID, version_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Publishes a `DRAFT` version (§4) — after this, its requirements and
     required actions become immutable (`_require_draft_version`). 409 if
@@ -930,7 +1205,7 @@ def publish_standard_version(
 )
 def retire_standard_version(
     organization_id: UUID, standard_id: UUID, version_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Retires a version — from either `DRAFT` or `PUBLISHED` (§4). 409 if
     already retired. A retired version is never deleted and stays
@@ -982,7 +1257,7 @@ def _flatten_requirements_dfs(requirements: list[ComplianceRequirement]) -> list
 )
 def create_requirement(
     organization_id: UUID, standard_id: UUID, version_id: UUID, payload: ComplianceRequirementCreate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Creates a requirement under a version (§5). 409 if the version is no
     longer a draft. `sort_order` is always append-to-end within the
@@ -1063,7 +1338,7 @@ def get_requirement(
 def update_requirement(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
     payload: ComplianceRequirementUpdate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Updates a requirement's reference/name/description/reasoning. 409 if
     the owning version is no longer a draft. Does not support reparenting
@@ -1087,7 +1362,7 @@ def update_requirement(
 )
 def delete_requirement(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Deletes a requirement (and, via the database's own `ON DELETE
     CASCADE`, its child requirements and their required actions — no
@@ -1107,7 +1382,7 @@ def delete_requirement(
 )
 def move_requirement(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID, payload: MoveDirection,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Moves a requirement up/down among its siblings — same
     `standard_version_id` AND same `parent_requirement_id`. 409 if the
@@ -1139,7 +1414,7 @@ def move_requirement(
 def create_required_action(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
     payload: ComplianceRequiredActionCreate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Creates a required action under a requirement (§6). 409 if the
     owning version is no longer a draft. `action_type_id` must be an
@@ -1214,7 +1489,7 @@ def get_required_action(
 def update_required_action(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID, action_id: UUID,
     payload: ComplianceRequiredActionUpdate,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Updates a required action's action type/name/description/
     is_mandatory. 409 if the owning version is no longer a draft."""
@@ -1244,7 +1519,7 @@ def update_required_action(
 )
 def delete_required_action(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID, action_id: UUID,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Deletes a required action. 409 if the owning version is no longer a
     draft. No manual cascade needed for its `action_type_id` FK (implicit
@@ -1267,7 +1542,7 @@ def delete_required_action(
 def move_required_action(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID, action_id: UUID,
     payload: MoveDirection,
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
 ):
     """Moves a required action up/down among its siblings (same
     `requirement_id`). 409 if the owning version is no longer a draft."""

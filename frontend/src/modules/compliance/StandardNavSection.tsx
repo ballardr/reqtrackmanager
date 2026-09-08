@@ -15,7 +15,7 @@
  * this kind of module-owned reuse, so these links render indistinguishably
  * from every core rail entry (including the project section's own).
  */
-import { History, LayoutDashboard, ListChecks } from "lucide-react";
+import { History, LayoutDashboard, ListChecks, Users } from "lucide-react";
 
 import { NavRailLink } from "../../components/Layout";
 
@@ -25,6 +25,9 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
       <div className="nav-section-label">Standard</div>
       <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
       <NavRailLink to={`/standards/${entityId}/versions`} label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+      {/* Phase 22: this standard's own standards_manager/standards_contributor
+          working group. */}
+      <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
       <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />
     </>
   );

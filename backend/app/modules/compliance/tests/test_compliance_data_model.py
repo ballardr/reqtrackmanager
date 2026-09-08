@@ -73,9 +73,19 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert len(definition.scheduled_jobs) == 4, "Phase 10 adds four date-driven notification sweeps"
 
     roles_by_key = {role.role_key: role for role in definition.roles}
-    assert set(roles_by_key) == {"compliance_manager", "compliance_officer"}
+    assert set(roles_by_key) == {
+        "compliance_manager", "compliance_officer", "standards_manager", "standards_contributor",
+    }
     assert roles_by_key["compliance_manager"].scope == "org"
     assert roles_by_key["compliance_officer"].scope == "project"
+    # Phase 22: standard-scoped roles use the generalised, module-owned
+    # entity scope (`app.modules.registry.ModuleRoleDefinition`'s new
+    # `scope`/`overridden_by`/`resolve_entity_organization_id` mechanism)
+    # rather than a second hardcoded "org"/"project" literal.
+    assert roles_by_key["standards_manager"].scope == "standard"
+    assert roles_by_key["standards_contributor"].scope == "standard"
+    assert roles_by_key["standards_manager"].overridden_by == (("org", "compliance_manager"),)
+    assert roles_by_key["standards_manager"].resolve_entity_organization_id is not None
 
 
 def test_standard_version_requirement_hierarchy_and_required_action_roundtrip(client, admin_token, org_id):

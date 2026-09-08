@@ -616,6 +616,19 @@ def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> No
     r.raise_for_status()
 
 
+def grant_standard_role(headers: dict, org_id: str, standard_id: str, user_id: str, role_key: str) -> None:
+    """Grants a direct, standard-scoped `standards_manager`/`standards_
+    contributor` role (compliance-module-plan.md Phase 22) — distinct from
+    `grant_compliance_officer`'s project-scoped grant above; a demo user can
+    hold both at once (a project's assessor and a specific standard's own
+    working-group contributor are unrelated capabilities)."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/members/{user_id}/roles",
+        json={"role_key": role_key}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def list_compliance_requirements(headers: dict, project_id: str, project_compliance_id: str) -> list[dict]:
     r = httpx.get(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements",
@@ -1237,6 +1250,11 @@ def main() -> None:
         logging_compliance_req["id"], test_action_type["id"],
         name="Verify flight log retrieval from non-volatile storage on the updated firmware",
     )
+    # Phase 22: demo_engineer also holds this standard's own `standards_
+    # contributor` role — its own working-group grant, distinct from her
+    # project-scoped `compliance_officer` grant below (demonstrated before
+    # publishing, since a contributor may only edit a still-draft version).
+    grant_standard_role(h_pm, org["id"], airworthiness_standard["id"], demo_engineer["user_id"], "standards_contributor")
     publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
 
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])

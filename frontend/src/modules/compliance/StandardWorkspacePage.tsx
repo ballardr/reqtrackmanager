@@ -55,11 +55,12 @@ import * as complianceApi from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
 import { StandardFormModal } from "./StandardFormModal";
+import { StandardMembersSection } from "./StandardMembersSection";
 import { StandardVersionsSection } from "./StandardVersionsSection";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard } from "./types";
 import { userDisplayName } from "./types";
 
-type StandardWorkspaceSection = "overview" | "versions" | "history";
+type StandardWorkspaceSection = "overview" | "versions" | "members" | "history";
 
 export function StandardWorkspacePage() {
   const { standardId, section: sectionParam } = useParams<{ standardId: string; section?: string }>();
@@ -76,7 +77,9 @@ export function StandardWorkspacePage() {
   const [exporting, setExporting] = useState(false);
 
   const section: StandardWorkspaceSection =
-    sectionParam === "versions" || sectionParam === "history" ? sectionParam : "overview";
+    sectionParam === "versions" || sectionParam === "members" || sectionParam === "history"
+      ? sectionParam
+      : "overview";
 
   async function reloadStandard() {
     if (!standardId) return;
@@ -175,6 +178,10 @@ export function StandardWorkspacePage() {
 
       {section === "versions" && (
         <StandardVersionsSection orgId={standard.organization_id} standard={standard} actionTypes={actionTypes} />
+      )}
+
+      {section === "members" && (
+        <StandardMembersSection orgId={standard.organization_id} standard={standard} orgUsers={orgUsers} />
       )}
 
       {section === "history" && (

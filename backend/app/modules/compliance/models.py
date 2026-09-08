@@ -1367,3 +1367,56 @@ class ComplianceRequirementMapping(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+# --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) ----
+
+
+class ComplianceOrgSettings(UUIDPKMixin, TimestampMixin, Base):
+    """One organisation's own Compliance-module-owned settings (Phase 22) —
+    started for a single field, the org's designated **default compliance-
+    managers group** (Phase 22, §3's "a standard must always have a
+    standards_manager, defaulting to a group of all compliance managers
+    where roles are SSO-managed"): every current member of this `OrgGroup`
+    counts as an effective `standards_manager` for any standard in this
+    organisation that has no explicit per-standard grant of its own,
+    resolved live at floor-check/effective-access time (see `service.py::
+    get_effective_standard_managers`/`standard_manager_floor_covered_by_
+    fallback`) — never a stored/materialised per-standard row.
+
+    Deliberately **not** a new column on the core `Organization` model —
+    this is Compliance-module-owned configuration, and the Modular Feature
+    System Boundary (`CLAUDE.md`) requires a module's own settings to live
+    in the module's own table, not bolted onto a core one, the same reason
+    `organization_module_entitlements`/`organization_modules` (module
+    system Phase 1) are their own tables rather than `Organization` columns.
+
+    One row per organisation that has ever set this (created lazily, on
+    first write — see `router.py::update_compliance_org_settings`), not
+    pre-seeded for every org on creation, mirroring `OrgAdvancedSettings`-
+    style "absent means not configured yet, not zero" semantics elsewhere
+    in this codebase.
+
+    Attributes:
+        organization_id: The owning organisation. Unique — one settings
+            row per org.
+        default_standards_manager_group_id: The designated fallback
+            `OrgGroup`, or `NULL` if none is configured yet (the "no
+            fallback" state — see this class's own module docstring
+            reference above). `ON DELETE SET NULL`: deleting the
+            designated group must not leave a dangling reference, and
+            silently reverting to "no fallback configured" is the correct,
+            safe behaviour (matching this class's own "absent means not
+            configured" semantics) rather than a delete failing/cascading
+            unexpectedly.
+    """
+
+    __tablename__ = "compliance_org_settings"
+    __table_args__ = (UniqueConstraint("organization_id"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    default_standards_manager_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="SET NULL"), nullable=True
+    )

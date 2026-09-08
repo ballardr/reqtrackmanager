@@ -57,6 +57,7 @@ import type {
   ComplianceEvidence,
   ComplianceEvidenceRevalidation,
   ComplianceMappingRelationshipType,
+  ComplianceOrgSettings,
   ComplianceRecentActivity,
   ComplianceRequiredAction,
   ComplianceRequiredActionAssessment,
@@ -67,6 +68,8 @@ import type {
   ComplianceStandard,
   ComplianceStandardApplicabilityDefault,
   ComplianceStandardDefaultExclusion,
+  ComplianceStandardMembers,
+  ComplianceStandardRoleKey,
   ComplianceStandardVersion,
   NonCompliantRequirement,
   OrgExpiringEvidence,
@@ -185,6 +188,34 @@ export function excludeProjectFromStandardDefault(
 
 export function removeStandardDefaultExclusion(orgId: string, standardId: string, projectId: string): Promise<void> {
   return api.delete(`${base(orgId)}/standards/${standardId}/exclusions/${projectId}`);
+}
+
+// --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) --
+
+export function getComplianceOrgSettings(orgId: string): Promise<ComplianceOrgSettings> {
+  return api.get(`${base(orgId)}/settings`);
+}
+
+export function updateComplianceOrgSettings(
+  orgId: string, payload: { default_standards_manager_group_id: string | null }
+): Promise<ComplianceOrgSettings> {
+  return api.put(`${base(orgId)}/settings`, payload);
+}
+
+export function listStandardMembers(orgId: string, standardId: string): Promise<ComplianceStandardMembers> {
+  return api.get(`${base(orgId)}/standards/${standardId}/members`);
+}
+
+export function assignStandardMemberRole(
+  orgId: string, standardId: string, userId: string, roleKey: ComplianceStandardRoleKey
+): Promise<void> {
+  return api.post(`${base(orgId)}/standards/${standardId}/members/${userId}/roles`, { role_key: roleKey });
+}
+
+export function revokeStandardMemberRole(
+  orgId: string, standardId: string, userId: string, roleKey: ComplianceStandardRoleKey
+): Promise<void> {
+  return api.delete(`${base(orgId)}/standards/${standardId}/members/${userId}/roles/${roleKey}`);
 }
 
 // --- Standard versions ---------------------------------------------------------

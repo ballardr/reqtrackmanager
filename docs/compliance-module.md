@@ -10,14 +10,18 @@ Compliance defaults to **enabled** for every organisation. A server admin can tu
 
 ## Roles
 
-Compliance defines two of its own roles, module-contributed rather than new `OrgRole`/`ProjectRole` enum values (they render through the same role-management UI as every other role):
+Compliance defines four of its own roles, module-contributed rather than new `OrgRole`/`ProjectRole` enum values (they render through the same role-management UI as every other role):
 
 | Role | Scope | Grants |
 | --- | --- | --- |
 | **Compliance Manager** | Organisation | Creates and manages compliance standards, versions, requirements, and required actions; assigns standards to projects; views compliance across every project in the organisation. |
 | **Compliance Officer** | Project | Modifies a project's compliance assessments, applicability decisions, and evidence, and performs approval/sign-off for the projects they're assigned to. |
+| **Standards Manager** | One specific standard | Everything a Compliance Manager can do, but scoped to just this one standard — requirements, versions, publish/retire, and this standard's own "Members" roster. |
+| **Standards Contributor** | One specific standard | May edit a draft version's requirements and required actions on this one standard, and propose/discuss changes — may not publish/retire a version or manage the standard's own membership. |
 
-Both compose with the roles that already carry equivalent authority elsewhere in ReqTrackManager: a server admin or an organisation's own org admin can do everything a Compliance Manager can; a project's Project Manager can do everything a Compliance Officer can, on that project. Every other project member (or org member, for standards) has read-only access — granted automatically once the module is enabled, with no role needed just to view.
+Both Compliance Manager/Officer compose with the roles that already carry equivalent authority elsewhere in ReqTrackManager: a server admin or an organisation's own org admin can do everything a Compliance Manager can; a project's Project Manager can do everything a Compliance Officer can, on that project. Every other project member (or org member, for standards) has read-only access — granted automatically once the module is enabled, with no role needed just to view.
+
+**Standards Manager/Contributor** (a standard's own dedicated working group, for organisations that maintain standards internally) are narrower still: scoped to one specific standard, not every standard in the organisation. A Compliance Manager already satisfies either check with no per-standard grant needed — the same "a higher tier already retains full access" principle applied one level down. A standard's creator is automatically granted Standards Manager on it, and **a standard must always have at least one Standards Manager** — the last one can't be removed unless the organisation has designated a fallback compliance-managers group (Compliance's own org settings, `/standards/settings/:orgId/standardsManagement`) with at least one current member, for organisations whose roles are managed via their identity provider rather than granted one person at a time. Manage this roster from a standard's own "Members" nav-rail section.
 
 ## Data model
 
@@ -124,3 +128,4 @@ The Compliance module contributes ten read-only tools to the MCP server (`mcp-se
 - Compliance reports/exports do not currently support the branded `ReportTemplate` styling (logo, accent colour, cover page) core requirement reports can use — they render with a fixed, unbranded layout. Not required by `docs/Compliance_Module_Requirements.md` §29, and can be added later if wanted.
 - A project bundle's compliance assignment can only be restored into an organisation that already has a matching standard/version (by reference and version label) — it is never recreated from the bundle itself. Re-establish the standard first (directly, or via an organisation bundle import) if importing a project into an organisation that doesn't yet have it.
 - Automated compliance rules, automatic compliance determination from required-action outcomes, compliance certificates/digital signatures, and customer-facing compliance portals are explicitly out of scope for this module today (`docs/Compliance_Module_Requirements.md` §30) — the data model is deliberately built so none of them are precluded later.
+- Standards Manager/Standards Contributor grants are direct, per-person grants only — there is no way to grant either role to everyone in a group at once (the org's designated fallback compliance-managers group is a narrow floor-satisfaction mechanism only, not a general group-based grant path; see `docs/modules.md`'s "Module-contributed RBAC" section for the module-system-wide reasoning).

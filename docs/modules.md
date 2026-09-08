@@ -356,6 +356,101 @@ module roles are currently offered (declared by a currently-*enabled*
 module) alongside the fixed core-role options — same checkbox, same
 accessible labelling, same component, for every role in the system.
 
+### 4a. A module-owned entity scope (compliance-module-plan.md Phase 22)
+
+`scope` isn't limited to the two core-recognised literals above. A module
+may declare **any other string** as `scope` — a role tied to one specific
+row of a first-class entity the module itself owns, narrower than "the
+whole org" but with no core-role tier to reuse the way `"project"` reuses
+`ProjectRole.PROJECT_MANAGER` one level up. Compliance's own `standards_
+manager`/`standards_contributor` (one role per `ComplianceStandard` row)
+are the first example:
+
+```python
+ModuleRoleDefinition(
+    role_key="standards_manager",
+    name="Standards Manager",
+    description="Full management of one specific compliance standard.",
+    scope="standard",
+    # Compliance's own org-scoped role also satisfies a standard-scoped
+    # check, with no per-standard grant needed — the same "a higher tier
+    # already retains full access" principle core roles get for free one
+    # level up, extended one tier further down since there's no core role
+    # to reuse here.
+    overridden_by=(("org", "compliance_manager"),),
+    # Resolves a `standard_id` (read off the request's own path parameters,
+    # at the key "standard_id" for scope="standard") to its owning
+    # organisation — required for any scope other than "org"/"project".
+    resolve_entity_organization_id=resolve_standard_organization_id,
+)
+```
+
+`require_module_role(module_key, role_key)` handles this generically: for
+a non-core `scope`, it reads the entity's id off the request's resolved
+path parameters at `f"{scope}_id"` (e.g. `standard_id` for `scope=
+"standard"`), calls `resolve_entity_organization_id` to learn which
+organisation it belongs to (the same role `_project_organization_id` plays
+for `"project"`-scoped roles), then applies the identical module-enabled /
+2FA / frame-scope checks every other scope gets, before checking (in order)
+`is_server_admin`, `OrgRole.ORG_ADMIN` on that organisation, the caller's
+own direct grant at this exact entity, and finally each role named in
+`overridden_by`. Grant rows use the same `user_module_roles` table, with one
+more nullable column: `scope_entity_id` (the generalised sibling of
+`project_id`) — a bare `UUID`, not a foreign key, since (like `module_key`/
+`role_key`) which table it points into is owned entirely by the declaring
+module, not by this core table.
+
+**Composing two of a module's own roles into one check:** `require_module_
+role` only ever checks a single `(module_key, role_key)` pair. A module
+that needs an "either of my own two roles" gate (Compliance's own
+"`standards_manager` OR `standards_contributor` may edit a draft" check) —
+composes the reusable predicate, `app.services.rbac.user_satisfies_module_
+role`, directly: build two ordinary `require_module_role(...)` dependencies
+(one per role) and try the first, falling back to the second on a 403 (never
+on a 404 — a disabled module or absent entity should propagate immediately).
+See `app.modules.compliance.router._require_standard_manage_or_contribute`
+for the actual implementation — this is the pattern to copy, not a special
+case to work around.
+
+**A module-owned entity scope can also need its own "always at least one X"
+floor**, the same way a project always needs at least one `PROJECT_MANAGER`.
+There is no generic mechanism for this (it's inherently module-specific —
+what "empty" means and how to detect it varies per entity), but the generic
+hook a module needing one should reach for is `ModuleDefinition.validate_
+org_group_member_removal` (Phase 22's own addition, alongside this scope
+mechanism) — see §4b below.
+
+### 4b. `validate_org_group_member_removal`: a module's own floor tied to an `OrgGroup`
+
+Compliance's `standards_manager` floor has a second satisfaction path
+besides a direct per-standard grant: an org can designate one `OrgGroup` as
+its fallback compliance-managers group, whose every current member counts
+as an effective `standards_manager` for any standard with no explicit grant
+of its own (§3, "defaulting to a group of all compliance managers where
+roles are SSO-managed" — the group may already be `idp_synced_group_name`-
+mapped, reusing the existing SSO group-sync mechanism as-is, no new sync
+plumbing needed). This raises a floor question `app.routers.orgs.remove_
+org_group_member` has no way to answer on its own: removing this group's
+last member could leave a standard with zero managers.
+
+`ModuleDefinition.validate_org_group_member_removal: Callable[[Session,
+UUID, UUID], str | None]` is the generic hook this needs — `remove_org_
+group_member` calls every registered module's copy (via `app.modules.
+registry.run_org_group_member_removal_hooks`) before removing a genuine
+*user* member (never a nested-group member) from any `OrgGroup`, stopping
+at the first one that returns a non-`None` block message (400'd verbatim).
+A module with no group-based floor concept of its own (every module before
+Compliance's Phase 22) simply returns `None` (the default) and is skipped —
+core code never needs to know which modules, if any, care about a given
+group being removed from.
+
+This is a genuinely narrow mechanism, not a reopening of module roles'
+still-deferred "grant via group membership" capability (§4's own "no group
+or project-hierarchy inheritance for module roles in V1" boundary): it only
+answers "would this removal break a floor," it grants nothing on its own.
+See `app.modules.compliance.service.validate_fallback_group_member_removal`
+for the reference implementation.
+
 ---
 
 ## 5. Frontend integration: Tier A and Tier B

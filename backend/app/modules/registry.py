@@ -113,21 +113,66 @@ class ModuleRoleDefinition:
             returned by the API rather than a frontend-known closed enum.
         description: Short human-readable description of what the role is
             for, shown alongside `name` in admin UIs.
-        scope: Either `"org"` (an organisation-scoped role, granted via
-            `UserModuleRole` with `project_id IS NULL`) or `"project"` (a
-            project-scoped role, granted with a specific `project_id`).
-            Determines which `require_module_role` composition applies
-            (`OrgRole.ORG_ADMIN` override for `"org"`, `ProjectRole.
-            PROJECT_MANAGER` override for `"project"`) and which of the
-            two "available module roles" read endpoints
+        scope: `"org"` (an organisation-scoped role, granted via
+            `UserModuleRole` with `project_id`/`scope_entity_id` both
+            `NULL`) and `"project"` (project-scoped, granted with a
+            specific `project_id`) are the two core-recognised scopes —
+            `require_module_role` auto-composes each with the matching
+            core-role override (`OrgRole.ORG_ADMIN` for `"org"`,
+            `ProjectRole.PROJECT_MANAGER` for `"project"`) and each is
+            listed by its matching "available module roles" read endpoint
             (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-
-            roles`) lists it.
+            roles`).
+
+            A module may also declare **any other string** as `scope` —
+            a module-owned entity scope (compliance-module-plan.md Phase
+            22's own example: `"standard"`, one role per `ComplianceStandard`
+            row) — for a role tied to one specific row of a first-class
+            entity the module itself owns, narrower than "the whole org."
+            This is the generalisation Phase 22 added specifically so a
+            *future* module's own first-class entity gets the identical
+            capability for free, rather than compliance's `"standard"`
+            scope being hardcoded into this dataclass or into `require_
+            module_role` by name (exactly the failure mode `CLAUDE.md`'s
+            "Modular Feature System Boundary" section calls out). A
+            non-core scope **must** also set `resolve_entity_organization_id`
+            — see that field's own docstring — since there is no path
+            parameter named after an arbitrary scope string for `require_
+            module_role` to bind an `organization_id`/`project_id` from the
+            way it can for `"org"`/`"project"`.
+        overridden_by: Additional `(scope, role_key)` pairs, each another
+            role *this same module* declares, whose grant also satisfies a
+            check for *this* role — e.g. compliance's `standards_manager`
+            (scope `"standard"`) declares `overridden_by=(("org",
+            "compliance_manager"),)` so an org-wide Compliance Manager
+            never needs a redundant per-standard grant too, the same "a
+            higher tier already retains full access" principle core roles
+            get for free one level up (`OrgRole.ORG_ADMIN` overriding every
+            project's `ProjectRole.PROJECT_MANAGER`), extended one tier
+            further down for a module-owned entity scope where there is no
+            core-role equivalent to reuse. Checked *in addition to* (never
+            instead of) the core `is_server_admin`/`OrgRole.ORG_ADMIN`/
+            `ProjectRole.PROJECT_MANAGER` overrides, which always apply
+            regardless of this field. Empty by default — most roles have no
+            module-owned override tier above them.
+        resolve_entity_organization_id: Required when `scope` is anything
+            other than `"org"`/`"project"` — resolves the scoped entity's
+            id (read by `require_module_role`'s generic entity-scope branch
+            from the request's own path parameters, at the key
+            `f"{scope}_id"`, e.g. `"standard_id"` for `scope="standard"`)
+            to its owning organisation's id, or `None` if no such entity
+            exists (surfaced as 404, matching every other module-gated
+            dependency's "module disabled or entity absent -> 404, not
+            403/500" posture). `None` for `"org"`/`"project"` roles, which
+            resolve their organisation from the path directly instead.
     """
 
     role_key: str
     name: str
     description: str
-    scope: Literal["org", "project"]
+    scope: str
+    overridden_by: tuple[tuple[str, str], ...] = ()
+    resolve_entity_organization_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -918,6 +963,25 @@ class ModuleDefinition:
             convention `on_org_created` already follows). `None` for a
             module with nothing to react to at project-creation time (every
             module before Compliance's Phase 20).
+        validate_org_group_member_removal: Compliance-module-plan.md Phase
+            22's own generic hook — `app.routers.orgs.remove_org_group_
+            member` calls every registered module's copy of this (via
+            `run_org_group_member_removal_hooks`, below) before actually
+            removing a *user* member (never a nested-group member) from an
+            `OrgGroup`, so a module that treats a specific group as some
+            kind of fallback/floor-satisfying membership (compliance's own
+            "default compliance-managers group," Phase 22 §3) can block a
+            removal that would leave one of its own floors unsatisfiable —
+            the exact same "can't leave zero" reasoning `routers/projects.
+            py`'s project-manager-floor guards already apply, generalised
+            so *this* core endpoint never needs to import a specific
+            module's own models to enforce a module-owned invariant (the
+            Modular Feature System Boundary this plan's own `CLAUDE.md`
+            section names by number). Takes `(db, org_group_id,
+            member_user_id)`; returns a human-readable block message (the
+            endpoint 400s with it) or `None` to allow the removal. `None`
+            for a module with no group-based floor concept of its own
+            (every module before Compliance's Phase 22).
     """
 
     key: str
@@ -942,6 +1006,7 @@ class ModuleDefinition:
     on_org_created: Callable[[Session, uuid.UUID], None] | None = None
     project_nav_visible: Callable[[Session, Project], bool] | None = None
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
+    validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1700,6 +1765,41 @@ def run_on_project_created_hooks(db: Session, project: Project, actor_id: uuid.U
         if definition.on_project_created is None:
             continue
         definition.on_project_created(db, project, actor_id)
+
+
+def run_org_group_member_removal_hooks(db: Session, org_group_id: uuid.UUID, member_user_id: uuid.UUID) -> str | None:
+    """Calls every registered module's `validate_org_group_member_removal`
+    hook (docs/compliance-module-plan.md Phase 22), in registry iteration
+    order, stopping at the first one that returns a block message —
+    `app.routers.orgs.remove_org_group_member` calls this instead of
+    importing a specific module (e.g. Compliance's own fallback-group floor
+    check) to decide whether removing a *user* member from an `OrgGroup`
+    would break some module-owned invariant, mirroring `run_on_org_created_
+    hooks`'s identical "core code shouldn't need to know a specific module
+    exists" reasoning.
+
+    A module with no `validate_org_group_member_removal` of its own (the
+    default `None`) is simply skipped. Read-only — never mutates or
+    commits.
+
+    Args:
+        db: An active database session.
+        org_group_id: The group a member is about to be removed from.
+        member_user_id: The user being removed (never a nested-group
+            member — the caller only invokes this for a genuine user
+            removal, see that endpoint's own docstring).
+
+    Returns:
+        The first non-`None` block message from any module's hook, or
+        `None` if every module allows the removal.
+    """
+    for definition in get_module_registry().values():
+        if definition.validate_org_group_member_removal is None:
+            continue
+        message = definition.validate_org_group_member_removal(db, org_group_id, member_user_id)
+        if message is not None:
+            return message
+    return None
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

@@ -176,6 +176,32 @@ export interface ComplianceStandardDefaultExclusion {
   updated_at: string;
 }
 
+// Compliance module Phase 22 — standard-scoped RBAC (backend
+// `ComplianceOrgSettingsOut`/`ComplianceStandardMembersOut`/
+// `ComplianceStandardMemberOut`).
+export type ComplianceStandardRoleKey = "standards_manager" | "standards_contributor";
+
+export const COMPLIANCE_STANDARD_ROLE_LABEL: Record<ComplianceStandardRoleKey, string> = {
+  standards_manager: "Standards Manager",
+  standards_contributor: "Standards Contributor",
+};
+
+export interface ComplianceOrgSettings {
+  default_standards_manager_group_id: string | null;
+}
+
+export interface ComplianceStandardMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+  role_keys: ComplianceStandardRoleKey[];
+}
+
+export interface ComplianceStandardMembers {
+  members: ComplianceStandardMember[];
+  manager_floor_covered_by_fallback: boolean;
+}
+
 export interface ComplianceStandardVersion {
   id: string;
   standard_id: string;

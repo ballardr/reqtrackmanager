@@ -28,10 +28,11 @@ import { ResourceMenu } from "../../components/ResourceMenu";
 import { Spinner } from "../../components/Spinner";
 import { ActionTypesPanel } from "./ActionTypesPanel";
 import * as complianceApi from "./api";
+import { ComplianceOrgSettingsPanel } from "./ComplianceOrgSettingsPanel";
 import { MappingTypesPanel } from "./MappingTypesPanel";
 import type { ComplianceActionType } from "./types";
 
-type ComplianceSettingsGroupKey = "actionTypes" | "mappingTypes";
+type ComplianceSettingsGroupKey = "actionTypes" | "mappingTypes" | "standardsManagement";
 
 export function ComplianceSettingsPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
@@ -55,10 +56,13 @@ export function ComplianceSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
-  const activeGroup: ComplianceSettingsGroupKey = groupParam === "mappingTypes" ? "mappingTypes" : "actionTypes";
+  const activeGroup: ComplianceSettingsGroupKey =
+    groupParam === "mappingTypes" || groupParam === "standardsManagement" ? groupParam : "actionTypes";
   const groups: ResourceMenuGroupDef<ComplianceSettingsGroupKey>[] = [
     { key: "actionTypes", label: "Action types", href: `/standards/settings/${orgId}/actionTypes` },
     { key: "mappingTypes", label: "Mapping types", href: `/standards/settings/${orgId}/mappingTypes` },
+    // Phase 22: the org-wide fallback compliance-managers group.
+    { key: "standardsManagement", label: "Standards management", href: `/standards/settings/${orgId}/standardsManagement` },
   ];
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -75,6 +79,7 @@ export function ComplianceSettingsPage() {
         <ActionTypesPanel orgId={orgId} items={actionTypes} onReload={reloadActionTypes} />
       )}
       {activeGroup === "mappingTypes" && <MappingTypesPanel orgId={orgId} />}
+      {activeGroup === "standardsManagement" && <ComplianceOrgSettingsPanel orgId={orgId} />}
     </ResourceMenu>
   );
 }
