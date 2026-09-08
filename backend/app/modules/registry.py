@@ -896,6 +896,28 @@ class ModuleDefinition:
             already-enabled entry should still show. `None` (the default)
             means "always visible once enabled," preserving every module's
             prior behaviour without needing to declare this hook at all.
+        on_project_created: Optional hook (docs/compliance-module-plan.md
+            Phase 20) called once, synchronously, right after a brand-new
+            `Project` row is flushed — `app.routers.projects.create_project`
+            calls `run_on_project_created_hooks` (below) instead of
+            importing any specific module, mirroring `on_org_created`'s own
+            "core code shouldn't need to know a specific module exists"
+            reasoning exactly, one lifecycle event later. Compliance uses
+            this to reconcile the new project against every `applies_to_
+            all_projects` standard in its organisation (`service.py::
+            reconcile_new_project_for_all_standards`) — a project created
+            after a standard was switched to that mode must get the same
+            treatment a pre-existing project already got, at the moment of
+            its own creation, never a lazily-computed "in scope but no real
+            row" state. Takes `(db, project, actor_id)` — `actor_id` is the
+            project's own creator, attributed on any row this hook creates
+            (a real human action, unlike a hypothetical future passive
+            sweep) — and returns nothing; the module owns its own
+            transaction participation (add rows, don't commit — the caller
+            commits once for the whole project-creation transaction, same
+            convention `on_org_created` already follows). `None` for a
+            module with nothing to react to at project-creation time (every
+            module before Compliance's Phase 20).
     """
 
     key: str
@@ -919,6 +941,7 @@ class ModuleDefinition:
     project_bundle_hooks: ModuleProjectBundleHooks | None = None
     on_org_created: Callable[[Session, uuid.UUID], None] | None = None
     project_nav_visible: Callable[[Session, Project], bool] | None = None
+    on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1648,6 +1671,35 @@ def run_on_org_created_hooks(db: Session, organization_id: uuid.UUID) -> None:
         if definition.on_org_created is None:
             continue
         definition.on_org_created(db, organization_id)
+
+
+def run_on_project_created_hooks(db: Session, project: Project, actor_id: uuid.UUID) -> None:
+    """Calls every registered module's `on_project_created` hook
+    (docs/compliance-module-plan.md Phase 20), in registry iteration order,
+    right after a brand-new `Project` row is flushed — `app.routers.
+    projects.create_project` calls this instead of importing a specific
+    module (e.g. Compliance's `reconcile_new_project_for_all_standards`) to
+    react to a new project, mirroring `run_on_org_created_hooks`'s identical
+    "core code shouldn't need to know a specific module exists" reasoning
+    one lifecycle event later.
+
+    A module with no `on_project_created` of its own (the default `None`)
+    is simply skipped. Does not commit — each hook only adds/modifies rows,
+    the same convention `run_on_org_created_hooks` already follows; the
+    caller commits once for the whole project-creation transaction.
+
+    Args:
+        db: An active database session, mid-transaction (the new `Project`
+            row must already be flushed so hooks can reference its id and
+            read its own fields, e.g. `organization_id`).
+        project: The newly created project.
+        actor_id: The user who created the project — attributed on any row
+            a hook creates as a result (a real human action).
+    """
+    for definition in get_module_registry().values():
+        if definition.on_project_created is None:
+            continue
+        definition.on_project_created(db, project, actor_id)
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

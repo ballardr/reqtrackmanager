@@ -26,7 +26,16 @@ export async function createStandardWithVersion(
   await page.goto("/standards");
   await page.getByRole("button", { name: "New standard" }).click();
   const dialog = page.getByRole("dialog", { name: "New standard" });
-  const orgPicker = dialog.getByLabel("Organisation");
+  // A `combobox` role, not a bare `getByLabel("Organisation")` — the
+  // latter is a case-insensitive substring match that also matches the
+  // "Issuing organisation" text input further down this same form (a real
+  // bug this comment's own predecessor had for a single-org caller, found
+  // and fixed while adding Phase 20's own spec against `orgAdminGamma`
+  // — Gamma-only, so the real "Organisation" `<select>` never renders at
+  // all here and `getByLabel` silently resolved to that other input
+  // instead). Restricting to `combobox` excludes the text input outright,
+  // regardless of name overlap.
+  const orgPicker = dialog.getByRole("combobox", { name: "Organisation" });
   if ((await orgPicker.count()) > 0) {
     await orgPicker.selectOption({ label: orgName });
   }

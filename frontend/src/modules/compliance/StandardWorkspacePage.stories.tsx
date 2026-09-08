@@ -10,7 +10,7 @@ import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard, Co
 const STANDARD: ComplianceStandard = {
   id: "std-1", organization_id: "org-1", reference: "ISO-27001", name: "ISO 27001",
   description: "Information security management.", issuing_organisation: "ISO", owner_id: "user-1",
-  creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+  creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in",
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const VERSION: ComplianceStandardVersion = {
@@ -36,6 +36,8 @@ function mockWorkspaceApis() {
     if (path.endsWith("/users")) return ORG_USERS;
     if (path.endsWith("/versions")) return [VERSION];
     if (path.endsWith("/history")) return HISTORY;
+    if (path.endsWith("/exclusions")) return [];
+    if (path.startsWith("/api/v1/projects?")) return [];
     if (path.includes("/requirements") && !path.includes("required-actions")) return [];
     throw new Error(`unmocked GET: ${path}`);
   });
@@ -65,6 +67,8 @@ export const Overview: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /ISO-27001 — ISO 27001/ })).toBeInTheDocument());
     await expect(canvas.getByText("Information security management.")).toBeInTheDocument();
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
+    // Phase 20: the applicability-default panel renders in Overview too.
+    await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
   },
 };
 

@@ -145,14 +145,31 @@ inline to decide whether its nav entry has anything assignable yet; that
 query moved into `app.modules.compliance.service.has_assignable_standard`,
 called through the new hook instead.
 
+Phase 20 (Standard Applicability Defaults, Exceptions, and Project-Manager
+Assignment; §3, §7, §11, §26) adds this module's fourth registry hook,
+`on_project_created` (`_reconcile_new_project`, below) — the natural
+`Project`-lifecycle sibling to `on_org_created`, reconciling a brand-new
+project against every `applies_to_all_projects` standard in its
+organisation (`service.py::reconcile_new_project_for_all_standards`), the
+same treatment a pre-existing project already got when a standard was
+switched into that mode. No new MCP tools (the two new mutating surfaces
+this phase adds — the project-scoped self-service assignment endpoint and
+the org-scoped applicability-default/exclusion-list endpoints — are exactly
+the kind of broad, wide-blast-radius mutations this module has consistently
+kept off the tool surface, per Phase 4/9's established precedent) and no
+new module roles (this phase widens *who may call an existing kind of
+endpoint* — `ProjectRole.PROJECT_MANAGER`, already this module's existing
+`_require_officer` composition — rather than introducing a new named role).
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.global_router`/
 `.service`/`.scheduler` (each imported lazily, inside `get_router()`/
 `get_project_router()`/`get_global_router()`/`resolve_file_owner_project_id`/
-`_seed_org_defaults`/`_project_nav_visible`/the `scheduled_jobs` callables,
-to avoid any import-cycle risk with this module's own registration --
-mirroring how Phase 5's own notes already document resolving the `MODULE_
-DEFINITION`/registry import cycle via `app/modules/__init__.py`).
+`_seed_org_defaults`/`_project_nav_visible`/`_reconcile_new_project`/the
+`scheduled_jobs` callables, to avoid any import-cycle risk with this
+module's own registration -- mirroring how Phase 5's own notes already
+document resolving the `MODULE_DEFINITION`/registry import cycle via
+`app/modules/__init__.py`).
 """
 
 from __future__ import annotations
@@ -259,6 +276,18 @@ def _project_nav_visible(db: Session, project: Project) -> bool:
     return has_assignable_standard(db, project.organization_id)
 
 
+def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> None:
+    """This module's `ModuleDefinition.on_project_created` hook (Phase 20)
+    — reconciles a brand-new project against every `applies_to_all_
+    projects` standard in its organisation, the same treatment a pre-
+    existing project already got when the standard was switched into that
+    mode. Imported lazily for the same import-cycle reason as
+    `get_router()`."""
+    from app.modules.compliance.service import reconcile_new_project_for_all_standards
+
+    reconcile_new_project_for_all_standards(db, project=project, actor_id=actor_id)
+
+
 # `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` (module system follow-up,
 # self-containment pass — see `app.modules.compliance.export`'s own module
 # docstring) — each a thin wrapper delegating to `export.py`, imported
@@ -349,6 +378,7 @@ MODULE_DEFINITION = ModuleDefinition(
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
     project_nav_visible=_project_nav_visible,
+    on_project_created=_reconcile_new_project,
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=_export_org_data,
         import_=_import_org_data,

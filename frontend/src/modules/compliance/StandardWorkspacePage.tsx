@@ -25,6 +25,14 @@
  * entities" section for why this gets a nav-rail section while Action
  * Types/Mapping Types, a fixed pair of org-wide screens, get a
  * `ResourceMenu` instead on `ComplianceSettingsPage.tsx`).
+ *
+ * Phase 20 (docs/compliance-module-plan.md) adds `StandardApplicabilityPanel`
+ * to the Overview section — the "applies to all projects by default,
+ * except..." toggle and exclusion-list editor, Compliance-Manager-only.
+ * The *default, primary* way a project acquires a standard (Project-
+ * Manager self-service assignment) has no surface here at all — it lives
+ * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
+ * action, not a standard-governance one.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -37,6 +45,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
+import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
 import { StandardFormModal } from "./StandardFormModal";
 import { StandardVersionsSection } from "./StandardVersionsSection";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard } from "./types";
@@ -124,15 +133,18 @@ export function StandardWorkspacePage() {
       </div>
 
       {section === "overview" && (
-        <div className="card stack">
-          <p>{standard.description || <span className="text-muted">No description.</span>}</p>
-          {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
-          <div className="row">
-            <button className="btn" onClick={() => setEditing(true)}>Edit</button>
-            <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
-              {standard.is_archived ? "Unarchive" : "Archive"}
-            </button>
+        <div className="stack">
+          <div className="card stack">
+            <p>{standard.description || <span className="text-muted">No description.</span>}</p>
+            {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
+            <div className="row">
+              <button className="btn" onClick={() => setEditing(true)}>Edit</button>
+              <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
+                {standard.is_archived ? "Unarchive" : "Archive"}
+              </button>
+            </div>
           </div>
+          <StandardApplicabilityPanel standard={standard} onStandardChanged={setStandard} />
         </div>
       )}
 

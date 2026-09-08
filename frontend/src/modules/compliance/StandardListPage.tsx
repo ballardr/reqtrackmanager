@@ -122,7 +122,7 @@ export function StandardListPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>Compliance Standards</h1>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)} disabled={orgs === null}>
           <Plus size={16} /> New standard
         </button>
       </div>

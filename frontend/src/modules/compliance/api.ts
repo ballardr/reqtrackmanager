@@ -58,6 +58,8 @@ import type {
   ComplianceRequirementNode,
   ComplianceReview,
   ComplianceStandard,
+  ComplianceStandardApplicabilityDefault,
+  ComplianceStandardDefaultExclusion,
   ComplianceStandardVersion,
   NonCompliantRequirement,
   OrgExpiringEvidence,
@@ -137,6 +139,32 @@ export function unarchiveStandard(orgId: string, standardId: string): Promise<Co
 
 export function getStandardHistory(orgId: string, standardId: string): Promise<ComplianceAuditEvent[]> {
   return api.get(`${base(orgId)}/standards/${standardId}/history`);
+}
+
+// --- Phase 20: applicability defaults + exceptions (Compliance-Manager-only, ---
+// org-scoped — the standard's own governance, distinct from Project-Manager
+// self-service assignment below, which lives on the project router).
+
+export function updateStandardApplicabilityDefault(
+  orgId: string, standardId: string, applicabilityDefault: ComplianceStandardApplicabilityDefault
+): Promise<ComplianceStandard> {
+  return api.patch(`${base(orgId)}/standards/${standardId}/applicability-default`, {
+    applicability_default: applicabilityDefault,
+  });
+}
+
+export function listStandardDefaultExclusions(orgId: string, standardId: string): Promise<ComplianceStandardDefaultExclusion[]> {
+  return api.get(`${base(orgId)}/standards/${standardId}/exclusions`);
+}
+
+export function excludeProjectFromStandardDefault(
+  orgId: string, standardId: string, payload: { project_id: string; reason: string }
+): Promise<ComplianceStandardDefaultExclusion> {
+  return api.post(`${base(orgId)}/standards/${standardId}/exclusions`, payload);
+}
+
+export function removeStandardDefaultExclusion(orgId: string, standardId: string, projectId: string): Promise<void> {
+  return api.delete(`${base(orgId)}/standards/${standardId}/exclusions/${projectId}`);
 }
 
 // --- Standard versions ---------------------------------------------------------
@@ -423,14 +451,31 @@ export async function resolveStandardIdForVersion(orgId: string, standardVersion
   return null;
 }
 
-// --- Phase 13: Assignment (org router — "assigning is a Compliance Manager
-// decision", router.py's own Phase 7 design) ---------------------------------
+// --- Phase 13/20: Assignment ---------------------------------------------------
+//
+// Two endpoints, same payload shape, different callers/routers — Phase 20
+// makes the project-scoped one (below) the *default, primary* path, usable
+// by a plain Project Manager with no `compliance_officer` grant; this org-
+// scoped one (Phase 7's original design, Compliance-Manager-only) remains
+// the secondary/administrative path, for a Compliance Manager assigning on
+// a project's behalf or in bulk.
 
 export function createProjectCompliance(
   orgId: string, projectId: string,
   payload: { standard_id: string; standard_version_id: string; target_compliance_date?: string | null }
 ): Promise<ProjectCompliance> {
   return api.post(`${base(orgId)}/projects/${projectId}/project-compliance`, payload);
+}
+
+/** Phase 20's default, primary assignment path — project-scoped,
+ * `_require_officer`-gated (`compliance_officer` grant OR
+ * `ProjectRole.PROJECT_MANAGER`) — used by `ProjectCompliancePage.tsx`'s
+ * own "Assign standard" flow. */
+export function createProjectComplianceAsProjectManager(
+  projectId: string,
+  payload: { standard_id: string; standard_version_id: string; target_compliance_date?: string | null }
+): Promise<ProjectCompliance> {
+  return api.post(`${projectBase(projectId)}/project-compliance`, payload);
 }
 
 export function archiveProjectCompliance(orgId: string, projectId: string, projectComplianceId: string): Promise<ProjectCompliance> {

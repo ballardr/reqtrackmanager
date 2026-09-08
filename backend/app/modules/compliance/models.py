@@ -414,6 +414,55 @@ Phase 10 design decisions:
   `RequirementVersion.review_reminder_sent_at`'s own established Massif
   (v3) precedent for exactly this "don't re-notify every sweep run" need.
 
+Phase 20 design decisions (Standard Applicability Defaults, Exceptions, and
+Project-Manager Assignment — second human-review round):
+- `ComplianceStandard.applicability_default` is a plain column on the
+  standard itself, not a separate "applicability policy" entity — §3/§26
+  already treat this as a property of the standard a Compliance Manager
+  curates, and there is exactly one such setting per standard, never a
+  history of past settings worth modelling separately (unlike, say,
+  `ComplianceStandardVersion.status`, which genuinely has a lifecycle).
+- `ComplianceStandardDefaultExclusion` is a real join table
+  (`standard_id`, `project_id`) with a mandatory `reason`, mirroring the
+  Phase 7/9 mandatory-justification convention exactly (Not Applicable,
+  Non-Compliant, Rejection) — enforced at the API layer, same as those,
+  not a DB `CHECK` (an empty-string reason is a payload-validation
+  question, not a schema-shape one). `ON DELETE CASCADE` on both foreign
+  keys: an exclusion row has no independent meaning once either its
+  standard or its project is gone.
+- Reconciliation never creates a *second*, duplicate `ProjectCompliance`
+  row for a project that already tracks the standard via any of its
+  versions (whether that existing row came from a Project-Manager
+  self-service assignment, a Compliance-Manager manual assignment, or a
+  prior reconciliation pass) — it only fills the gap for a project with
+  none. This is a deliberate, narrower reading of the spec's "materialise
+  a real row for every ... project" than "always assign the very latest
+  published version regardless of what's already tracked": the latter
+  would either violate `ProjectCompliance`'s own `(project_id,
+  standard_version_id)` uniqueness constraint when a still-archived row
+  already occupies that exact pair, or silently create a second, confusing
+  concurrent assignment to a different version of the same standard when
+  it doesn't. See `service.py::reconcile_standard_applicability`'s own
+  docstring for the exact rule and why un-excluding a project reuses (by
+  unarchiving) an exclusion-time-archived row for the same version rather
+  than creating a fresh one.
+- Reconciliation always targets the standard's *current latest `PUBLISHED`
+  version* at the moment it runs (standard flipped to "applies to all," a
+  new project created, or a project un-excluded) — not a version pinned at
+  the moment `applicability_default` was first set. A standard with zero
+  published versions simply reconciles nothing (not an error): switching a
+  standard to `APPLIES_TO_ALL_PROJECTS` before it has anything publishable
+  is allowed (a Compliance Manager may set the policy ahead of publishing
+  the standard's content), it just has no projects to materialise against
+  until a version is published.
+- Switching a standard *back* to `OPT_IN` never retroactively archives
+  `ProjectCompliance` rows a prior `APPLIES_TO_ALL_PROJECTS` reconciliation
+  created — once a real assignment row exists, it is exactly as permanent
+  and independently manageable (archivable, one at a time) as a manually
+  created one, per this module's existing "a real row carries a real
+  assessment/audit trail" principle (§8, §16). `applicability_default`
+  only ever governs *future* reconciliation events, never past ones.
+
 External dependencies: none beyond this project's own ORM/config modules.
 """
 
@@ -444,6 +493,7 @@ from app.modules.compliance.enums import (
     ComplianceApprovalState,
     ComplianceReviewOutcome,
     ComplianceReviewStatus,
+    ComplianceStandardApplicabilityDefault,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -479,6 +529,14 @@ class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
             state, mirroring `Requirement.is_archived`'s convention exactly
             — this satisfies §2's "Status" attribute; see this module's own
             docstring for why a separate status enum wasn't introduced.
+        applicability_default: Phase 20's own addition — whether this
+            standard's default project-assignment mode is the ordinary
+            per-project opt-in (`OPT_IN`, every standard's behaviour before
+            this phase, unchanged) or an org-wide "applies to all projects
+            by default, except..." mandate (`APPLIES_TO_ALL_PROJECTS`) —
+            see `ComplianceStandardApplicabilityDefault`'s own docstring
+            and this module's own Phase 20 design-decisions section below
+            for the reconciliation mechanism this drives.
         versions: This standard's versions, ordered by `version_number` —
             mirrors `Requirement.versions`'s identical shape (the precedent
             this model explicitly follows), unlike `ComplianceRequirement`'s
@@ -501,6 +559,9 @@ class ComplianceStandard(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    applicability_default: Mapped[ComplianceStandardApplicabilityDefault] = mapped_column(
+        str_enum(ComplianceStandardApplicabilityDefault, 30), default=ComplianceStandardApplicabilityDefault.OPT_IN
+    )
 
     versions: Mapped[list[ComplianceStandardVersion]] = relationship(
         back_populates="standard", order_by="ComplianceStandardVersion.version_number"
@@ -752,6 +813,46 @@ class ProjectCompliance(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ComplianceStandardDefaultExclusion(UUIDPKMixin, TimestampMixin, Base):
+    """Records that a specific project is excepted out of a standard's
+    `APPLIES_TO_ALL_PROJECTS` default (Phase 20) — the "...except" half of
+    "applies to all projects by default, except...". A project on this list
+    is never touched by `service.py::reconcile_standard_applicability`
+    while the exclusion row exists; removing it (not deleting a
+    `ComplianceStandard`/`Project` row) restores the project to the
+    standard's default reconciliation the next time it runs, per this
+    module's own `on_project_created`-style "reconciled at the moment of
+    the triggering event" convention.
+
+    Attributes:
+        standard_id: The `ComplianceStandard` this exclusion applies to.
+        project_id: The excluded project — must belong to the same
+            organisation as `standard_id` (enforced at the API layer, this
+            table carries no cross-table `CHECK`).
+        excluded_by: The user (a Compliance Manager, or org/server admin)
+            who added this exclusion.
+        excluded_at: When the exclusion was added.
+        reason: Mandatory justification (§16's established convention,
+            mirroring the Not-Applicable/Non-Compliant/Rejection
+            mandatory-rationale rule already enforced elsewhere in this
+            module) — enforced at the API layer, not a DB constraint, same
+            as every other mandatory-justification field in this module.
+    """
+
+    __tablename__ = "compliance_standard_default_exclusions"
+    __table_args__ = (UniqueConstraint("standard_id", "project_id"),)
+
+    standard_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_standards.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    excluded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    excluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(Text, default="")
 
 
 class ProjectComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):

@@ -332,6 +332,107 @@ def test_rbac_officer_grant_manager_override_and_member_forbidden(client, admin_
     assert _try_assess(manager_token).status_code == 200
 
 
+# --- Phase 20: Project-Manager self-service assignment (the default path) ------
+
+
+def _self_service_base(project_id: str) -> str:
+    return f"/api/v1/projects/{project_id}/modules/compliance"
+
+
+def test_project_manager_can_self_assign_without_officer_grant(client, admin_token, org_id):
+    """Phase 20's own headline capability: a plain `ProjectRole.
+    PROJECT_MANAGER`, with no `compliance_officer` module-role grant at
+    all, may assign any published standard in their project's own org via
+    the *project*-scoped endpoint — this is now the default, primary
+    path (§7, §11, §26), not something that requires a Compliance Manager
+    to act first."""
+    standard, version, _parent, _child, _pa, _ca = _setup_published_standard_with_tree(client, admin_token, org_id)
+    project = create_project(client, admin_token, org_id, name="PM Self-Service Project")
+
+    pm_id = create_org_user(client, admin_token, org_id, "pm.selfservice@example.com", role="member")
+    _assign_project_role(client, admin_token, project["id"], pm_id, "project_manager")
+    pm_token = login(client, "pm.selfservice@example.com", "Password123!")
+
+    resp = client.post(
+        f"{_self_service_base(project['id'])}/project-compliance",
+        json={"standard_id": standard["id"], "standard_version_id": version["id"]},
+        headers=auth_headers(pm_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["standard_version_id"] == version["id"]
+
+    # The org-scoped, Compliance-Manager-only endpoint remains available
+    # unchanged alongside it (the secondary, administrative path) — a plain
+    # PM with no org-level compliance_manager grant still can't use *that*
+    # one, confirming the split is real, not just an alias.
+    forbidden = client.post(
+        f"{_base(org_id)}/projects/{project['id']}/project-compliance",
+        json={"standard_id": standard["id"], "standard_version_id": version["id"]},
+        headers=auth_headers(pm_token),
+    )
+    assert forbidden.status_code == 403
+
+
+def test_self_service_assignment_plain_member_forbidden(client, admin_token, org_id):
+    """A plain project member — no `compliance_officer` grant, not a
+    `PROJECT_MANAGER` — is still forbidden on the project-scoped self-
+    service endpoint, exactly the same RBAC boundary as every other
+    officer-gated action on this router."""
+    standard, version, _parent, _child, _pa, _ca = _setup_published_standard_with_tree(client, admin_token, org_id)
+    project = create_project(client, admin_token, org_id, name="PM Self-Service Forbidden Project")
+
+    member_id = create_org_user(client, admin_token, org_id, "plain.selfservice@example.com", role="member")
+    _assign_project_role(client, admin_token, project["id"], member_id, "stakeholder")
+    member_token = login(client, "plain.selfservice@example.com", "Password123!")
+
+    resp = client.post(
+        f"{_self_service_base(project['id'])}/project-compliance",
+        json={"standard_id": standard["id"], "standard_version_id": version["id"]},
+        headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 403
+
+
+def test_self_service_assignment_requires_published_version(client, admin_token, org_id):
+    """§4/§7, mirrored from the org-scoped endpoint: a draft version 409s
+    on the project-scoped self-service path too."""
+    standard = _create_standard(client, admin_token, org_id, reference="PM-DRAFT-STD")
+    version = _create_version(client, admin_token, org_id, standard["id"])
+    project = create_project(client, admin_token, org_id, name="PM Draft Assignment Project")
+
+    resp = client.post(
+        f"{_self_service_base(project['id'])}/project-compliance",
+        json={"standard_id": standard["id"], "standard_version_id": version["id"]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 409, resp.text
+
+
+def test_self_service_assignment_rejects_archived_standard(client, admin_token, org_id):
+    """A Project Manager may not self-assign an archived standard — the
+    project-scoped endpoint's own equivalent of the org router's implicit
+    "only a real, active standard is on offer" behaviour (the org router
+    never surfaces an archived standard for assignment via its own
+    `create_project_compliance` payload validation either, since `_get_
+    version_or_404` only ever resolves a version that still belongs to a
+    real standard row — this endpoint makes the archived-standard case
+    explicit since a project-scoped caller supplies a bare `standard_id`
+    with no prior "list active standards" step enforced server-side)."""
+    standard, version, _parent, _child, _pa, _ca = _setup_published_standard_with_tree(client, admin_token, org_id)
+    archive_resp = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/archive", headers=auth_headers(admin_token),
+    )
+    assert archive_resp.status_code == 200, archive_resp.text
+    project = create_project(client, admin_token, org_id, name="PM Archived Standard Project")
+
+    resp = client.post(
+        f"{_self_service_base(project['id'])}/project-compliance",
+        json={"standard_id": standard["id"], "standard_version_id": version["id"]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 409, resp.text
+
+
 # --- §20 overall status + non-compliant list + MCP-tool-backing endpoints -------
 
 

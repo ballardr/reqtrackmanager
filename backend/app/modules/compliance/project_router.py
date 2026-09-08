@@ -71,6 +71,26 @@ assessment`/`invalidate_approval_if_in_flight` define; `archive_evidence`/
 decided approval the changed evidence supports, via `service.py`'s `find_
 pcrs_linked_to_evidence`.
 
+Phase 20 (Standard Applicability Defaults, Exceptions, and Project-Manager
+Assignment; §3, §7, §11, §26) adds `POST /project-compliance` (`create_
+project_compliance_self_service`, `_require_officer`-gated) — the module's
+new **default, primary** way a project acquires a standard: a plain
+`ProjectRole.PROJECT_MANAGER` with no `compliance_officer` grant may assign
+any `PUBLISHED` version of any non-archived standard in their project's own
+organisation, without a Compliance Manager acting on their behalf first.
+`router.py::create_project_compliance` (org-scoped, Compliance-Manager-
+only) remains available unchanged alongside it, now the secondary/
+administrative path (a Compliance Manager assigning on a project's behalf,
+or in bulk). This phase also adds the standard-level "applies to all
+projects by default, except..." mode (`ComplianceStandard.
+applicability_default`) and its exclusion list — both live entirely on
+`router.py` (org-scoped, Compliance-Manager-only, §3) since they govern the
+*standard's own* setting, not any one project's assignment row; this router
+only ever receives the *effect* of that mechanism (a materialised
+`ProjectCompliance` row), via `service.py::reconcile_standard_
+applicability`/`reconcile_new_project_for_all_standards`, never a direct
+call from here.
+
 Responsibilities:
 - Every mutating endpoint (applicability, assessment, required-action
   assessment updates/completion, and Phase 8's evidence CRUD/linkage/file
@@ -133,6 +153,7 @@ from app.modules.compliance.models import (
     ComplianceRequiredActionAssessment,
     ComplianceReview,
     ComplianceReviewEvidenceLink,
+    ComplianceStandard,
     ComplianceStandardVersion,
     ProjectCompliance,
     ProjectComplianceRequirement,
@@ -163,6 +184,7 @@ from app.modules.compliance.schemas import (
     PendingApprovalOut,
     ProjectComplianceApplicabilityUpdate,
     ProjectComplianceAssessmentUpdate,
+    ProjectComplianceCreate,
     ProjectComplianceMigrationRequest,
     ProjectComplianceMigrationResultOut,
     ProjectComplianceOut,
@@ -187,6 +209,7 @@ from app.modules.compliance.service import (
     list_pending_approvals_for_project,
     list_reviews_due_for_project,
     load_pcrs_and_applicability,
+    materialize_assessment_rows,
     migrate_project_compliance,
 )
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
@@ -347,7 +370,15 @@ def _get_assessment_for_project_or_404(
     return assessment
 
 
-# --- Project compliance assignments (read-only here; created on the org router) -
+# --- Project compliance assignments -------------------------------------------
+#
+# Phase 20 (docs/compliance-module-plan.md; §7, §11, §26) makes this
+# project router the *default, primary* place a project acquires a
+# standard, not merely a read-only mirror of the org router's own
+# `create_project_compliance` (still available there, unchanged, as the
+# secondary/administrative path — a Compliance Manager assigning on a
+# project's behalf, or in bulk). See `create_project_compliance_self_
+# service` below.
 
 
 @router.get("/project-compliance", response_model=list[ProjectComplianceOut])
@@ -371,6 +402,85 @@ def get_project_compliance(
 ):
     """Fetches a single assignment."""
     return _get_project_compliance_or_404(db, project_id, project_compliance_id)
+
+
+@router.post(
+    "/project-compliance", response_model=ProjectComplianceOut, status_code=status.HTTP_201_CREATED,
+)
+def create_project_compliance_self_service(
+    project_id: UUID, payload: ProjectComplianceCreate,
+    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+):
+    """Phase 20's **default, primary** way a project acquires a standard:
+    a `compliance_officer` grant or `ProjectRole.PROJECT_MANAGER` (this
+    router's own established `_require_officer` composition, unchanged) may
+    assign any `PUBLISHED` version of any non-archived standard in their
+    project's own organisation, without needing a Compliance Manager to act
+    on their behalf first. Payload/response shape is identical to the org
+    router's own `create_project_compliance` (`router.py:1485` before this
+    phase) — the two endpoints differ only in *who* may call them and
+    *which router* they live on, matching this repo's existing "assignment
+    lives wherever the RBAC boundary for that action already lives" split
+    (`project_router.py`'s own module docstring).
+
+    A Project Manager may **not** use this endpoint to change a standard's
+    own `applicability_default`/exclusion-list setting (§3) — that stays
+    Compliance-Manager/org-admin territory on `router.py`. This endpoint
+    only ever creates a `ProjectCompliance` row for *this* project, the
+    exact same boundary Phase 7 already drew between "who curates the
+    org-wide catalogue" and "who runs day-to-day assessment" — making PM-
+    initiated assignment the default path shifts *which project links
+    exist*, not *who governs the standard itself*."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    standard = db.get(ComplianceStandard, payload.standard_id)
+    if standard is None or standard.organization_id != project.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance standard not found.")
+    if standard.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This standard is archived and can no longer be assigned.")
+    version = db.get(ComplianceStandardVersion, payload.standard_version_id)
+    if version is None or version.standard_id != standard.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance standard version not found.")
+    if version.status != ComplianceStandardVersionStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Only a published standard version can be assigned to a project."
+        )
+    existing = db.scalar(
+        select(ProjectCompliance.id).where(
+            ProjectCompliance.project_id == project_id, ProjectCompliance.standard_version_id == version.id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project is already assigned to this standard version.")
+
+    project_compliance = ProjectCompliance(
+        project_id=project_id, standard_version_id=version.id,
+        assigned_at=datetime.now(UTC), assigned_by=current_user.id,
+        target_compliance_date=payload.target_compliance_date,
+    )
+    db.add(project_compliance)
+    db.flush()
+    materialize_assessment_rows(db, project_compliance_id=project_compliance.id, standard_version_id=version.id)
+    log_event(
+        db, entity_type="project_compliance", entity_id=project_compliance.id, action="created",
+        actor_id=current_user.id, project_id=project_id,
+        detail={"standard_version_id": str(version.id), "assigned_via": "project_manager_self_service"},
+    )
+    for recipient_id in get_effective_compliance_officers(db, project_id):
+        recipient = db.get(User, recipient_id)
+        if recipient is None:
+            continue
+        notifications.notify(
+            db, recipient, notification_type=NotificationType.COMPLIANCE_ASSIGNMENT_CREATED,
+            title="New compliance assignment",
+            body="This project was assigned to a compliance standard and needs assessment to begin.",
+            project_id=project_id, entity_type="project_compliance", entity_id=str(project_compliance.id),
+            actor_id=current_user.id,
+        )
+    db.commit()
+    db.refresh(project_compliance)
+    return project_compliance
 
 
 @router.post(

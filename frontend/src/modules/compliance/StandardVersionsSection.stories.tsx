@@ -10,7 +10,7 @@ const ORG_ID = "org-1";
 const STANDARD: ComplianceStandard = {
   id: "std-1", organization_id: ORG_ID, reference: "ISO-27001", name: "ISO 27001",
   description: "", issuing_organisation: null, owner_id: "user-1", creator_id: "user-1",
-  is_archived: false, archived_at: null, archived_by: null,
+  is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in",
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const ACTION_TYPES: ComplianceActionType[] = [{ id: "at-1", organization_id: ORG_ID, name: "Review", sort_order: 0 }];

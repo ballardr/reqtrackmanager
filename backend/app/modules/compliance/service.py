@@ -74,6 +74,17 @@ Responsibilities:
   the generic per-project `ActionTypeDefinition` — see that function's own
   docstring for why organisation-creation time, not a module-enablement
   hook, is where this has to run.
+- `get_latest_published_version`/`reconcile_standard_applicability`/
+  `reconcile_new_project_for_all_standards` (Phase 20, §3/§7): a standard's
+  "applies to all projects by default, except..." mode — materialises a
+  real `ProjectCompliance` row (never a virtual/computed default) for every
+  current, non-archived, non-excluded project when a standard is switched
+  to `APPLIES_TO_ALL_PROJECTS` or a project is un-excluded, and for a
+  single newly-created project against every such standard in its org. See
+  `_reconcile_one_project`'s own docstring for the exact per-project rule
+  (never duplicates an existing live assignment; reuses an exclusion-time-
+  archived row rather than violating `ProjectCompliance`'s own uniqueness
+  constraint).
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -96,6 +107,7 @@ from app.modules.compliance.enums import (
     ComplianceEvidenceValidityState,
     ComplianceReviewOutcome,
     ComplianceReviewStatus,
+    ComplianceStandardApplicabilityDefault,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -113,6 +125,7 @@ from app.modules.compliance.models import (
     ComplianceReview,
     ComplianceReviewEvidenceLink,
     ComplianceStandard,
+    ComplianceStandardDefaultExclusion,
     ComplianceStandardVersion,
     ProjectCompliance,
     ProjectComplianceRequirement,
@@ -200,6 +213,162 @@ def has_assignable_standard(db: Session, organization_id: uuid.UUID) -> bool:
         )
         is not None
     )
+
+
+# --- Phase 20: applicability defaults, exceptions, PM assignment -------------
+
+
+def get_latest_published_version(db: Session, standard_id: uuid.UUID) -> ComplianceStandardVersion | None:
+    """The highest-`version_number` `PUBLISHED` version of `standard_id`, or
+    `None` if it has none — what `reconcile_standard_applicability` (below)
+    always assigns a reconciled project to. Deliberately re-evaluated fresh
+    every time reconciliation runs (standard flipped to "applies to all," a
+    new project created, a project un-excluded) rather than pinned once at
+    the moment `applicability_default` was first set — see `models.py`'s
+    own Phase 20 design-decisions section for why."""
+    return db.scalar(
+        select(ComplianceStandardVersion)
+        .where(
+            ComplianceStandardVersion.standard_id == standard_id,
+            ComplianceStandardVersion.status == ComplianceStandardVersionStatus.PUBLISHED,
+        )
+        .order_by(ComplianceStandardVersion.version_number.desc())
+        .limit(1)
+    )
+
+
+def _reconcile_one_project(
+    db: Session, *, project: Project, standard: ComplianceStandard, actor_id: uuid.UUID
+) -> ProjectCompliance | None:
+    """The single-project reconciliation step both `reconcile_standard_
+    applicability` (every project in the org, standard-flip/un-exclude
+    case) and the `on_project_created` hook (one new project, every
+    `applies_to_all_projects` standard in its org) share.
+
+    Never creates a *second* live assignment for a project that already
+    tracks this standard via any of its versions (whether that row came
+    from a Project-Manager self-service assignment, a Compliance-Manager
+    manual assignment, or a prior reconciliation pass) — only fills the
+    gap for a project with none. When this standard's latest published
+    version was previously assigned to this exact project and then
+    archived (the exclusion-list convention, `models.py:730-735`'s soft-
+    delete), that same row is unarchived and reused rather than a second
+    row being created for the same `(project_id, standard_version_id)`
+    pair — both because the database's own uniqueness constraint on that
+    pair would otherwise reject a fresh insert, and because reusing it
+    restores the project's own prior assessment/audit history rather than
+    starting a second, disconnected one.
+
+    Returns the created-or-reactivated `ProjectCompliance` row, or `None`
+    if nothing changed (already tracked, or the standard has no published
+    version to reconcile against yet). Does not commit — callers commit as
+    part of their own single transaction.
+    """
+    latest_version = get_latest_published_version(db, standard.id)
+    if latest_version is None:
+        return None
+
+    version_ids = db.scalars(
+        select(ComplianceStandardVersion.id).where(ComplianceStandardVersion.standard_id == standard.id)
+    ).all()
+    already_tracked = db.scalar(
+        select(ProjectCompliance.id).where(
+            ProjectCompliance.project_id == project.id,
+            ProjectCompliance.standard_version_id.in_(version_ids),
+            ProjectCompliance.is_archived.is_(False),
+        )
+    )
+    if already_tracked is not None:
+        return None
+
+    existing_same_version = db.scalar(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == project.id, ProjectCompliance.standard_version_id == latest_version.id
+        )
+    )
+    if existing_same_version is not None:
+        # Must be archived (an active row for this exact pair would already
+        # have been caught by the `already_tracked` check above) — reuse it
+        # rather than violate the (project_id, standard_version_id)
+        # uniqueness constraint with a second row.
+        existing_same_version.is_archived = False
+        existing_same_version.archived_at = None
+        existing_same_version.archived_by = None
+        return existing_same_version
+
+    project_compliance = ProjectCompliance(
+        project_id=project.id, standard_version_id=latest_version.id,
+        assigned_at=datetime.now(UTC), assigned_by=actor_id,
+    )
+    db.add(project_compliance)
+    db.flush()
+    materialize_assessment_rows(db, project_compliance_id=project_compliance.id, standard_version_id=latest_version.id)
+    return project_compliance
+
+
+def reconcile_standard_applicability(
+    db: Session, *, standard: ComplianceStandard, actor_id: uuid.UUID
+) -> list[ProjectCompliance]:
+    """Reconciles every current, non-archived, non-excluded project in
+    `standard.organization_id` against `standard` (Phase 20) — called when
+    a standard is switched to `APPLIES_TO_ALL_PROJECTS` and when a project
+    is removed from its exclusion list (both a "make reality match the
+    declared default" event). A project already tracking this standard, or
+    named in its exclusion list, is left untouched — see `_reconcile_one_
+    project`'s own docstring for the exact per-project rule.
+
+    Returns every `ProjectCompliance` row this call newly created or
+    reactivated (for the caller to log/notify per row) — does not commit.
+    """
+    excluded_project_ids = set(
+        db.scalars(
+            select(ComplianceStandardDefaultExclusion.project_id).where(
+                ComplianceStandardDefaultExclusion.standard_id == standard.id
+            )
+        ).all()
+    )
+    projects = db.scalars(
+        select(Project).where(Project.organization_id == standard.organization_id, Project.is_archived.is_(False))
+    ).all()
+    reconciled: list[ProjectCompliance] = []
+    for project in projects:
+        if project.id in excluded_project_ids:
+            continue
+        result = _reconcile_one_project(db, project=project, standard=standard, actor_id=actor_id)
+        if result is not None:
+            reconciled.append(result)
+    return reconciled
+
+
+def reconcile_new_project_for_all_standards(
+    db: Session, *, project: Project, actor_id: uuid.UUID
+) -> list[ProjectCompliance]:
+    """The `on_project_created` half of Phase 20's reconciliation — called
+    once, right after a brand-new `Project` row is flushed
+    (`app.routers.projects.create_project`, via the generic `ModuleDefinition.
+    on_project_created` hook, never a direct import), for every non-archived
+    `APPLIES_TO_ALL_PROJECTS` standard in the new project's own organisation.
+    A freshly created project can never already be in a standard's exclusion
+    list (it didn't exist yet), so this never needs to check one — but does
+    reuse `_reconcile_one_project`'s own "already tracked" guard, which is
+    always false for a brand-new project's very first reconciliation pass
+    but keeps this function symmetrical with `reconcile_standard_
+    applicability` rather than duplicating a narrower version of the same
+    rule. Does not commit.
+    """
+    standards = db.scalars(
+        select(ComplianceStandard).where(
+            ComplianceStandard.organization_id == project.organization_id,
+            ComplianceStandard.applicability_default == ComplianceStandardApplicabilityDefault.APPLIES_TO_ALL_PROJECTS,
+            ComplianceStandard.is_archived.is_(False),
+        )
+    ).all()
+    reconciled: list[ProjectCompliance] = []
+    for standard in standards:
+        result = _reconcile_one_project(db, project=project, standard=standard, actor_id=actor_id)
+        if result is not None:
+            reconciled.append(result)
+    return reconciled
 
 
 def resolve_applicability_for_version(

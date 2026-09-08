@@ -53,7 +53,13 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import get_frontend_manifest, get_module_registry, is_module_enabled, list_enabled_module_roles
+from app.modules.registry import (
+    get_frontend_manifest,
+    get_module_registry,
+    is_module_enabled,
+    list_enabled_module_roles,
+    run_on_project_created_hooks,
+)
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
 from app.schemas.org import (
@@ -530,6 +536,14 @@ def create_project(
         organization_id=payload.organization_id, project_id=project.id,
         detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
+    # Generic module-contributed project-creation reaction (e.g.
+    # Compliance's Phase 20 reconciliation of `applies_to_all_projects`
+    # standards) — this core router never imports a specific module; see
+    # `ModuleDefinition.on_project_created`'s own docstring for why
+    # project-creation time, not a module-enable hook, is where this has to
+    # run.
+    run_on_project_created_hooks(db, project, current_user.id)
+
     if payload.parent_project_id is not None:
         log_event(
             db, entity_type="project", entity_id=project.id, action="parented", actor_id=current_user.id,

@@ -8,7 +8,7 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
   return {
     id: "std-1", organization_id: "org-1", reference: "ISO-27001", name: "ISO 27001",
     description: "Information security management.", issuing_organisation: "ISO", owner_id: "user-1",
-    creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+    creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in",
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };
 }

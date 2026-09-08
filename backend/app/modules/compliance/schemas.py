@@ -85,6 +85,7 @@ from app.modules.compliance.enums import (
     ComplianceEvidenceValidityState,
     ComplianceReviewOutcome,
     ComplianceReviewStatus,
+    ComplianceStandardApplicabilityDefault,
     ComplianceStandardVersionStatus,
     ComplianceStatus,
 )
@@ -141,6 +142,45 @@ class ComplianceStandardOut(BaseModel):
     is_archived: bool
     archived_at: datetime | None
     archived_by: UUID | None
+    applicability_default: ComplianceStandardApplicabilityDefault
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- Phase 20: applicability defaults, exceptions, PM assignment -------------
+
+
+class ComplianceStandardApplicabilityDefaultUpdate(BaseModel):
+    """Payload for `PATCH .../standards/{id}/applicability-default` —
+    Compliance-Manager-only (§3). Switching to `applies_to_all_projects`
+    triggers reconciliation (`service.py::reconcile_standard_
+    applicability`); switching back to `opt_in` never retroactively
+    archives rows a prior reconciliation created (see `models.py`'s own
+    Phase 20 design-decisions section)."""
+
+    applicability_default: ComplianceStandardApplicabilityDefault
+
+
+class ComplianceStandardDefaultExclusionCreate(BaseModel):
+    """Payload for excepting a project out of a standard's
+    `applies_to_all_projects` default. `reason` is mandatory (enforced at
+    the API layer, not by this schema, mirroring every other conditionally-
+    mandatory-justification field in this module) — see `router.py::
+    exclude_project_from_standard_default`."""
+
+    project_id: UUID
+    reason: str = ""
+
+
+class ComplianceStandardDefaultExclusionOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    standard_id: UUID
+    project_id: UUID
+    excluded_by: UUID
+    excluded_at: datetime
+    reason: str
     created_at: datetime
     updated_at: datetime
 
@@ -294,7 +334,15 @@ class ProjectComplianceCreate(BaseModel):
     and the payload agree on which standard is being assigned — the router
     still verifies `standard_version_id` actually belongs to `standard_id`
     (`router.py::_get_version_or_404`), the same cross-check every other
-    Phase 6 endpoint already performs."""
+    Phase 6 endpoint already performs.
+
+    Shared, unchanged, by Phase 20's second assignment path: the project-
+    scoped Project-Manager self-service endpoint (`project_router.py::
+    create_project_compliance_self_service`, the *default* way a project
+    acquires a standard) uses this exact same payload shape as the org-
+    scoped Compliance-Manager endpoint above (now the secondary/
+    administrative path) — the two differ only in who may call them and
+    which router they live on, never in what they accept."""
 
     standard_id: UUID
     standard_version_id: UUID

@@ -229,7 +229,11 @@ export function ProjectCompliancePage() {
           onCancel={() => setAssigning(false)}
           onSave={async (values) => {
             try {
-              await complianceApi.createProjectCompliance(project.organization_id, projectId, values);
+              // Phase 20's default, primary assignment path — works for a
+              // plain Project Manager with no `compliance_officer` grant,
+              // not gated behind it (see docs/compliance-module-plan.md
+              // Phase 20).
+              await complianceApi.createProjectComplianceAsProjectManager(projectId, values);
               showToast("Standard assigned to project.");
               setAssigning(false);
               await reload();

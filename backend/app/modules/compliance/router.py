@@ -100,7 +100,11 @@ from app.models.notification import NotificationType
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.compliance.enums import ComplianceReviewStatus, ComplianceStandardVersionStatus
+from app.modules.compliance.enums import (
+    ComplianceReviewStatus,
+    ComplianceStandardApplicabilityDefault,
+    ComplianceStandardVersionStatus,
+)
 from app.modules.compliance.models import (
     ComplianceActionTypeDefinition,
     ComplianceMappingRelationshipTypeDefinition,
@@ -109,6 +113,7 @@ from app.modules.compliance.models import (
     ComplianceRequirementMapping,
     ComplianceReview,
     ComplianceStandard,
+    ComplianceStandardDefaultExclusion,
     ComplianceStandardVersion,
     ProjectCompliance,
 )
@@ -133,7 +138,10 @@ from app.modules.compliance.schemas import (
     ComplianceReviewCreate,
     ComplianceReviewOut,
     ComplianceReviewUpdate,
+    ComplianceStandardApplicabilityDefaultUpdate,
     ComplianceStandardCreate,
+    ComplianceStandardDefaultExclusionCreate,
+    ComplianceStandardDefaultExclusionOut,
     ComplianceStandardOut,
     ComplianceStandardUpdate,
     ComplianceStandardVersionCreate,
@@ -149,6 +157,7 @@ from app.modules.compliance.schemas import (
     StandardVersionDiffOut,
 )
 from app.modules.compliance.service import (
+    _reconcile_one_project,
     build_diff_out,
     build_evidence_out,
     build_review_out,
@@ -163,6 +172,7 @@ from app.modules.compliance.service import (
     list_recent_compliance_activity,
     list_reviews_due_for_project,
     materialize_assessment_rows,
+    reconcile_standard_applicability,
 )
 from app.schemas.audit import AuditEventOut
 from app.schemas.project import MoveDirection
@@ -409,6 +419,209 @@ def unarchive_standard(
     db.commit()
     db.refresh(standard)
     return standard
+
+
+# --- Phase 20: applicability defaults, exceptions ("applies to all projects ----
+# by default, except...") — Compliance-Manager-only, mirroring every other
+# standard-level curation action on this router. Project-Manager-initiated
+# *assignment* lives on `project_router.py` instead (the default, primary
+# path per this phase's spec) — this section is the secondary, org-wide-
+# mandate mechanism.
+
+
+def _get_exclusion_target_project_or_400(db: Session, organization_id: UUID, project_id: UUID) -> Project:
+    project = db.get(Project, project_id)
+    if project is None or project.organization_id != organization_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "project_id must be a project in this organisation.")
+    return project
+
+
+def _get_exclusion_or_404(
+    db: Session, organization_id: UUID, standard_id: UUID, project_id: UUID
+) -> ComplianceStandardDefaultExclusion:
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    exclusion = db.scalar(
+        select(ComplianceStandardDefaultExclusion).where(
+            ComplianceStandardDefaultExclusion.standard_id == standard.id,
+            ComplianceStandardDefaultExclusion.project_id == project_id,
+        )
+    )
+    if exclusion is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This project is not excluded from this standard's default.")
+    return exclusion
+
+
+@router.patch("/standards/{standard_id}/applicability-default", response_model=ComplianceStandardOut)
+def update_standard_applicability_default(
+    organization_id: UUID, standard_id: UUID, payload: ComplianceStandardApplicabilityDefaultUpdate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Switches a standard's default project-assignment mode (Phase 20,
+    §3) — Compliance-Manager-only (or org admin/server admin, via
+    `require_module_role`'s existing composition), never a Project
+    Manager, who may only act on their own project's own assignment row.
+
+    Switching to `APPLIES_TO_ALL_PROJECTS` immediately reconciles a real
+    `ProjectCompliance` row into existence for every current, non-archived,
+    non-excluded project in this organisation (`service.py::reconcile_
+    standard_applicability`) — never a virtual/computed default, since a
+    real row is what carries the per-requirement assessment/audit trail
+    every other part of this module depends on (§8, §16). Switching back to
+    `OPT_IN` reconciles nothing and never retroactively archives rows a
+    prior reconciliation created (see `models.py`'s own Phase 20 design-
+    decisions section) — idempotent either way (setting the same mode
+    twice is a harmless no-op, though re-setting `APPLIES_TO_ALL_PROJECTS`
+    still re-runs reconciliation, picking up e.g. a project that was
+    created between the two calls without going through the `on_project_
+    created` hook for some other reason)."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    previous = standard.applicability_default
+    standard.applicability_default = payload.applicability_default
+    log_event(
+        db, entity_type="compliance_standard", entity_id=standard.id, action="applicability_default_changed",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"previous": previous.value, "new": standard.applicability_default.value},
+    )
+    reconciled: list[ProjectCompliance] = []
+    if standard.applicability_default == ComplianceStandardApplicabilityDefault.APPLIES_TO_ALL_PROJECTS:
+        reconciled = reconcile_standard_applicability(db, standard=standard, actor_id=current_user.id)
+        for project_compliance in reconciled:
+            log_event(
+                db, entity_type="project_compliance", entity_id=project_compliance.id, action="reconciled",
+                actor_id=current_user.id, organization_id=organization_id, project_id=project_compliance.project_id,
+                detail={"standard_id": str(standard.id), "reason": "applicability_default_changed"},
+            )
+            for recipient_id in get_effective_compliance_officers(db, project_compliance.project_id):
+                recipient = db.get(User, recipient_id)
+                if recipient is None:
+                    continue
+                notifications.notify(
+                    db, recipient, notification_type=NotificationType.COMPLIANCE_ASSIGNMENT_CREATED,
+                    title="New compliance assignment",
+                    body="This project was automatically assigned to a compliance standard that now applies to "
+                         "all projects, and needs assessment to begin.",
+                    project_id=project_compliance.project_id, entity_type="project_compliance",
+                    entity_id=str(project_compliance.id), actor_id=current_user.id,
+                )
+    db.commit()
+    db.refresh(standard)
+    return standard
+
+
+@router.get("/standards/{standard_id}/exclusions", response_model=list[ComplianceStandardDefaultExclusionOut])
+def list_standard_default_exclusions(
+    organization_id: UUID, standard_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Lists the projects excepted out of this standard's
+    `applies_to_all_projects` default (view-gated, same as every other read
+    on a standard)."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    return db.scalars(
+        select(ComplianceStandardDefaultExclusion)
+        .where(ComplianceStandardDefaultExclusion.standard_id == standard.id)
+        .order_by(ComplianceStandardDefaultExclusion.excluded_at)
+    ).all()
+
+
+@router.post(
+    "/standards/{standard_id}/exclusions", response_model=ComplianceStandardDefaultExclusionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def exclude_project_from_standard_default(
+    organization_id: UUID, standard_id: UUID, payload: ComplianceStandardDefaultExclusionCreate,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Excepts `payload.project_id` out of this standard's
+    `applies_to_all_projects` default — `reason` is mandatory (400 if
+    blank), mirroring this module's established Not-Applicable/Non-
+    Compliant/Rejection mandatory-justification convention (§9, §12, §16).
+
+    If this project currently has a non-archived `ProjectCompliance` row
+    against any version of this standard, that row is **archived, not
+    deleted** (`models.py:730-735`'s existing soft-delete convention) — the
+    assessment history a project may already have recorded against this
+    standard must survive being excepted out."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    _get_exclusion_target_project_or_400(db, organization_id, payload.project_id)
+    if not payload.reason.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A reason is required to exclude a project.")
+    existing = db.scalar(
+        select(ComplianceStandardDefaultExclusion).where(
+            ComplianceStandardDefaultExclusion.standard_id == standard.id,
+            ComplianceStandardDefaultExclusion.project_id == payload.project_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project is already excluded from this standard's default.")
+
+    exclusion = ComplianceStandardDefaultExclusion(
+        standard_id=standard.id, project_id=payload.project_id,
+        excluded_by=current_user.id, excluded_at=datetime.now(UTC), reason=payload.reason,
+    )
+    db.add(exclusion)
+    db.flush()
+    log_event(
+        db, entity_type="compliance_standard_default_exclusion", entity_id=exclusion.id, action="created",
+        actor_id=current_user.id, organization_id=organization_id, project_id=payload.project_id,
+        detail={"standard_id": str(standard.id), "reason": payload.reason},
+    )
+
+    version_ids = db.scalars(
+        select(ComplianceStandardVersion.id).where(ComplianceStandardVersion.standard_id == standard.id)
+    ).all()
+    active_assignments = db.scalars(
+        select(ProjectCompliance).where(
+            ProjectCompliance.project_id == payload.project_id,
+            ProjectCompliance.standard_version_id.in_(version_ids),
+            ProjectCompliance.is_archived.is_(False),
+        )
+    ).all()
+    for assignment in active_assignments:
+        assignment.is_archived = True
+        assignment.archived_at = datetime.now(UTC)
+        assignment.archived_by = current_user.id
+        log_event(
+            db, entity_type="project_compliance", entity_id=assignment.id, action="archived",
+            actor_id=current_user.id, organization_id=organization_id, project_id=payload.project_id,
+            detail={"reason": "excluded_from_standard_default"},
+        )
+
+    db.commit()
+    db.refresh(exclusion)
+    return exclusion
+
+
+@router.delete("/standards/{standard_id}/exclusions/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_standard_default_exclusion(
+    organization_id: UUID, standard_id: UUID, project_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Removes a project from a standard's exclusion list — if the standard
+    is currently `APPLIES_TO_ALL_PROJECTS`, the project is immediately
+    reconciled (the same "gets the same treatment at that moment" rule a
+    newly-created project gets, `service.py::_reconcile_one_project`).
+    Un-excluding a project that isn't excluded 404s (nothing to remove)."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    exclusion = _get_exclusion_or_404(db, organization_id, standard_id, project_id)
+    db.delete(exclusion)
+    log_event(
+        db, entity_type="compliance_standard_default_exclusion", entity_id=exclusion.id, action="deleted",
+        actor_id=current_user.id, organization_id=organization_id, project_id=project_id,
+        detail={"standard_id": str(standard.id)},
+    )
+    if standard.applicability_default == ComplianceStandardApplicabilityDefault.APPLIES_TO_ALL_PROJECTS:
+        project = db.get(Project, project_id)
+        if project is not None and not project.is_archived:
+            reconciled = _reconcile_one_project(db, project=project, standard=standard, actor_id=current_user.id)
+            if reconciled is not None:
+                log_event(
+                    db, entity_type="project_compliance", entity_id=reconciled.id, action="reconciled",
+                    actor_id=current_user.id, organization_id=organization_id, project_id=project_id,
+                    detail={"standard_id": str(standard.id), "reason": "exclusion_removed"},
+                )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --- Standard versions ---------------------------------------------------------
@@ -1452,13 +1665,20 @@ def get_standard_version_diff(
     return build_diff_out(diff)
 
 
-# --- Project compliance assignment (org-scoped: assigning IS a Compliance -------
-# Manager decision, §26; day-to-day assessment lives on `project_router.py`
-# instead, since Phase 4's MCP tool scoping rule requires `project_id` as
-# the *only* path placeholder for `compliance_get_project_status`/
-# `compliance_list_non_compliant_requirements` — impossible on a route that
-# also carries `{organization_id}`. See docs/compliance-module-plan.md's
-# Phase 7 notes for the full reasoning behind this split.)
+# --- Project compliance assignment (org-scoped: a Compliance Manager acting ----
+# on a project's behalf, or in bulk — the *secondary*, administrative
+# assignment path as of Phase 20; day-to-day assessment lives on
+# `project_router.py` instead, since Phase 4's MCP tool scoping rule
+# requires `project_id` as the *only* path placeholder for `compliance_
+# get_project_status`/`compliance_list_non_compliant_requirements` —
+# impossible on a route that also carries `{organization_id}`. See
+# docs/compliance-module-plan.md's Phase 7 notes for the full reasoning
+# behind this split. Phase 20 added a second, *default/primary* assignment
+# path — `project_router.py::create_project_compliance_self_service`,
+# usable by a plain Project Manager with no `compliance_officer` grant —
+# this org-scoped endpoint below remains unchanged and fully available
+# alongside it, for the org-wide/bulk case §3 still reserves for a
+# Compliance Manager.)
 
 
 def _get_project_or_404(db: Session, organization_id: UUID, project_id: UUID) -> Project:
@@ -1494,7 +1714,14 @@ def create_project_compliance(
     requirement/per-required-action assessment row set for this
     assignment in the same transaction (`service.materialize_assessment_
     rows`) — see that function's own docstring for why this happens once,
-    upfront, rather than lazily."""
+    upfront, rather than lazily.
+
+    As of Phase 20, this is the *secondary*, administrative assignment
+    path (a Compliance Manager assigning on a project's behalf, or in
+    bulk) — the default, primary path is `project_router.py::create_
+    project_compliance_self_service`, usable by a plain Project Manager.
+    This endpoint's own payload/response/behaviour are otherwise
+    unchanged."""
     _get_project_or_404(db, organization_id, project_id)
     _, version = _get_version_or_404(db, organization_id, payload.standard_id, payload.standard_version_id)
     if version.status != ComplianceStandardVersionStatus.PUBLISHED:

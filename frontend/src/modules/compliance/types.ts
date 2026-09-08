@@ -121,6 +121,21 @@ export const COMPLIANCE_OVERALL_STATE_LABEL: Record<ComplianceOverallState, stri
   not_applicable: "Not applicable",
 };
 
+// Compliance module Phase 20 — `ComplianceStandard.applicability_default`
+// (backend `app.modules.compliance.enums.ComplianceStandardApplicabilityDefault`).
+// Kept in this module-local file rather than `frontend/src/api/types.ts`,
+// same deliberate judgment call as every other Compliance enum/label map
+// above (see this file's own module docstring) — flagged here explicitly
+// since CLAUDE.md's general label-map rule names `api/types.ts` as the
+// default location, but this module's own established self-containment
+// convention (Phase 12 notes) is the more specific, already-recorded rule
+// that applies to Compliance's own enums.
+export type ComplianceStandardApplicabilityDefault = "opt_in" | "applies_to_all_projects";
+export const COMPLIANCE_STANDARD_APPLICABILITY_DEFAULT_LABEL: Record<ComplianceStandardApplicabilityDefault, string> = {
+  opt_in: "Opt-in (assigned per project)",
+  applies_to_all_projects: "Applies to all projects by default",
+};
+
 export interface ComplianceStandard {
   id: string;
   organization_id: string;
@@ -133,6 +148,21 @@ export interface ComplianceStandard {
   is_archived: boolean;
   archived_at: string | null;
   archived_by: string | null;
+  applicability_default: ComplianceStandardApplicabilityDefault;
+  created_at: string;
+  updated_at: string;
+}
+
+// Compliance module Phase 20 — a project excepted out of a standard's
+// `applies_to_all_projects` default (backend
+// `ComplianceStandardDefaultExclusionOut`).
+export interface ComplianceStandardDefaultExclusion {
+  id: string;
+  standard_id: string;
+  project_id: string;
+  excluded_by: string;
+  excluded_at: string;
+  reason: string;
   created_at: string;
   updated_at: string;
 }

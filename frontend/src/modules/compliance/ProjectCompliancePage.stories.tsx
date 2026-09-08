@@ -57,7 +57,7 @@ function mockApis(overrides: {
   const assignments = overrides.assignments ?? [assignment()];
   const statuses = overrides.statuses ?? [status()];
   const standards = overrides.standards ?? [
-    { id: "std-1", organization_id: ORG_ID, reference: "ISO-27001", name: "ISO 27001", description: "", issuing_organisation: null, owner_id: "user-1", creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+    { id: "std-1", organization_id: ORG_ID, reference: "ISO-27001", name: "ISO 27001", description: "", issuing_organisation: null, owner_id: "user-1", creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null, applicability_default: "opt_in" as const, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
   ];
   const versions = overrides.versions ?? [
     { id: "ver-2", standard_id: "std-1", version_number: 2, version_label: "v2.0", status: "published", effective_date: null, change_note: "", created_by: "user-1", published_at: "2026-01-01T00:00:00Z", published_by: "user-1", retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
@@ -125,8 +125,11 @@ export const AssignStandardFlow: Story = {
     await waitFor(() => expect(body.getByLabelText("Standard version")).toBeInTheDocument());
     await userEvent.click(body.getByRole("button", { name: "Assign" }));
 
+    // Phase 20: the default assignment path is now the project-scoped
+    // endpoint (usable by a plain Project Manager), not the org-scoped
+    // Compliance-Manager-only one.
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/compliance/projects/${PROJECT_ID}/project-compliance`,
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance`,
       { standard_id: "std-1", standard_version_id: "ver-2", target_compliance_date: null }
     ));
   },

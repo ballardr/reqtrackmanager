@@ -35,6 +35,15 @@ comparison the way evidence validity is. Whether a still-`SCHEDULED` review
 is upcoming/due/overdue *is* computed, never stored, for the same
 "can't drift" reason as the other two — see `service.py::compute_review_
 schedule_state`.
+
+`ComplianceStandardApplicabilityDefault` is Phase 20's own addition (second
+human-review round; docs/compliance-module-plan.md Phase 20) — a stored
+column (`ComplianceStandard.applicability_default`) recording whether a
+standard's default project-assignment mode is the ordinary, fully-manual
+per-project opt-in (every existing standard's unchanged behaviour) or an
+org-wide "applies to all projects by default, except..." mandate. See
+`models.py`'s own Phase 20 design-decisions section for the reconciliation
+mechanism this drives.
 """
 
 from __future__ import annotations
@@ -198,3 +207,26 @@ class ComplianceReviewOutcome(str, enum.Enum):
     SATISFACTORY = "satisfactory"
     ACTION_REQUIRED = "action_required"
     UNSATISFACTORY = "unsatisfactory"
+
+
+class ComplianceStandardApplicabilityDefault(str, enum.Enum):
+    """A `ComplianceStandard`'s default project-assignment mode (Phase 20).
+
+    `OPT_IN` (the default for every standard, including every one that
+    existed before this phase) is today's fully-manual behaviour: a
+    project acquires this standard only via an explicit assignment
+    (Project-Manager self-service or a Compliance Manager acting on a
+    project's behalf), one project at a time. `APPLIES_TO_ALL_PROJECTS` is
+    the org-wide, centrally-mandated case — switching a standard to this
+    mode reconciles a real `ProjectCompliance` row into existence for
+    every current non-archived, non-excluded project in the standard's
+    organisation (`service.py::reconcile_standard_applicability`), and a
+    project created afterward gets the same treatment at creation time
+    (`ModuleDefinition.on_project_created`). Only a Compliance Manager (or
+    org admin/server admin) may switch a standard into this mode — a
+    Project Manager may act on their own project's own assignment row but
+    never on this standard-level setting (§3).
+    """
+
+    OPT_IN = "opt_in"
+    APPLIES_TO_ALL_PROJECTS = "applies_to_all_projects"
