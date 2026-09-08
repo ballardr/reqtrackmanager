@@ -47,6 +47,16 @@ function mockStandardListApis(orgs: Organization[], standardsByOrg: Record<strin
     }
     throw new Error(`unmocked POST: ${path}`);
   });
+  spyOn(api, "postFile").mockImplementation(async (path: string) => {
+    const match = /\/api\/v1\/orgs\/([^/]+)\/modules\/compliance\/standards\/import$/.exec(path);
+    if (match) {
+      return {
+        standard: standard({ id: "std-imported", organization_id: match[1], reference: "SOC2", name: "SOC 2 Type II" }),
+        skipped: false, warnings: [],
+      };
+    }
+    throw new Error(`unmocked postFile: ${path}`);
+  });
 }
 
 const meta: Meta<typeof StandardListPage> = {
@@ -110,6 +120,33 @@ export const CreateStandardWithOrgPicker: Story = {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       "/api/v1/orgs/org-2/modules/compliance/standards",
       expect.objectContaining({ reference: "NIST-CSF", name: "NIST Cybersecurity Framework" })
+    ));
+  },
+};
+
+export const ImportStandardViaSplitButtonMenu: Story = {
+  beforeEach: () => mockStandardListApis([org()], { "org-1": [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("No compliance standards yet.")).toBeInTheDocument());
+
+    // The rarer "Import standard" path lives behind the split button's
+    // chevron, not as a second, permanently-visible button next to
+    // "New standard" (docs/ux-style-guide.md's "one door" pattern).
+    await expect(canvas.queryByRole("button", { name: "Import standard" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    const body = within(document.body);
+    await userEvent.click(body.getByRole("button", { name: "Import standard" }));
+
+    const dialog = within(document.body);
+    const file = new File([JSON.stringify({ format: "reqtrackmanager.compliance_standard.v1" })], "SOC2-export.json", {
+      type: "application/json",
+    });
+    await userEvent.upload(dialog.getByLabelText("Standard export file") as HTMLInputElement, file);
+    await userEvent.click(dialog.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
+      "/api/v1/orgs/org-1/modules/compliance/standards/import", file, undefined
     ));
   },
 };

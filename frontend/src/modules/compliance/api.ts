@@ -37,6 +37,13 @@
  * existing shape) for the new `/standards/:standardId` workspace's
  * "History" section.
  *
+ * Phase 21 (standard-level import/export) adds `exportStandard`/
+ * `importStandard` — `exportStandard` returns a `Blob` (`api.getForBlob`,
+ * the same shape `OrgComplianceDashboard.tsx`'s report downloads already
+ * use) rather than parsed JSON, since the caller only ever hands it
+ * straight to `downloadBlob`; `importStandard` uploads via `api.postFile`,
+ * the same helper `ProjectListPage.tsx`'s own project-bundle import uses.
+ *
  * Endpoints intentionally NOT covered here (out of this phase's own scope):
  * the project-scoped version-migration action (§27, `migrate-version`) —
  * deliberately not built into this phase's UI either, a flagged scope trim
@@ -71,6 +78,7 @@ import type {
   ProjectCompliance,
   ProjectComplianceRequirement,
   ProjectComplianceStatus,
+  StandardImportResult,
   StandardVersionDiff,
 } from "./types";
 
@@ -139,6 +147,18 @@ export function unarchiveStandard(orgId: string, standardId: string): Promise<Co
 
 export function getStandardHistory(orgId: string, standardId: string): Promise<ComplianceAuditEvent[]> {
   return api.get(`${base(orgId)}/standards/${standardId}/history`);
+}
+
+// --- Phase 21: standard-level import/export -----------------------------------
+
+export function exportStandard(orgId: string, standardId: string): Promise<Blob> {
+  return api.getForBlob(`${base(orgId)}/standards/${standardId}/export`);
+}
+
+/** `resolution` is only needed on a retry after a 409 (reference collision)
+ * — see `StandardImportModal.tsx`'s own docstring. */
+export function importStandard(orgId: string, file: File, resolution?: "skip" | "import_as_copy"): Promise<StandardImportResult> {
+  return api.postFile(`${base(orgId)}/standards/import`, file, resolution ? { resolution } : undefined);
 }
 
 // --- Phase 20: applicability defaults + exceptions (Compliance-Manager-only, ---

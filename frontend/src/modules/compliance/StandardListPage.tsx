@@ -29,6 +29,14 @@
  * mirroring `ProjectListPage.tsx`'s "New project" org picker exactly. Each
  * row opens `/standards/:standardId`. A "Compliance settings" link per org
  * opens `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`).
+ *
+ * Phase 21 (standard-level import/export) replaces the plain "New standard"
+ * button with a `SplitButtonTrigger`: the default action still opens
+ * `StandardFormModal` unchanged, and a new "Import standard" alternative
+ * opens `StandardImportModal` — the style guide's "one door" pattern
+ * (Principle 5/11), grouping the rarer import path behind the same
+ * trigger rather than a second, permanently-visible button competing with
+ * "New standard".
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,12 +46,14 @@ import { api, ApiError } from "../../api/client";
 import type { Organization } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardFormModal, type EditableStandardFieldValues, type StandardFormValues } from "./StandardFormModal";
-import type { ComplianceStandard } from "./types";
+import { StandardImportModal } from "./StandardImportModal";
+import type { ComplianceStandard, StandardImportResult } from "./types";
 
 interface StandardListRow extends ComplianceStandard {
   organization_name: string;
@@ -60,6 +70,7 @@ export function StandardListPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   async function reload() {
     setRows(null);
@@ -118,13 +129,35 @@ export function StandardListPage() {
     }
   }
 
+  function handleImported(result: StandardImportResult) {
+    setImporting(false);
+    if (result.skipped || !result.standard) {
+      showToast("Import skipped.");
+      return;
+    }
+    showToast(
+      result.warnings.length > 0
+        ? `Standard imported with ${result.warnings.length} warning(s) — see its history for details.`
+        : "Standard imported."
+    );
+    refreshComplianceNavVisibility();
+    void reload();
+    navigate(`/standards/${result.standard.id}`);
+  }
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0 }}>Compliance Standards</h1>
-        <button className="btn btn-primary" onClick={() => setCreating(true)} disabled={orgs === null}>
-          <Plus size={16} /> New standard
-        </button>
+        <SplitButtonTrigger
+          icon={<Plus size={16} />}
+          label="New standard"
+          onDefaultAction={() => setCreating(true)}
+          menuTitle="New standard"
+          moreOptionsLabel="More options"
+          disabled={orgs === null}
+          alternatives={[{ label: "Import standard", onSelect: () => setImporting(true) }]}
+        />
       </div>
 
       {orgs && orgs.length > 0 && (
@@ -173,6 +206,14 @@ export function StandardListPage() {
             setCreateError(null);
           }}
           onSave={handleCreate}
+        />
+      )}
+
+      {importing && (
+        <StandardImportModal
+          orgs={orgs ?? []}
+          onCancel={() => setImporting(false)}
+          onImported={handleImported}
         />
       )}
     </div>

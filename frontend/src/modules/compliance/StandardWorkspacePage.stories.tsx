@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, waitFor, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
@@ -69,6 +69,24 @@ export const Overview: Story = {
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
     // Phase 20: the applicability-default panel renders in Overview too.
     await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
+  },
+};
+
+export const ExportsStandard: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?")],
+  beforeEach: () => {
+    mockWorkspaceApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["{}"], { type: "application/json" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(api.getForBlob).toHaveBeenCalledWith(
+        `/api/v1/orgs/${STANDARD.organization_id}/modules/compliance/standards/${STANDARD.id}/export`
+      )
+    );
   },
 };
 

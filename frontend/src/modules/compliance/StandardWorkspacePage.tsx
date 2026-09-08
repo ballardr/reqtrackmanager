@@ -33,6 +33,13 @@
  * Manager self-service assignment) has no surface here at all — it lives
  * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
  * action, not a standard-governance one.
+ *
+ * Phase 21 (standard-level import/export) adds an "Export" action beside
+ * Edit/Archive — downloads this standard's own portable JSON document
+ * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
+ * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
+ * or transfer into a different organisation/deployment via
+ * `StandardListPage.tsx`'s "Import standard" entry point.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -43,6 +50,7 @@ import type { OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
@@ -65,6 +73,7 @@ export function StandardWorkspacePage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [history, setHistory] = useState<ComplianceAuditEvent[] | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const section: StandardWorkspaceSection =
     sectionParam === "versions" || sectionParam === "history" ? sectionParam : "overview";
@@ -120,6 +129,19 @@ export function StandardWorkspacePage() {
     }
   }
 
+  async function handleExport() {
+    if (!standard) return;
+    setExporting(true);
+    try {
+      const blob = await complianceApi.exportStandard(standard.organization_id, standard.id);
+      downloadBlob(blob, `${standard.reference}-export.json`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not export standard."), "error");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (notFound) {
     return <p className="text-muted">This compliance standard could not be found, or you don't have access to it.</p>;
   }
@@ -139,6 +161,9 @@ export function StandardWorkspacePage() {
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
             <div className="row">
               <button className="btn" onClick={() => setEditing(true)}>Edit</button>
+              <button className="btn" onClick={handleExport} disabled={exporting}>
+                {exporting ? "Exporting…" : "Export"}
+              </button>
               <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
                 {standard.is_archived ? "Unarchive" : "Archive"}
               </button>

@@ -82,15 +82,27 @@ gating), `app.services.audit` (mutation logging), `app.services.ordering`
 (sibling reordering), `app.services.definitions` (action-type delete-with-
 reassignment) — every one of these is reused, not reimplemented, per this
 repo's CLAUDE.md.
+
+Phase 21 (docs/compliance-module-plan.md, §29) adds two endpoints,
+`GET .../standards/{id}/export`/`POST .../standards/import` — a single
+standard as its own portable JSON document, distinct from the whole-org
+bundle `GET/POST /orgs/{id}/export`/`import` already provides. Both are
+manage-gated like every other standards-curation action here; see
+`app.modules.compliance.export`'s `export_standard_data`/`import_standard_
+data` for the actual document shape and reference-collision handling —
+this router's own job is thin, mirroring `routers.orgs`' bundle-endpoint
+shape (`Response` with a `Content-Disposition` header for the download,
+`UploadFile`/`Form` for the upload).
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -105,6 +117,7 @@ from app.modules.compliance.enums import (
     ComplianceStandardApplicabilityDefault,
     ComplianceStandardVersionStatus,
 )
+from app.modules.compliance.export import export_standard_data, import_standard_data
 from app.modules.compliance.models import (
     ComplianceActionTypeDefinition,
     ComplianceMappingRelationshipTypeDefinition,
@@ -154,6 +167,7 @@ from app.modules.compliance.schemas import (
     ProjectComplianceCreate,
     ProjectComplianceOut,
     ProjectComplianceStatusOut,
+    StandardImportResult,
     StandardVersionDiffOut,
 )
 from app.modules.compliance.service import (
@@ -178,6 +192,7 @@ from app.schemas.audit import AuditEventOut
 from app.schemas.project import MoveDirection
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.bundle_common import BundleImportWarnings, UserResolver
 from app.services.definitions import delete_definition_with_reassignment
 from app.services.downloads import filename_safe
 from app.services.ordering import move_ordered
@@ -419,6 +434,72 @@ def unarchive_standard(
     db.commit()
     db.refresh(standard)
     return standard
+
+
+# --- Phase 21: standard-level import/export -----------------------------------
+
+
+@router.get("/standards/{standard_id}/export")
+def export_standard(
+    organization_id: UUID, standard_id: UUID,
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Exports a single compliance standard (Phase 21, §29) as a portable,
+    self-contained JSON document — every version's full requirement/
+    required-action tree, plus the vocabulary/mapping subset it actually
+    references — for backup or transfer into a different organisation/
+    deployment via `POST .../standards/import`. Manage-gated like every
+    other standards-curation action on this router; unlike the whole-org
+    bundle (`GET /orgs/{id}/export`), this is a narrower, standard-scoped
+    document — see `export.py::export_standard_data`'s own docstring."""
+    standard = _get_standard_or_404(db, organization_id, standard_id)
+    data = export_standard_data(db, standard)
+    return Response(
+        content=json.dumps(data, indent=2), media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename_safe(standard.reference, fallback="standard")}-export.json"'},
+    )
+
+
+@router.post("/standards/import", response_model=StandardImportResult, status_code=status.HTTP_201_CREATED)
+async def import_standard(
+    organization_id: UUID, file: UploadFile = File(...), resolution: str | None = Form(None),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+):
+    """Imports a single compliance standard from a `GET .../standards/{id}/
+    export` document (Phase 21, §29) into this organisation, always as a
+    brand-new `ComplianceStandard` with every version forced to `DRAFT`
+    regardless of its exported status (§4/§31) — see `export.py::import_
+    standard_data`'s own docstring for the full reference-collision and
+    cross-standard-mapping-resolution behaviour.
+
+    `resolution` is only needed when this document's `reference` collides
+    with a standard this organisation already has — omit it on the first
+    attempt; a 409 response means the caller should ask the user to choose
+    `"skip"` or `"import_as_copy"` and retry with that value."""
+    raw_bytes = await file.read()
+    try:
+        data = json.loads(raw_bytes)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This file is not valid JSON.") from None
+
+    warnings = BundleImportWarnings()
+    users = UserResolver(db, current_user, warnings)
+    org = db.get(Organization, organization_id)
+    standard, skipped = import_standard_data(db, org, data, users, warnings, resolution=resolution)
+    if skipped:
+        return StandardImportResult(
+            standard=None, skipped=True,
+            warnings=["Import skipped: a standard with this reference already exists in this organisation."],
+        )
+
+    log_event(
+        db, entity_type="compliance_standard", entity_id=standard.id, action="imported",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"reference": standard.reference, "warning_count": len(warnings.messages)},
+    )
+    db.commit()
+    db.refresh(standard)
+    return StandardImportResult(standard=standard, skipped=False, warnings=warnings.messages)
 
 
 # --- Phase 20: applicability defaults, exceptions ("applies to all projects ----

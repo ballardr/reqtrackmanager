@@ -147,6 +147,21 @@ class ComplianceStandardOut(BaseModel):
     updated_at: datetime
 
 
+# --- Phase 21: standard-level import/export -----------------------------------
+
+
+class StandardImportResult(BaseModel):
+    """Outcome of `POST .../standards/import` (Phase 21) — mirrors
+    `OrgImportResult`'s shape (`schemas/org.py`) one level down, scoped to a
+    single standard. `standard` is `None` only when `skipped` is `True`
+    (the caller chose `"skip"` on a reference collision — see
+    `app.modules.compliance.export.import_standard_data`'s docstring)."""
+
+    standard: ComplianceStandardOut | None = None
+    skipped: bool = False
+    warnings: list[str] = []
+
+
 # --- Phase 20: applicability defaults, exceptions, PM assignment -------------
 
 

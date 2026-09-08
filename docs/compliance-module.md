@@ -108,6 +108,13 @@ The PDF carries the fuller, multi-section report (main table plus evidence/revie
 
 Both directions round-trip: exporting and re-importing a project or organisation reproduces its compliance data intact (see `backend/app/modules/compliance/tests/test_compliance_export_import.py`).
 
+**Standard-level import/export.** A single standard can also be exported and re-imported on its own, distinct from the whole-organisation bundle above — useful for backing up or transferring just one standard, e.g. into a different organisation or deployment:
+
+- `GET /api/v1/orgs/{organization_id}/modules/compliance/standards/{standard_id}/export` — downloads a self-contained JSON document for one standard: every version's full requirement/required-action tree, plus only the action-type/mapping-relationship-type vocabulary its own required actions and requirement mappings actually reference (not the whole organisation's vocabulary). Compliance-Manager-gated, same as every other standards-management action.
+- `POST /api/v1/orgs/{organization_id}/modules/compliance/standards/import` — creates a brand-new standard from that document in the target organisation. Every version is always re-created as `DRAFT`, regardless of its original published/retired status — an imported standard must be reviewed and re-published locally before it governs any project, never silently live. If the target organisation already has a standard with the same reference, the caller chooses `"skip"` or `"import_as_copy"` (the same two choices the whole-organisation merge already offers for the identical conflict); a requirement mapping whose other side belongs to a *different* standard not present in the target organisation is dropped, with a warning, rather than fabricated.
+
+Available from the "Compliance Standards" list page ("Import standard", grouped behind the same split-button trigger as "New standard") and a standard's own workspace ("Export").
+
 ## MCP tools
 
 The Compliance module contributes ten read-only tools to the MCP server (`mcp-server/`) an AI assistant can call — listing standards/versions/requirements, a project's overall status, non-compliant requirements, expiring evidence, pending approvals, reviews due, requirement mappings, and a version diff. See `docs/mcp-server.md`'s "Module-contributed tools" section for the full, current list with parameters — nothing that approves, decides, or otherwise mutates compliance state is ever exposed there, by the same "approval stays human-only" design as every other approval-shaped action in this codebase.

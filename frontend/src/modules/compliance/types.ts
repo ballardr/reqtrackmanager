@@ -153,6 +153,15 @@ export interface ComplianceStandard {
   updated_at: string;
 }
 
+// Compliance module Phase 21 — outcome of `POST .../standards/import`
+// (backend `StandardImportResult`). `standard` is `null` only when
+// `skipped` is true (the caller chose "skip" on a reference collision).
+export interface StandardImportResult {
+  standard: ComplianceStandard | null;
+  skipped: boolean;
+  warnings: string[];
+}
+
 // Compliance module Phase 20 — a project excepted out of a standard's
 // `applies_to_all_projects` default (backend
 // `ComplianceStandardDefaultExclusionOut`).

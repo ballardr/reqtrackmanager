@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-08 (Phase 20 complete — standard applicability defaults, exceptions, and Project-Manager assignment).
+**Last updated:** 2026-09-08 (Phase 21 complete — standard-level import/export).
 
-**Overall progress:** 20 / 26 phases complete.
+**Overall progress:** 21 / 26 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -35,14 +35,14 @@ This document is the persistent, session-resumable implementation plan for the C
 | 18 | "Compliance Standards" as a first-class, cross-org, project-like nav entity | [x] Complete |
 | 19 | "Organisation Overview" page | [x] Complete |
 | 20 | Standard applicability defaults, exceptions, and Project-Manager assignment | [x] Complete |
-| 21 | Standard-level import/export | [ ] Not started |
+| 21 | Standard-level import/export | [x] Complete |
 | 22 | Standard-level RBAC — Standards Manager / Standards Contributor roles | [ ] Not started |
 | 23 | Standard workspace UX overhaul — Overview stats, expandable Versions nav, requirement browsing parity | [ ] Not started |
 | 24 | Post-publish clarification edits + editable version descriptions | [ ] Not started |
 | 25 | Post-review UX quick fixes, round 2 | [ ] Not started |
 | 26 | Default seed standards (EN 60529, ISO 27001) | [ ] Not started |
 
-**Next phase to pick up:** Phase 21. Phases 0-19 (above this line) are the original build plus the first round of post-review UX fixes — see their own notes and `docs/decisions.md`'s "Compliance module, human review follow-ups" entry for that history; nothing about them changes here. **Phases 20-26 are new**, added 2026-09-08 from a second, direct round of human review of the shipped module (recorded in full in each phase's own spec below; Phase 20's own implementation is now also recorded in `docs/decisions.md`'s "Compliance module plan, Phase 20" entry, per this file's standing "Instructions for whoever picks up the next phase" above). Unlike 0-19, this round has **no single linear dependency chain**, but it isn't fully order-free either — Phase 20 is now done; 21 remains independent and can be picked up next; **24 depends on Phase 22** (its "only `standards_manager` may edit post-publish content" RBAC gate needs Phase 22's standard-scoped role — implement 22 first where possible, or gate Phase 24 to `compliance_manager`-only in the interim per its own sequencing note); 23 and 24 both touch `StandardWorkspacePage.tsx`/`VersionWorkspace.tsx`/`RequirementTree.tsx` and should ideally not be worked in parallel sessions; 26 should come after 24 (Phase 20's own applicability-defaults feature is already shipped, so only Phase 24's version-description feature remains a reason to sequence 26 after it) so its seed data can actually exercise both features rather than needing revisiting. See each phase's own text for specifics.
+**Next phase to pick up:** Phase 22. Phases 0-19 (above this line) are the original build plus the first round of post-review UX fixes — see their own notes and `docs/decisions.md`'s "Compliance module, human review follow-ups" entry for that history; nothing about them changes here. **Phases 20-26 are new**, added 2026-09-08 from a second, direct round of human review of the shipped module (recorded in full in each phase's own spec below; Phase 20 and Phase 21's own implementations are now also recorded in `docs/decisions.md`'s "Compliance module plan, Phase 20"/"Phase 21" entries, per this file's standing "Instructions for whoever picks up the next phase" above). Unlike 0-19, this round has **no single linear dependency chain**, but it isn't fully order-free either — Phases 20 and 21 are now done; 22 is independent and can be picked up next; **24 depends on Phase 22** (its "only `standards_manager` may edit post-publish content" RBAC gate needs Phase 22's standard-scoped role — implement 22 first where possible, or gate Phase 24 to `compliance_manager`-only in the interim per its own sequencing note); 23 and 24 both touch `StandardWorkspacePage.tsx`/`VersionWorkspace.tsx`/`RequirementTree.tsx` and should ideally not be worked in parallel sessions; 26 should come after 24 (Phase 20's own applicability-defaults feature is already shipped, so only Phase 24's version-description feature remains a reason to sequence 26 after it) so its seed data can actually exercise both features rather than needing revisiting. See each phase's own text for specifics.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -700,6 +700,15 @@ Implemented as specified, with a few judgment calls the spec above left open —
 - **Frontend**: an "Export" action on `StandardWorkspacePage.tsx`'s Overview (Compliance-Manager-gated, downloading the JSON document) and an "Import standard" entry point on `StandardListPage.tsx`, following Principle 5/11's "one door" pattern — grouped with "New standard" behind the existing create entry point's split/menu affordance rather than as a second, permanently-visible button competing with it.
 - **MCP**: none. Both directions are broad, standard-shaped mutations/reads of a kind Phase 6 already deliberately kept off the read-only tool surface for the *creation* side (only listing tools exist for standards) — importing especially stays off, matching the "never declare a wide-blast-radius mutation as a tool" precedent (Phase 9/11).
 - Tests: round-trip export→import within the same org (produces an `import_as_copy`) and across two orgs (fresh reference), dropped-cross-standard-mapping warning, RBAC boundary, imported version always lands `DRAFT` regardless of source status.
+
+#### Phase 21 notes (completed 2026-09-08)
+
+Implemented as specified, with a few decisions the spec above left implicit — recorded here so a future session doesn't need to re-derive them:
+- The single-endpoint-plus-409-retry conflict flow (rather than the whole-org bundle's two-step `import/preview` + `import/merge`) is a deliberate simplification, not a lesser version of the same guarantee: since exactly one collision is possible (this standard's own `reference`), a `None` resolution 409s with a human-readable message and the frontend (`StandardImportModal.tsx`) retries once with the caller's chosen `resolution` — no separate preview call, no `resolutions` dict keyed by conflict id.
+- A requirement mapping whose other side belongs to a *different* standard is exported with an `external` `(standard_reference, version_label, requirement_key)` triple rather than a local `ref`, and `import_standard_data` actually attempts to resolve that triple against the target organisation's own existing standards (not just drop it unconditionally) — this wasn't strictly required by the spec's own wording ("dropped with a warning... rather than trying to resolve"), but it's a strict improvement with no added risk (a resolvable match only exists when the target organisation genuinely already has the same standard/version/requirement by name, which is exactly the case where re-attaching the mapping is correct), and it's covered by its own test in both directions.
+- No new model, column, or migration — this phase is purely a document format plus two endpoints over the existing Phase 5/6/11 schema, so there was nothing for `test_schema_migrations_match_models.py` to check here.
+- An initial combined test run produced a wall of unrelated `401 Could not validate credentials` failures across multiple pre-existing compliance test files — traced to two overlapping `pytest` invocations (a backgrounded run plus a second, foreground one started before the first had finished) racing the shared test database's session-scoped schema-wipe/bootstrap fixture, the exact "recurrence #6" pattern this repo's own prior sessions already documented. Re-running once, sequentially, came back fully clean (143/143). Recorded here as a reminder for whoever picks up Phase 22: never start a second `pytest` invocation while an earlier one (including a backgrounded one) is still running against the same test database.
+- See `docs/decisions.md`'s "Compliance module plan, Phase 21" entry for the full account.
 
 ### Phase 22 — Standard-Level RBAC: Standards Manager / Standards Contributor Roles
 

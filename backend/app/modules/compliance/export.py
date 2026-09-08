@@ -43,6 +43,15 @@ action_key`'s `(reference, name)`/`name` matching keys), never a raw
 database id — mirroring every other cross-reference in this bundle format
 (`org_export`/`project_export`'s own established convention).
 
+Phase 21 (docs/compliance-module-plan.md, §29) adds a third, narrower level:
+`export_standard_data`/`import_standard_data` — a single `ComplianceStandard`
+as its own portable JSON document (`GET .../standards/{id}/export`/
+`POST .../standards/import` on `router.py`), distinct from the whole-org
+bundle above. See those two functions' own docstrings for the full design
+(the `STANDARD_EXPORT_FORMAT` document shape, `" (imported)"` reference-
+collision handling, and how a cross-standard requirement mapping's
+"external" side is recorded/resolved).
+
 External dependencies: `app.services.bundle_common` (`UserResolver`/
 `BundleImportWarnings`/`import_bundled_file`) directly, the same way
 `project_router.py` already calls `app.services.files.upload_file` directly
@@ -57,6 +66,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -595,6 +605,413 @@ def import_org_data(
     _import_compliance_vocab(db, org, data)
     requirement_id_by_ref = _import_compliance_standards(db, org, data, users, warnings, resolutions=resolutions)
     _import_compliance_requirement_mappings(db, org, data, users, requirement_id_by_ref, warnings)
+
+
+# --- Phase 21: standard-level import/export -----------------------------------
+#
+# A narrower sibling to `export_org_data`/`import_org_data` above: a single
+# `ComplianceStandard` (with every version's full requirement/required-
+# action tree) as its own portable, self-contained JSON document — for
+# backing up or transferring just one standard, rather than an entire
+# organisation. See docs/compliance-module-plan.md's Phase 21 spec for the
+# full design; the short version is in each function's own docstring below.
+
+STANDARD_EXPORT_FORMAT = "reqtrackmanager.compliance_standard.v1"
+
+
+def _mapping_side_json(
+    db: Session, requirement_id: UUID, requirement_ref_by_id: dict[UUID, str]
+) -> dict[str, Any]:
+    """One side (`from`/`to`) of a `ComplianceRequirementMapping` entry in
+    `export_standard_data`'s output — a local `ref` when `requirement_id`
+    belongs to the standard being exported, else an `external` triple
+    (`standard_reference`, `version_label`, `requirement_key`) that
+    `import_standard_data` attempts to resolve against whatever the
+    *target* organisation already has (see that function's own docstring)."""
+    ref = requirement_ref_by_id.get(requirement_id)
+    if ref is not None:
+        return {"ref": ref, "external": None}
+    requirement = db.get(ComplianceRequirement, requirement_id)
+    version = db.get(ComplianceStandardVersion, requirement.standard_version_id)
+    other_standard = db.get(ComplianceStandard, version.standard_id)
+    return {
+        "ref": None,
+        "external": {
+            "standard_reference": other_standard.reference, "version_label": version.version_label,
+            "requirement_key": _requirement_key(requirement),
+        },
+    }
+
+
+def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str, Any]:
+    """Exports a single `ComplianceStandard` (Phase 21, §29) as a portable,
+    self-contained JSON document distinct from `export_org_data`'s whole-
+    organisation bundle — every version's full requirement/required-action
+    tree, plus only the subset of the organisation's action-type/mapping-
+    relationship-type vocabularies actually referenced by this standard's
+    own required actions/requirement mappings (not the whole
+    organisation's vocabulary).
+
+    Reuses `export_org_data`'s exact synthetic per-requirement `ref`
+    convention (`"<standard reference>::v<version number>::<n>"`,
+    `parent_ref`/`cloned_from_ref` resolved the same way) and its
+    `compliance_action_types`/`compliance_mapping_relationship_types`
+    top-level key names, so `import_standard_data` can hand this
+    document's own `data` straight to `_import_compliance_vocab` unchanged
+    — "reuse `export.py`'s existing portable-key convention wholesale" per
+    this phase's own spec.
+
+    A requirement mapping (§19) touching this standard is always included,
+    even when its *other* side belongs to a different standard — that side
+    is recorded via `_mapping_side_json`'s `external` triple rather than a
+    local `ref` (which only covers requirements this document itself
+    carries); see `import_standard_data`'s own docstring for how that's
+    resolved (or dropped with a warning) on the way back in.
+    """
+    requirement_ref_by_id: dict[UUID, str] = {}
+    per_version: list[
+        tuple[ComplianceStandardVersion, list[ComplianceRequirement], dict[UUID, list[ComplianceRequiredAction]]]
+    ] = []
+    all_required_actions: list[ComplianceRequiredAction] = []
+    user_ids: set[UUID | None] = {standard.owner_id, standard.creator_id, standard.archived_by}
+
+    for version in standard.versions:
+        user_ids |= {version.created_by, version.published_by, version.retired_by}
+        requirements = list(
+            db.scalars(select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)).all()
+        )
+        for i, r in enumerate(requirements):
+            requirement_ref_by_id[r.id] = f"{standard.reference}::v{version.version_number}::{i + 1}"
+            user_ids.add(r.created_by)
+        required_actions_by_requirement: dict[UUID, list[ComplianceRequiredAction]] = {}
+        if requirements:
+            actions = list(
+                db.scalars(
+                    select(ComplianceRequiredAction).where(
+                        ComplianceRequiredAction.requirement_id.in_([r.id for r in requirements])
+                    )
+                ).all()
+            )
+            all_required_actions.extend(actions)
+            for a in actions:
+                user_ids.add(a.created_by)
+                required_actions_by_requirement.setdefault(a.requirement_id, []).append(a)
+        per_version.append((version, requirements, required_actions_by_requirement))
+
+    # Only the action types this standard's own required actions actually
+    # use, resolved by name after the loop above (mirrors `export_org_
+    # data`'s own `action_type_name_by_id`, scoped down) — "not the whole
+    # org's vocabulary" per this phase's own spec.
+    action_type_ids = {a.action_type_id for a in all_required_actions}
+    action_types_used = (
+        list(db.scalars(select(ComplianceActionTypeDefinition).where(ComplianceActionTypeDefinition.id.in_(action_type_ids))))
+        if action_type_ids else []
+    )
+    action_type_name_by_id = {t.id: t.name for t in action_types_used}
+
+    versions_json = []
+    for version, requirements, required_actions_by_requirement in per_version:
+        requirements_json = []
+        for r in requirements:
+            requirements_json.append({
+                "ref": requirement_ref_by_id[r.id],
+                "parent_ref": requirement_ref_by_id.get(r.parent_requirement_id) if r.parent_requirement_id else None,
+                "cloned_from_ref": (
+                    requirement_ref_by_id.get(r.cloned_from_requirement_id) if r.cloned_from_requirement_id else None
+                ),
+                "reference": r.reference, "name": r.name, "description": r.description, "reasoning": r.reasoning,
+                "sort_order": r.sort_order, "_created_by": r.created_by,
+                "required_actions": [
+                    {
+                        "action_type_name": action_type_name_by_id.get(a.action_type_id, ""),
+                        "name": a.name, "description": a.description, "is_mandatory": a.is_mandatory,
+                        "sort_order": a.sort_order, "_created_by": a.created_by,
+                    }
+                    for a in sorted(required_actions_by_requirement.get(r.id, []), key=lambda a: a.sort_order)
+                ],
+            })
+        versions_json.append({
+            "version_number": version.version_number, "version_label": version.version_label,
+            "status": version.status.value, "effective_date": _j(version.effective_date),
+            "change_note": version.change_note, "_created_by": version.created_by,
+            "published_at": _j(version.published_at), "_published_by": version.published_by,
+            "retired_at": _j(version.retired_at), "_retired_by": version.retired_by,
+            "requirements": requirements_json,
+        })
+
+    mappings = (
+        list(
+            db.scalars(
+                select(ComplianceRequirementMapping).where(
+                    ComplianceRequirementMapping.organization_id == standard.organization_id,
+                    (
+                        ComplianceRequirementMapping.from_requirement_id.in_(list(requirement_ref_by_id))
+                        | ComplianceRequirementMapping.to_requirement_id.in_(list(requirement_ref_by_id))
+                    ),
+                )
+            )
+        )
+        if requirement_ref_by_id else []
+    )
+    relationship_type_ids = {m.relationship_type_id for m in mappings}
+    relationship_types_used = (
+        list(
+            db.scalars(
+                select(ComplianceMappingRelationshipTypeDefinition).where(
+                    ComplianceMappingRelationshipTypeDefinition.id.in_(relationship_type_ids)
+                )
+            )
+        )
+        if relationship_type_ids else []
+    )
+    relationship_type_name_by_id = {t.id: t.name for t in relationship_types_used}
+    for m in mappings:
+        user_ids |= {m.created_by, m.archived_by}
+    mappings_json = [
+        {
+            "from": _mapping_side_json(db, m.from_requirement_id, requirement_ref_by_id),
+            "to": _mapping_side_json(db, m.to_requirement_id, requirement_ref_by_id),
+            "relationship_type_name": relationship_type_name_by_id.get(m.relationship_type_id, ""),
+            "notes": m.notes, "_created_by": m.created_by, "is_archived": m.is_archived,
+            "archived_at": _j(m.archived_at), "_archived_by": m.archived_by,
+        }
+        for m in mappings
+    ]
+
+    user_ids.discard(None)
+    email_by_id = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
+
+    def email(user_id: UUID | None) -> str | None:
+        return email_by_id.get(user_id) if user_id else None
+
+    for version_json in versions_json:
+        version_json["created_by_email"] = email(version_json.pop("_created_by"))
+        version_json["published_by_email"] = email(version_json.pop("_published_by"))
+        version_json["retired_by_email"] = email(version_json.pop("_retired_by"))
+        for requirement_json in version_json["requirements"]:
+            requirement_json["created_by_email"] = email(requirement_json.pop("_created_by"))
+            for action_json in requirement_json["required_actions"]:
+                action_json["created_by_email"] = email(action_json.pop("_created_by"))
+    for mapping_json in mappings_json:
+        mapping_json["created_by_email"] = email(mapping_json.pop("_created_by"))
+        mapping_json["archived_by_email"] = email(mapping_json.pop("_archived_by"))
+
+    return {
+        "format": STANDARD_EXPORT_FORMAT,
+        "exported_at": _j(datetime.now(UTC)),
+        "compliance_action_types": [{"name": t.name, "sort_order": t.sort_order} for t in action_types_used],
+        "compliance_mapping_relationship_types": [
+            {"name": t.name, "sort_order": t.sort_order, "implies_equivalence": t.implies_equivalence}
+            for t in relationship_types_used
+        ],
+        "standard": {
+            "reference": standard.reference, "name": standard.name, "description": standard.description,
+            "issuing_organisation": standard.issuing_organisation,
+            "owner_email": email(standard.owner_id), "creator_email": email(standard.creator_id),
+            "is_archived": standard.is_archived, "archived_at": _j(standard.archived_at),
+            "archived_by_email": email(standard.archived_by),
+            "versions": versions_json,
+        },
+        "requirement_mappings": mappings_json,
+    }
+
+
+def _resolve_mapping_side(
+    db: Session, org: Organization, side: dict[str, Any], requirement_id_by_ref: dict[str, UUID]
+) -> UUID | None:
+    """Resolves one `_mapping_side_json`-shaped side of a requirement
+    mapping during import — a local `ref` against this import's own
+    `requirement_id_by_ref`, or an `external` triple against `org`'s
+    existing standards/versions/requirements by name (see `import_standard_
+    data`'s own docstring for why an external side may simply not resolve)."""
+    if side.get("ref"):
+        return requirement_id_by_ref.get(side["ref"])
+    external = side.get("external")
+    if not external:
+        return None
+    target_standard = db.scalar(
+        select(ComplianceStandard).where(
+            ComplianceStandard.organization_id == org.id, ComplianceStandard.reference == external["standard_reference"]
+        )
+    )
+    if target_standard is None:
+        return None
+    target_version = db.scalar(
+        select(ComplianceStandardVersion).where(
+            ComplianceStandardVersion.standard_id == target_standard.id,
+            ComplianceStandardVersion.version_label == external["version_label"],
+        )
+    )
+    if target_version is None:
+        return None
+    for r in db.scalars(select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == target_version.id)):
+        if _requirement_key(r) == external["requirement_key"]:
+            return r.id
+    return None
+
+
+def import_standard_data(
+    db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
+    *, resolution: str | None,
+) -> tuple[ComplianceStandard | None, bool]:
+    """Creates a single `ComplianceStandard` — with every version's full
+    requirement/required-action tree, always re-created as `DRAFT`
+    regardless of the exported version's own status — from an
+    `export_standard_data` document (Phase 21, §29), in `org`. §4/§31: an
+    imported standard must be reviewed and re-published locally before it
+    governs any project, never silently live — this is the one deliberate
+    departure from the export's own recorded `status`/`published_*`/
+    `retired_*` fields; every other field is carried over as exported.
+
+    Reference-collision handling mirrors the whole-org merge precedent
+    (`ORG_MERGE_RESOLUTION_CHOICES`, `_import_compliance_standards`): if
+    `org` already has a standard whose `reference` matches (case-
+    insensitively), `resolution` must be `"skip"` (nothing is created;
+    returns `(None, True)`) or `"import_as_copy"` (the reference gets the
+    same `" (imported)"` suffix `_import_compliance_standards` already uses
+    for the identical collision one level up). A `None` resolution with a
+    real collision raises 409 so the caller can ask the user which to
+    choose — this module's own narrower alternative to the full org-bundle
+    preview/merge two-step, appropriate here since there is only ever one
+    possible collision (this standard's own reference), unlike an org
+    bundle's many.
+
+    A `requirement_mappings` entry (§19) whose `from`/`to` side is
+    `external` (pointing at a requirement outside this document, i.e. in a
+    *different* standard) is resolved against `org`'s own existing
+    standards by `(standard_reference, version_label, requirement_key)` —
+    dropped with a warning if no match exists there, since the target
+    organisation/deployment may not have that other standard at all
+    (mirrors how `import_project_data` already drops an unresolvable
+    standard reference with a warning).
+    """
+    if data.get("format") != STANDARD_EXPORT_FORMAT:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This file is not a valid compliance standard export.")
+
+    standard_data = data["standard"]
+    reference = standard_data["reference"]
+    existing_by_reference = {
+        s.reference.strip().lower(): s
+        for s in db.scalars(select(ComplianceStandard).where(ComplianceStandard.organization_id == org.id))
+    }
+    if reference.strip().lower() in existing_by_reference:
+        if resolution is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"A standard with reference '{reference}' already exists in this organisation. "
+                "Choose whether to skip this import or import it as a copy.",
+            )
+        if resolution == "skip":
+            return None, True
+        if resolution != "import_as_copy":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "resolution must be 'skip' or 'import_as_copy'.")
+        reference = f"{reference} (imported)"
+
+    _import_compliance_vocab(db, org, data)
+    action_type_id_by_name = {
+        t.name.strip().lower(): t.id
+        for t in db.scalars(select(ComplianceActionTypeDefinition).where(ComplianceActionTypeDefinition.organization_id == org.id))
+    }
+    relationship_type_id_by_name = {
+        t.name.strip().lower(): t.id
+        for t in db.scalars(
+            select(ComplianceMappingRelationshipTypeDefinition).where(
+                ComplianceMappingRelationshipTypeDefinition.organization_id == org.id
+            )
+        )
+    }
+
+    standard = ComplianceStandard(
+        organization_id=org.id, reference=reference, name=standard_data["name"],
+        description=standard_data.get("description", ""), issuing_organisation=standard_data.get("issuing_organisation"),
+        owner_id=users.resolve(standard_data.get("owner_email"), required=True, context=f"Compliance standard {reference} owner"),
+        creator_id=users.resolve(standard_data.get("creator_email"), required=True, context=f"Compliance standard {reference} creator"),
+        is_archived=standard_data.get("is_archived", False), archived_at=_dt(standard_data.get("archived_at")),
+        archived_by=users.resolve(standard_data.get("archived_by_email"), required=False, context=f"Compliance standard {reference} archiver"),
+    )
+    db.add(standard)
+    db.flush()
+
+    requirement_id_by_ref: dict[str, UUID] = {}
+    pending_parent_links: list[tuple[UUID, str]] = []
+    pending_clone_links: list[tuple[UUID, str]] = []
+
+    for v in standard_data.get("versions", []):
+        version = ComplianceStandardVersion(
+            standard_id=standard.id, version_number=v["version_number"], version_label=v["version_label"],
+            status=ComplianceStandardVersionStatus.DRAFT, effective_date=_date(v.get("effective_date")),
+            change_note=v.get("change_note", ""),
+            created_by=users.resolve(
+                v.get("created_by_email"), required=True, context=f"Standard {reference} v{v['version_label']} author"
+            ),
+            published_at=None, published_by=None, retired_at=None, retired_by=None,
+        )
+        db.add(version)
+        db.flush()
+
+        for r in v.get("requirements", []):
+            requirement = ComplianceRequirement(
+                standard_version_id=version.id, parent_requirement_id=None,
+                reference=r.get("reference"), name=r["name"], description=r.get("description", ""),
+                reasoning=r.get("reasoning", ""), sort_order=r.get("sort_order", 0),
+                created_by=users.resolve(r.get("created_by_email"), required=True, context=f"Requirement {r['ref']} author"),
+            )
+            db.add(requirement)
+            db.flush()
+            requirement_id_by_ref[r["ref"]] = requirement.id
+            if r.get("parent_ref"):
+                pending_parent_links.append((requirement.id, r["parent_ref"]))
+            if r.get("cloned_from_ref"):
+                pending_clone_links.append((requirement.id, r["cloned_from_ref"]))
+
+            for a in r.get("required_actions", []):
+                action_type_id = action_type_id_by_name.get((a.get("action_type_name") or "").strip().lower())
+                if action_type_id is None:
+                    warnings.add(
+                        f"Required action '{a['name']}' on requirement {r.get('reference') or r['name']!r} "
+                        f"references an action type ({a.get('action_type_name')!r}) that doesn't exist in the "
+                        "target organisation and was skipped."
+                    )
+                    continue
+                db.add(ComplianceRequiredAction(
+                    requirement_id=requirement.id, action_type_id=action_type_id, name=a["name"],
+                    description=a.get("description", ""), is_mandatory=a.get("is_mandatory", True),
+                    sort_order=a.get("sort_order", 0),
+                    created_by=users.resolve(
+                        a.get("created_by_email"), required=True, context=f"Required action '{a['name']}' author"
+                    ),
+                ))
+
+    # Second pass — see `_import_compliance_standards`'s identical comment
+    # one level up for why this can't be a single pass.
+    for requirement_id, parent_ref in pending_parent_links:
+        parent_id = requirement_id_by_ref.get(parent_ref)
+        if parent_id is not None:
+            db.get(ComplianceRequirement, requirement_id).parent_requirement_id = parent_id
+    for requirement_id, cloned_from_ref in pending_clone_links:
+        cloned_from_id = requirement_id_by_ref.get(cloned_from_ref)
+        if cloned_from_id is not None:
+            db.get(ComplianceRequirement, requirement_id).cloned_from_requirement_id = cloned_from_id
+
+    for m in data.get("requirement_mappings", []):
+        from_id = _resolve_mapping_side(db, org, m["from"], requirement_id_by_ref)
+        to_id = _resolve_mapping_side(db, org, m["to"], requirement_id_by_ref)
+        relationship_type_id = relationship_type_id_by_name.get((m.get("relationship_type_name") or "").strip().lower())
+        if from_id is None or to_id is None or relationship_type_id is None or from_id == to_id:
+            warnings.add(
+                f"A compliance requirement mapping ({m.get('relationship_type_name')!r}) could not be fully "
+                "resolved in the target organisation and was skipped."
+            )
+            continue
+        db.add(ComplianceRequirementMapping(
+            organization_id=org.id, from_requirement_id=from_id, to_requirement_id=to_id,
+            relationship_type_id=relationship_type_id, notes=m.get("notes", ""),
+            created_by=users.resolve(m.get("created_by_email"), required=True, context="Compliance requirement mapping creator"),
+            is_archived=m.get("is_archived", False), archived_at=_dt(m.get("archived_at")),
+            archived_by=users.resolve(m.get("archived_by_email"), required=False, context="Compliance requirement mapping archiver"),
+        ))
+
+    return standard, False
 
 
 def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[UUID, FileAsset]]:
