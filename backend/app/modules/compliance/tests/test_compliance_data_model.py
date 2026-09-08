@@ -110,7 +110,7 @@ def test_standard_version_requirement_hierarchy_and_required_action_roundtrip(cl
         db.add(version)
         db.flush()
 
-        action_type = ComplianceActionTypeDefinition(organization_id=org_uuid, name="Test")
+        action_type = ComplianceActionTypeDefinition(organization_id=org_uuid, name="Verification")
         db.add(action_type)
         db.flush()
 
@@ -181,7 +181,7 @@ def test_standard_version_requirement_hierarchy_and_required_action_roundtrip(cl
             ComplianceActionTypeDefinition, reloaded_action.action_type_id
         )
         assert reloaded_action_type.organization_id == org_uuid
-        assert reloaded_action_type.name == "Test"
+        assert reloaded_action_type.name == "Verification"
     finally:
         db.close()
 

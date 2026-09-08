@@ -260,12 +260,23 @@ function StandardFormModal({
 }: {
   initial?: ComplianceStandard;
   onCancel: () => void;
-  onSave: (values: { reference: string; name: string; description: string; issuing_organisation: string | null }) => void;
+  onSave: (values: {
+    reference: string;
+    name: string;
+    description: string;
+    issuing_organisation: string | null;
+    initial_version_label: string;
+    initial_version_effective_date: string | null;
+    initial_version_change_note: string;
+  }) => void;
 }) {
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [issuingOrganisation, setIssuingOrganisation] = useState(initial?.issuing_organisation ?? "");
+  const [versionLabel, setVersionLabel] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
+  const [changeNote, setChangeNote] = useState("");
 
   return (
     <Modal title={initial ? "Edit standard" : "New standard"} onClose={onCancel}>
@@ -288,12 +299,39 @@ function StandardFormModal({
           <span>Issuing organisation</span>
           <input className="input" value={issuingOrganisation} onChange={(e) => setIssuingOrganisation(e.target.value)} />
         </label>
+        {!initial && (
+          <>
+            <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              <span>Initial version label</span>
+              <input className="input" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. 1.0" aria-label="Initial version label" />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              <span>Effective date</span>
+              <input className="input" type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
+            </label>
+            <label className="stack" style={{ gap: "0.25rem" }}>
+              <span>Change note</span>
+              <textarea className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} rows={2} />
+            </label>
+          </>
+        )}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>
           <button
             className="btn btn-primary"
-            disabled={!name.trim() || (!initial && !reference.trim())}
-            onClick={() => onSave({ reference, name, description, issuing_organisation: issuingOrganisation || null })}
+            disabled={!name.trim() || (!initial && (!reference.trim() || !versionLabel.trim()))}
+            onClick={() =>
+              onSave({
+                reference,
+                name,
+                description,
+                issuing_organisation: issuingOrganisation || null,
+                initial_version_label: versionLabel,
+                initial_version_effective_date: effectiveDate || null,
+                initial_version_change_note: changeNote,
+              })
+            }
           >
             Save
           </button>

@@ -51,6 +51,12 @@ def run_bootstrap(db: Session) -> None:
             db.flush()
             seed_project_statuses(db, org.id)
             seed_link_types(db, org.id)
+            # Local import: keeps this core bootstrap path from taking a
+            # module-level dependency on the compliance module — same
+            # reasoning as `routers.orgs.create_organization`.
+            from app.modules.compliance.service import seed_compliance_action_types
+
+            seed_compliance_action_types(db, org.id)
             db.add(UserOrgRole(user_id=admin.id, organization_id=org.id, role=OrgRole.ORG_ADMIN))
 
     db.commit()

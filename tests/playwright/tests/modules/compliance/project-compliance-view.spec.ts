@@ -45,17 +45,18 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Compliance");
 
+    // A standard's mandatory first (draft) version is now created alongside
+    // the standard itself in the same "New standard" dialog — a standard is
+    // never left with zero versions.
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "New standard" }).click();
     await page.getByLabel("Standard reference").fill(reference);
     await page.getByLabel("Standard name").fill(standardName);
+    await page.getByLabel("Initial version label").fill("v1.0");
     await page.getByRole("dialog", { name: "New standard" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: reference })).toBeVisible();
 
     await page.getByRole("button", { name: reference }).click();
-    await page.getByRole("button", { name: "New version" }).click();
-    await page.getByLabel("Version label").fill("v1.0");
-    await page.getByRole("dialog", { name: "New version" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
 
     await page.getByRole("button", { name: "v1.0" }).click();
@@ -71,7 +72,12 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     // --- Switch to the project's own Compliance nav entry (Phase 3 Tier A routing).
     await page.goto("/projects");
     await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
-    await page.getByRole("link", { name: "Compliance" }).click();
+    // exact: true — the project overview page's own compliance summary
+    // tiles (Phase 17d) render as cards whose accessible name contains
+    // "Compliance" too (e.g. a standard's name), which would otherwise
+    // collide with this nav-rail link under substring matching once any
+    // standard has ever been assigned to this project.
+    await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
     // --- Assign the standard to this project.
@@ -81,6 +87,15 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await assignDialog.getByLabel("Standard version").selectOption({ label: "v1.0" });
     await assignDialog.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
+
+    // --- Phase 17d: the project overview page now shows a compliance
+    //     summary tile for this standard, linking straight back here.
+    await page.getByRole("link", { name: "Overview", exact: true }).click();
+    await expect(page).toHaveURL(/\/projects\/[^/]+$/);
+    const complianceTile = page.getByRole("link", { name: new RegExp(standardName) });
+    await expect(complianceTile).toBeVisible();
+    await complianceTile.click();
+    await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
     // --- Phase 15: download the project's own compliance report, PDF and CSV.
     const pdfDownloadPromise = page.waitForEvent("download");

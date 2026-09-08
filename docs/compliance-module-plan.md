@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for the C
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-07 (Phase 15 complete — plan complete).
+**Last updated:** 2026-09-08 (Phase 17 complete).
 
-**Overall progress:** 16 / 16 phases complete.
+**Overall progress:** 17 / 19 phases complete (18-19 not started).
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -30,8 +30,12 @@ This document is the persistent, session-resumable implementation plan for the C
 | 13 | Frontend — Project Compliance view | [x] Complete |
 | 14 | Frontend — Org Compliance view + Dashboard | [x] Complete |
 | 15 | Reporting, export, seed data, docs close-out | [x] Complete |
+| 16 | Hardening pass | [x] Complete |
+| 17 | Post-review UX quick fixes | [x] Complete |
+| 18 | "Compliance Standards" as a first-class, cross-org, project-like nav entity | [ ] Not started |
+| 19 | "Organisation Overview" page | [ ] Not started |
 
-**Next phase to pick up:** None — plan complete. See this phase's own "Phase 15 notes" subsection below for the two real gaps found and fixed during the §32 acceptance-criteria walk (evidence revalidation history/linkage not previously round-tripping through project export/import; no report existed at all), and `docs/decisions.md`'s "Compliance module plan, Phase 15" entry for the full account.
+**Next phase to pick up:** Phase 18. Phase 17's five sub-items are all done (see its own checklist below for exactly what each one changed). Phases 18 and 19 are fully specified below but not started. Do Phase 18 before 19 (19's nav-visibility reasoning references Phase 18's new endpoint, though 19's own tab is deliberately *not* gated by it — see Phase 19's spec). For history: Phases 0-16 above were the original build; 17-19 originate from `docs/decisions.md`'s "Compliance module, human review follow-ups" entry — read that first for the full reasoning behind each design choice below (why Standards get a nav-rail section but Action Types/Mapping Types get a `ResourceMenu`, why Organisation Overview's stats are visibility-scoped except for org admins, etc.) rather than re-deriving it.
 
 **Open decisions carried into implementation (none deferred to "later" — these are settled, listed here so they aren't re-litigated):**
 - Two-tier module gating (server entitlement × org enablement), default-open policy, configurable per deployment — settled.
@@ -561,6 +565,65 @@ Implemented as specified, with the judgment calls below recorded so a future ses
 - `docs/mcp-server.md` needed no edit — its existing ten-tool table was checked against `module.py`'s live `mcp_tools` tuple and found already fully accurate (this section's own list above is itself slightly stale, e.g. it names only seven of the ten actual tools — `docs/mcp-server.md` itself, not this plan doc, is the up-to-date source).
 - Two real gaps were found during the §32 walk and fixed as part of this phase (not left as separately-tracked follow-ups): evidence revalidation history and requirement/required-action evidence linkage had no representation in the project export bundle at all before this phase (Compliance had no export integration yet, so there was nothing to have carried it before); and no compliance report existed at all, which is this phase's own core deliverable rather than a pre-existing defect.
 - A small, proportionate frontend addition ("Download PDF/CSV report" buttons on `ProjectCompliancePage.tsx`/`OrgComplianceDashboard.tsx`) was added alongside the two new backend endpoints, with matching Storybook stories and Playwright coverage — not explicitly called for above, but the standing UI-feature testing rule applies once a UI entry point exists, and a report endpoint with no UI entry point anywhere in the product would have been a real, avoidable gap.
+
+### Phase 16 — Hardening Pass
+
+**Satisfies:** this repo's standing SOC 2 identify→verify→remediate practice for security-sensitive changes (`change-management-and-secure-development-policy.md`).
+
+- A deep identify→verify→remediate pass across the whole `feature/complience-module` branch, prompted by direct user request ("please do a hardening pass" / "now please do a deeper hardening pass") rather than a numbered spec item.
+- Full account, including every finding and fix, is in `docs/decisions.md`'s **"Deep hardening pass on `feature/complience-module`"** entry — read that, not a summary here, since this phase produced no separate spec to restate.
+
+---
+
+### Phase 17 — Post-Review UX Quick Fixes
+
+**Satisfies:** the first human walkthrough of the shipped module (`docs/decisions.md`'s "Compliance module, human review follow-ups" entry has the full reasoning behind every choice below — read it before picking this phase back up, not just this checklist).
+
+Five independent sub-items, all now complete:
+
+- **17a.** [x] Done. `.side-grid` DOM-order bug (`FilterPanel` must be the *second* child of `.side-grid`, per `theme.css:468-477`/`685-693`) fixed in `frontend/src/modules/compliance/EvidencePanel.tsx`. The same bug in `StandardsPanel.tsx`/`OrgComplianceStandardsPanel.tsx` is deliberately left alone here — those two files are wholesale-relocated by Phases 18/19, and get the ordering fixed as part of that move rather than fixed then immediately deleted.
+- **17b.** [x] Done (implemented by a delegated background agent, verified). Combined create-standard + first-version into one dialog/transaction: `ComplianceStandardCreate` gained `initial_version_label`/`initial_version_effective_date`/`initial_version_change_note`; `router.py::create_standard` creates both the standard and its version 1 in one commit; `StandardFormModal` collects all of it in one form. `VersionFormModal` (version 2+, with its clone-from picker) untouched. All affected backend test call sites across `test_compliance_standards_api.py`/`test_compliance_export_import.py`/`test_project_compliance_api.py`/`test_compliance_mapping_and_version_impact.py` and both seed scripts updated; all 3 compliance Playwright specs' "New standard" → "New version" two-step flow merged into the single dialog.
+- **17c.** [x] Done. `DEFAULT_COMPLIANCE_ACTION_TYPES = ["Document Review", "Test"]` + `seed_compliance_action_types(db, organization_id)` added to `app/modules/compliance/service.py`; called from both `routers/orgs.py::create_organization` and `services/bootstrap.py`'s default-org creation (the test suite's shared `org_id` fixture goes through the latter, confirmed by tracing it). Migration `0032_default_compliance_action_types.py` backfills every pre-existing org. `seed_demo_data.py`'s two `create_compliance_action_type(..., "Document Review"/"Test")` calls replaced with a lookup of the now-default rows; the now-unused helper deleted. `seed_e2e_dataset.py` confirmed to need no change. Fallout reconciled: every org now starting with 2 pre-existing action types broke `sort_order` and name-collision (`"An action type with this name already exists"`) assumptions across most of the compliance test suite — root-caused to two shared test helpers whose hardcoded/default fixture name was literally `"Test"` (`_create_action_type`'s own default in `test_compliance_standards_api.py`, and an explicit override in `test_project_compliance_api.py::_setup_published_standard_with_tree`, imported by 7 other test files) plus one ORM-direct literal in `test_compliance_data_model.py` — all three renamed to `"Verification"`, plus one explicit `sort_order` assertion in `test_full_crud_happy_path` corrected from 0 to 2.
+- **17d.** [x] Done. Compliance summary tile(s) added to `ProjectOverviewPage.tsx`'s existing `tiles` array (its "stat tile → click navigates to a filtered view" convention): `useProjectEnabledModules(projectId)` gates the fetch, `getProjectComplianceStatus(projectId)` (`modules/compliance/api.ts`, already existed) supplies one tile per assigned standard, empty when compliance isn't enabled or nothing's assigned. `ProjectOverviewPage.stories.tsx` gained a `WithCompliance` story plus an `/enabled-modules` mock branch on the two existing stories that didn't have one. Playwright: `project-compliance-view.spec.ts` extended (after the assign-standard step) to visit the project overview page, assert the tile, and click through back to the compliance page — the same spec's own locators already needed (and got, from 17b's agent) an `exact: true` fix for "Compliance" once this tile's own accessible name could contain that substring too.
+- **17e.** [x] Done. Gated the project-level Compliance nav link/route on the org having ≥1 `ComplianceStandardVersion` with `status == PUBLISHED` (`routers/projects.py::list_project_enabled_modules`, special-cased on `definition.key == "compliance"`). Correction to this phase's own original spec: the existing mechanism doesn't omit the *nav entry*, only its `frontend_manifest` (the `ModuleNavEntryOut` row for a disabled/gated module still comes back, just with `frontend_manifest: null` — confirmed against `test_module_frontend_integration.py`'s identical Tier-B-rejection precedent) — `Layout.tsx`'s `enabledModules.map(...)` already only renders a `NavRailLink` when `frontend_manifest` is truthy, so behaviour is exactly as intended. New test: `app/modules/compliance/tests/test_compliance_nav_gating.py`.
+
+**Verified** (2026-09-08): full backend suite (`tests/` + `app/modules/compliance/tests/`) — 968 passed, 14 failed, every one of the 14 confirmed to be the same pre-existing, host-level-only `aiosmtplib`/mailhog artifact this branch's own Phase 16 hardening-pass entry already documented (unrelated to this branch, reproduced identically with Phase 17's changes absent). Compliance suite alone: 110 passed. Frontend `tsc --noEmit` and `eslint` clean on every changed file. All 5 relevant Playwright specs (`tests/modules/compliance/*.spec.ts` x3, `org-admin-modules.spec.ts`, `module-contributed-roles.spec.ts`) pass individually against containers rebuilt from-scratch (`--no-cache`) with this phase's full final diff.
+
+---
+
+### Phase 18 — "Compliance Standards" as a First-Class, Cross-Org, Project-Like Nav Entity
+
+**Satisfies:** the human-review request to promote Standards to "a special type of project" — its own top-level nav tab, a cross-org list like Projects, and a per-entity left-nav workspace once you open one — rather than three clicks deep inside Org Admin.
+
+Depends on Phase 17 being complete (relocates `StandardsPanel.tsx`/`ComplianceAdminPanel.tsx`, which 17a/17b touch).
+
+- New top-level nav rail item **"Compliance Standards"** (`Layout.tsx`'s Global section, sibling to Projects), route `/standards`, gated by a new nav-visibility check (not shown unconditionally like Projects — this tab is niche, Projects is universal).
+- **Nav-visibility check**: new compliance-module-owned `GET /api/v1/compliance/nav-visibility` → `{ visible: bool }` (keeps compliance-specific logic inside the compliance module rather than bolting fields onto core `/auth/me/memberships`). True if, for any org the caller belongs to, compliance is effectively enabled AND (caller is `compliance_manager`/org admin/server admin, OR that org has ≥1 non-archived standard). Frontend: one hook fetched once at `Layout.tsx` shell level, same pattern as `hasFavourites`, gating both this tab and Phase 19's.
+- **`/standards`** — new `StandardListPage.tsx`, modeled on `ProjectListPage.tsx`. No cross-org backend listing endpoint exists (every compliance route requires `organization_id` in the path) — fetch `GET /orgs?mine=true`, fan out `listStandards(orgId)` per org in parallel, let a 404 (module disabled there) drop that org silently. `organization_name` per row, `showOrgColumn` when >1 org (same convention as `ProjectListItem`). Correct `.side-grid` order from the start. "New standard" opens the combined dialog from 17b (org picker first if the caller can manage standards in more than one org). Each row → `/standards/:standardId`. A per-org "Compliance settings" entry → `/standards/settings/:orgId`.
+- **`/standards/:standardId`** — the per-standard workspace. New backend endpoint `GET /api/v1/compliance/standards/{standard_id}` (no org prefix) resolves a standard by id alone and returns its `organization_id`, mirroring exactly how a project's own id resolves to its org today — every existing org-scoped nested call (versions, requirements) threads that id through unchanged. `Layout.tsx`: when `standardId` is present in the URL (same trigger pattern as today's `projectId` check), render a new "Standard" left-nav section — Overview/Details, Versions (→ the existing `VersionWorkspace`, reused as-is), History — as a sibling structural pattern to "Project," not nested inside it.
+- **`/standards/settings/:orgId`** — org-level compliance settings workspace: `ActionTypesPanel`/`MappingTypesPanel` reused near-unchanged (already take only `orgId`), re-hosted as a routed page. Internal navigation between the two uses **`ResourceMenu`** (`frontend/src/components/ResourceMenu.tsx` — this codebase's existing "one page, persistent side menu of a handful of named sections" pattern, already used by `ProjectAdminPage.tsx`/`OrgAdminPage.tsx`/`ServerManagementPage.tsx`), not `Tabs` and not a nav-rail section — a nav-rail section is reserved for an actual project-like *entity* (a single Standard), not a fixed pair of org-wide settings screens.
+- **Retire the old location**: remove the `compliance` `orgAdminSection` (`module.ts`) and `ComplianceAdminPanel.tsx`'s org-admin-hosted wrapper — fully superseded.
+- **Docs**: record the IA decision in `docs/decisions.md`; check whether `docs/ux-style-guide.md` needs a new named pattern for this second "project-like drill-down" entity type; update `docs/solution-architecture.md` if this changes the documented navigation architecture.
+- **Tests**: backend permission-boundary tests for the two new endpoints; Playwright e2e for tab visibility on/off, one-step standard+version creation, standard workspace navigation, and org compliance settings; Storybook stories for new page-level components.
+
+---
+
+### Phase 19 — "Organisation Overview" Page
+
+**Satisfies:** the human-review request for a new org-wide overview page at the same nav depth as Projects, plus (added during plan review) basic org stats — project/requirement/user counts and total file storage — that belong there regardless of whether compliance applies to that org.
+
+Depends on Phase 18 (relocates `OrgCompliancePanel.tsx`/`OrgComplianceStandardsPanel.tsx`; conceptually follows the same nav-visibility groundwork, though see below — this tab's own visibility is deliberately different).
+
+- New top-level nav rail item **"Organisation Overview"** (Global section, sibling to Projects/Compliance Standards). Unlike Phase 18's tab, this one is **not** compliance-gated — it carries general-purpose org stats useful to any org member, so it's visible unconditionally to any user who belongs to at least one org (same precedent as the always-shown Projects link).
+- Reuse the existing `/orgs` auto-redirect convention (single org → straight in; multiple orgs → picker) for a new `/org-overview` entry point → `/orgs/:orgId/overview`.
+- **New stats header**: project count, requirement count, org member count, total uploaded file size. **Every count is scoped to what the calling user can actually see, not the org's raw totals — except an org admin (or server admin), who gets the real org-wide totals.** New backend endpoint `GET /orgs/{organization_id}/overview-stats`:
+  - Org admin/server admin: plain org-wide counts (`count(Project)`/`count(Requirement) join Project`/`sum(FileAsset.size_bytes)`, all `where organization_id = :id`, regardless of the caller's own per-project roles).
+  - Everyone else: reuse `_accessible_project_ids(db, current_user.id)` (`backend/app/routers/projects.py:147` — the exact visibility computation `list_projects` already uses) filtered to this org, for both the project and requirement counts, and for file size (org-resource files, `is_org_resource=True`, plus files attached within that same accessible-project set via the existing `RequirementFile`/`RequirementActionFile` join path). Move `_accessible_project_ids` to a shared service (or import it) rather than duplicating the visibility logic.
+  - Org member count needs no admin/member branch — `list_org_users`'s own permission (`require_org_role(ORG_ADMIN, PROJECT_CREATOR, MEMBER)`, i.e. any role at all) already lets any member see the full list.
+  - New frontend stat-row component — check whether `OrgComplianceDashboard`'s existing stat cards are already reusable before adding a second implementation.
+- Below the stats header, compliance content — today's `OrgCompliancePanel`'s three views (Dashboard / Compliance by standard / Outstanding) — shown only when compliance applies to this org, navigated via **`ResourceMenu`** (not `Tabs` — same reasoning as Phase 18's settings page: this is the "one page, persistent side menu of named sections" shape `ResourceMenu` already exists for). Fix `OrgComplianceStandardsPanel`'s `.side-grid` order as part of the move.
+- Remove the `compliance-overview` `orgAdminSection` from `module.ts` — superseded.
+- **Tests**: backend test for the stats endpoint — a member with partial project access sees counts matching only their accessible set, while an org admin/server admin with the same partial personal access sees true org-wide totals — plus permission boundary; Playwright coverage for reaching the page, correct scoped-vs-admin stats, and the compliance `ResourceMenu` sections when applicable.
 
 ---
 

@@ -48,17 +48,18 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
     await selectOrgAdminGroup(page, "Compliance");
 
+    // A standard's mandatory first (draft) version is now created alongside
+    // the standard itself in the same "New standard" dialog — a standard is
+    // never left with zero versions.
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "New standard" }).click();
     await page.getByLabel("Standard reference").fill(reference);
     await page.getByLabel("Standard name").fill(standardName);
+    await page.getByLabel("Initial version label").fill("v1.0");
     await page.getByRole("dialog", { name: "New standard" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: reference })).toBeVisible();
 
     await page.getByRole("button", { name: reference }).click();
-    await page.getByRole("button", { name: "New version" }).click();
-    await page.getByLabel("Version label").fill("v1.0");
-    await page.getByRole("dialog", { name: "New version" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
 
     await page.getByRole("button", { name: "v1.0" }).click();
@@ -74,7 +75,12 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // --- Assign to Alpha-1 and assess the one requirement Non-Compliant.
     await page.goto("/projects");
     await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
-    await page.getByRole("link", { name: "Compliance" }).click();
+    // exact: true — the project overview page's own compliance summary
+    // tiles (Phase 17d) render as cards whose accessible name contains
+    // "Compliance" too (e.g. a standard's name), which would otherwise
+    // collide with this nav-rail link under substring matching once any
+    // standard has ever been assigned to this project.
+    await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
     await page.getByRole("button", { name: "Assign standard" }).click();

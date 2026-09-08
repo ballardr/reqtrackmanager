@@ -517,27 +517,43 @@ def create_report_template(headers: dict, org_id: str, *, name: str, accent_colo
 # --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
 
 
-def create_compliance_action_type(headers: dict, org_id: str, name: str) -> dict:
-    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/compliance/action-types", json={"name": name}, headers=headers, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-
 def create_compliance_standard(
     headers: dict, org_id: str, *, reference: str, name: str, description: str = "",
     issuing_organisation: str | None = None, owner_id: str | None = None,
+    initial_version_label: str = "1.0", initial_version_effective_date: str | None = None,
+    initial_version_change_note: str = "",
 ) -> dict:
+    """Creates a standard together with its mandatory first version (§2/§4)
+    in one request — the standard's `POST .../standards` endpoint now
+    always creates version 1 alongside the standard itself, matching the
+    combined create-standard-with-first-version frontend flow. Use
+    `list_compliance_versions` to fetch that first version's id rather than
+    a separate `create_compliance_version` call, which would create a
+    redundant second version."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/modules/compliance/standards",
         json={"reference": reference, "name": name, "description": description,
-              "issuing_organisation": issuing_organisation, "owner_id": owner_id},
+              "issuing_organisation": issuing_organisation, "owner_id": owner_id,
+              "initial_version_label": initial_version_label,
+              "initial_version_effective_date": initial_version_effective_date,
+              "initial_version_change_note": initial_version_change_note},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
 
 
+def list_compliance_versions(headers: dict, org_id: str, standard_id: str) -> list[dict]:
+    r = httpx.get(f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions", headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_compliance_version(headers: dict, org_id: str, standard_id: str, *, version_label: str = "1.0", change_note: str = "") -> dict:
+    """Creates an additional (second, third, ...) version of an
+    already-existing standard. Not used for a standard's first version —
+    that one is created alongside the standard itself by
+    `create_compliance_standard` (see its own docstring)."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions",
         json={"version_label": version_label, "change_note": change_note}, headers=headers, timeout=30,
@@ -1175,17 +1191,25 @@ def main() -> None:
     # above) — a compliance standard is a distinct, organisation-level
     # resource (§31: "A Compliance Standard is not a Project"), not another
     # requirement, but reusing the same narrative keeps the demo coherent.
-    review_action_type = create_compliance_action_type(h_pm, org["id"], "Document Review")
-    test_action_type = create_compliance_action_type(h_pm, org["id"], "Test")
+    # "Document Review"/"Test" now ship as every organisation's default
+    # compliance action types (Phase 17c) rather than needing to be created
+    # here by hand — look them up instead of `create_compliance_action_type`,
+    # mirroring how `drone_action_types`/`cloud_action_types` above already
+    # look up the generic per-project defaults rather than recreating them.
+    compliance_action_types = {
+        t["name"]: t
+        for t in httpx.get(f"{BASE}/orgs/{org['id']}/modules/compliance/action-types", headers=h_pm, timeout=30).json()
+    }
+    review_action_type = compliance_action_types["Document Review"]
+    test_action_type = compliance_action_types["Test"]
     airworthiness_standard = create_compliance_standard(
         h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
         description="Solstice's internal airworthiness and regulatory-compliance standard for commercial "
         "drone platforms, incorporating FAA Part 107 remote-ID obligations.",
         issuing_organisation="Solstice Compliance Board", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
     )
-    airworthiness_version = create_compliance_version(
-        h_pm, org["id"], airworthiness_standard["id"], version_label="1.0", change_note="Initial release."
-    )
+    airworthiness_version = list_compliance_versions(h_pm, org["id"], airworthiness_standard["id"])[0]
     remote_id_section = create_compliance_requirement(
         h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
         name="Remote Identification", reference="1",

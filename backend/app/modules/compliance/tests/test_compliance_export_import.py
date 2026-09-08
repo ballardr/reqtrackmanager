@@ -251,8 +251,14 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     full standard/version/requirement/required-action tree and the mapping
     both survive intact."""
     action_type = _create_action_type(client, admin_token, org_id, name="Inspection")
+    # The standard's mandatory first version was already created alongside
+    # the standard itself (a standard is never left with zero versions) —
+    # fetch it rather than creating a redundant second one, so this test's
+    # "exactly one version round-trips" assertions below stay accurate.
     standard_a = _create_standard(client, admin_token, org_id, reference="ORG-EXPORT-A", name="Standard A")
-    version_a = _create_version(client, admin_token, org_id, standard_a["id"], version_label="1.0")
+    version_a = client.get(
+        f"{_base(org_id)}/standards/{standard_a['id']}/versions", headers=auth_headers(admin_token)
+    ).json()[0]
     parent = _create_requirement(client, admin_token, org_id, standard_a["id"], version_a["id"], name="Section 1", reference="1")
     child = _create_requirement(
         client, admin_token, org_id, standard_a["id"], version_a["id"],
@@ -267,7 +273,9 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     _publish_version(client, admin_token, org_id, standard_a["id"], version_a["id"])
 
     standard_b = _create_standard(client, admin_token, org_id, reference="ORG-EXPORT-B", name="Standard B")
-    version_b = _create_version(client, admin_token, org_id, standard_b["id"], version_label="1.0")
+    version_b = client.get(
+        f"{_base(org_id)}/standards/{standard_b['id']}/versions", headers=auth_headers(admin_token)
+    ).json()[0]
     other_requirement = _create_requirement(
         client, admin_token, org_id, standard_b["id"], version_b["id"], name="Equivalent clause", reference="9.9",
     )

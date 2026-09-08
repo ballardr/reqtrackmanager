@@ -47,20 +47,20 @@ test.describe("Compliance Module: org-level standards management (Phase 12)", ()
       expect(values).toContain(actionTypeName);
     }).toPass();
 
-    // --- Standards: create one.
+    // --- Standards: create one, with its mandatory first (draft) version,
+    // in the single combined "New standard" dialog — a standard is never
+    // left with zero versions.
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "New standard" }).click();
     await page.getByLabel("Standard reference").fill(reference);
     await page.getByLabel("Standard name").fill(standardName);
+    await page.getByLabel("Initial version label").fill("v1.0");
     await page.getByRole("dialog", { name: "New standard" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: reference })).toBeVisible();
 
-    // --- Open it, create a draft version.
+    // --- Open it: its first version already exists, so drill straight in.
     await page.getByRole("button", { name: reference }).click();
     await expect(page.getByRole("dialog", { name: new RegExp(`${reference} `) })).toBeVisible();
-    await page.getByRole("button", { name: "New version" }).click();
-    await page.getByLabel("Version label").fill("v1.0");
-    await page.getByRole("dialog", { name: "New version" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
 
     // --- Drill into the version workspace, add a requirement.

@@ -3242,6 +3242,29 @@ def list_project_enabled_modules(
         if not is_module_enabled(db, project.organization_id, definition.key):
             continue
         manifest = get_frontend_manifest(definition.key)
+        if manifest is not None and definition.key == "compliance":
+            # The Compliance nav entry/route is only useful once there's a
+            # standard a project could actually be assigned (a DRAFT-only
+            # standard has nothing assignable yet) — otherwise hide it
+            # rather than send the user to an empty "assign a standard"
+            # page with nothing to pick from.
+            from app.modules.compliance.enums import ComplianceStandardVersionStatus
+            from app.modules.compliance.models import ComplianceStandard, ComplianceStandardVersion
+
+            has_assignable_standard = (
+                db.scalar(
+                    select(ComplianceStandardVersion.id)
+                    .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
+                    .where(
+                        ComplianceStandard.organization_id == project.organization_id,
+                        ComplianceStandardVersion.status == ComplianceStandardVersionStatus.PUBLISHED,
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
+            if not has_assignable_standard:
+                manifest = None
         frontend_manifest_out = None
         if manifest is not None:
             frontend_manifest_out = ModuleFrontendManifestOut(

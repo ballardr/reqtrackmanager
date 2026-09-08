@@ -68,6 +68,12 @@ Responsibilities:
   if_in_flight` — see that function's own docstring for the full rule and
   for why a `replaced`/`modified`/`added` requirement is deliberately never
   carried forward.
+- `seed_compliance_action_types` (Phase 17c): the two default
+  `ComplianceActionTypeDefinition` rows a fresh organisation ships with,
+  mirroring `services.definitions.seed_action_types`'s existing pattern for
+  the generic per-project `ActionTypeDefinition` — see that function's own
+  docstring for why organisation-creation time, not a module-enablement
+  hook, is where this has to run.
 
 External dependencies: `app.modules.compliance.models`/`.enums`, SQLAlchemy.
 """
@@ -93,6 +99,7 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ComplianceActionTypeDefinition,
     ComplianceEvidence,
     ComplianceEvidenceActionLink,
     ComplianceEvidenceFile,
@@ -131,6 +138,30 @@ from app.modules.compliance.schemas import (
 )
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
+
+# Mirrors `services.definitions.DEFAULT_ACTION_TYPES`' two names — chosen to
+# match what `backend/scripts/seed_demo_data.py` already invented by hand
+# for its own compliance demo data, now made a real product default instead
+# of a script-only convention.
+DEFAULT_COMPLIANCE_ACTION_TYPES: list[str] = ["Document Review", "Test"]
+
+
+def seed_compliance_action_types(db: Session, organization_id: uuid.UUID) -> None:
+    """Adds the default `ComplianceActionTypeDefinition` rows for a newly
+    created organisation (not committed/flushed — caller owns the
+    transaction).
+
+    Called unconditionally at organisation-creation time
+    (`routers.orgs.create_organization`), not on compliance module
+    enablement: the module system has no "on enable" callback to hook into
+    (`ModuleDefinition` has none), and Compliance defaults to enabled for
+    virtually every organisation anyway, so organisation-creation time is
+    the one deterministic point that can't race or double-seed. Mirrors
+    `services.definitions.seed_action_types`'s identical shape for the
+    generic, project-scoped `ActionTypeDefinition`.
+    """
+    for i, name in enumerate(DEFAULT_COMPLIANCE_ACTION_TYPES):
+        db.add(ComplianceActionTypeDefinition(organization_id=organization_id, name=name, sort_order=i))
 
 
 def resolve_applicability_for_version(

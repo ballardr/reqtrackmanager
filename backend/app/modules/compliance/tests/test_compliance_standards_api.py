@@ -30,8 +30,11 @@ def _base(org_id: str) -> str:
     return f"/api/v1/orgs/{org_id}/modules/compliance"
 
 
-def _create_standard(client, token, org_id, *, reference="ISO-27001", name="Corporate Security Standard", **extra):
-    payload = {"reference": reference, "name": name, **extra}
+def _create_standard(
+    client, token, org_id, *, reference="ISO-27001", name="Corporate Security Standard",
+    initial_version_label="1.0", **extra,
+):
+    payload = {"reference": reference, "name": name, "initial_version_label": initial_version_label, **extra}
     resp = client.post(f"{_base(org_id)}/standards", json=payload, headers=auth_headers(token))
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -54,7 +57,7 @@ def _create_requirement(client, token, org_id, standard_id, version_id, *, name=
     return resp.json()
 
 
-def _create_action_type(client, token, org_id, *, name="Test"):
+def _create_action_type(client, token, org_id, *, name="Verification"):
     resp = client.post(f"{_base(org_id)}/action-types", json={"name": name}, headers=auth_headers(token))
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -89,7 +92,10 @@ def test_full_crud_happy_path(client, admin_token, org_id):
     composition path as a side effect of this happy-path test)."""
     action_type = _create_action_type(client, admin_token, org_id, name="Inspection")
     assert action_type["name"] == "Inspection"
-    assert action_type["sort_order"] == 0
+    # sort_order == 2, not 0: every organisation now starts with 2 default
+    # compliance action types ("Document Review", "Test" — Phase 17c), so
+    # this is the third row created for `org_id`, not the first.
+    assert action_type["sort_order"] == 2
 
     standard = _create_standard(client, admin_token, org_id, reference="ISO-27001", name="Corporate Security Standard")
     assert standard["reference"] == "ISO-27001"
@@ -110,8 +116,14 @@ def test_full_crud_happy_path(client, admin_token, org_id):
     assert updated.json()["name"] == "Updated Standard Name"
     assert updated.json()["reference"] == "ISO-27001", "reference must stay immutable"
 
-    version = _create_version(client, admin_token, org_id, standard["id"], version_label="1.0")
+    # The standard's mandatory first version was already created in the same
+    # request as the standard itself (a standard is never left with zero
+    # versions) — fetch it rather than creating a redundant second one.
+    versions_resp = client.get(f"{_base(org_id)}/standards/{standard['id']}/versions", headers=auth_headers(admin_token))
+    assert versions_resp.status_code == 200
+    version = versions_resp.json()[0]
     assert version["version_number"] == 1
+    assert version["version_label"] == "1.0"
     assert version["status"] == "draft"
 
     parent = _create_requirement(
@@ -235,7 +247,8 @@ def test_rbac_composition_manager_grant_admin_override_and_member_forbidden(clie
     _grant_compliance_manager(client, admin_token, org_id, manager_id)
     manager_token = login(client, "compliance-manager@example.com", "Password123!")
     resp = client.post(
-        f"{_base(org_id)}/standards", json={"reference": "RBAC-MGR", "name": "Manager-created Standard"},
+        f"{_base(org_id)}/standards",
+        json={"reference": "RBAC-MGR", "name": "Manager-created Standard", "initial_version_label": "1.0"},
         headers=auth_headers(manager_token),
     )
     assert resp.status_code == 201, resp.text
@@ -244,7 +257,8 @@ def test_rbac_composition_manager_grant_admin_override_and_member_forbidden(clie
     org_admin_id = create_org_user(client, admin_token, org_id, "plain-org-admin@example.com", role="org_admin")
     org_admin_token = login(client, "plain-org-admin@example.com", "Password123!")
     resp = client.post(
-        f"{_base(org_id)}/standards", json={"reference": "RBAC-OA", "name": "Org-admin-created Standard"},
+        f"{_base(org_id)}/standards",
+        json={"reference": "RBAC-OA", "name": "Org-admin-created Standard", "initial_version_label": "1.0"},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 201, resp.text
@@ -253,7 +267,8 @@ def test_rbac_composition_manager_grant_admin_override_and_member_forbidden(clie
     member_id = create_org_user(client, admin_token, org_id, "plain-member@example.com", role="member")
     member_token = login(client, "plain-member@example.com", "Password123!")
     resp = client.post(
-        f"{_base(org_id)}/standards", json={"reference": "RBAC-MEMBER", "name": "Should Not Be Created"},
+        f"{_base(org_id)}/standards",
+        json={"reference": "RBAC-MEMBER", "name": "Should Not Be Created", "initial_version_label": "1.0"},
         headers=auth_headers(member_token),
     )
     assert resp.status_code == 403, resp.text
@@ -350,7 +365,10 @@ def test_version_cloning_copies_requirement_tree_and_required_actions(client, ad
     new_version = _create_version(
         client, admin_token, org_id, standard["id"], version_label="2.0", clone_from_version_id=source_version["id"],
     )
-    assert new_version["version_number"] == 2
+    # version_number 3, not 2: the standard's mandatory initial version
+    # (version 1, created alongside the standard itself) precedes both
+    # `source_version` (2) and this clone (3).
+    assert new_version["version_number"] == 3
 
     cloned_requirements = client.get(
         f"{_base(org_id)}/standards/{standard['id']}/versions/{new_version['id']}/requirements",

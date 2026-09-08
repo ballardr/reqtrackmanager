@@ -72,7 +72,7 @@ def _setup_published_standard_with_tree(client, admin_token, org_id):
     child requirement, each with a required action -> published. Returns
     (standard, version, parent_requirement, child_requirement,
     parent_required_action, child_required_action)."""
-    action_type = _create_action_type(client, admin_token, org_id, name="Test")
+    action_type = _create_action_type(client, admin_token, org_id, name="Verification")
     standard = _create_standard(client, admin_token, org_id, reference="EMC-1", name="EMC/EMF Standard")
     version = _create_version(client, admin_token, org_id, standard["id"], version_label="2.0")
     parent = _create_requirement(

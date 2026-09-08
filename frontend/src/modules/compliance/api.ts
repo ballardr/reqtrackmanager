@@ -80,7 +80,16 @@ export function listStandards(orgId: string, includeArchived = false): Promise<C
 
 export function createStandard(
   orgId: string,
-  payload: { reference: string; name: string; description?: string; issuing_organisation?: string | null; owner_id?: string | null }
+  payload: {
+    reference: string;
+    name: string;
+    description?: string;
+    issuing_organisation?: string | null;
+    owner_id?: string | null;
+    initial_version_label: string;
+    initial_version_effective_date?: string | null;
+    initial_version_change_note?: string;
+  }
 ): Promise<ComplianceStandard> {
   return api.post(`${base(orgId)}/standards`, payload);
 }

@@ -137,6 +137,13 @@ def create_organization(
     db.flush()
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    # Local import: keeps this core router from taking a module-level
+    # dependency on the compliance module (see `seed_compliance_action_
+    # types`'s own docstring for why org-creation time, not a module-enable
+    # hook, is where this has to run).
+    from app.modules.compliance.service import seed_compliance_action_types
+
+    seed_compliance_action_types(db, org.id)
     log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
     db.commit()
     db.refresh(org)

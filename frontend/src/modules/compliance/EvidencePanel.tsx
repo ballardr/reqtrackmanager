@@ -119,12 +119,6 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
         Add evidence
       </button>
       <div className="side-grid">
-        <FilterPanel
-          sectionKey="compliance.evidence" total={evidence.length} matching={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search evidence…" searchAriaLabel="Search evidence"
-        >
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
         <DirectoryTable
           ariaLabel="Compliance evidence"
           columns={columns}
@@ -133,6 +127,12 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
           onRowClick={openEvidence}
           emptyState={<p className="text-muted">No evidence recorded for this project yet.</p>}
         />
+        <FilterPanel
+          sectionKey="compliance.evidence" total={evidence.length} matching={filtered.length}
+          search={search} onSearchChange={setSearch} searchPlaceholder="Search evidence…" searchAriaLabel="Search evidence"
+        >
+          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+        </FilterPanel>
       </div>
 
       {creating && (

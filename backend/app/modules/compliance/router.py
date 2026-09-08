@@ -249,8 +249,10 @@ def create_standard(
     organization_id: UUID, payload: ComplianceStandardCreate,
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Creates a new organisation-level compliance standard (§2). `owner_id`
-    defaults to the creating user when omitted."""
+    """Creates a new organisation-level compliance standard (§2), together
+    with its mandatory first version (version 1), in a single transaction —
+    a standard is never left with zero versions. `owner_id` defaults to the
+    creating user when omitted."""
     existing = db.scalar(
         select(ComplianceStandard.id).where(
             ComplianceStandard.organization_id == organization_id,
@@ -273,6 +275,21 @@ def create_standard(
     log_event(db, entity_type="compliance_standard", entity_id=standard.id, action="created",
               actor_id=current_user.id, organization_id=organization_id,
               detail={"reference": standard.reference, "name": standard.name})
+
+    version = ComplianceStandardVersion(
+        standard_id=standard.id,
+        version_number=1,
+        version_label=payload.initial_version_label,
+        effective_date=payload.initial_version_effective_date,
+        change_note=payload.initial_version_change_note,
+        created_by=current_user.id,
+    )
+    db.add(version)
+    db.flush()
+    log_event(db, entity_type="compliance_standard_version", entity_id=version.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"version_label": version.version_label, "cloned_from": None})
+
     db.commit()
     db.refresh(standard)
     return standard

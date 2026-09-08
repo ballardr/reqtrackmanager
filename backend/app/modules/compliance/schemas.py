@@ -95,13 +95,26 @@ from app.modules.compliance.enums import (
 class ComplianceStandardCreate(BaseModel):
     """Payload for creating a `ComplianceStandard` (§2). `owner_id` defaults
     to the creating user when omitted — §2 lists "Owner" as an attribute
-    without mandating it always differ from the creator."""
+    without mandating it always differ from the creator.
+
+    Also carries the fields for the standard's mandatory first
+    `ComplianceStandardVersion` (version 1), created in the same request/
+    transaction by `router.py::create_standard` — mirroring
+    `ComplianceStandardVersionCreate`'s own `version_label`/`effective_date`/
+    `change_note` fields (minus `clone_from_version_id`, which has nothing
+    to clone from on a brand-new standard). A standard is never left with
+    zero versions: previously, creating a standard and creating its first
+    version were two separate API calls, which could leave a standard
+    version-less if the second call was never made."""
 
     reference: str
     name: str
     description: str = ""
     issuing_organisation: str | None = None
     owner_id: UUID | None = None
+    initial_version_label: str
+    initial_version_effective_date: date | None = None
+    initial_version_change_note: str = ""
 
 
 class ComplianceStandardUpdate(BaseModel):

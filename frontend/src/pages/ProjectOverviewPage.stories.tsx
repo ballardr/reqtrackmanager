@@ -3,6 +3,7 @@ import { expect, spyOn, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, ProjectMetrics } from "../api/types";
+import type { ProjectComplianceStatus } from "../modules/compliance/types";
 import { buildChangeEntry, buildProject, buildProjectListItem, withRouter, withTerminology } from "../testing/storybook-helpers";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
@@ -44,6 +45,10 @@ export const Dashboard: Story = {
       // render (see `WithHierarchy` below for the populated case).
       if (path.endsWith("/ancestors")) return [];
       if (path.endsWith("/children")) return [];
+      // Compliance module not enabled for this fixture's org — no
+      // compliance tile (see `WithCompliance` below for the populated
+      // case).
+      if (path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });
   },
@@ -81,6 +86,7 @@ export const WithHierarchy: Story = {
           buildProjectListItem({ id: "child-2", name: "Atlas Web", parent_project_id: "project-1" }),
         ];
       }
+      if (path.endsWith("/enabled-modules")) return [];
       return buildProject({
         id: "project-1", name: "Atlas Core", summary: "Core platform requirements.",
         parent_project_id: "parent-1", parent_project_name: "Atlas Platform",
@@ -106,6 +112,45 @@ export const WithHierarchy: Story = {
     await expect(canvas.getByText("Parent of:")).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Atlas Mobile" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Atlas Web" })).toBeInTheDocument();
+  },
+};
+
+// Compliance summary tile(s) (Phase 17d): one tile per standard assigned to
+// this project, shown only once the org's Compliance module is enabled —
+// `Dashboard`/`WithHierarchy` above cover the (far more common) case where
+// it isn't, so no tile renders at all.
+const complianceStatus: ProjectComplianceStatus[] = [
+  {
+    project_compliance_id: "pc-1", project_id: "project-1", project_name: "Atlas Platform",
+    standard_id: "standard-1", standard_reference: "ISO-27001", standard_name: "Corporate Security Standard",
+    standard_version_id: "version-1", version_label: "v2.0", target_compliance_date: null,
+    assigned_at: "2026-01-01T00:00:00Z", total_requirements: 20, applicable_count: 18, not_applicable_count: 2,
+    counts_by_status: { compliant: 15, non_compliant: 1, in_progress: 2 }, compliance_percentage: 83,
+    has_non_compliant: true, overall_compliance_state: "in_progress", overall_approval_state: "not_assessed",
+  },
+];
+
+export const WithCompliance: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/metrics")) return metrics;
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors")) return [];
+      if (path.endsWith("/children")) return [];
+      if (path.endsWith("/enabled-modules")) {
+        return [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }];
+      }
+      if (path.endsWith("/modules/compliance/status")) return complianceStatus;
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Corporate Security Standard")).toBeInTheDocument();
+    await expect(canvas.getByText("Corporate Security Standard").previousSibling).toHaveTextContent("83%");
+    await expect(canvas.getByRole("link", { name: /Corporate Security Standard/ })).toHaveAttribute(
+      "href", "/projects/project-1/modules/compliance"
+    );
   },
 };
 

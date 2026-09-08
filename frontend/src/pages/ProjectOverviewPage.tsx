@@ -10,6 +10,9 @@ import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { getProjectComplianceStatus } from "../modules/compliance/api";
+import type { ProjectComplianceStatus } from "../modules/compliance/types";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -34,6 +37,23 @@ export function ProjectOverviewPage() {
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Compliance summary tile(s) (Phase 17d): only fetched/shown once this
+  // project's org has the Compliance module enabled *and* at least one
+  // standard is actually assigned — a project with neither gets no tile at
+  // all, rather than an empty/zero-value one nobody asked to see.
+  const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
+  const complianceEnabled = enabledModules.some((m) => m.module_key === "compliance");
+  const [complianceStatus, setComplianceStatus] = useState<ProjectComplianceStatus[]>([]);
+
+  useEffect(() => {
+    if (!projectId || !complianceEnabled) {
+      setComplianceStatus([]);
+      return;
+    }
+    getProjectComplianceStatus(projectId)
+      .then(setComplianceStatus)
+      .catch(() => setComplianceStatus([]));
+  }, [projectId, complianceEnabled]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -70,6 +90,16 @@ export function ProjectOverviewPage() {
     [strings.overview.crProposed, metrics.change_requests_proposed, changeRequestsPath("active")],
     [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
     [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],
+    // One tile per standard assigned to this project (Phase 17d) — clicking
+    // through to the project's compliance page, matching every other tile
+    // on this page's own "click through to what was clicked" convention.
+    ...complianceStatus.map(
+      (s): [string, string, string] => [
+        s.standard_name,
+        `${Math.round(s.compliance_percentage)}%`,
+        `/projects/${projectId}/modules/compliance`,
+      ]
+    ),
   ];
 
   const statusEntries = Object.entries(metrics.requirements_by_status) as Array<[RequirementStatus, number]>;
