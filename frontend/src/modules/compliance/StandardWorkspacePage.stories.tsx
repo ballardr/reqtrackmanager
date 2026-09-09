@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import type { OrgUser } from "../../api/types";
+import type { Organization, OrgUser } from "../../api/types";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard, ComplianceStandardVersion } from "./types";
@@ -162,6 +162,54 @@ export const NotFound: Story = {
     const canvas = within(canvasElement);
     await waitFor(() =>
       expect(canvas.getByText(/This compliance standard could not be found/)).toBeInTheDocument()
+    );
+  },
+};
+
+const ORG: Organization = {
+  id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
+  default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
+  disabled_at: null, accent_color_hex: null, header_title: null,
+  email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+};
+const SIBLING_STANDARD: ComplianceStandard = {
+  ...STANDARD, id: "std-2", reference: "EN-60529", name: "EN 60529", organization_id: ORG.id,
+};
+
+/** Phase 28 — with more than one standard reachable across the caller's
+ * orgs, a chevron next to the standard's name opens a popover listing the
+ * others as plain links to their own workspace, via the same cross-org
+ * fan-out `StandardListPage.tsx` uses (`listStandardsAcrossMyOrgs`). */
+export const EntitySwitcherOffersSiblingStandards: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`, "/standards/:standardId/:section?/:versionId?")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === `/api/v1/compliance/standards/${STANDARD.id}`) return STANDARD;
+      if (path.endsWith("/action-types")) return ACTION_TYPES;
+      if (path.endsWith("/users")) return ORG_USERS;
+      if (path.endsWith("/versions")) return [VERSION];
+      if (path.endsWith("/history")) return HISTORY;
+      if (path.endsWith("/exclusions")) return [];
+      if (path.endsWith("/project-summary")) return [];
+      if (path.startsWith("/api/v1/projects?")) return [];
+      if (path.includes("/requirements") && !path.includes("required-actions")) return [];
+      if (path === "/api/v1/orgs?mine=true") return [ORG];
+      if (path === `/api/v1/orgs/${ORG.id}/modules/compliance/standards?include_archived=false`) {
+        return [STANDARD, SIBLING_STANDARD];
+      }
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: /ISO-27001 — ISO 27001/ })).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch standard" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch standard" });
+    await expect(within(dialog).getByRole("link", { name: "EN-60529 — EN 60529" })).toHaveAttribute(
+      "href",
+      `/standards/${SIBLING_STANDARD.id}`
     );
   },
 };

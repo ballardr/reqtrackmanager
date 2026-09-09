@@ -35,6 +35,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
@@ -50,6 +51,7 @@ import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
@@ -1139,7 +1141,14 @@ export function ProjectAdminPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h1 style={{ margin: 0 }}>{project.name}</h1>
+            <EntitySwitcher
+              label="Switch project"
+              currentId={project.id}
+              loadOptions={() => loadProjectSwitcherOptions("admin")}
+            />
+          </div>
           <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
         </div>
         {/* "Add sub-project" (decision 8, docs/decisions.md) — the

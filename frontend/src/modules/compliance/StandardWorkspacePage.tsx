@@ -60,6 +60,7 @@ import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import type { OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { MetricTile } from "../../components/MetricTile";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -93,6 +94,14 @@ function currentVersion(versions: ComplianceStandardVersion[]): ComplianceStanda
   const published = versions.filter((v) => v.status === "published");
   const pool = published.length > 0 ? published : versions;
   return pool.reduce((latest, v) => (v.version_number > latest.version_number ? v : latest));
+}
+
+/** `EntitySwitcher` loader (Phase 28) — reuses `listStandardsAcrossMyOrgs`,
+ * the same cross-org fan-out `StandardListPage.tsx` uses, rather than
+ * duplicating it here. */
+async function loadStandardSwitcherOptions(): Promise<EntitySwitcherOption[]> {
+  const { rows } = await complianceApi.listStandardsAcrossMyOrgs();
+  return rows.map((s) => ({ id: s.id, label: `${s.reference} — ${s.name}`, href: `/standards/${s.id}` }));
 }
 
 export function StandardWorkspacePage() {
@@ -214,7 +223,10 @@ export function StandardWorkspacePage() {
   return (
     <div className="stack">
       <div className="stack" style={{ gap: "0.15rem" }}>
-        <h1 style={{ margin: 0 }}>{standard.reference} — {standard.name}</h1>
+        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <h1 style={{ margin: 0 }}>{standard.reference} — {standard.name}</h1>
+          <EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />
+        </div>
         {standard.is_archived && <span className="badge">Archived</span>}
       </div>
 

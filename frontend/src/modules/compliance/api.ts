@@ -50,7 +50,8 @@
  * recorded in docs/compliance-module-plan.md's Phase 13 notes, mirroring how
  * Phase 12 flagged owner reassignment rather than silently omitting it.
  */
-import { api } from "../../api/client";
+import { api, ApiError } from "../../api/client";
+import type { Organization } from "../../api/types";
 import type {
   ComplianceActionType,
   ComplianceAuditEvent,
@@ -114,6 +115,45 @@ export function getStandardById(standardId: string): Promise<ComplianceStandard>
 
 export function listStandards(orgId: string, includeArchived = false): Promise<ComplianceStandard[]> {
   return api.get(`${base(orgId)}/standards?include_archived=${includeArchived}`);
+}
+
+export interface StandardAcrossOrgsRow extends ComplianceStandard {
+  organization_name: string;
+}
+
+/**
+ * No cross-org backend listing endpoint exists for standards — every
+ * compliance route requires `organization_id` in the path (Phase 6's own
+ * design) — so this fans `listStandards` out across every org the caller
+ * belongs to in parallel. An org whose call 404s (module disabled there)
+ * is dropped silently, matching the 404-not-403 "not entitled/disabled
+ * looks the same as not present" posture every other compliance endpoint
+ * already gives; a non-404 failure is also dropped (logged, not surfaced)
+ * rather than failing the whole caller over one org's own hiccup.
+ *
+ * Shared by `StandardListPage.tsx` (the cross-org standards directory) and
+ * `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader (Phase 28), which
+ * both need this exact fan-out rather than duplicating it.
+ */
+export async function listStandardsAcrossMyOrgs(
+  includeArchived = false
+): Promise<{ orgs: Organization[]; rows: StandardAcrossOrgsRow[] }> {
+  const orgs = (await api.get<Organization[]>("/api/v1/orgs?mine=true")).filter((o) => o.is_active);
+
+  const perOrg = await Promise.allSettled(
+    orgs.map(async (org) => {
+      const standards = await listStandards(org.id, includeArchived);
+      return standards.map((s): StandardAcrossOrgsRow => ({ ...s, organization_name: org.name }));
+    })
+  );
+  const rows: StandardAcrossOrgsRow[] = [];
+  for (const result of perOrg) {
+    if (result.status === "fulfilled") rows.push(...result.value);
+    else if (!(result.reason instanceof ApiError) || result.reason.status !== 404) {
+      console.error("Could not load compliance standards for one organisation:", result.reason);
+    }
+  }
+  return { orgs, rows };
 }
 
 export function createStandard(

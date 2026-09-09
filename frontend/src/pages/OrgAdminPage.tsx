@@ -48,6 +48,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
@@ -66,6 +67,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
 import { installedModules } from "../modules/registry";
+import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
@@ -1613,7 +1615,13 @@ export function OrgAdminPage() {
     // pre-existing role.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+          {/* Phase 28: an escape hatch off a dead-end degraded org page —
+              this org is disabled, but a server admin can still jump
+              straight to a different (working) one. */}
+          {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
+        </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.disabled}</h2>
           <p className="text-muted">{loadError}</p>
@@ -1653,7 +1661,13 @@ export function OrgAdminPage() {
     // from this page at all.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+          {/* Phase 28: same escape hatch as the disabled-org case above —
+              a server admin isn't a member here, but can still jump
+              straight to a different org they already administer. */}
+          {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
+        </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle(orgLabel)}</h2>
           <p className="text-muted">{strings.orgAdmin.notAMemberHint}</p>

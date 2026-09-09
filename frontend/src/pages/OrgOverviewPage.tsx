@@ -3,10 +3,12 @@ import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { StatBar, type StatBarItem } from "../components/StatBar";
 import { getInstalledModule, installedModules } from "../modules/registry";
+import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { formatFileSize } from "../utils/formatFileSize";
 
 /** The always-present first group (Phase 27c) — contributed directly by
@@ -117,7 +119,14 @@ export function OrgOverviewPage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{org.name}</h1>
+      <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+        <h1 style={{ margin: 0 }}>{org.name}</h1>
+        <EntitySwitcher
+          label="Switch organisation"
+          currentId={orgId}
+          loadOptions={() => loadOrgSwitcherOptions("overview")}
+        />
+      </div>
 
       <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
         {activeModuleSection ? (

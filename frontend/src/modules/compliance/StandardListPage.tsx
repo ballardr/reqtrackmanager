@@ -13,14 +13,12 @@
  *
  * No cross-org backend listing endpoint exists for standards — every
  * compliance route requires `organization_id` in the path (Phase 6's own
- * design). This page fetches the caller's orgs, then fans out
- * `complianceApi.listStandards(orgId)` per org in parallel; an org whose
- * call 404s (module disabled there) is dropped silently rather than
- * surfacing an error for it — matching the 404-not-403 "not entitled/
- * disabled looks the same as not present" posture every other compliance
- * endpoint already gives, applied here to a cross-org fan-out instead of a
- * single lookup. A non-404 failure is also dropped (logged, not surfaced)
- * rather than failing the whole page over one org's own hiccup.
+ * design). This page gets its rows via `complianceApi.listStandardsAcrossMyOrgs`,
+ * the shared org-fan-out-and-collect helper (Phase 28 extracted it out of
+ * this file so `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader could
+ * reuse the exact same fan-out/404-drop behaviour rather than duplicating
+ * it) — see that function's own docstring in `./api.ts` for the full
+ * 404-drop/error-swallow behaviour.
  *
  * "New standard" opens the same `StandardFormModal` `StandardWorkspacePage
  * .tsx` uses for editing, in create mode — an org picker (its own first
@@ -42,7 +40,6 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { api, ApiError } from "../../api/client";
 import type { Organization } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -50,14 +47,13 @@ import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
+import type { StandardAcrossOrgsRow } from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardFormModal, type EditableStandardFieldValues, type StandardFormValues } from "./StandardFormModal";
 import { StandardImportModal } from "./StandardImportModal";
-import type { ComplianceStandard, StandardImportResult } from "./types";
+import type { StandardImportResult } from "./types";
 
-interface StandardListRow extends ComplianceStandard {
-  organization_name: string;
-}
+type StandardListRow = StandardAcrossOrgsRow;
 
 export function StandardListPage() {
   const navigate = useNavigate();
@@ -74,25 +70,8 @@ export function StandardListPage() {
 
   async function reload() {
     setRows(null);
-    const orgList = (await api.get<Organization[]>("/api/v1/orgs?mine=true")).filter((o) => o.is_active);
+    const { orgs: orgList, rows: collected } = await complianceApi.listStandardsAcrossMyOrgs(includeArchived);
     setOrgs(orgList);
-
-    const perOrg = await Promise.allSettled(
-      orgList.map(async (org) => {
-        const standards = await complianceApi.listStandards(org.id, includeArchived);
-        return standards.map((s): StandardListRow => ({ ...s, organization_name: org.name }));
-      })
-    );
-    const collected: StandardListRow[] = [];
-    for (const result of perOrg) {
-      // A rejected org (404 = module disabled there, or any other transient
-      // failure) simply contributes no rows — see this file's own docstring
-      // for why that's the right default for a best-effort cross-org fan-out.
-      if (result.status === "fulfilled") collected.push(...result.value);
-      else if (!(result.reason instanceof ApiError) || result.reason.status !== 404) {
-        console.error("Could not load compliance standards for one organisation:", result.reason);
-      }
-    }
     setRows(collected);
   }
 

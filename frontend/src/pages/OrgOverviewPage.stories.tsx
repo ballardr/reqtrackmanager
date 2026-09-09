@@ -24,11 +24,16 @@ const scopedStats: OrgOverviewStats = {
   project_count: 1, requirement_count: 8, member_count: 12, total_file_size_bytes: 12_000, is_full_org_total: false,
 };
 
-function mockOrgOverviewApis(overrides: { org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[] } = {}) {
+function mockOrgOverviewApis(
+  overrides: { org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[]; myOrgs?: Organization[] } = {}
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
+    // `EntitySwitcher`'s (Phase 28) own sibling-org fetch — a single-org
+    // default means every other story here renders no switcher chevron.
+    if (path === "/api/v1/orgs?mine=true") return overrides.myOrgs ?? [org];
     throw new Error(`unmocked path: ${path}`);
   });
 }
@@ -160,6 +165,28 @@ export const ModuleSectionHiddenWhenModuleDisabled: Story = {
     // Phase 27c — with the module disabled, "Overview" is once again the
     // only group, so the menu-strip chrome is hidden entirely.
     await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 28 — with more than one organisation to switch between, a chevron
+ * next to the org name opens a popover listing the others as plain links
+ * to their own Organisation Overview page. */
+export const EntitySwitcherOffersSiblingOrgs: Story = {
+  beforeEach: () =>
+    mockOrgOverviewApis({
+      myOrgs: [org, { ...org, id: "org-2", name: "Globex Corporation" }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument();
+
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch organisation" });
+    await expect(within(dialog).getByRole("link", { name: "Globex Corporation" })).toHaveAttribute(
+      "href",
+      "/orgs/org-2/overview"
+    );
   },
 };
 

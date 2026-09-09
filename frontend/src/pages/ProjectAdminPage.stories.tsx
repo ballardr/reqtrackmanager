@@ -1221,5 +1221,30 @@ export const ParentFieldHiddenWithNoEligibleCandidates: Story = {
   },
 };
 
+/** Phase 28 — with more than one project to switch between, a chevron next
+ * to the project name opens a popover listing the others as plain links
+ * to their own Project Admin page. */
+export const EntitySwitcherOffersSiblingProjects: Story = {
+  beforeEach: () =>
+    mockProjectAdminApis({
+      orgProjects: [
+        buildProjectListItem({ id: PROJECT_ID, name: "Atlas Platform" }),
+        buildProjectListItem({ id: "project-2", name: "Solstice Programme" }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Atlas Platform" })).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch project" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch project" });
+    await expect(within(dialog).getByRole("link", { name: "Solstice Programme" })).toHaveAttribute(
+      "href",
+      "/projects/project-2/admin"
+    );
+  },
+};
+
 export const LightTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "dark" } };

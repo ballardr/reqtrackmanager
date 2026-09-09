@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { Spinner } from "../components/Spinner";
@@ -13,6 +14,7 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { getInstalledModule } from "../modules/registry";
+import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -126,7 +128,14 @@ export function ProjectOverviewPage() {
       )}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h1 style={{ margin: 0 }}>{project.name}</h1>
+            <EntitySwitcher
+              label="Switch project"
+              currentId={project.id}
+              loadOptions={() => loadProjectSwitcherOptions("overview")}
+            />
+          </div>
           <p className="text-muted">{project.summary}</p>
           <ProjectHierarchyLabels project={hierarchySummary} />
         </div>

@@ -858,6 +858,34 @@ export const DisabledOrgServerAdminCanReEnable: Story = {
   },
 };
 
+/** Phase 28 — the entity quick-switch chevron is also an escape hatch off
+ * this degraded, dead-end page: a server admin stuck here (this org is
+ * disabled) can still jump straight to a different, working org, via the
+ * exact same `?mine=true` sibling-org list Organisation Overview uses. */
+export const DisabledOrgEntitySwitcherOffersOtherOrgs: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-2", is_server_admin: true }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+      if (path === "/api/v1/orgs?mine=true") return [org, { ...org, id: "org-2", name: "Globex Corporation" }];
+      throw new ApiError(403, "This organisation is disabled.");
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("This organisation is disabled.")).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch organisation" });
+    await expect(within(dialog).getByRole("link", { name: "Globex Corporation" })).toHaveAttribute(
+      "href",
+      "/orgs/org-2/admin"
+    );
+  },
+};
+
 /** Style guide "Pattern: action menu": rename now lives behind the
  * Overview group's kebab (`ActionMenu`, "Organisation actions") instead of an
  * always-visible inline input — selecting "Rename" from the menu opens a
