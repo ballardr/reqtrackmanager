@@ -15,7 +15,7 @@ const STANDARD: ComplianceStandard = {
 
 function version(overrides: Partial<ComplianceStandardVersion> & { id: string; version_number: number; version_label: string }): ComplianceStandardVersion {
   return {
-    standard_id: STANDARD.id, status: "draft", effective_date: null, change_note: "", created_by: "user-1",
+    standard_id: STANDARD.id, status: "draft", effective_date: null, change_note: "", summary: "", created_by: "user-1",
     published_at: null, published_by: null, retired_at: null, retired_by: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };

@@ -15,7 +15,7 @@ const STANDARD: ComplianceStandard = {
 };
 const VERSION: ComplianceStandardVersion = {
   id: "ver-1", standard_id: STANDARD.id, version_number: 1, version_label: "v1.0", status: "draft",
-  effective_date: null, change_note: "", created_by: "user-1", published_at: null, published_by: null,
+  effective_date: null, change_note: "", summary: "", created_by: "user-1", published_at: null, published_by: null,
   retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const ACTION_TYPES: ComplianceActionType[] = [];

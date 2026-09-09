@@ -16,7 +16,8 @@ function requirement(overrides: Partial<ComplianceRequirement> = {}): Compliance
   return {
     id: "req-1", standard_version_id: VERSION_ID, parent_requirement_id: null,
     reference: "4", name: "Environmental requirements", description: "", reasoning: "", sort_order: 0,
-    created_by: "u1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
+    created_by: "u1", clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };
 }
 

@@ -26,16 +26,20 @@ const TARGET_STANDARD: ComplianceStandard = {
 };
 const TARGET_VERSION: ComplianceStandardVersion = {
   id: "ver-2", standard_id: "std-2", version_number: 1, version_label: "v1.0", status: "draft",
-  effective_date: null, change_note: "", created_by: "user-1", published_at: null, published_by: null,
+  effective_date: null, change_note: "", summary: "", created_by: "user-1", published_at: null, published_by: null,
   retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const SOURCE_REQUIREMENT: ComplianceRequirement = {
   id: "req-1", standard_version_id: "ver-1", parent_requirement_id: null, reference: "A.5.1", name: "Access control",
-  description: "", reasoning: "", sort_order: 0, created_by: "user-1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  description: "", reasoning: "", sort_order: 0, created_by: "user-1",
+  clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const TARGET_REQUIREMENT: ComplianceRequirement = {
   id: "req-2", standard_version_id: "ver-2", parent_requirement_id: null, reference: "CC6.1", name: "Logical access controls",
-  description: "", reasoning: "", sort_order: 0, created_by: "user-1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  description: "", reasoning: "", sort_order: 0, created_by: "user-1",
+  clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
 };
 const RELATIONSHIP_TYPES: ComplianceMappingRelationshipType[] = [
   { id: "mt-1", organization_id: ORG_ID, name: "Equivalent", sort_order: 0, implies_equivalence: true },

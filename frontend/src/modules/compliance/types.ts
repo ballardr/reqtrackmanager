@@ -210,6 +210,10 @@ export interface ComplianceStandardVersion {
   status: ComplianceStandardVersionStatus;
   effective_date: string | null;
   change_note: string;
+  /** Phase 24 — the version's own current standing, distinct from
+   * `change_note` (what changed *relative to the previous version*).
+   * Editable at any lifecycle stage — see `VersionWorkspace.tsx`. */
+  summary: string;
   created_by: string;
   published_at: string | null;
   published_by: string | null;
@@ -229,6 +233,13 @@ export interface ComplianceRequirement {
   reasoning: string;
   sort_order: number;
   created_by: string;
+  /** Phase 24 — post-publish clarification tracking (see
+   * `RequirementTree.tsx`'s "Clarify" action). `clarification_count` is 0
+   * and the rest `null`/`""` for a requirement never clarified. */
+  clarification_count: number;
+  last_clarified_at: string | null;
+  last_clarified_by: string | null;
+  last_clarification_note: string;
   created_at: string;
   updated_at: string;
 }

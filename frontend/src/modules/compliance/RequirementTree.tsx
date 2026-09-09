@@ -35,8 +35,17 @@
  * view (`RequirementDetailPanel` below) with `AutoGrowTextarea` fields for
  * description/reasoning, the same component `RequirementsPage.tsx`'s own
  * detail editing already uses, editable only while `isDraft`.
+ *
+ * Phase 24 adds a "Clarify" action (tree and list/detail view alike),
+ * shown once `isPublished` is true (mutually exclusive with `isDraft`'s own
+ * edit/delete/move controls — a requirement is either freely editable, on
+ * a draft version, or only clarifiable, on a published one; never both) —
+ * opens `RequirementClarifyModal`, a mandatory-note-gated sibling of the
+ * ordinary edit form. A clarified requirement shows a small `.badge` next
+ * to its name (tree, list, and detail panel) with the clarification count
+ * and, on hover/click, its most recent clarification note.
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -56,10 +65,33 @@ interface Props {
   standardId: string;
   versionId: string;
   isDraft: boolean;
+  /** Phase 24 — whether the owning version is `published` (as opposed to
+   * `draft` or `retired`), the one status the "Clarify" action is offered
+   * on (mirrors `clarify_requirement`'s own backend 409 on any other
+   * status). */
+  isPublished: boolean;
   actionTypes: ComplianceActionType[];
 }
 
-export function RequirementTree({ orgId, standardId, versionId, isDraft, actionTypes }: Props) {
+/** A small `.badge` marking a requirement clarified at least once (Phase
+ * 24) — shown in the tree, list, and detail views alike. The note is
+ * surfaced via the native `title` tooltip on hover/click, mirroring how
+ * this codebase already surfaces secondary detail without a second
+ * control (e.g. this same file's own `title="View mappings"` buttons). */
+function ClarificationBadge({ requirement }: { requirement: ComplianceRequirement }) {
+  if (requirement.clarification_count === 0) return null;
+  const times = requirement.clarification_count === 1 ? "1 time" : `${requirement.clarification_count} times`;
+  return (
+    <span
+      className="badge"
+      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}
+    >
+      <MessageSquareText size={12} /> Clarified
+    </span>
+  );
+}
+
+export function RequirementTree({ orgId, standardId, versionId, isDraft, isPublished, actionTypes }: Props) {
   const { showToast } = useToast();
   const [requirements, setRequirements] = useState<ComplianceRequirement[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -74,6 +106,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
   const [editingRequirement, setEditingRequirement] = useState<{ parentId: string | null; requirement?: ComplianceRequirement } | null>(null);
   const [deletingRequirement, setDeletingRequirement] = useState<ComplianceRequirement | null>(null);
   const [mappingsRequirement, setMappingsRequirement] = useState<ComplianceRequirement | null>(null);
+  const [clarifyingRequirement, setClarifyingRequirement] = useState<ComplianceRequirement | null>(null);
   const [editingAction, setEditingAction] = useState<{ requirementId: string; action?: ComplianceRequiredAction } | null>(null);
   const [deletingAction, setDeletingAction] = useState<{ requirementId: string; action: ComplianceRequiredAction } | null>(null);
 
@@ -158,6 +191,24 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
       await reload();
     } catch (err) {
       showToast(toErrorMessage(err, "Could not reorder requirement."), "error");
+    }
+  }
+
+  async function handleClarify(values: { reference: string; name: string; description: string; reasoning: string; clarificationNote: string }) {
+    if (!clarifyingRequirement) return;
+    try {
+      await complianceApi.clarifyRequirement(orgId, standardId, versionId, clarifyingRequirement.id, {
+        reference: values.reference || null,
+        name: values.name,
+        description: values.description,
+        reasoning: values.reasoning,
+        clarification_note: values.clarificationNote,
+      });
+      showToast("Requirement clarified.");
+      setClarifyingRequirement(null);
+      await reload();
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not clarify requirement."), "error");
     }
   }
 
@@ -262,9 +313,10 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
             <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "0.5rem" }}>
-              <strong>
+              <strong className="row" style={{ gap: "0.4rem" }}>
                 {node.reference && <span className="text-muted">{node.reference} — </span>}
                 {node.name}
+                <ClarificationBadge requirement={node} />
               </strong>
               {node.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{node.description}</span>}
             </div>
@@ -272,6 +324,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
               <button className="btn" title="View mappings" aria-label={`View mappings for ${node.name}`} onClick={() => setMappingsRequirement(node)}>
                 <Link2 size={14} />
               </button>
+              {isPublished && (
+                <button className="btn" title="Clarify" aria-label={`Clarify ${node.name}`} onClick={() => setClarifyingRequirement(node)}>
+                  <MessageSquareText size={14} />
+                </button>
+              )}
               {isDraft && (
                 <>
                   <button
@@ -415,9 +472,10 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
                       onClick={() => setDetailRequirement(req)}
                     >
                       <span className="stack" style={{ gap: "0.1rem" }}>
-                        <strong>
+                        <strong className="row" style={{ gap: "0.4rem" }}>
                           {req.reference && <span className="text-muted">{req.reference} — </span>}
                           {req.name}
+                          <ClarificationBadge requirement={req} />
                         </strong>
                         {req.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{req.description}</span>}
                       </span>
@@ -454,6 +512,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
           actions={actionsByRequirement[detailRequirement.id]}
           actionTypes={actionTypes}
           isDraft={isDraft}
+          isPublished={isPublished}
+          onClarify={() => {
+            setClarifyingRequirement(detailRequirement);
+            setDetailRequirement(null);
+          }}
           onClose={() => setDetailRequirement(null)}
           onSave={async (values) => {
             try {
@@ -523,6 +586,13 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, actionT
           onCancel={() => setDeletingAction(null)}
         />
       )}
+      {clarifyingRequirement && (
+        <RequirementClarifyModal
+          requirement={clarifyingRequirement}
+          onCancel={() => setClarifyingRequirement(null)}
+          onSave={handleClarify}
+        />
+      )}
     </div>
   );
 }
@@ -543,6 +613,8 @@ function RequirementDetailPanel({
   actions,
   actionTypes,
   isDraft,
+  isPublished,
+  onClarify,
   onClose,
   onSave,
 }: {
@@ -550,6 +622,8 @@ function RequirementDetailPanel({
   actions: ComplianceRequiredAction[] | undefined;
   actionTypes: ComplianceActionType[];
   isDraft: boolean;
+  isPublished: boolean;
+  onClarify: () => void;
   onClose: () => void;
   onSave: (values: { reference: string; name: string; description: string; reasoning: string }) => void;
 }) {
@@ -565,6 +639,14 @@ function RequirementDetailPanel({
   return (
     <SidePanel title={requirement.name} onClose={onClose}>
       <div className="stack">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <ClarificationBadge requirement={requirement} />
+          {isPublished && (
+            <button className="btn" onClick={onClarify}>
+              <MessageSquareText size={14} /> Clarify
+            </button>
+          )}
+        </div>
         <label className="stack" style={{ gap: "0.25rem" }}>
           <span>Reference</span>
           {isDraft ? (
@@ -731,6 +813,78 @@ function RequiredActionFormModal({
             onClick={() => onSave({ action_type_id: actionTypeId, name, description, is_mandatory: isMandatory })}
           >
             Save
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Phase 24's "Clarify" action — a narrower, mandatory-note-gated sibling of
+ * `RequirementFormModal`, for a requirement on a **published** version.
+ * Pre-fills the same reference/name/description/reasoning fields (a
+ * clarification is a correction/elaboration to this requirement's own
+ * wording, not a different action), but requires `clarificationNote`
+ * before Save enables — the backend 400s without one for the same reason
+ * (see `router.py::clarify_requirement`'s own docstring: there is no
+ * reliable way to detect "non-substantive" from the fields alone, so the
+ * note is what makes the distinction accountable).
+ */
+function RequirementClarifyModal({
+  requirement,
+  onCancel,
+  onSave,
+}: {
+  requirement: ComplianceRequirement;
+  onCancel: () => void;
+  onSave: (values: { reference: string; name: string; description: string; reasoning: string; clarificationNote: string }) => void;
+}) {
+  const [reference, setReference] = useState(requirement.reference ?? "");
+  const [name, setName] = useState(requirement.name);
+  const [description, setDescription] = useState(requirement.description);
+  const [reasoning, setReasoning] = useState(requirement.reasoning);
+  const [clarificationNote, setClarificationNote] = useState("");
+
+  return (
+    <Modal title={`Clarify "${requirement.name}"`} onClose={onCancel}>
+      <div className="stack">
+        <p className="text-muted" style={{ margin: 0 }}>
+          Use this for a non-substantive correction or elaboration only — a typo fix, added context, or formatting.
+          Anything that changes what must be satisfied requires a new standard version instead.
+        </p>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Reference</span>
+          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Name</span>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Description</span>
+          <AutoGrowTextarea value={description} onChange={setDescription} />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Reasoning</span>
+          <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
+        </label>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Clarification note (required)</span>
+          <AutoGrowTextarea
+            value={clarificationNote}
+            onChange={setClarificationNote}
+            placeholder="What changed, and why it's non-substantive."
+          />
+        </label>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn" onClick={onCancel}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            disabled={!name.trim() || !clarificationNote.trim()}
+            onClick={() => onSave({ reference, name, description, reasoning, clarificationNote })}
+          >
+            Save clarification
           </button>
         </div>
       </div>

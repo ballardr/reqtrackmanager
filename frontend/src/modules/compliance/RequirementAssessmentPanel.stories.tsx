@@ -15,7 +15,8 @@ const PC_ID = "pc-1";
 const REQUIREMENT: ComplianceRequirementNode = {
   id: "req-1", standard_version_id: VERSION_ID, parent_requirement_id: null,
   reference: "A.5.15", name: "Access control", description: "Restrict access to information.", reasoning: "", sort_order: 0,
-  created_by: "u1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", depth: 0, children: [],
+  created_by: "u1", clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", depth: 0, children: [],
 };
 
 function pcr(overrides: Partial<ProjectComplianceRequirement> = {}): ProjectComplianceRequirement {

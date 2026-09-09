@@ -599,6 +599,35 @@ def publish_compliance_version(headers: dict, org_id: str, standard_id: str, ver
     return r.json()
 
 
+def update_compliance_version_summary(headers: dict, org_id: str, standard_id: str, version_id: str, summary: str) -> dict:
+    """Phase 24: a version's own current-standing `summary` — editable at
+    any lifecycle stage, `standards_manager`-or-override only once
+    published/retired."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}",
+        json={"summary": summary}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def clarify_compliance_requirement(
+    headers: dict, org_id: str, standard_id: str, version_id: str, requirement_id: str, *,
+    name: str, reference: str | None = None, description: str = "", reasoning: str = "", clarification_note: str,
+) -> dict:
+    """Phase 24: a non-substantive correction to a requirement already on a
+    `PUBLISHED` version — `standards_manager`-or-override only."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements/"
+        f"{requirement_id}/clarify",
+        json={"name": name, "reference": reference, "description": description, "reasoning": reasoning,
+              "clarification_note": clarification_note},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def assign_compliance_standard(headers: dict, org_id: str, project_id: str, standard_id: str, version_id: str) -> dict:
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/modules/compliance/projects/{project_id}/project-compliance",
@@ -1256,6 +1285,21 @@ def main() -> None:
     # publishing, since a contributor may only edit a still-draft version).
     grant_standard_role(h_pm, org["id"], airworthiness_standard["id"], demo_engineer["user_id"], "standards_contributor")
     publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
+    # Phase 24: demonstrate the always-editable version summary and a
+    # post-publish clarification — both `standards_manager`-or-override
+    # only (demo_admin, via her org admin override) once a version is no
+    # longer a draft.
+    update_compliance_version_summary(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        "Current release; supersedes no earlier version. Remote-ID broadcast wording clarified post-publish.",
+    )
+    remote_id_compliance_req = clarify_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"], remote_id_compliance_req["id"],
+        name="Broadcast Part 107 remote identification per the FAA rule text published in 14 CFR 89",
+        reference=remote_id_compliance_req["reference"],
+        reasoning=remote_id_compliance_req["reasoning"],
+        clarification_note="Added the specific CFR citation for clarity; the underlying obligation is unchanged.",
+    )
 
     drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
     grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])

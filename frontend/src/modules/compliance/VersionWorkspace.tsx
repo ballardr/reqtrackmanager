@@ -11,9 +11,22 @@
  * a "drill into the content column, keep a Back control" shape, the same
  * one `RequirementsPage`'s own detail view already uses elsewhere in this
  * app for a similarly content-heavy child view.
+ *
+ * Phase 24 adds an always-editable "Version summary" field (distinct from
+ * `change_note`, which describes what changed *relative to the previous
+ * version*, not this version's own current standing) — editable
+ * regardless of the version's own status, unlike everything else here,
+ * which is `isDraft`-gated. The backend enforces the stage-dependent RBAC
+ * (`standards_contributor` while `DRAFT`, `standards_manager`-or-override
+ * once published/retired) — this component doesn't attempt to compute that
+ * client-side, matching this module's own established convention of
+ * always showing an action and surfacing a 403 via toast rather than
+ * pre-computing permissions in the UI (see e.g. Publish/Retire above,
+ * unconditionally shown regardless of the caller's actual role).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -40,6 +53,25 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
   const { showToast } = useToast();
   const [confirming, setConfirming] = useState<"publish" | "retire" | null>(null);
   const [showDiff, setShowDiff] = useState(false);
+  const [summary, setSummary] = useState(version.summary);
+  const [savingSummary, setSavingSummary] = useState(false);
+
+  useEffect(() => {
+    setSummary(version.summary);
+  }, [version.id, version.summary]);
+
+  async function handleSaveSummary() {
+    setSavingSummary(true);
+    try {
+      const updated = await complianceApi.updateStandardVersion(orgId, standard.id, version.id, summary);
+      showToast("Version summary updated.");
+      onVersionChanged(updated);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not update version summary."), "error");
+    } finally {
+      setSavingSummary(false);
+    }
+  }
 
   async function handleConfirm() {
     if (!confirming) return;
@@ -95,7 +127,30 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
         </p>
       )}
 
-      <RequirementTree orgId={orgId} standardId={standard.id} versionId={version.id} isDraft={isDraft} actionTypes={actionTypes} />
+      <div className="card stack" style={{ gap: "0.4rem" }}>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Version summary</span>
+          <AutoGrowTextarea
+            value={summary}
+            onChange={setSummary}
+            placeholder="This version's current standing — e.g. note that a retired version is deprecated."
+          />
+        </label>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn btn-primary" disabled={summary === version.summary || savingSummary} onClick={handleSaveSummary}>
+            {savingSummary ? "Saving…" : "Save summary"}
+          </button>
+        </div>
+      </div>
+
+      <RequirementTree
+        orgId={orgId}
+        standardId={standard.id}
+        versionId={version.id}
+        isDraft={isDraft}
+        isPublished={version.status === "published"}
+        actionTypes={actionTypes}
+      />
 
       {confirming && (
         <ConfirmDialog

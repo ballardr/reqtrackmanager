@@ -271,6 +271,20 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     )
     assert action_resp.status_code == 201, action_resp.text
     _publish_version(client, admin_token, org_id, standard_a["id"], version_a["id"])
+    # Phase 24: a version's `summary` and a requirement's clarification
+    # fields must round-trip through the whole-org bundle too, not just the
+    # standalone standard export (`test_compliance_standard_export_import.py`).
+    summary_resp = client.patch(
+        f"{_base(org_id)}/standards/{standard_a['id']}/versions/{version_a['id']}",
+        json={"summary": "Org-bundle version summary."}, headers=auth_headers(admin_token),
+    )
+    assert summary_resp.status_code == 200, summary_resp.text
+    clarify_resp = client.patch(
+        f"{_base(org_id)}/standards/{standard_a['id']}/versions/{version_a['id']}/requirements/{child['id']}/clarify",
+        json={"name": "Clause 1.1", "reference": "1.1", "clarification_note": "Org-bundle clarification."},
+        headers=auth_headers(admin_token),
+    )
+    assert clarify_resp.status_code == 200, clarify_resp.text
 
     standard_b = _create_standard(client, admin_token, org_id, reference="ORG-EXPORT-B", name="Standard B")
     version_b = client.get(
@@ -321,6 +335,7 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     assert len(new_versions_a) == 1
     new_version_a = new_versions_a[0]
     assert new_version_a["status"] == "published"
+    assert new_version_a["summary"] == "Org-bundle version summary."
 
     new_requirements_a = client.get(
         f"{_base(new_org['id'])}/standards/{new_standard_a['id']}/versions/{new_version_a['id']}/requirements",
@@ -329,6 +344,9 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     new_parent = next(r for r in new_requirements_a if r["reference"] == "1")
     new_child = next(r for r in new_requirements_a if r["reference"] == "1.1")
     assert new_child["parent_requirement_id"] == new_parent["id"]
+    assert new_child["clarification_count"] == 1
+    assert new_child["last_clarification_note"] == "Org-bundle clarification."
+    assert new_child["last_clarified_by"] is not None
 
     new_actions = client.get(
         f"{_base(new_org['id'])}/standards/{new_standard_a['id']}/versions/{new_version_a['id']}/requirements/"

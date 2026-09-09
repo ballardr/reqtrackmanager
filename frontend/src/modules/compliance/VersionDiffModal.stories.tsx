@@ -11,7 +11,7 @@ const BASE = `/api/v1/orgs/${ORG_ID}/modules/compliance`;
 
 function version(overrides: Partial<ComplianceStandardVersion> & { id: string; version_label: string }): ComplianceStandardVersion {
   return {
-    standard_id: STANDARD_ID, version_number: 1, status: "draft", effective_date: null, change_note: "",
+    standard_id: STANDARD_ID, version_number: 1, status: "draft", effective_date: null, change_note: "", summary: "",
     created_by: "user-1", published_at: null, published_by: null, retired_at: null, retired_by: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
   };

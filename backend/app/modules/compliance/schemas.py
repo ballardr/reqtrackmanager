@@ -56,6 +56,13 @@ Design decisions, not left implicit:
   field (never stored — see `service.py::compute_review_schedule_state`),
   the same "built explicitly by the router" shape as `ComplianceEvidenceOut.
   validity_state`.
+- Phase 24 (§4, §31, Post-Publish Clarification Edits + Editable Version
+  Descriptions) adds `ComplianceStandardVersionUpdate` (carries only
+  `summary`, the one version field editable regardless of lifecycle status
+  — see `models.py`'s own Phase 24 notes) and `ComplianceRequirementClarifyRequest`
+  (a dedicated, narrower sibling of `ComplianceRequirementUpdate` for a
+  `PUBLISHED` version, with a mandatory `clarification_note`). `ComplianceStandardVersionOut`/
+  `ComplianceRequirementOut` grow the corresponding new fields.
 - Phase 11 (§19, §27, Cross-Standard Mapping + Version Impact) adds
   `ComplianceMappingRelationshipType*` (the org-scoped vocabulary,
   mirroring `ComplianceActionType*`'s exact shape one section up),
@@ -229,6 +236,7 @@ class ComplianceStandardVersionOut(BaseModel):
     status: ComplianceStandardVersionStatus
     effective_date: date | None
     change_note: str
+    summary: str
     created_by: UUID
     published_at: datetime | None
     published_by: UUID | None
@@ -236,6 +244,37 @@ class ComplianceStandardVersionOut(BaseModel):
     retired_by: UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+# --- Phase 24: post-publish clarification edits + editable version summary ------
+
+
+class ComplianceStandardVersionUpdate(BaseModel):
+    """Payload for `PATCH .../versions/{version_id}` (Phase 24). Carries
+    only `summary` — deliberately not every field `ComplianceStandardVersionCreate`
+    accepts, since this endpoint's whole purpose is the one field Phase 6's
+    `_require_draft_version` gate does *not* apply to (see `models.py`'s own
+    Phase 24 design-decisions section); every other version field stays
+    frozen once the version leaves `DRAFT`, with no update path at all."""
+
+    summary: str = ""
+
+
+class ComplianceRequirementClarifyRequest(BaseModel):
+    """Payload for `PATCH .../requirements/{id}/clarify` (Phase 24) — a
+    non-substantive correction/elaboration to a requirement already
+    belonging to a `PUBLISHED` version. `clarification_note` is mandatory
+    (400 if blank, enforced by the router, mirroring every other
+    conditionally-mandatory-justification field in this module) — see
+    `router.py::clarify_requirement`'s own docstring for why this is what
+    makes the substantive/clarification distinction accountable rather than
+    silent."""
+
+    reference: str | None = None
+    name: str
+    description: str = ""
+    reasoning: str = ""
+    clarification_note: str
 
 
 # --- Requirements --------------------------------------------------------------
@@ -275,6 +314,10 @@ class ComplianceRequirementOut(BaseModel):
     reasoning: str
     sort_order: int
     created_by: UUID
+    clarification_count: int
+    last_clarified_at: datetime | None
+    last_clarified_by: UUID | None
+    last_clarification_note: str
     created_at: datetime
     updated_at: datetime
 

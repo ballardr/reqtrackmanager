@@ -250,6 +250,25 @@ export function retireStandardVersion(orgId: string, standardId: string, version
   return api.post(`${base(orgId)}/standards/${standardId}/versions/${versionId}/retire`);
 }
 
+// --- Phase 24: version summary (editable at any lifecycle stage) + ---------------
+// post-publish requirement clarification.
+
+export function updateStandardVersion(
+  orgId: string, standardId: string, versionId: string, summary: string
+): Promise<ComplianceStandardVersion> {
+  return api.patch(`${base(orgId)}/standards/${standardId}/versions/${versionId}`, { summary });
+}
+
+export function clarifyRequirement(
+  orgId: string,
+  standardId: string,
+  versionId: string,
+  requirementId: string,
+  payload: { reference?: string | null; name: string; description?: string; reasoning?: string; clarification_note: string }
+): Promise<ComplianceRequirement> {
+  return api.patch(`${requirementsBase(orgId, standardId, versionId)}/${requirementId}/clarify`, payload);
+}
+
 // --- Requirements ---------------------------------------------------------------
 
 function requirementsBase(orgId: string, standardId: string, versionId: string): string {

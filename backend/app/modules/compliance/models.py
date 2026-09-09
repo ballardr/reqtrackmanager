@@ -463,6 +463,45 @@ Project-Manager Assignment — second human-review round):
   assessment/audit trail" principle (§8, §16). `applicability_default`
   only ever governs *future* reconciliation events, never past ones.
 
+Phase 24 design decisions (Post-Publish Clarification Edits + Editable
+Version Descriptions — second human-review round):
+- `ComplianceStandardVersion.summary` and `ComplianceRequirement`'s four
+  clarification columns are this phase's only schema changes — both are a
+  deliberate, explicitly-flagged *revision* of Phase 6's "a published
+  version's requirements become immutable" rule (`router.py::
+  _require_draft_version`), not a reopening of it: see `router.py::
+  clarify_requirement`'s own docstring for why a narrow, mandatory-note,
+  manager-gated exception satisfies §4/§31's actual wording ("must not
+  *silently*/*unexpectedly* alter... compliance assessment") rather than
+  violating it.
+- `summary` is a plain column on `ComplianceStandardVersion`, editable
+  regardless of `status`, rather than living behind `_require_draft_version`
+  like every other field on this row — the one field on this table this
+  phase deliberately makes structurally exempt from that gate (see
+  `schemas.py`'s `ComplianceStandardVersionUpdate`, which carries only this
+  field, mirroring `ComplianceStandardUpdate`'s own precedent of using the
+  schema's own shape — not a runtime check alone — to make a field
+  editable/non-editable).
+- The clarification fields live on `ComplianceRequirement` itself (the
+  *reusable* definition), not on a project-specific assessment row — this
+  looks, at first glance, like it cuts against this module's own
+  established §31 principle ("a Compliance Requirement must not contain the
+  *compliance state of a project*," this file's own docstring, applied
+  repeatedly through Phase 7/9/11 above). It doesn't: whether a requirement
+  has been clarified, and its own wording's last-touched marker, are a fact
+  about the *requirement's own text*, identical for every project assigned
+  to it — the same category of fact `name`/`description`/`reasoning`
+  already are on this row — not a project's assessment of that text, which
+  is what §31 actually scopes off onto `ProjectComplianceRequirement`.
+- No new "substantive vs. clarification" enum or detection column: the
+  distinction is enforced procedurally (a dedicated, narrow `PATCH .../
+  clarify` endpoint distinct from the ordinary draft-only update endpoint,
+  see `router.py`), not data-modelled — there is no reliable way to
+  classify a text diff as substantive vs. non-substantive from the diff
+  alone, so the schema doesn't pretend otherwise; the mandatory
+  `clarification_note` is what makes each use of the distinction
+  accountable, per this file's own module docstring.
+
 External dependencies: none beyond this project's own ORM/config modules.
 """
 
@@ -597,6 +636,15 @@ class ComplianceStandardVersion(UUIDPKMixin, TimestampMixin, Base):
             what changed between standard versions" (full structured
             diffing is Phase 11; this is the author's own summary,
             mirroring `RequirementVersion.change_note`).
+        summary: Phase 24's own addition — the version's *current* standing
+            (distinct from `change_note`, which describes what changed
+            *relative to the previous version*, not this version's own
+            present state, e.g. noting an already-retired version is
+            deprecated). Editable at any lifecycle stage — DRAFT/PUBLISHED/
+            RETIRED alike — unlike every other field on this row, which is
+            frozen once the version leaves DRAFT (`router.py::
+            _require_draft_version`). See this module's own Phase 24
+            design-decisions section below.
         created_by: The user who created this version.
         published_at / published_by / retired_at / retired_by: Lifecycle
             transition stamps, mirroring `Requirement.archived_at/
@@ -617,6 +665,7 @@ class ComplianceStandardVersion(UUIDPKMixin, TimestampMixin, Base):
     )
     effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     change_note: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -665,6 +714,25 @@ class ComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
             practical").
         sort_order: Display/ordering position among sibling requirements.
         created_by: The user who created this requirement.
+        clarification_count / last_clarified_at / last_clarified_by /
+            last_clarification_note: Phase 24's own addition — a non-
+            substantive wording correction/elaboration made to this
+            requirement *after* its owning version was published (§4/§31's
+            "must not silently alter... compliance assessment" is satisfied
+            by this always being human-asserted via a mandatory note, never
+            a mechanically-detected distinction — see `router.py::
+            clarify_requirement`'s own docstring). `last_clarification_note`
+            mirrors `ProjectComplianceRequirement.decision_note`'s already-
+            established "last decision's own note lives on the row itself;
+            the full history is the audit trail" precedent (one column up
+            in this same file's Phase 9 notes) rather than a new table —
+            every clarification, including this one, is also logged via
+            `services.audit.log_event` (action `"clarified"`), so nothing
+            here is the sole record of a past clarification, only the most
+            recent one, surfaced as a badge without a second round trip.
+            `clarification_count` lets the badge say "clarified 3 times"
+            without a `COUNT(*)` over the audit log on every requirement-
+            tree render.
     """
 
     __tablename__ = "compliance_requirements"
@@ -684,6 +752,12 @@ class ComplianceRequirement(UUIDPKMixin, TimestampMixin, Base):
     reasoning: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    clarification_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_clarified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_clarified_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    last_clarification_note: Mapped[str] = mapped_column(Text, default="")
 
 
 class ComplianceRequiredAction(UUIDPKMixin, TimestampMixin, Base):

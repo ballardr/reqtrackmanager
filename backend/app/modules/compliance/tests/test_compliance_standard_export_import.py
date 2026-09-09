@@ -100,6 +100,57 @@ def test_export_document_carries_full_tree_and_only_referenced_vocab(client, adm
     assert child_doc["required_actions"][0]["action_type_name"] == "Verification (EXP-STD)"
 
 
+def test_export_and_import_round_trip_version_summary_and_clarification(client, admin_token, org_id):
+    """Phase 24: a version's `summary` and a requirement's clarification
+    fields (`clarification_count`/`last_clarified_at`/
+    `last_clarification_note`/the clarifying user) are first-class exported
+    fields, not silently dropped like the "evidence history missing from
+    export" gap Phase 15 found and fixed."""
+    standard, version_id, parent, child, action_type, action = _build_standard_with_tree(
+        client, admin_token, org_id, reference="CLARIFY-EXP-STD"
+    )
+    _publish_version(client, admin_token, org_id, standard["id"], version_id)
+    summary_resp = client.patch(
+        f"{_base(org_id)}/standards/{standard['id']}/versions/{version_id}",
+        json={"summary": "This version's current standing."}, headers=auth_headers(admin_token),
+    )
+    assert summary_resp.status_code == 200, summary_resp.text
+    clarify_resp = client.patch(
+        f"{_base(org_id)}/standards/{standard['id']}/versions/{version_id}/requirements/{child['id']}/clarify",
+        json={"name": "Child Requirement", "reference": "1.1", "clarification_note": "Fixed a typo."},
+        headers=auth_headers(admin_token),
+    )
+    assert clarify_resp.status_code == 200, clarify_resp.text
+
+    doc = _export(client, admin_token, org_id, standard["id"])
+    version_doc = doc["standard"]["versions"][0]
+    assert version_doc["summary"] == "This version's current standing."
+    child_doc = next(r for r in version_doc["requirements"] if r["name"] == "Child Requirement")
+    assert child_doc["clarification_count"] == 1
+    assert child_doc["last_clarification_note"] == "Fixed a typo."
+    assert child_doc["last_clarified_at"] is not None
+    assert child_doc["last_clarified_by_email"] is not None
+
+    target_org, target_token = create_org_admin_in(client, admin_token, "Clarification Import Target")
+    import_resp = _import(client, target_token, target_org["id"], doc)
+    assert import_resp.status_code == 201, import_resp.text
+    result = import_resp.json()
+
+    new_versions = client.get(
+        f"{_base(target_org['id'])}/standards/{result['standard']['id']}/versions", headers=auth_headers(target_token)
+    ).json()
+    assert new_versions[0]["summary"] == "This version's current standing."
+    new_requirements = client.get(
+        f"{_base(target_org['id'])}/standards/{result['standard']['id']}/versions/{new_versions[0]['id']}/requirements",
+        headers=auth_headers(target_token),
+    ).json()
+    new_child = next(r for r in new_requirements if r["name"] == "Child Requirement")
+    assert new_child["clarification_count"] == 1
+    assert new_child["last_clarification_note"] == "Fixed a typo."
+    assert new_child["last_clarified_at"] is not None
+    assert new_child["last_clarified_by"] is not None
+
+
 def test_import_across_orgs_lands_draft_regardless_of_source_status(client, admin_token, org_id):
     """§4/§31: an imported standard must be reviewed and re-published
     locally before it governs any project — even a *published* source

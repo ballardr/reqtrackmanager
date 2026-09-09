@@ -100,6 +100,16 @@ Phase 23 (Standard workspace UX overhaul) adds one read-only endpoint,
 view-gated slice of the exact same `build_status_out` computation
 `list_all_project_compliance` already runs org-wide; see that endpoint's
 own docstring for why no new counting logic was needed.
+
+Phase 24 (Post-Publish Clarification Edits + Editable Version Descriptions)
+adds `PATCH .../standards/{id}/versions/{version_id}` (a version's own
+`summary`, editable at any lifecycle stage, `standards_manager`-or-override
+only once the version leaves `DRAFT`) and `PATCH .../requirements/{id}/
+clarify` (a narrow, mandatory-note, `standards_manager`-or-override-only
+exception to `_require_draft_version` for a `PUBLISHED` version's
+requirements) — see `update_standard_version`/`clarify_requirement`'s own
+docstrings and `models.py`'s Phase 24 design-decisions section for the full
+reasoning.
 """
 
 from __future__ import annotations
@@ -155,6 +165,7 @@ from app.modules.compliance.schemas import (
     ComplianceRequiredActionOut,
     ComplianceRequiredActionUpdate,
     ComplianceRequirementCreate,
+    ComplianceRequirementClarifyRequest,
     ComplianceRequirementMappingCreate,
     ComplianceRequirementMappingOut,
     ComplianceRequirementOut,
@@ -174,6 +185,7 @@ from app.modules.compliance.schemas import (
     ComplianceStandardUpdate,
     ComplianceStandardVersionCreate,
     ComplianceStandardVersionOut,
+    ComplianceStandardVersionUpdate,
     OrgExpiringEvidenceOut,
     OrgNonCompliantRequirementOut,
     OrgPendingApprovalOut,
@@ -1174,6 +1186,37 @@ def get_standard_version(
     return version
 
 
+@router.patch("/standards/{standard_id}/versions/{version_id}", response_model=ComplianceStandardVersionOut)
+def update_standard_version(
+    organization_id: UUID, standard_id: UUID, version_id: UUID, payload: ComplianceStandardVersionUpdate,
+    request: Request,
+    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
+):
+    """Updates a version's own `summary` (Phase 24) — the version's
+    *current* standing, distinct from `change_note`. Unlike every other
+    field on this row, editable at **any** lifecycle stage (`DRAFT`/
+    `PUBLISHED`/`RETIRED` alike, never `_require_draft_version`-gated) —
+    the motivating example is marking an already-retired version's summary
+    to note it's deprecated (see `models.py`'s own Phase 24 notes).
+
+    RBAC is stage-dependent: a `standards_contributor` may call this while
+    the version is still `DRAFT` (this is the ordinary contributor-level
+    field-write `_require_standard_manage_or_contribute` already permits
+    everywhere else), but once the version is `PUBLISHED`/`RETIRED`, only
+    `standards_manager`-or-override may — checked explicitly here rather
+    than by depending on the stricter gate outright, since a contributor
+    must still pass for the `DRAFT` case."""
+    _, version = _get_version_or_404(db, organization_id, standard_id, version_id)
+    if version.status != ComplianceStandardVersionStatus.DRAFT:
+        current_user = _require_standard_manage(request=request, current_user=current_user, db=db)
+    version.summary = payload.summary
+    log_event(db, entity_type="compliance_standard_version", entity_id=version.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id, detail={"summary": version.summary})
+    db.commit()
+    db.refresh(version)
+    return version
+
+
 def _notify_projects_of_standard_update(
     db: Session, standard: ComplianceStandard, *, new_version: ComplianceStandardVersion, actor_id: UUID
 ) -> None:
@@ -1390,6 +1433,97 @@ def update_requirement(
     requirement.reasoning = payload.reasoning
     log_event(db, entity_type="compliance_requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id, detail={"name": requirement.name})
+    db.commit()
+    db.refresh(requirement)
+    return requirement
+
+
+@router.patch(
+    "/standards/{standard_id}/versions/{version_id}/requirements/{requirement_id}/clarify",
+    response_model=ComplianceRequirementOut,
+)
+def clarify_requirement(
+    organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
+    payload: ComplianceRequirementClarifyRequest,
+    current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
+):
+    """Applies a non-substantive correction/elaboration to a requirement
+    already belonging to a **`PUBLISHED`** version (Phase 24) — a distinct,
+    narrower sibling of `update_requirement` above, for exactly the one
+    case that endpoint's own `_require_draft_version` gate forbids.
+
+    This is a deliberate, explicitly-flagged revision of Phase 6's "a
+    published version's requirements become immutable" rule
+    (`_require_draft_version`, still governing every other requirement
+    mutation unchanged), not a reopening of it — §4/§31 forbid *silently*/
+    *unexpectedly* altering a published version's historical compliance
+    assessment, not *every* change outright. What makes this endpoint
+    satisfy the letter and spirit of that rule, rather than violate it:
+
+    - **409** if the version is `DRAFT` (use the ordinary `update_requirement`
+      endpoint instead — this endpoint's whole reason to exist is the one
+      case that endpoint forbids) or `RETIRED` (retired stays fully frozen,
+      per this module's Phase 4 design — a clarification is only ever
+      offered on the version projects are actively being assessed against).
+    - **400** if `clarification_note` is blank — mandatory, mirroring every
+      other conditionally-mandatory-justification field in this module
+      (Not Applicable, Non-Compliant, Rejection). There is no reliable way
+      to detect "substantive" vs. "non-substantive" from a text diff alone
+      (see `models.py`'s own Phase 24 notes) — the note is what makes this
+      human-asserted distinction accountable and auditable, never silent.
+    - Gated to `standards_manager`-or-override only (`_require_standard_manage`,
+      composing with org-scoped `compliance_manager`/`OrgRole.ORG_ADMIN`/
+      `is_server_admin`) — **not** `_require_standard_manage_or_contribute`:
+      a `standards_contributor`'s role is deliberately scoped to
+      draft-stage authoring (Phase 22's own definition); extending it to
+      also touch published content would quietly widen that boundary.
+    - Every call stamps `last_clarified_at`/`last_clarified_by`/
+      `last_clarification_note` and increments `clarification_count`, and
+      is logged via `services.audit.log_event` (action `"clarified"`,
+      before/after values for every field this endpoint can change) —
+      exactly the "explicit, restricted, and fully audited" shape that
+      keeps this compliant with §4/§31 rather than in tension with them.
+
+    Per this phase's own explicitly-flagged open question (docs/compliance-
+    module-plan.md's Phase 24 spec): a clarification deliberately does
+    **not** call `service.invalidate_approval_if_in_flight` — a
+    clarification never changes the compliance obligation itself, so an
+    already-in-flight approval is not invalidated by one, unlike an
+    applicability or assessment change."""
+    _, version, requirement = _get_requirement_or_404(db, organization_id, standard_id, version_id, requirement_id)
+    if version.status != ComplianceStandardVersionStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Only a requirement on a published version can be clarified. Use the ordinary edit endpoint for a "
+            "draft version; a retired version's requirements are fully frozen.",
+        )
+    if not payload.clarification_note.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A clarification note is required.")
+
+    before = {
+        "reference": requirement.reference, "name": requirement.name,
+        "description": requirement.description, "reasoning": requirement.reasoning,
+    }
+    requirement.reference = payload.reference
+    requirement.name = payload.name
+    requirement.description = payload.description
+    requirement.reasoning = payload.reasoning
+    requirement.clarification_count += 1
+    requirement.last_clarified_at = datetime.now(UTC)
+    requirement.last_clarified_by = current_user.id
+    requirement.last_clarification_note = payload.clarification_note
+    log_event(
+        db, entity_type="compliance_requirement", entity_id=requirement.id, action="clarified",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={
+            "before": before,
+            "after": {
+                "reference": requirement.reference, "name": requirement.name,
+                "description": requirement.description, "reasoning": requirement.reasoning,
+            },
+            "clarification_note": payload.clarification_note,
+        },
+    )
     db.commit()
     db.refresh(requirement)
     return requirement

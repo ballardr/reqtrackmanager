@@ -21,6 +21,7 @@ function req(overrides: Partial<ComplianceRequirement> & { id: string; name: str
   return {
     standard_version_id: VERSION_ID, parent_requirement_id: null, reference: null, description: "",
     reasoning: "", sort_order: 0, created_by: "user-1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+    clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
     ...overrides,
   };
 }
@@ -134,6 +135,23 @@ function mockRequirementTreeApis(initialRequirements: ComplianceRequirement[], i
       actionsByReq[reqId] = (actionsByReq[reqId] ?? []).map((a) => (a.id === actionId ? { ...a, ...payload } : a));
       return actionsByReq[reqId].find((a) => a.id === actionId);
     }
+    if (path.endsWith("/clarify")) {
+      const reqId = path.split(`${REQUIREMENTS_BASE}/`)[1].replace("/clarify", "");
+      const payload = body as {
+        reference?: string | null; name: string; description?: string; reasoning?: string; clarification_note: string;
+      };
+      requirements = requirements.map((r) =>
+        r.id === reqId
+          ? {
+              ...r, reference: payload.reference ?? null, name: payload.name, description: payload.description ?? "",
+              reasoning: payload.reasoning ?? "", clarification_count: r.clarification_count + 1,
+              last_clarified_at: "2026-01-01T00:00:00Z", last_clarified_by: "user-1",
+              last_clarification_note: payload.clarification_note,
+            }
+          : r
+      );
+      return requirements.find((r) => r.id === reqId);
+    }
     const reqId = path.split(`${REQUIREMENTS_BASE}/`)[1];
     const payload = body as { reference?: string | null; name: string; description?: string; reasoning?: string };
     requirements = requirements.map((r) => (r.id === reqId ? { ...r, ...payload } : r));
@@ -154,7 +172,7 @@ function mockRequirementTreeApis(initialRequirements: ComplianceRequirement[], i
 const meta: Meta<typeof RequirementTree> = {
   title: "Modules/Compliance/RequirementTree",
   component: RequirementTree,
-  args: { orgId: ORG_ID, standardId: STANDARD_ID, versionId: VERSION_ID, isDraft: true, actionTypes: ACTION_TYPES },
+  args: { orgId: ORG_ID, standardId: STANDARD_ID, versionId: VERSION_ID, isDraft: true, isPublished: false, actionTypes: ACTION_TYPES },
   decorators: [withToast(), withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
@@ -364,6 +382,9 @@ export const ReadOnlyWhenVersionNotDraft: Story = {
     await expect(canvas.queryByRole("button", { name: "Add requirement" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit Access control" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Delete Access control" })).not.toBeInTheDocument();
+    // Retired (not draft, not published) — no "Clarify" either; that's
+    // offered only on a published version (Phase 24).
+    await expect(canvas.queryByRole("button", { name: "Clarify Access control" })).not.toBeInTheDocument();
     // "View mappings" stays available — mappings aren't a mutation of this
     // version's own (immutable) requirement content.
     await expect(canvas.getByRole("button", { name: "View mappings for Access control" })).toBeInTheDocument();
@@ -372,6 +393,59 @@ export const ReadOnlyWhenVersionNotDraft: Story = {
     await expect(await canvas.findByText("Annual review")).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add required action" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit required action Annual review" })).not.toBeInTheDocument();
+  },
+};
+
+// --- Phase 24: post-publish clarification -----------------------------------
+
+export const ClarifyPublishedRequirement: Story = {
+  args: { isDraft: false, isPublished: true },
+  beforeEach: () => mockRequirementTreeApis([req({ id: "req-1", reference: "A.5.1", name: "Access control policy" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Access control policy")).toBeInTheDocument());
+    // No ordinary edit/delete controls — only Clarify, on a published version.
+    await expect(canvas.queryByRole("button", { name: "Edit Access control policy" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Clarify Access control policy" })).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Clarify Access control policy" }));
+    const body = within(document.body);
+    await expect(body.getByRole("dialog", { name: 'Clarify "Access control policy"' })).toBeInTheDocument();
+
+    // Save is disabled until a clarification note is provided.
+    await expect(body.getByRole("button", { name: "Save clarification" })).toBeDisabled();
+    await userEvent.type(body.getByLabelText("Clarification note (required)"), "Fixed a typo in the description.");
+    await expect(body.getByRole("button", { name: "Save clarification" })).toBeEnabled();
+    await userEvent.click(body.getByRole("button", { name: "Save clarification" }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `${REQUIREMENTS_BASE}/req-1/clarify`,
+      {
+        reference: "A.5.1", name: "Access control policy", description: "", reasoning: "",
+        clarification_note: "Fixed a typo in the description.",
+      }
+    ));
+    // The clarification badge appears once the reload completes.
+    await waitFor(() => expect(canvas.getByText("Clarified")).toBeInTheDocument());
+  },
+};
+
+export const ClarifiedRequirementShowsBadge: Story = {
+  args: { isDraft: false, isPublished: true },
+  beforeEach: () => mockRequirementTreeApis([
+    req({
+      id: "req-1", name: "Access control policy", clarification_count: 2,
+      last_clarified_at: "2026-02-01T00:00:00Z", last_clarified_by: "user-1",
+      last_clarification_note: "Clarified wording around remote access.",
+    }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Access control policy")).toBeInTheDocument());
+    const badge = canvas.getByText("Clarified");
+    const title = badge.getAttribute("title") ?? "";
+    await expect(title).toContain("Clarified 2 times");
+    await expect(title).toContain("Clarified wording around remote access.");
   },
 };
 

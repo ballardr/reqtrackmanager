@@ -19,7 +19,7 @@ const STANDARD: ComplianceStandard = {
 function version(overrides: Partial<ComplianceStandardVersion> = {}): ComplianceStandardVersion {
   return {
     id: "ver-1", standard_id: "std-1", version_number: 1, version_label: "v1.0", status: "draft",
-    effective_date: null, change_note: "", created_by: "user-1", published_at: null, published_by: null,
+    effective_date: null, change_note: "", summary: "", created_by: "user-1", published_at: null, published_by: null,
     retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -52,6 +52,13 @@ function mockWorkspaceApis() {
     if (path.endsWith("/publish")) return version({ status: "published" });
     if (path.endsWith("/retire")) return version({ status: "retired" });
     throw new Error(`unmocked POST: ${path}`);
+  });
+  spyOn(api, "patch").mockImplementation(async (path: string, body?: unknown) => {
+    if (/\/versions\/[^/]+$/.test(path)) {
+      const payload = body as { summary: string };
+      return version({ summary: payload.summary });
+    }
+    throw new Error(`unmocked PATCH: ${path}`);
   });
 }
 
@@ -144,6 +151,31 @@ export const CompareVersionsOpensDiffModal: Story = {
     // Proves the transition only — `VersionDiffModal`'s own diff-rendering
     // behaviour is `VersionDiffModal.stories.tsx`'s job.
     await expect(within(document.body).getByRole("dialog", { name: "Compare versions" })).toBeInTheDocument();
+  },
+};
+
+// --- Phase 24: always-editable version summary ------------------------------
+
+export const EditSummaryOnRetiredVersion: Story = {
+  args: { version: version({ status: "retired" }), versions: [version({ status: "retired" })] },
+  beforeEach: () => mockWorkspaceApis(),
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const saveButton = canvas.getByRole("button", { name: "Save summary" });
+    // Editable — and its own Save control — regardless of the version being
+    // retired, unlike everything else in this view.
+    await expect(saveButton).toBeDisabled();
+
+    const summaryField = canvas.getByPlaceholderText(/This version's current standing/);
+    await userEvent.type(summaryField, "Deprecated — superseded by v2.0.");
+    await expect(saveButton).toBeEnabled();
+    await userEvent.click(saveButton);
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/standards/std-1/versions/ver-1`,
+      { summary: "Deprecated — superseded by v2.0." }
+    ));
+    await waitFor(() => expect(args.onVersionChanged).toHaveBeenCalledOnce());
   },
 };
 

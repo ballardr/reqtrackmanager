@@ -225,6 +225,8 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             for i, r in enumerate(requirements):
                 requirement_ref_by_id[r.id] = f"{standard.reference}::v{version.version_number}::{i + 1}"
                 user_ids.add(r.created_by)
+                if r.last_clarified_by:
+                    user_ids.add(r.last_clarified_by)
             required_actions_by_requirement: dict[UUID, list[ComplianceRequiredAction]] = {}
             if requirements:
                 actions = list(
@@ -250,6 +252,8 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
                     "reference": r.reference, "name": r.name, "description": r.description, "reasoning": r.reasoning,
                     "sort_order": r.sort_order, "created_by_email": None,  # filled in below once emails are resolved
                     "_created_by": r.created_by,
+                    "clarification_count": r.clarification_count, "last_clarified_at": _j(r.last_clarified_at),
+                    "last_clarification_note": r.last_clarification_note, "_last_clarified_by": r.last_clarified_by,
                     "required_actions": [
                         {
                             "action_type_name": action_type_name_by_id.get(a.action_type_id, ""),
@@ -262,7 +266,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             versions_json.append({
                 "version_number": version.version_number, "version_label": version.version_label,
                 "status": version.status.value, "effective_date": _j(version.effective_date),
-                "change_note": version.change_note, "_created_by": version.created_by,
+                "change_note": version.change_note, "summary": version.summary, "_created_by": version.created_by,
                 "published_at": _j(version.published_at), "_published_by": version.published_by,
                 "retired_at": _j(version.retired_at), "_retired_by": version.retired_by,
                 "requirements": requirements_json,
@@ -317,6 +321,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             version_json["retired_by_email"] = email(version_json.pop("_retired_by"))
             for requirement_json in version_json["requirements"]:
                 requirement_json["created_by_email"] = email(requirement_json.pop("_created_by"))
+                requirement_json["last_clarified_by_email"] = email(requirement_json.pop("_last_clarified_by"))
                 for action_json in requirement_json["required_actions"]:
                     action_json["created_by_email"] = email(action_json.pop("_created_by"))
     for mapping_json in mappings_json:
@@ -481,7 +486,7 @@ def _import_compliance_standards(
             version = ComplianceStandardVersion(
                 standard_id=standard.id, version_number=v["version_number"], version_label=v["version_label"],
                 status=ComplianceStandardVersionStatus(v["status"]), effective_date=_date(v.get("effective_date")),
-                change_note=v.get("change_note", ""),
+                change_note=v.get("change_note", ""), summary=v.get("summary", ""),
                 created_by=users.resolve(
                     v.get("created_by_email"), required=True, context=f"Standard {reference} v{v['version_label']} author"
                 ),
@@ -503,6 +508,12 @@ def _import_compliance_standards(
                     reference=r.get("reference"), name=r["name"], description=r.get("description", ""),
                     reasoning=r.get("reasoning", ""), sort_order=r.get("sort_order", 0),
                     created_by=users.resolve(r.get("created_by_email"), required=True, context=f"Requirement {r['ref']} author"),
+                    clarification_count=r.get("clarification_count", 0),
+                    last_clarified_at=_dt(r.get("last_clarified_at")),
+                    last_clarification_note=r.get("last_clarification_note", ""),
+                    last_clarified_by=users.resolve(
+                        r.get("last_clarified_by_email"), required=False, context=f"Requirement {r['ref']} last clarifier"
+                    ),
                 )
                 db.add(requirement)
                 db.flush()
@@ -683,6 +694,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
         for i, r in enumerate(requirements):
             requirement_ref_by_id[r.id] = f"{standard.reference}::v{version.version_number}::{i + 1}"
             user_ids.add(r.created_by)
+            user_ids.add(r.last_clarified_by)
         required_actions_by_requirement: dict[UUID, list[ComplianceRequiredAction]] = {}
         if requirements:
             actions = list(
@@ -721,6 +733,8 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
                 ),
                 "reference": r.reference, "name": r.name, "description": r.description, "reasoning": r.reasoning,
                 "sort_order": r.sort_order, "_created_by": r.created_by,
+                "clarification_count": r.clarification_count, "last_clarified_at": _j(r.last_clarified_at),
+                "last_clarification_note": r.last_clarification_note, "_last_clarified_by": r.last_clarified_by,
                 "required_actions": [
                     {
                         "action_type_name": action_type_name_by_id.get(a.action_type_id, ""),
@@ -733,7 +747,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
         versions_json.append({
             "version_number": version.version_number, "version_label": version.version_label,
             "status": version.status.value, "effective_date": _j(version.effective_date),
-            "change_note": version.change_note, "_created_by": version.created_by,
+            "change_note": version.change_note, "summary": version.summary, "_created_by": version.created_by,
             "published_at": _j(version.published_at), "_published_by": version.published_by,
             "retired_at": _j(version.retired_at), "_retired_by": version.retired_by,
             "requirements": requirements_json,
@@ -790,6 +804,7 @@ def export_standard_data(db: Session, standard: ComplianceStandard) -> dict[str,
         version_json["retired_by_email"] = email(version_json.pop("_retired_by"))
         for requirement_json in version_json["requirements"]:
             requirement_json["created_by_email"] = email(requirement_json.pop("_created_by"))
+            requirement_json["last_clarified_by_email"] = email(requirement_json.pop("_last_clarified_by"))
             for action_json in requirement_json["required_actions"]:
                 action_json["created_by_email"] = email(action_json.pop("_created_by"))
     for mapping_json in mappings_json:
@@ -940,7 +955,7 @@ def import_standard_data(
         version = ComplianceStandardVersion(
             standard_id=standard.id, version_number=v["version_number"], version_label=v["version_label"],
             status=ComplianceStandardVersionStatus.DRAFT, effective_date=_date(v.get("effective_date")),
-            change_note=v.get("change_note", ""),
+            change_note=v.get("change_note", ""), summary=v.get("summary", ""),
             created_by=users.resolve(
                 v.get("created_by_email"), required=True, context=f"Standard {reference} v{v['version_label']} author"
             ),
@@ -955,6 +970,12 @@ def import_standard_data(
                 reference=r.get("reference"), name=r["name"], description=r.get("description", ""),
                 reasoning=r.get("reasoning", ""), sort_order=r.get("sort_order", 0),
                 created_by=users.resolve(r.get("created_by_email"), required=True, context=f"Requirement {r['ref']} author"),
+                clarification_count=r.get("clarification_count", 0),
+                last_clarified_at=_dt(r.get("last_clarified_at")),
+                last_clarification_note=r.get("last_clarification_note", ""),
+                last_clarified_by=users.resolve(
+                    r.get("last_clarified_by_email"), required=False, context=f"Requirement {r['ref']} last clarifier"
+                ),
             )
             db.add(requirement)
             db.flush()
