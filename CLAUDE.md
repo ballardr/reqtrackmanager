@@ -113,6 +113,7 @@ def calculate_total(items: list[Item]) -> Decimal:
 - The requirements document at [docs/requirements.md](docs/requirements.md) is fully authoritative and must not be changed by the agent. All decisions should be made in compliance with the requirements laid out in this document.
 - The architecture document at [docs/solution-architecture.md](docs/solution-architecture.md) should be updated when there are architectural changes.
 - The decisions log at [docs/decisions.md](docs/decisions.md) should be used to record architectural and implementation decisions.
+- Every new decision recorded from now on — in `docs/decisions.md`, in `docs/compliance-module-plan.md`'s "Open decisions" list and individual phase specs, or in any comparable plan/decisions doc added later — must say who made it: **Decided by: User** (an explicit instruction, or the user's answer to a clarifying question) or **Decided by: Agent** (the implementing session's own judgment call, absent explicit direction). This exists because a "settled" decision an agent made on its own is not the same weight as one the user actually gave, and a later session needs to know which is which before treating either as fixed — an agent decision can be revisited on its own judgment where a user decision needs the user's sign-off to change. This applies going forward only; do not spend effort retroactively re-tagging existing entries.
 
 ## README Requirements
 

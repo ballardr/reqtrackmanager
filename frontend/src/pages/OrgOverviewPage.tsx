@@ -5,9 +5,14 @@ import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
-import { StatCard } from "../components/StatCard";
+import { StatBar, type StatBarItem } from "../components/StatBar";
 import { getInstalledModule, installedModules } from "../modules/registry";
 import { formatFileSize } from "../utils/formatFileSize";
+
+/** The always-present first group (Phase 27c) — contributed directly by
+ * this core page, not by any module, so it can never collide with a real
+ * module section key. */
+const OVERVIEW_GROUP_KEY = "overview";
 
 /**
  * "Organisation Overview" (compliance-module-plan.md Phase 19) — a new
@@ -24,16 +29,26 @@ import { formatFileSize } from "../utils/formatFileSize";
  * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
  * module's own `orgOverviewTiles`, e.g. Compliance's overall-compliance-
  * percentage/standards-count/non-compliant-projects headline gauges, Phase
- * 25b) is always shown as one equal-size `.grid.grid-metrics` grid; a
- * `ResourceMenu` of any such module's own `orgOverviewSections` (e.g.
- * Compliance's Dashboard/Compliance-by-standard/Outstanding groups,
- * relocated here from `OrgAdminPage.tsx`'s `"compliance-overview"` group,
- * Phase 19, then split from one nested-`Tabs` group into three flat
- * top-level groups, Phase 25b) is rendered below it only when at least one
- * module actually contributes one — this core page never imports a
- * specific module directly, the same "core doesn't hardcode one module"
- * boundary `Layout.tsx`/`OrgAdminPage.tsx` already establish for
- * `globalNavItems`/`orgAdminSections`.
+ * 25b) is always shown as one compact `StatBar` row (Phase 27b — previously
+ * a `.grid.grid-metrics` of `StatCard`s, redesigned into a tighter, table-
+ * like layout since a small set of numbers meant to be scanned at a glance
+ * doesn't need `.card`'s full chrome repeated per tile).
+ *
+ * That stats row is itself the content of a real, always-present "Overview"
+ * `ResourceMenu` group (Phase 27c) contributed by this page directly, not by
+ * a module — the whole page is one `ResourceMenu`-driven surface with
+ * nothing separately pinned above it, rather than a stats block pinned above
+ * a menu that only sometimes renders. Any installed, currently-enabled
+ * module's own `orgOverviewSections` (e.g. Compliance's Dashboard/
+ * Compliance-by-standard/Outstanding groups, relocated here from
+ * `OrgAdminPage.tsx`'s `"compliance-overview"` group, Phase 19, then split
+ * from one nested-`Tabs` group into three flat top-level groups, Phase 25b)
+ * become additional groups alongside "Overview" — this core page never
+ * imports a specific module directly, the same "core doesn't hardcode one
+ * module" boundary `Layout.tsx`/`OrgAdminPage.tsx` already establish for
+ * `globalNavItems`/`orgAdminSections`. With no module contributing a
+ * section, "Overview" is the only group, and `ResourceMenu` itself hides its
+ * own menu chrome whenever there's nothing to switch between (Phase 27c).
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
@@ -78,41 +93,50 @@ export function OrgOverviewPage() {
   // dropping a since-disabled module's contribution here too, not just at
   // `OrgAdminPage.tsx`'s own admin surface.
   const enabledModuleKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
-  const sections = installedModules
+  const moduleSections = installedModules
     .filter((m) => enabledModuleKeys.has(m.key))
     .flatMap((m) => m.orgOverviewSections ?? []);
 
-  const groups: ResourceMenuGroupDef<string>[] = sections.map((section) => ({
-    key: section.key,
-    label: section.label,
-    href: `/orgs/${orgId}/overview/${section.key}`,
-  }));
-  const activeSection = sections.find((s) => s.key === groupParam) ?? sections[0];
+  const groups: ResourceMenuGroupDef<string>[] = [
+    { key: OVERVIEW_GROUP_KEY, label: "Overview", href: `/orgs/${orgId}/overview` },
+    ...moduleSections.map((section) => ({
+      key: section.key,
+      label: section.label,
+      href: `/orgs/${orgId}/overview/${section.key}`,
+    })),
+  ];
+  const activeModuleSection = moduleSections.find((s) => s.key === groupParam);
+  const active = activeModuleSection?.key ?? OVERVIEW_GROUP_KEY;
+
+  const statItems: StatBarItem[] = [
+    { key: "projects", label: "Projects", value: stats.project_count },
+    { key: "requirements", label: "Requirements", value: stats.requirement_count },
+    { key: "members", label: "Members", value: stats.member_count },
+    { key: "storage", label: "File storage", value: formatFileSize(stats.total_file_size_bytes) },
+  ];
 
   return (
     <div className="stack">
       <h1 style={{ margin: 0 }}>{org.name}</h1>
 
-      <div className="grid grid-metrics">
-        <StatCard label="Projects" value={stats.project_count} />
-        <StatCard label="Requirements" value={stats.requirement_count} />
-        <StatCard label="Members" value={stats.member_count} />
-        <StatCard label="File storage" value={formatFileSize(stats.total_file_size_bytes)} />
-        {contributedTiles.map((t) => (
-          <Fragment key={t.key}>{t.node}</Fragment>
-        ))}
-      </div>
-      {!stats.is_full_org_total && (
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-          These figures are scoped to what you can see, not this organisation's full totals.
-        </p>
-      )}
-
-      {activeSection && (
-        <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={activeSection.key}>
-          {activeSection.render({ orgId })}
-        </ResourceMenu>
-      )}
+      <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
+        {activeModuleSection ? (
+          activeModuleSection.render({ orgId })
+        ) : (
+          <div className="stack">
+            <StatBar items={statItems}>
+              {contributedTiles.map((t) => (
+                <Fragment key={t.key}>{t.node}</Fragment>
+              ))}
+            </StatBar>
+            {!stats.is_full_org_total && (
+              <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                These figures are scoped to what you can see, not this organisation's full totals.
+              </p>
+            )}
+          </div>
+        )}
+      </ResourceMenu>
     </div>
   );
 }

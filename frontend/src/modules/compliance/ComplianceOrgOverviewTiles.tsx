@@ -34,8 +34,13 @@
  * once (see above), so identical label text in both places would make
  * `getByText`/accessible-name lookups ambiguous on every page load, not
  * just an edge case.
+ *
+ * Renders `StatBarEntry` (Phase 27b), not `StatCard` — `OrgOverviewPage.tsx`
+ * folded its stats header into a `StatBar` compact row, and this tile splices
+ * directly into that same row via `orgOverviewTiles`, so it needs to match
+ * that row's entries rather than the older card grid.
  */
-import { StatCard } from "../../components/StatCard";
+import { StatBarEntry } from "../../components/StatBar";
 import { computeOrgComplianceHeadline } from "./orgComplianceSummary";
 import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
 
@@ -48,9 +53,9 @@ export function ComplianceOrgOverviewTiles({ orgId }: { orgId: string }) {
 
   return (
     <>
-      <StatCard label="Overall org compliance" value={`${Math.round(overallCompliancePercentage)}%`} />
-      <StatCard label="Compliance standards in use" value={activeStandardCount} />
-      <StatCard label="Projects out of compliance" value={nonCompliantProjects.length} />
+      <StatBarEntry label="Overall org compliance" value={`${Math.round(overallCompliancePercentage)}%`} />
+      <StatBarEntry label="Compliance standards in use" value={activeStandardCount} />
+      <StatBarEntry label="Projects out of compliance" value={nonCompliantProjects.length} />
     </>
   );
 }

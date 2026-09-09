@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, waitFor, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { OrgModule, OrgOverviewStats, Organization } from "../api/types";
@@ -101,19 +101,23 @@ export const StatsOnlyNoModuleSections: Story = {
     await expect(canvas.getByText("4.3 MB")).toBeInTheDocument();
     await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
+    // Phase 27c — with no module contributing a section, "Overview" is the
+    // only ResourceMenu group, so its own menu-strip chrome (the link list)
+    // is hidden entirely rather than showing a single, always-active link.
+    await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   },
 };
 
-/** Phase 25c — the core project/requirement/member/file-storage stats
- * render as one `.grid.grid-metrics` grid, the same equal-size-cells
- * utility `ProjectOverviewPage.tsx`'s own metric tiles use, rather than a
- * `flex-wrap` row. */
-export const CoreStatsRenderAsAGrid: Story = {
+/** Phase 27b — the core project/requirement/member/file-storage stats
+ * render as one compact `StatBar` row, not the older `.grid.grid-metrics`
+ * of `StatCard`s (Phase 25c's grid convention stays correct for grouped/
+ * paged stat blocks elsewhere, e.g. `OrgComplianceDashboard.tsx`). */
+export const CoreStatsRenderAsAStatBar: Story = {
   beforeEach: () => mockOrgOverviewApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const projectsCard = await waitFor(() => canvas.getByText("Projects").closest(".card"));
-    await expect(projectsCard?.closest(".grid.grid-metrics")).not.toBeNull();
+    const projectsLabel = await waitFor(() => canvas.getByText("Projects"));
+    await expect(projectsLabel.closest(".stat-bar")).not.toBeNull();
   },
 };
 
@@ -129,12 +133,21 @@ export const WithModuleContributedSection: Story = {
   beforeEach: () => mockOrgOverviewApis({ modules: [fixtureOrgModule()] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    // Phase 27c — "Overview" is the always-present, default-selected first
+    // group; a module's own section is an additional group, not the
+    // default, so its content isn't shown until its link is clicked.
+    await expect(canvas.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     await expect(canvas.getByRole("link", { name: "Fixture overview section" })).toBeInTheDocument();
-    await expect(canvas.getByText("Fixture overview section content for org org-1")).toBeInTheDocument();
+    await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
     // Phase 25b — the module's headline tile renders directly in the
-    // always-visible stats header, alongside the core Projects/Requirements/
-    // Members/File storage tiles, not gated behind selecting a group.
+    // "Overview" group's own stats row, alongside the core Projects/
+    // Requirements/Members/File storage stats, not gated behind selecting
+    // a group of its own.
     await expect(canvas.getByText("Fixture headline tile for org org-1")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("link", { name: "Fixture overview section" }));
+    await expect(canvas.getByText("Fixture overview section content for org org-1")).toBeInTheDocument();
+    await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
   },
 };
 
@@ -144,6 +157,9 @@ export const ModuleSectionHiddenWhenModuleDisabled: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("link", { name: "Fixture overview section" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
+    // Phase 27c — with the module disabled, "Overview" is once again the
+    // only group, so the menu-strip chrome is hidden entirely.
+    await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   },
 };
 

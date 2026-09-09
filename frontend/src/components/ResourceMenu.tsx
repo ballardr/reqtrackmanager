@@ -34,6 +34,15 @@ export interface ResourceMenuGroupDef<K extends string> {
  * unlike `Tabs` (menu strip only, panel wrapper left to the caller) — since
  * the two are always laid out together here and the caller has no reason
  * to place them independently.
+ *
+ * When `groups.length <= 1` the menu strip itself (the `<nav>`/`<ul>` of
+ * group links) is skipped entirely and `children` renders directly (Phase
+ * 27c) — a single-entry menu has nothing to switch between, so the chrome
+ * would just be a list with one link that's always already active. This
+ * lets a caller declare an always-present group unconditionally (e.g.
+ * `OrgOverviewPage.tsx`'s "Overview") without that caller needing to know
+ * whether any other group exists — `ResourceMenu` itself decides whether
+ * that's worth a visible menu.
  */
 export function ResourceMenu<K extends string>({
   title,
@@ -83,40 +92,44 @@ export function ResourceMenu<K extends string>({
           {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
         </div>
       )}
-      {/* Deliberately its own "resource-menu" class, not the shared ".row"
-          utility class — ".row" is used throughout the app's Playwright specs
-          as a scoping selector for one specific list row (e.g. `page.locator(
-          ".row", { hasText: someRowsOwnText })`); this wrapper spans the
-          entire content pane, so reusing ".row" here would make it the new
-          outermost ".row" match in DOM order for *any* text anywhere in the
-          selected group's content, silently hijacking every such locator on
-          every page that adopts ResourceMenu (found via a real Playwright
-          failure on Org Admin's Report templates delete button during this
-          component's first rollout). */}
-      <div className="resource-menu">
-        <nav aria-label={ariaLabel} className="resource-menu-nav">
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-            {groups.map((g, i) => (
-              <li key={g.key}>
-                <Link
-                  ref={(el) => {
-                    linkRefs.current[i] = el;
-                  }}
-                  to={g.href}
-                  className={`nav-link${active === g.key ? " active" : ""}`}
-                  aria-current={active === g.key ? "page" : undefined}
-                  onKeyDown={(e) => handleKeyDown(e, i)}
-                >
-                  {g.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="stack resource-menu-content" style={{ flex: 1, minWidth: 0 }}>
-          {children}
+      {groups.length <= 1 ? (
+        children
+      ) : (
+        /* Deliberately its own "resource-menu" class, not the shared ".row"
+            utility class — ".row" is used throughout the app's Playwright specs
+            as a scoping selector for one specific list row (e.g. `page.locator(
+            ".row", { hasText: someRowsOwnText })`); this wrapper spans the
+            entire content pane, so reusing ".row" here would make it the new
+            outermost ".row" match in DOM order for *any* text anywhere in the
+            selected group's content, silently hijacking every such locator on
+            every page that adopts ResourceMenu (found via a real Playwright
+            failure on Org Admin's Report templates delete button during this
+            component's first rollout). */
+        <div className="resource-menu">
+          <nav aria-label={ariaLabel} className="resource-menu-nav">
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+              {groups.map((g, i) => (
+                <li key={g.key}>
+                  <Link
+                    ref={(el) => {
+                      linkRefs.current[i] = el;
+                    }}
+                    to={g.href}
+                    className={`nav-link${active === g.key ? " active" : ""}`}
+                    aria-current={active === g.key ? "page" : undefined}
+                    onKeyDown={(e) => handleKeyDown(e, i)}
+                  >
+                    {g.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="stack resource-menu-content" style={{ flex: 1, minWidth: 0 }}>
+            {children}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

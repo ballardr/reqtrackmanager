@@ -303,8 +303,77 @@ textarea.input {
   gap: 1rem;
 }
 
+/* Track minimum (220px) must match `StatCard`'s own inline `minWidth: 220`
+   (components/StatCard.tsx) — `MetricTile` (components/MetricTile.tsx) sets
+   no minWidth of its own, so it just gets a slightly roomier column, but a
+   track minimum *smaller* than an item's own minimum content width made
+   `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
+   overlapping neighbouring tiles at moderate viewport widths (Phase 27a —
+   confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
+   grid once a module contributes headline tiles). */
 .grid-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* `StatBar` (components/StatBar.tsx, Phase 27b) — a compact, table-like row
+   of labelled numbers for a page's top-level, always-visible stats header
+   (currently: `OrgOverviewPage.tsx` only). One shared border/background for
+   the whole row rather than repeating `.card`'s full chrome per tile, since
+   a small set of numbers meant to be scanned at a glance doesn't need that
+   much weight per value. Deliberately distinct from `.grid.grid-metrics`
+   (`StatCard`/`MetricTile`), which stays correct for grouped/paged stat
+   blocks elsewhere (docs/ux-style-guide.md's "Pattern: project-like
+   drill-down entities" addendum) — see that document for which of the two
+   shapes applies where. */
+.stat-bar {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 1.1rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.stat-bar-item:first-child {
+  border-left: none;
+}
+
+.stat-bar-item dt,
+.stat-bar-item dd {
+  margin: 0;
+}
+
+.stat-bar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.stat-bar-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .stat-bar {
+    flex-direction: column;
+  }
+  .stat-bar-item {
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+  .stat-bar-item:first-child {
+    border-top: none;
+  }
 }
 
 .stack {
