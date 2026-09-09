@@ -14,7 +14,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPa
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
-import { cycleSort, type SortState } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";

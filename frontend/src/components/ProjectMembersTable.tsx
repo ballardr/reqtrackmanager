@@ -114,7 +114,7 @@ import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
-import { cycleSort, type SortState } from "./SortableHeader";
+import { cycleSort, type SortState } from "./sortState";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;

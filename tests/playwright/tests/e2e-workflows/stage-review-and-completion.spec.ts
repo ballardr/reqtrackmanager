@@ -184,5 +184,34 @@ test.describe("stage review deadlines and completion", () => {
       await expect(page.getByText("Status: Approved")).toBeVisible();
       await expect(page.getByText("Completed", { exact: true })).toBeVisible();
     });
+
+    await test.step("clean up: revoke the stakeholder grant on Alpha-2 so the shared persona is left as documented", async () => {
+      // The "a stakeholder responds to the review" step above grants
+      // `stakeholderAlpha` (documented elsewhere, e.g. project-access-
+      // scope.spec.ts/org-overview.spec.ts, as "stakeholder on Alpha-1
+      // only") a real, persistent project role on Alpha-2 to exercise the
+      // review-response UI. Left ungranted, that leak breaks any other
+      // spec asserting stakeholderAlpha has exactly one project, on a
+      // second run against the same database — per this repo's own
+      // test-independence rule (state must not leak between specs/runs).
+      // Revoking it here restores the documented baseline.
+      await logout(page);
+      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+      const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const projectResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
+        headers: { Authorization: `Bearer ${pmToken}` },
+      });
+      const { organization_id: orgId } = await projectResp.json();
+      const usersResp = await page.request.get(`http://localhost:8000/api/v1/orgs/${orgId}/users`, {
+        headers: { Authorization: `Bearer ${pmToken}` },
+      });
+      const users: { user_id: string; email: string }[] = await usersResp.json();
+      const stakeholderId = users.find((u) => u.email === PERSONAS.stakeholderAlpha.email)!.user_id;
+      const revokeResp = await page.request.delete(
+        `http://localhost:8000/api/v1/projects/${projectId}/roles/${stakeholderId}/stakeholder`,
+        { headers: { Authorization: `Bearer ${pmToken}` } }
+      );
+      expect(revokeResp.status()).toBe(204);
+    });
   });
 });

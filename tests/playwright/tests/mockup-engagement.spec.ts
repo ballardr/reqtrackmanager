@@ -178,7 +178,13 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   });
 
   await test.step("the Project Overview dashboard shows status/CR charts and activity", async () => {
-    await page.getByText("Overview").click();
+    // Not a bare `getByText("Overview")`: the nav rail also carries an
+    // "Organisation overview" link (Phase 19), and `getByText` matches by
+    // case-insensitive substring, so that link's text now resolves too —
+    // scope to the project-level nav-rail link's own exact accessible
+    // name, matching the existing precedent in
+    // `overview-new-requirement-side-panel.spec.ts`/`project-compliance-view.spec.ts`.
+    await page.getByRole("link", { name: "Overview", exact: true }).click();
     await expect(page.getByText("Requirements by status")).toBeVisible();
     // Scoped to main: the nav rail's own "Change requests" link (always
     // present alongside this dashboard once a project is selected) exact-

@@ -44,7 +44,7 @@ import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
-import { cycleSort, type SortState } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";

@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
-import { cycleSort, SortableHeader, type SortState } from "./SortableHeader";
+import { SortableHeader } from "./SortableHeader";
+import { cycleSort, type SortState } from "./sortState";
 
 /** A minimal two-column table so the `<th>` reads naturally in isolation —
  * `SortableHeader` is always used inside a real `<thead><tr>`, never alone. */

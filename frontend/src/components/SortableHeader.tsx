@@ -1,14 +1,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
-export type SortDirection = "asc" | "desc";
-
-/** A table's current sort, or `null` for "unsorted" (the default order the
- * page would render with sorting turned off entirely). */
-export interface SortState<K extends string = string> {
-  key: K;
-  direction: SortDirection;
-}
+import type { SortState } from "./sortState";
 
 /**
  * Style guide "Pattern: sortable column header" (2026-08 UX audit roadmap,
@@ -60,13 +53,4 @@ export function SortableHeader<K extends string>({
       </button>
     </th>
   );
-}
-
-/** Cycles a table's `SortState` for a header click on `key`: unsorted →
- * ascending → descending → unsorted. Shared so every table's click handler
- * behaves identically rather than each page reimplementing the cycle. */
-export function cycleSort<K extends string>(current: SortState<K> | null, key: K): SortState<K> | null {
-  if (!current || current.key !== key) return { key, direction: "asc" };
-  if (current.direction === "asc") return { key, direction: "desc" };
-  return null;
 }

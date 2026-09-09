@@ -658,6 +658,36 @@ def grant_standard_role(headers: dict, org_id: str, standard_id: str, user_id: s
     r.raise_for_status()
 
 
+def update_standard_applicability_default(headers: dict, org_id: str, standard_id: str, applicability_default: str) -> dict:
+    """Phase 20: switches a standard between `opt_in` (default) and
+    `applies_to_all_projects`. Switching to the latter immediately
+    reconciles a real `ProjectCompliance` row into existence for every
+    current, non-archived, non-excluded project in the organisation
+    against the standard's latest published version — so this must be
+    called after the standard has a published version and after any
+    exclusions are already in place (`exclude_project_from_standard_
+    default`), not before."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/applicability-default",
+        json={"applicability_default": applicability_default}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def exclude_project_from_standard_default(headers: dict, org_id: str, standard_id: str, project_id: str, *, reason: str) -> dict:
+    """Phase 20: excepts `project_id` out of a standard's `applies_to_all_
+    projects` default. `reason` is mandatory. Call before flipping the
+    standard's applicability default so reconciliation skips this project
+    from the start, rather than assigning and then re-archiving it."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/exclusions",
+        json={"project_id": project_id, "reason": reason}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def list_compliance_requirements(headers: dict, project_id: str, project_compliance_id: str) -> list[dict]:
     r = httpx.get(
         f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements",
@@ -1349,6 +1379,137 @@ def main() -> None:
         notes="Annual review of continued Part 107 remote-ID compliance.",
     )
 
+    print("Seeding default reference standards (Phase 26) — EN 60529 and ISO/IEC 27001...")
+    # Realistic *labels* for demo purposes only, built around each real
+    # standard's own public section structure (IEC 60529's IP-Code digits,
+    # ISO 27001's Annex A control domains) — not a reproduction of either
+    # standard's actual copyrighted requirement text, mirroring how ASA-1
+    # above is already clearly an invented internal standard, not a real
+    # regulation.
+    ip_rating_standard = create_compliance_standard(
+        h_pm, org["id"], reference="EN 60529", name="EN 60529 — Degrees of Protection Provided by Enclosures (IP Code)",
+        description="Solstice's internal reference standard for enclosure ingress-protection ratings on "
+        "outdoor-operated hardware, based on the IEC/EN 60529 IP Code structure.",
+        issuing_organisation="International Electrotechnical Commission (IEC)", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
+    )
+    ip_rating_version = list_compliance_versions(h_pm, org["id"], ip_rating_standard["id"])[0]
+    solids_section = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="First Digit — Protection Against Solid Objects", reference="1",
+        description="Requirements covering the IP Code's first (solid-particle ingress) digit.",
+    )
+    dust_req = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve a minimum ingress rating of IP5X (dust-protected) for the primary electronics enclosure",
+        reference="1.1", reasoning="Coastal and desert inspection sites expose the airframe to fine dust and sand; "
+        "a dust-protected primary enclosure prevents particulate ingress into flight-critical electronics between "
+        "scheduled maintenance.", parent_requirement_id=solids_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"], dust_req["id"], test_action_type["id"],
+        name="Dust-chamber ingress test at IP5X",
+        description="Bench validation of the primary electronics enclosure in a dust chamber against the IP5X threshold.",
+    )
+    liquids_section = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Second Digit — Protection Against Water", reference="2",
+        description="Requirements covering the IP Code's second (liquid ingress) digit.",
+    )
+    splash_req = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve a minimum ingress rating of IPX4 (splashing water) for the primary electronics enclosure",
+        reference="2.1", reasoning="Several contracted inspection sites operate in light rain conditions; IPX4 "
+        "keeps the airframe airworthy through a typical shift without grounding for weather.",
+        parent_requirement_id=liquids_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"], splash_req["id"], review_action_type["id"],
+        name="Review enclosure seal design against the IPX4 test method",
+    )
+    create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve an IPX6K rating for connectors exposed during post-flight rinse-down maintenance",
+        reference="2.2", reasoning="Field crews rinse airframes with a pressure washer after dusty sites; "
+        "connectors not rated for powerful water jets have been a recurring source of post-maintenance "
+        "electrical faults.", parent_requirement_id=liquids_section["id"],
+    )
+    publish_compliance_version(h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"])
+    # Phase 24: an edited, always-editable version summary on the first
+    # published version.
+    update_compliance_version_summary(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        "Current release, based on the IEC/EN 60529 IP Code structure. Description clarified post-publish to "
+        "note this standard covers the primary electronics enclosure and exposed connectors only, not the "
+        "full airframe.",
+    )
+
+    infosec_standard = create_compliance_standard(
+        h_pm, org["id"], reference="ISO/IEC 27001", name="ISO/IEC 27001 — Information Security Management System",
+        description="Solstice's internal reference standard for information-security management controls, "
+        "based on the ISO/IEC 27001 Annex A control-domain structure.",
+        issuing_organisation="International Organization for Standardization (ISO)", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
+    )
+    infosec_version = list_compliance_versions(h_pm, org["id"], infosec_standard["id"])[0]
+    org_controls_section = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Annex A.5 — Organizational Controls", reference="A.5",
+        description="Requirements covering Annex A's organizational-control domain.",
+    )
+    create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Maintain a documented information security policy approved by senior management", reference="A.5.1",
+        reasoning="A policy without documented senior-management approval carries no organisational weight when "
+        "it conflicts with a delivery deadline — approval is what makes it enforceable.",
+        parent_requirement_id=org_controls_section["id"],
+    )
+    tech_controls_section = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Annex A.8 — Technology Controls", reference="A.8",
+        description="Requirements covering Annex A's technology-control domain.",
+    )
+    mfa_req = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Enforce multi-factor authentication for all privileged system access", reference="A.8.5",
+        reasoning="Account takeover of a privileged account was the top risk flagged in the most recent "
+        "customer security review of the platform.", parent_requirement_id=tech_controls_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], mfa_req["id"], test_action_type["id"],
+        name="Verify MFA enforcement against every privileged role in the production identity provider",
+    )
+    encryption_req = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Encrypt sensitive data at rest and in transit", reference="A.8.24",
+        reasoning="Flight telemetry can reveal customer site layouts and operating patterns; encryption at rest "
+        "and in transit is a standing commitment in the current data processing addendum template.",
+        parent_requirement_id=tech_controls_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], encryption_req["id"], review_action_type["id"],
+        name="Review current encryption configuration against the data processing addendum",
+    )
+    publish_compliance_version(h_pm, org["id"], infosec_standard["id"], infosec_version["id"])
+    # Phase 24: a post-publish clarification on an already-published
+    # requirement.
+    clarify_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], mfa_req["id"],
+        name="Enforce multi-factor authentication for all privileged system access, including break-glass accounts",
+        reference=mfa_req["reference"], reasoning=mfa_req["reasoning"],
+        clarification_note="Clarified to explicitly include break-glass/emergency-access accounts, which were "
+        "ambiguous under the original wording; the underlying obligation is unchanged.",
+    )
+    # Phase 20: exclude the avionics sub-project *before* flipping the
+    # standard to apply to all projects, so reconciliation skips it from
+    # the start rather than assigning and then re-archiving it.
+    exclude_project_from_standard_default(
+        h_pm, org["id"], infosec_standard["id"], avionics["id"],
+        reason="Internal avionics subsystem project with no independent customer data handling or external "
+        "network access; covered under the parent Falcon-3 project's own ISO/IEC 27001 assessment instead.",
+    )
+    update_standard_applicability_default(h_pm, org["id"], infosec_standard["id"], "applies_to_all_projects")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -1367,6 +1528,9 @@ def main() -> None:
     print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request, status: Proposed)")
     print("    - Its own 'Stakeholders' group is defined as Falcon-3's direct members"
           " (the project-referencing group mechanism, see docs/decisions.md)")
+    print("  Compliance standards: ASA-1 (assigned to Falcon-3 only), EN 60529 (opt-in, unassigned),"
+          " ISO/IEC 27001 (applies to all projects — auto-assigned to Falcon-3 and Solstice Cloud,"
+          " Falcon-3 Avionics Subsystem excepted)")
 
 
 if __name__ == "__main__":

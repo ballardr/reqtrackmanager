@@ -5,7 +5,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
-import type { SortState } from "./SortableHeader";
+import type { SortState } from "./sortState";
 
 interface DemoRow {
   id: string;

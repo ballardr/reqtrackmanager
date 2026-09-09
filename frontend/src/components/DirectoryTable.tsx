@@ -47,7 +47,8 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { LoadMoreButton } from "./LoadMoreButton";
-import { SortableHeader, type SortState } from "./SortableHeader";
+import { SortableHeader } from "./SortableHeader";
+import type { SortState } from "./sortState";
 
 export interface DirectoryColumn<Row> {
   key: string;
