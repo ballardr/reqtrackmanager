@@ -6,21 +6,25 @@ import { createStandardWithVersion } from "./helpers";
 /**
  * Job to be done: Compliance Module Phase 14 (docs/compliance-module-plan.md)
  * — the org-level Organisation Compliance View + Dashboard (§22/§23),
- * mounted as a `ResourceMenu` group ("Compliance overview") on the core
+ * mounted as three flat `ResourceMenu` groups ("Compliance dashboard" /
+ * "Compliance by standard" / "Outstanding compliance items") on the core
  * "Organisation Overview" page (Phase 19, `/orgs/:orgId/overview`) — see
- * `frontend/src/modules/compliance/OrgCompliancePanel.tsx`'s own docstring
- * for why this is a separate group rather than a fourth tab, and
  * `frontend/src/modules/compliance/module.ts`'s `orgOverviewSections` for
- * how it moved off `OrgAdminPage.tsx` (where it originally lived) onto
- * this new page.
+ * how these moved off `OrgAdminPage.tsx` (where they originally lived, as
+ * one combined "Compliance overview" group), and Phase 25b's own notes for
+ * why that group's internal `Tabs` were later collapsed into three flat
+ * top-level groups instead (one navigation layer too many). This spec also
+ * covers Phase 25b's headline gauges (`ComplianceOrgOverviewTiles.tsx`),
+ * which surface directly in the page's own always-visible stats header —
+ * no click into any group required.
  *
  * Covers the read/drill-down path: author and publish a standard (Phase 12
  * UI), assign it to a project and assess a requirement Non-Compliant
- * (Phase 13 UI), then confirm the org-wide Dashboard, "Compliance by
- * standard" table (with its project filter), and "Outstanding" tab all
- * surface that project/requirement, and that the standard table's
- * drill-down link actually opens the underlying project's own Compliance
- * page.
+ * (Phase 13 UI), then confirm the headline gauges, the org-wide Dashboard
+ * group, the "Compliance by standard" table (with its project filter), and
+ * the "Outstanding" group all surface that project/requirement, and that
+ * the standard table's drill-down link actually opens the underlying
+ * project's own Compliance page.
  *
  * `orgAdminAlphaBeta` is reused rather than a dedicated persona, the same
  * way `project-compliance-view.spec.ts` (Phase 13) does — Alpha's org
@@ -88,24 +92,35 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
-    // --- Org-wide Dashboard: the non-compliant project is listed.
+    // --- Phase 25b: headline gauges surface directly in the Organisation
+    //     Overview's own always-visible stats header, no group click needed.
+    //     Labelled distinctly from the Dashboard group's own same-numbers
+    //     StatCards below (both render at once — the Dashboard group is
+    //     `OrgOverviewPage.tsx`'s default section).
     await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgOverviewGroup(page, "Compliance overview");
+    await expect(page.getByText("Overall org compliance")).toBeVisible();
+    await expect(page.getByText("Compliance standards in use")).toBeVisible();
+    await expect(page.getByText("Projects out of compliance")).toBeVisible();
+
+    // --- Org-wide Dashboard: the non-compliant project is listed.
+    await selectOrgOverviewGroup(page, "Compliance dashboard");
     await expect(page.getByText("Active compliance standards")).toBeVisible();
     await expect(page.getByText("Non-compliant projects")).toBeVisible();
     const nonCompliantCard = page.locator("div.card", { hasText: "Non-compliant projects" });
     await expect(nonCompliantCard.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toBeVisible();
 
-    // --- Phase 15: download the organisation-wide compliance report.
+    // --- Phase 15/25b: download the organisation-wide compliance report,
+    //     now behind the "Export" popover trigger (Principle 11).
+    await page.getByRole("button", { name: "Export" }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
 
-    // --- "Compliance by standard" table: the standard groups the project,
+    // --- "Compliance by standard" group: the standard groups the project,
     //     and drilling down opens the project's own Compliance page.
-    await page.getByRole("tab", { name: "Compliance by standard" }).click();
+    await selectOrgOverviewGroup(page, "Compliance by standard");
     const expandButton = page.getByRole("button", { name: new RegExp(`Expand projects for ${reference}`) });
     await expect(expandButton).toBeVisible();
     await expandButton.click();
@@ -114,12 +129,11 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await projectLink.click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
-    // --- Outstanding tab: the non-compliant requirement is listed, tagged
-    //     with the project it belongs to.
+    // --- Outstanding group: the non-compliant requirement is listed,
+    //     tagged with the project it belongs to.
     await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgOverviewGroup(page, "Compliance overview");
-    await page.getByRole("tab", { name: "Outstanding" }).click();
+    await selectOrgOverviewGroup(page, "Outstanding compliance items");
     await expect(page.getByText(requirementName)).toBeVisible();
     await expect(page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).first()).toBeVisible();
   });

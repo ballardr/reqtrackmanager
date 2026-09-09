@@ -119,6 +119,28 @@ export interface ProjectOverviewTileDef {
 }
 
 /**
+ * One headline stat tile a Tier A module contributes to
+ * `pages/OrgOverviewPage.tsx`'s own always-visible stats header
+ * (compliance-module-plan.md Phase 25b — "the org's headline compliance
+ * gauges... must surface directly in the overview's own always-visible
+ * stats header, not require a click into the `ResourceMenu` group at
+ * all"). Mirrors `ProjectOverviewTileDef` exactly (same "module hands the
+ * parent a render function, parent has no idea what's inside it" shape),
+ * scoped by `orgId` instead of `projectId` since this header has no project
+ * in context. Deliberately distinct from `orgOverviewSections` above: that
+ * contributes a whole `ResourceMenu` group of drill-down detail below the
+ * header; this contributes one card *inside* the header itself, so a
+ * reviewer sees the headline number without navigating anywhere. Omitted
+ * (or empty) for a module with no headline gauge of its own.
+ */
+export interface OrgOverviewTileDef {
+  /** Must be unique across every installed module's org-overview tiles —
+   * used only as this contribution's React list `key`, never rendered. */
+  key: string;
+  render: (props: { orgId: string }) => ReactNode;
+}
+
+/**
  * A first-party (or npm-installed third-party) Tier A module's frontend
  * registration — the module ships its own route components and registers
  * them here, the same way this file's own first-party pages are declared
@@ -192,4 +214,8 @@ export interface TierAModuleDefinition {
    * `OrgAdminPage.tsx` already filters `orgAdminSections`. Omitted (or
    * empty) for a module with no org-overview surface of its own. */
   orgOverviewSections?: OrgAdminSectionDef[];
+  /** This module's headline stat tiles on `pages/OrgOverviewPage.tsx`'s own
+   * stats header (compliance-module-plan.md Phase 25b). Omitted (or empty)
+   * for a module with no headline gauge of its own. */
+  orgOverviewTiles?: OrgOverviewTileDef[];
 }

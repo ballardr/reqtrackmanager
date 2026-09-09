@@ -126,7 +126,7 @@ function mockApis() {
 const meta: Meta<typeof OrgComplianceDashboard> = {
   title: "Modules/Compliance/OrgComplianceDashboard",
   component: OrgComplianceDashboard,
-  decorators: [withRouter("/orgs/org-1/overview/compliance-overview"), withToast()],
+  decorators: [withRouter("/orgs/org-1/overview/compliance-dashboard"), withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;
@@ -146,6 +146,10 @@ export const Populated: Story = {
   },
 };
 
+/** Phase 25b — "Download PDF report"/"Download CSV report" moved behind a
+ * single "Export" `Popover` trigger (Principle 11), the same shape
+ * `CsvImportWizard.tsx`'s own Export/Download-template pair already uses,
+ * rather than two permanently-visible adjacent buttons. */
 export const DownloadReport: Story = {
   beforeEach: () => {
     mockApis();
@@ -154,10 +158,29 @@ export const DownloadReport: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Active compliance standards")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Download CSV report" }));
+    await expect(canvas.queryByText("Download CSV report")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/csv`
     ));
+  },
+};
+
+/** Phase 25c — the four headline stats and five detail stats now render as
+ * one single `.grid.grid-metrics` grid rather than three separately
+ * `flex-wrap`-ped rows of uneven size (4/5). */
+export const StatsRenderAsOneEqualSizeGrid: Story = {
+  beforeEach: mockApis,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const activeStandardsCard = await waitFor(() => canvas.getByText("Active compliance standards").closest(".card"));
+    const grid = activeStandardsCard?.closest(".grid.grid-metrics");
+    await expect(grid).not.toBeNull();
+    // All nine `StatCard`s (four headline + five detail) live in that same
+    // grid container, not split across separate row wrappers.
+    await expect(within(grid as HTMLElement).getByText("Assessments awaiting approval")).toBeInTheDocument();
   },
 };
 

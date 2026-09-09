@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, within } from "storybook/test";
+import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { OrgModule, OrgOverviewStats, Organization } from "../api/types";
@@ -36,10 +36,10 @@ function mockOrgOverviewApis(overrides: { org?: Organization; stats?: OrgOvervie
 /**
  * A fixture module registered directly into the real `installedModules`
  * (mirroring `OrgAdminPage.stories.tsx`'s own `FIXTURE_ORG_MODULE_KEY`
- * convention) — proves the generic `orgOverviewSections` merge-and-render
- * mechanism `OrgOverviewPage.tsx` uses works for a module other than
- * Compliance, without this story file depending on Compliance's own
- * behaviour. Nothing renders it unless a story's own
+ * convention) — proves the generic `orgOverviewSections`/`orgOverviewTiles`
+ * merge-and-render mechanisms `OrgOverviewPage.tsx` uses work for a module
+ * other than Compliance, without this story file depending on Compliance's
+ * own behaviour. Nothing renders it unless a story's own
  * `mockOrgOverviewApis({ modules: [...] })` explicitly reports this key as
  * enabled, so its permanent presence here causes no cross-story
  * interference (same reasoning `OrgAdminPage.stories.tsx` already
@@ -55,6 +55,16 @@ installedModules.push({
       key: FIXTURE_ORG_OVERVIEW_SECTION_KEY,
       label: "Fixture overview section",
       render: ({ orgId }) => <div>Fixture overview section content for org {orgId}</div>,
+    },
+  ],
+  // Phase 25b — a module's headline stat tile in the page's own
+  // always-visible stats header (`orgOverviewTiles`), distinct from the
+  // `orgOverviewSections` group above which only renders once a group is
+  // selected.
+  orgOverviewTiles: [
+    {
+      key: "fixture-tile",
+      render: ({ orgId }) => <div className="card stack">Fixture headline tile for org {orgId}</div>,
     },
   ],
 });
@@ -90,6 +100,20 @@ export const StatsOnlyNoModuleSections: Story = {
     await expect(canvas.getByText("12")).toBeInTheDocument();
     await expect(canvas.getByText("4.3 MB")).toBeInTheDocument();
     await expect(canvas.queryByText("Fixture overview section content for org org-1")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 25c — the core project/requirement/member/file-storage stats
+ * render as one `.grid.grid-metrics` grid, the same equal-size-cells
+ * utility `ProjectOverviewPage.tsx`'s own metric tiles use, rather than a
+ * `flex-wrap` row. */
+export const CoreStatsRenderAsAGrid: Story = {
+  beforeEach: () => mockOrgOverviewApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const projectsCard = await waitFor(() => canvas.getByText("Projects").closest(".card"));
+    await expect(projectsCard?.closest(".grid.grid-metrics")).not.toBeNull();
   },
 };
 
@@ -107,6 +131,10 @@ export const WithModuleContributedSection: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("link", { name: "Fixture overview section" })).toBeInTheDocument();
     await expect(canvas.getByText("Fixture overview section content for org org-1")).toBeInTheDocument();
+    // Phase 25b — the module's headline tile renders directly in the
+    // always-visible stats header, alongside the core Projects/Requirements/
+    // Members/File storage tiles, not gated behind selecting a group.
+    await expect(canvas.getByText("Fixture headline tile for org org-1")).toBeInTheDocument();
   },
 };
 
@@ -115,6 +143,7 @@ export const ModuleSectionHiddenWhenModuleDisabled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("link", { name: "Fixture overview section" })).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Fixture headline tile for org org-1")).not.toBeInTheDocument();
   },
 };
 

@@ -20,5 +20,5 @@ import { useComplianceNavVisibility } from "./useComplianceNavVisibility";
 export function ComplianceGlobalNavLink({ railCollapsed }: { railCollapsed: boolean }) {
   const visible = useComplianceNavVisibility();
   if (!visible) return null;
-  return <NavRailLink to="/standards" label="Compliance Standards" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />;
+  return <NavRailLink to="/standards" exact label="Compliance Standards" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />;
 }

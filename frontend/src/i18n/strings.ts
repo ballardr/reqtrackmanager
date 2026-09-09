@@ -803,12 +803,22 @@ const en = {
     // module's own content).
     groupCompliance: "Compliance",
     // Compliance module Phase 14 (compliance-module-plan.md) — the org-
-    // wide compliance dashboard/reporting surface (§22/§23), a separate
-    // flat top-level group from "Compliance" above (standards management)
+    // wide compliance dashboard/reporting surface (§22/§23), separate flat
+    // top-level groups from "Compliance" above (standards management)
     // rather than a fourth tab on that group's panel — the style guide's
     // own "split into more flat groups, don't nest" addendum, since these
     // are different jobs for a different (if overlapping) audience.
-    groupComplianceOverview: "Compliance overview",
+    // Originally one combined "Compliance overview" group with its own
+    // internal `Tabs` (Dashboard / Compliance by standard / Outstanding);
+    // Phase 25b applied the same addendum a second time, one level deeper —
+    // that inner `Tabs` was itself a second, redundant navigation
+    // mechanism nested inside the `ResourceMenu` group's own left-hand
+    // menu, so the three tabs became three flat top-level
+    // `orgOverviewSections` entries instead (`ResourceMenu → Tabs →
+    // content`, three deep, collapsed to `ResourceMenu → content`, two).
+    groupComplianceDashboard: "Compliance dashboard",
+    groupComplianceByStandard: "Compliance by standard",
+    groupComplianceOutstanding: "Outstanding compliance items",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,

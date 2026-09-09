@@ -16,23 +16,48 @@
  * the non-compliant/pending-approval/outstanding-action rows per standard,
  * the same client-side-aggregation-over-a-flat-listing precedent
  * `OrgComplianceStandardsPanel`/Phase 12's `buildRequirementTree` both use.
+ * The four headline numbers (active standards / projects subject to
+ * compliance / overall compliance / non-compliant projects) are computed
+ * via `orgComplianceSummary.ts::computeOrgComplianceHeadline`, shared with
+ * `ComplianceOrgOverviewTiles.tsx`'s `OrgOverviewPage.tsx` header tiles
+ * (Phase 25b) so both surfaces report the exact same numbers from the same
+ * rows rather than two independent copies of the same computation — and the
+ * `statusRows` those numbers are computed from come from the shared
+ * `useOrgComplianceStatus` hook rather than this component's own fetch, so
+ * the two surfaces (which mount at the same time, since this Dashboard
+ * group is `OrgOverviewPage.tsx`'s default `orgOverviewSections` entry)
+ * share one request instead of firing the identical one twice.
  *
- * The "Download PDF report"/"Download CSV report" buttons (Phase 15, §29)
+ * The "Download PDF report"/"Download CSV report" actions (Phase 15, §29)
  * hit `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — see `ProjectCompliancePage.tsx`'s own
  * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
- * established fetch-a-blob-and-save-it idiom rather than a new one.
+ * established fetch-a-blob-and-save-it idiom rather than a new one. Phase
+ * 25b moved them from two permanently-visible adjacent buttons (Principle
+ * 11's "two blocks competing for the same job," the exact shape the CSV
+ * wizard's own Export/Download-template pair already had) behind one
+ * "Export" `Popover` trigger, mirroring `CsvImportWizard.tsx`'s identical
+ * fix.
+ *
+ * The nine `StatCard`s below (four headline + five detail) render as one
+ * single `.grid.grid-metrics` grid (Phase 25c) rather than three separately
+ * `flex-wrap`-ped rows of uneven size (4/5) — a consistent column count
+ * across breakpoints regardless of how many cards happen to fit a given
+ * row width.
  */
-import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
+import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
 import { StatCard } from "../../components/StatCard";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
+import { computeOrgComplianceHeadline, distinctProjects } from "./orgComplianceSummary";
 import {
   COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
   type ComplianceRecentActivity,
@@ -41,11 +66,10 @@ import {
   type OrgPendingApproval,
   type OrgReviewDue,
   type OutstandingRequiredAction,
-  type ProjectComplianceStatus,
 } from "./types";
+import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
 
 interface DashboardData {
-  statusRows: ProjectComplianceStatus[];
   nonCompliant: OrgNonCompliantRequirement[];
   pending: OrgPendingApproval[];
   outstandingActions: OutstandingRequiredAction[];
@@ -53,12 +77,6 @@ interface DashboardData {
   reviewsDue: OrgReviewDue[];
   reviewsIncludingUpcoming: OrgReviewDue[];
   recentActivity: ComplianceRecentActivity[];
-}
-
-function distinctProjects(entries: { project_id: string; project_name: string }[]): { id: string; name: string }[] {
-  const map = new Map<string, string>();
-  for (const e of entries) map.set(e.project_id, e.project_name);
-  return [...map.entries()].map(([id, name]) => ({ id, name }));
 }
 
 function ProjectList({ projects }: { projects: { id: string; name: string }[] }) {
@@ -76,10 +94,14 @@ function ProjectList({ projects }: { projects: { id: string; name: string }[] })
 
 export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
+  const statusRows = useOrgComplianceStatus(orgId);
   const [data, setData] = useState<DashboardData | null>(null);
   const [downloading, setDownloading] = useState<"pdf" | "csv" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
 
   async function downloadReport(kind: "pdf" | "csv") {
+    setExportMenuOpen(false);
     setDownloading(kind);
     try {
       const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports/${kind}`);
@@ -93,7 +115,6 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
 
   useEffect(() => {
     Promise.all([
-      complianceApi.listOrgProjectComplianceStatus(orgId),
       complianceApi.listOrgNonCompliantRequirements(orgId),
       complianceApi.listOrgPendingApprovals(orgId),
       complianceApi.listOrgOutstandingRequiredActions(orgId),
@@ -102,24 +123,18 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
       complianceApi.listOrgReviewsDue(orgId, true),
       complianceApi.listOrgRecentActivity(orgId, 10),
     ])
-      .then(([statusRows, nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity]) => {
-        setData({ statusRows, nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity });
+      .then(([nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity]) => {
+        setData({ nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity });
       })
       .catch((err) => showToast(toErrorMessage(err, "Could not load the compliance dashboard."), "error"));
   }, [orgId, showToast]);
 
-  if (data === null) return <Spinner />;
+  if (data === null || statusRows === null) return <Spinner />;
 
-  const { statusRows, nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity } = data;
+  const { nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity } = data;
 
-  const activeStandardIds = new Set(statusRows.map((r) => r.standard_id));
+  const { activeStandardCount, overallCompliancePercentage, nonCompliantProjects } = computeOrgComplianceHeadline(statusRows);
   const projectsSubjectToCompliance = distinctProjects(statusRows);
-  const totalApplicable = statusRows.reduce((sum, r) => sum + r.applicable_count, 0);
-  const weightedCompliantWeight = statusRows.reduce((sum, r) => sum + r.applicable_count * (r.compliance_percentage / 100), 0);
-  const overallCompliancePercentage = totalApplicable > 0 ? (weightedCompliantWeight / totalApplicable) * 100 : 0;
-  const nonCompliantProjects = distinctProjects(
-    statusRows.filter((r) => r.overall_compliance_state === "non_compliant").map((r) => ({ project_id: r.project_id, project_name: r.project_name }))
-  );
   const outstandingActionProjects = distinctProjects(outstandingActions);
   const expiredEvidenceProjects = distinctProjects(expiringEvidence.filter((e) => e.validity_state === "expired"));
   const expiringSoonEvidenceProjects = distinctProjects(expiringEvidence.filter((e) => e.validity_state === "expiring_soon"));
@@ -137,16 +152,35 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
 
   return (
     <div className="stack">
-      <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-        <button className="btn" onClick={() => downloadReport("pdf")} disabled={downloading !== null}>
-          {downloading === "pdf" ? "…" : "Download PDF report"}
+      <div className="row" style={{ justifyContent: "flex-end" }}>
+        <button
+          ref={exportTriggerRef}
+          type="button" className="btn"
+          onClick={() => setExportMenuOpen((v) => !v)}
+        >
+          <Download size={16} /> {downloading ? "Exporting…" : "Export"}
         </button>
-        <button className="btn" onClick={() => downloadReport("csv")} disabled={downloading !== null}>
-          {downloading === "csv" ? "…" : "Download CSV report"}
-        </button>
+        {exportMenuOpen && (
+          <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
+            <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+              <button
+                type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
+                onClick={() => downloadReport("pdf")}
+              >
+                <Download size={14} /> {downloading === "pdf" ? "…" : "Download PDF report"}
+              </button>
+              <button
+                type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
+                onClick={() => downloadReport("csv")}
+              >
+                <Download size={14} /> {downloading === "csv" ? "…" : "Download CSV report"}
+              </button>
+            </div>
+          </Popover>
+        )}
       </div>
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
-        <StatCard label="Active compliance standards" value={activeStandardIds.size} />
+      <div className="grid grid-metrics">
+        <StatCard label="Active compliance standards" value={activeStandardCount} />
         <StatCard label="Projects subject to compliance" value={projectsSubjectToCompliance.length}>
           <ProjectList projects={projectsSubjectToCompliance} />
         </StatCard>
@@ -156,9 +190,6 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
         <StatCard label="Non-compliant projects" value={nonCompliantProjects.length}>
           <ProjectList projects={nonCompliantProjects} />
         </StatCard>
-      </div>
-
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
         <StatCard label="Projects with outstanding actions" value={outstandingActionProjects.length}>
           <ProjectList projects={outstandingActionProjects} />
         </StatCard>

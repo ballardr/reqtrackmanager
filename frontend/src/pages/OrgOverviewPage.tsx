@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -6,7 +6,7 @@ import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { StatCard } from "../components/StatCard";
-import { installedModules } from "../modules/registry";
+import { getInstalledModule, installedModules } from "../modules/registry";
 import { formatFileSize } from "../utils/formatFileSize";
 
 /**
@@ -21,14 +21,19 @@ import { formatFileSize } from "../utils/formatFileSize";
  * docstring) or directly at `/orgs/:orgId/overview`.
  *
  * A stats header (project/requirement/member counts, total file storage —
- * `GET /orgs/{id}/overview-stats`) is always shown; a `ResourceMenu` of any
- * installed, currently-enabled module's own `orgOverviewSections` (e.g.
- * Compliance's dashboard/standards/outstanding view, relocated here from
- * `OrgAdminPage.tsx`'s `"compliance-overview"` group) is rendered below it
- * only when at least one module actually contributes one — this core page
- * never imports a specific module directly, the same "core doesn't
- * hardcode one module" boundary `Layout.tsx`/`OrgAdminPage.tsx` already
- * establish for `globalNavItems`/`orgAdminSections`.
+ * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
+ * module's own `orgOverviewTiles`, e.g. Compliance's overall-compliance-
+ * percentage/standards-count/non-compliant-projects headline gauges, Phase
+ * 25b) is always shown as one equal-size `.grid.grid-metrics` grid; a
+ * `ResourceMenu` of any such module's own `orgOverviewSections` (e.g.
+ * Compliance's Dashboard/Compliance-by-standard/Outstanding groups,
+ * relocated here from `OrgAdminPage.tsx`'s `"compliance-overview"` group,
+ * Phase 19, then split from one nested-`Tabs` group into three flat
+ * top-level groups, Phase 25b) is rendered below it only when at least one
+ * module actually contributes one — this core page never imports a
+ * specific module directly, the same "core doesn't hardcode one module"
+ * boundary `Layout.tsx`/`OrgAdminPage.tsx` already establish for
+ * `globalNavItems`/`orgAdminSections`.
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
@@ -42,6 +47,28 @@ export function OrgOverviewPage() {
     api.get<OrgOverviewStats>(`/api/v1/orgs/${orgId}/overview-stats`).then(setStats);
     api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`).then(setModules);
   }, [orgId]);
+
+  // Memoized on `[modules, orgId]` rather than recomputed inline in the
+  // render body — `tile.render({orgId})` builds a fresh React element each
+  // call, and this page's own `org`/`stats` state each resolve
+  // independently after mount, so an unmemoized version would hand each
+  // contributed tile a new element identity (forcing React to unmount and
+  // remount it, re-running its own effects/fetches) on every one of those
+  // unrelated re-renders, not just when `modules` itself actually changes.
+  const contributedTiles = useMemo(
+    () =>
+      orgId
+        ? modules
+            .filter((m) => m.enabled)
+            .flatMap((entry) =>
+              (getInstalledModule(entry.module_key)?.orgOverviewTiles ?? []).map((tile) => ({
+                key: `${entry.module_key}:${tile.key}`,
+                node: tile.render({ orgId }),
+              }))
+            )
+        : [],
+    [modules, orgId]
+  );
 
   if (!orgId) return null;
   if (!org || !stats) return <Spinner />;
@@ -66,11 +93,14 @@ export function OrgOverviewPage() {
     <div className="stack">
       <h1 style={{ margin: 0 }}>{org.name}</h1>
 
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
+      <div className="grid grid-metrics">
         <StatCard label="Projects" value={stats.project_count} />
         <StatCard label="Requirements" value={stats.requirement_count} />
         <StatCard label="Members" value={stats.member_count} />
         <StatCard label="File storage" value={formatFileSize(stats.total_file_size_bytes)} />
+        {contributedTiles.map((t) => (
+          <Fragment key={t.key}>{t.node}</Fragment>
+        ))}
       </div>
       {!stats.is_full_org_total && (
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
