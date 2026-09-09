@@ -23,11 +23,19 @@
  * always showing an action and surfacing a 403 via toast rather than
  * pre-computing permissions in the UI (see e.g. Publish/Retire above,
  * unconditionally shown regardless of the caller's actual role).
+ *
+ * Phase 29b adds the entity quick-switch chevron (Phase 28's
+ * `EntitySwitcher`) next to the version heading, so a user already
+ * viewing one version can jump straight to a sibling without returning to
+ * the flat "Versions" list first. Its sibling list is simply this
+ * component's own `versions` prop — no new fetch, since `StandardNavSection`
+ * /`StandardVersionsSection` already load it for the same standard.
  */
 import { useEffect, useState } from "react";
 
 import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { RequirementTree } from "./RequirementTree";
@@ -91,6 +99,14 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
 
   const isDraft = version.status === "draft";
 
+  async function loadVersionSwitcherOptions(): Promise<EntitySwitcherOption[]> {
+    return versions.map((v) => ({
+      id: v.id,
+      label: v.version_label,
+      href: `/standards/${standard.id}/versions/${v.id}`,
+    }));
+  }
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -98,9 +114,12 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
           <button className="btn" onClick={onBack} style={{ alignSelf: "flex-start" }}>
             ← Back to {standard.name}
           </button>
-          <h3 style={{ margin: 0 }}>
-            {standard.reference} — {version.version_label}
-          </h3>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h3 style={{ margin: 0 }}>
+              {standard.reference} — {version.version_label}
+            </h3>
+            <EntitySwitcher label="Switch version" currentId={version.id} loadOptions={loadVersionSwitcherOptions} />
+          </div>
           <span className="text-muted">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]}</span>
         </div>
         <div className="row">

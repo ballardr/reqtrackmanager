@@ -149,13 +149,15 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
     await expect(page.getByText(`${reference} — v1.0`)).toBeVisible();
 
-    // --- Expandable "Versions" nav-rail group: collapsed by default, shows
-    // this standard's one version once expanded, and deep-links straight
-    // into that version's own workspace URL — the nav-rail's own route,
-    // not just a visual affordance.
-    await page.getByRole("button", { name: "Expand versions" }).click();
+    // --- Expandable "Versions" nav-rail group: already on this version's
+    // own route (via the tile click above), so Phase 29a's auto-expand has
+    // it open — showing this standard's one version — without ever
+    // clicking the disclosure toggle, and deep-links straight into that
+    // version's own workspace URL, the nav-rail's own route, not just a
+    // visual affordance.
     const versionNavLink = page.getByRole("link", { name: /v1\.0/ }).filter({ hasText: "Draft" });
     await expect(versionNavLink).toBeVisible();
+    await expect(page.getByRole("button", { name: "Collapse versions" })).toBeVisible();
     await versionNavLink.click();
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
     await expect(page.getByText(`${reference} — v1.0`)).toBeVisible();

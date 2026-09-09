@@ -589,6 +589,57 @@ textarea.input {
   color: var(--color-primary-contrast) !important;
 }
 
+/* Joins a disclosure toggle to its own nav-rail link into one shared
+   hover/active surface (compliance-module-plan.md Phase 29d —
+   StandardNavSection.tsx's expandable "Versions" row). The background
+   moves to this wrapping row rather than the inner link, so hovering
+   anywhere in the row — including the toggle's own area — highlights the
+   whole thing as one control, even though the link and the toggle stay
+   two separately focusable/clickable elements underneath. */
+.nav-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+}
+
+.nav-link-row:hover {
+  background: var(--color-surface-alt);
+}
+
+.nav-link-row.active {
+  background: var(--color-primary);
+}
+
+.nav-link-row-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.nav-link-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nav-link-row.active .nav-link-row-link,
+.nav-link-row.active .nav-link-row-toggle {
+  color: var(--color-primary-contrast) !important;
+}
+
 /* Icon-only collapsed rail state: hide link labels, centre the icons,
    shrink the rail's own width (set inline via style, since it's driven by
    a JS-held boolean rather than a pure-CSS breakpoint). */

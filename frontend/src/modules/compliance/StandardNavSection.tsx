@@ -28,6 +28,31 @@
  * expandable nav-rail group" for the next project-like drill-down entity
  * with its own many-child collection.
  *
+ * Phase 29 fixes three defects in that group:
+ * - **29a**: landing directly on `/standards/:id/versions/:versionId`
+ *   (bookmark, link, refresh) now force-expands the group so the "which
+ *   version am I on" context is visible without an extra click. This is a
+ *   local, render-time override (`routeForcesExpand`), not a `setExpanded`
+ *   write-through to the persisted `useUiPreference` value — the route's
+ *   own opinion and the user's own manual collapse/expand choice must not
+ *   clobber each other. `autoExpandSuppressed` lets a manual click on the
+ *   toggle actually collapse the group while a route is still forcing it
+ *   open, without touching the persisted preference either; it resets
+ *   whenever the route changes so the next version page auto-expands fresh.
+ * - **29c**: the "Versions" `NavRailLink`/row now uses an exact match
+ *   (`location.pathname === versionsBase`) instead of the default
+ *   startsWith match, so it no longer stays highlighted alongside the
+ *   specific version's own row underneath it (the same fix Phase 25a
+ *   already applied to `ComplianceGlobalNavLink.tsx` for the identical
+ *   "parent stays highlighted under a child route" shape).
+ * - **29d**: the disclosure toggle no longer renders as a separately
+ *   bordered `.btn` chip. `.nav-link-row` (theme.css) carries the row's
+ *   hover/active background instead of the inner link, so hovering
+ *   anywhere in the row — including the toggle's own area — highlights
+ *   the whole row as one surface, while the link and the toggle stay two
+ *   separately focusable/clickable controls (a `<div>` wrapping a real
+ *   `<Link>` plus a real `<button>`, not nested `<button>`s).
+ *
  * Only `entityId` (the standard id) and `railCollapsed` are passed down by
  * `standaloneWorkspaces`' render contract — this component resolves its
  * own `organization_id` via the global, no-org-in-path `getStandardById`
@@ -48,6 +73,7 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
   const [orgId, setOrgId] = useState<string | null>(null);
   const [versions, setVersions] = useState<ComplianceStandardVersion[] | null>(null);
   const [expanded, setExpanded] = useUiPreference<boolean>(`section_collapsed:standardVersionsNav:${entityId}`, false);
+  const [autoExpandSuppressed, setAutoExpandSuppressed] = useState(false);
 
   useEffect(() => {
     setOrgId(null);
@@ -61,28 +87,48 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
 
   const versionsBase = `/standards/${entityId}/versions`;
   const canExpand = !railCollapsed && (versions?.length ?? 0) > 0;
+  const onVersionsListExact = location.pathname === versionsBase;
+
+  // 29a: force the group open on a version's own route without persisting
+  // that to the stored preference (see this file's own header comment).
+  useEffect(() => {
+    setAutoExpandSuppressed(false);
+  }, [location.pathname]);
+  const routeForcesExpand = !autoExpandSuppressed && location.pathname.startsWith(`${versionsBase}/`);
+  const effectiveExpanded = expanded || routeForcesExpand;
+
+  function toggleExpanded() {
+    if (routeForcesExpand) {
+      setAutoExpandSuppressed(true);
+      if (expanded) setExpanded(false);
+    } else {
+      setExpanded(!expanded);
+    }
+  }
 
   return (
     <>
       <div className="nav-section-label">Standard</div>
       <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-      <div className="row" style={{ alignItems: "stretch", gap: 0 }}>
-        <div style={{ flex: 1 }}>
-          <NavRailLink to={versionsBase} label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-        </div>
-        {canExpand && (
+      {canExpand ? (
+        <div className={`nav-link-row${onVersionsListExact ? " active" : ""}`}>
+          <Link to={versionsBase} className="nav-link-row-link" aria-label="Versions">
+            <ListChecks size={16} /> <span className="nav-label">Versions</span>
+          </Link>
           <button
             type="button"
-            className="btn"
-            aria-label={expanded ? "Collapse versions" : "Expand versions"}
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+            className="nav-link-row-toggle"
+            aria-label={effectiveExpanded ? "Collapse versions" : "Expand versions"}
+            aria-expanded={effectiveExpanded}
+            onClick={toggleExpanded}
           >
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            {effectiveExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
-        )}
-      </div>
-      {canExpand && expanded && versions && (
+        </div>
+      ) : (
+        <NavRailLink to={versionsBase} exact label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+      )}
+      {canExpand && effectiveExpanded && versions && (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {versions.map((version) => {
             const to = `${versionsBase}/${version.id}`;
@@ -95,8 +141,7 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
                   style={{ paddingLeft: "2rem", fontSize: "0.85rem" }}
                 >
                   <span className="nav-label">
-                    {version.version_label}{" "}
-                    <span className="badge">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]}</span>
+                    {version.version_label} ({COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]})
                   </span>
                 </Link>
               </li>

@@ -46,13 +46,14 @@ const meta: Meta<typeof StandardNavSection> = {
   title: "Modules/Compliance/StandardNavSection",
   component: StandardNavSection,
   args: { entityId: STANDARD.id, railCollapsed: false },
-  decorators: [withRouter(`/standards/${STANDARD.id}`), withStatefulAuth(buildUser({ id: "user-1" }))],
+  decorators: [withStatefulAuth(buildUser({ id: "user-1" }))],
 };
 export default meta;
 
 type Story = StoryObj<typeof StandardNavSection>;
 
 export const Default: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`)],
   beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -67,6 +68,7 @@ export const Default: Story = {
 };
 
 export const ExpandingListsVersions: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`)],
   beforeEach: () => mockNavApis([
     version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" }),
     version({ id: "ver-2", version_number: 2, version_label: "v2.0", status: "draft" }),
@@ -76,10 +78,8 @@ export const ExpandingListsVersions: Story = {
     await waitFor(() => expect(canvas.getByRole("button", { name: "Expand versions" })).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "Expand versions" }));
-    await expect(canvas.getByRole("link", { name: /v1\.0/ })).toHaveAttribute("href", "/standards/std-1/versions/ver-1");
-    await expect(canvas.getByRole("link", { name: /v2\.0/ })).toHaveAttribute("href", "/standards/std-1/versions/ver-2");
-    await expect(canvas.getByText("Published")).toBeInTheDocument();
-    await expect(canvas.getByText("Draft")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "v1.0 (Published)" })).toHaveAttribute("href", "/standards/std-1/versions/ver-1");
+    await expect(canvas.getByRole("link", { name: "v2.0 (Draft)" })).toHaveAttribute("href", "/standards/std-1/versions/ver-2");
 
     // Collapses back on a second click, persisted via `useUiPreference`.
     await userEvent.click(canvas.getByRole("button", { name: "Collapse versions" }));
@@ -88,6 +88,7 @@ export const ExpandingListsVersions: Story = {
 };
 
 export const NoVersionsHidesExpandToggle: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`)],
   beforeEach: () => mockNavApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -98,6 +99,7 @@ export const NoVersionsHidesExpandToggle: Story = {
 
 export const Collapsed: Story = {
   args: { railCollapsed: true },
+  decorators: [withRouter(`/standards/${STANDARD.id}`)],
   beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -107,5 +109,59 @@ export const Collapsed: Story = {
     // toggle doesn't apply to a collapsed, icons-only rail at all.
     await expect(canvas.getByRole("link", { name: "Overview" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Expand versions" })).not.toBeInTheDocument();
+  },
+};
+
+// --- Phase 29: auto-expand, exact-match highlight, restyled toggle ----------
+
+/** 29a/29c — landing directly on a version's own route (not via an in-app
+ * click) auto-expands the group and highlights only that version's row —
+ * "Versions" itself stays unhighlighted now that its own link uses an
+ * exact-path match. */
+export const AutoExpandsOnDirectVersionRoute: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions/ver-2`)],
+  beforeEach: () => mockNavApis([
+    version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" }),
+    version({ id: "ver-2", version_number: 2, version_label: "v2.0", status: "draft" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: /v2\.0/ })).toBeInTheDocument());
+    await expect(canvas.getByRole("link", { name: /v2\.0/ })).toHaveClass("active");
+    await expect(canvas.getByRole("link", { name: /v1\.0/ })).not.toHaveClass("active");
+    await expect(canvas.getByRole("link", { name: "Versions" })).not.toHaveClass("active");
+    // Already shows "expanded" without the toggle ever having been clicked.
+    await expect(canvas.getByRole("button", { name: "Collapse versions" })).toBeInTheDocument();
+  },
+};
+
+/** 29a — a manual click on the toggle can still collapse the group even
+ * while its own route is forcing it open; this is a local override, not a
+ * write-through to the persisted `useUiPreference` choice. */
+export const ManualCollapseOverridesRouteForcedExpand: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/versions/ver-1`)],
+  beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Collapse versions" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Collapse versions" }));
+    await expect(canvas.queryByRole("link", { name: /v1\.0/ })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Expand versions" })).toBeInTheDocument();
+  },
+};
+
+/** 29d — the toggle no longer carries its own `.btn` border/background; it
+ * and the "Versions" link now share one `.nav-link-row` hover/active
+ * surface, while staying two separately focusable/clickable controls. */
+export const ToggleSharesRowSurfaceWithLink: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}`)],
+  beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("button", { name: "Expand versions" });
+    const link = canvas.getByRole("link", { name: "Versions" });
+    await expect(toggle).not.toHaveClass("btn");
+    await expect(link).not.toHaveClass("nav-link");
+    await expect(link.closest(".nav-link-row")).toBe(toggle.closest(".nav-link-row"));
   },
 };

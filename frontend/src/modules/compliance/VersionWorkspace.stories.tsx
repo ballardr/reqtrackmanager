@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { VersionWorkspace } from "./VersionWorkspace";
 import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion, StandardVersionDiff } from "./types";
 
@@ -151,6 +151,41 @@ export const CompareVersionsOpensDiffModal: Story = {
     // Proves the transition only — `VersionDiffModal`'s own diff-rendering
     // behaviour is `VersionDiffModal.stories.tsx`'s job.
     await expect(within(document.body).getByRole("dialog", { name: "Compare versions" })).toBeInTheDocument();
+  },
+};
+
+// --- Phase 29b: version quick-switch -----------------------------------------
+
+/** With a sibling version to switch to, a chevron next to the version
+ * heading (Phase 28's `EntitySwitcher`) opens a popover listing it as a
+ * plain link straight to its own workspace URL — the sibling list is just
+ * this component's own `versions` prop, no extra fetch. */
+export const EntitySwitcherOffersSiblingVersion: Story = {
+  decorators: [withRouter(`/standards/std-1/versions/ver-1`, "/standards/:standardId/versions/:versionId")],
+  args: {
+    version: version(),
+    versions: [version(), version({ id: "ver-2", version_label: "v1.1", version_number: 2, status: "published" })],
+  },
+  beforeEach: () => mockWorkspaceApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = await canvas.findByRole("button", { name: "Switch version" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch version" });
+    await expect(within(dialog).getByRole("link", { name: "v1.1" })).toHaveAttribute("href", "/standards/std-1/versions/ver-2");
+    await expect(within(dialog).queryByRole("link", { name: "v1.0" })).not.toBeInTheDocument();
+  },
+};
+
+/** A version with no siblings renders no chevron at all — `EntitySwitcher`'s
+ * own "nothing to switch to" behaviour. */
+export const NoSiblingVersionHidesSwitcher: Story = {
+  args: { version: version(), versions: [version()] },
+  beforeEach: () => mockWorkspaceApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("ISO-27001 — v1.0")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Switch version" })).not.toBeInTheDocument();
   },
 };
 
