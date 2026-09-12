@@ -9,13 +9,20 @@ recording which user holds which module-contributed role, at which scope
 server-tier grant table) and `app.models.module` (Phase 1's two-tier
 gating tables) — same shape family, one phase later in the same plan.
 
-V1 is direct grants only: `UserModuleRole` carries no group-membership or
-project-hierarchy inheritance concept, unlike `UserOrgRole`/`UserProjectRole`
-(which resolve through `OrgGroup`/`ProjectGroup`/`parent_project_id` via
-`app.services.rbac`'s effective-role resolution). This is a deliberate,
-explicitly-flagged scope boundary for this plan, not an oversight — see
-`app.services.rbac.require_module_role`'s own docstring for the runtime
-composition this restriction implies.
+`UserModuleRole` is direct-grant-only: no project-hierarchy inheritance
+concept, unlike `UserProjectRole` (which resolves through
+`parent_project_id` via `app.services.rbac`'s effective-role resolution).
+Originally this also excluded group-membership grants entirely (module
+system Phase 2's own V1 scope boundary) — **reversed by Phase 30, Decided
+by: User**: the human-review round that shipped Phase 22's Standards
+Manager/Contributor picker found the exclusion undesirable, not merely
+unbuilt, and asked for the real mechanism. `GroupModuleRole` (below) is
+that mechanism, mirroring `app.models.project.OrgGroupProjectRole`'s own
+already-shipped precedent for core `ProjectRole` group grants — see that
+model's docstring, and `app.services.rbac._has_module_role_grant`'s own
+group-grant branch for how a `GroupModuleRole` row resolves into an
+effective grant for a group's members (transitively, via nested org
+groups).
 """
 
 from __future__ import annotations
@@ -155,6 +162,74 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    module_key: Mapped[str] = mapped_column(String(100))
+    role_key: Mapped[str] = mapped_column(String(100))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    scope_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+
+
+class GroupModuleRole(UUIDPKMixin, TimestampMixin, Base):
+    """Grants a module-contributed role to every (transitive) member of an
+    organisation group — the group-level counterpart to `UserModuleRole`,
+    added by module system Phase 30 to reverse that table's own originally-
+    documented "direct grants only" boundary (see this module's own
+    docstring for why).
+
+    Structurally `UserModuleRole` with `org_group_id` in place of `user_id`,
+    otherwise identical: same `module_key`/`role_key`/`organization_id`/
+    `project_id`/`scope_entity_id` columns, the same "plain string, not a
+    foreign key" rationale for `module_key`/`role_key` (a grant against a
+    code-defined role, not a database row), and the same app-level dedup
+    convention (`UniqueConstraint` below is a backstop, not the real
+    mechanism, since Postgres treats `NULL` as distinct from every other
+    value — see `UserModuleRole`'s own docstring for the identical note).
+
+    Resolved at read time, never materialised: `app.services.rbac.
+    _has_module_role_grant` checks this table only after finding no direct
+    `UserModuleRole` match, expanding `org_group_id` to include every group
+    transitively nested inside it (`_descendant_org_group_ids`, the same
+    downward expansion `_direct_project_member_ids_base` already performs
+    for `OrgGroupProjectRole`) before checking `OrgGroupMember` for the
+    acting user — mirroring that existing core-`ProjectRole` precedent
+    exactly, one layer further down for module-contributed roles.
+
+    Attributes:
+        org_group_id: The organisation group being granted the role — every
+            transitive member (direct `OrgGroupMember.user_id`, or a member
+            of a group nested inside this one) is treated as holding the
+            role, resolved live.
+        module_key: The declaring module's registry key — see
+            `UserModuleRole.module_key`'s docstring for the identical
+            not-a-foreign-key rationale.
+        role_key: The granted role's own key within its module — see
+            `UserModuleRole.role_key`'s docstring.
+        organization_id: The owning organisation — always set, same
+            rationale as `UserModuleRole.organization_id`.
+        project_id: Set only for a project-scoped role grant; `NULL` for an
+            org-scoped or module-owned-entity-scoped one.
+        granted_by: The user who made the grant, for audit attribution
+            independent of `AuditEvent.actor_id`.
+        scope_entity_id: Set only for a module-owned entity-scoped grant
+            (e.g. compliance's own per-`ComplianceStandard` scope) — see
+            `UserModuleRole.scope_entity_id`'s own docstring.
+    """
+
+    __tablename__ = "group_module_roles"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_group_id", "module_key", "role_key", "organization_id", "project_id", "scope_entity_id"
+        ),
+    )
+
+    org_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), index=True
     )
     module_key: Mapped[str] = mapped_column(String(100))
     role_key: Mapped[str] = mapped_column(String(100))

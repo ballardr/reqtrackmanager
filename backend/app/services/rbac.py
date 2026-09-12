@@ -139,7 +139,7 @@ from sqlalchemy.orm import Session, aliased
 from app.database import get_db
 from app.deps import get_current_user, get_current_user_or_module_frame
 from app.models.enums import OrgRole, ProjectRole, ProjectRoleInheritanceMode, ProjectVisibility, ServerRole
-from app.models.module_role import UserModuleRole
+from app.models.module_role import GroupModuleRole, UserModuleRole
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import (
     OrgGroupProjectRole,
@@ -391,6 +391,33 @@ def _descendant_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
         visited.update(new)
         frontier = new
     return visited
+
+
+def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]:
+    """Every user who is a direct member of `org_group_id` or of any group
+    transitively nested inside it (module system Phase 30) — resolves an
+    org group "downward" to the users it actually reaches, the mirror
+    image of `_descendant_org_group_ids`/`_ancestor_org_group_ids` (which
+    resolve group-to-group, never all the way to users).
+
+    The shared "which users does this group grant currently reach"
+    resolution used by `_has_module_role_grant`'s group-grant branch below,
+    and by any caller that needs the same enumeration directly (e.g.
+    compliance's own standards-manager floor check,
+    `modules.compliance.service.fallback_standards_manager_ids` — migrated
+    onto this function by Phase 30, which is what makes group-based
+    module-role resolution a genuine core mechanism rather than the
+    narrow, single-purpose helper that function's own docstring originally
+    described).
+    """
+    all_group_ids = {org_group_id} | _descendant_org_group_ids(db, {org_group_id})
+    return set(
+        db.scalars(
+            select(OrgGroupMember.user_id).where(
+                OrgGroupMember.org_group_id.in_(all_group_ids), OrgGroupMember.user_id.is_not(None)
+            )
+        ).all()
+    )
 
 
 def would_create_org_group_cycle(db: Session, parent_group_id: UUID, child_group_id: UUID) -> bool:
@@ -2180,20 +2207,29 @@ def _has_module_role_grant(
     project_id: UUID | None = None,
     scope_entity_id: UUID | None = None,
 ) -> bool:
-    """Returns whether `user_id` holds a direct `UserModuleRole` grant for
-    `(module_key, role_key)`, optionally scoped to a specific
-    `organization_id`/`project_id`/`scope_entity_id` (module system
-    Phase 2; `scope_entity_id` added by Phase 22 for a module-owned entity
-    scope).
+    """Returns whether `user_id` holds `(module_key, role_key)` — either a
+    direct `UserModuleRole` grant, or (module system Phase 30) membership
+    in an org group holding a matching `GroupModuleRole` grant — optionally
+    scoped to a specific `organization_id`/`project_id`/`scope_entity_id`
+    (module system Phase 2; `scope_entity_id` added by Phase 22 for a
+    module-owned entity scope).
 
-    Direct-grant lookup only — no group/hierarchy inheritance, matching
-    `UserModuleRole`'s own documented V1 scope boundary (see that model's
-    docstring). Each of `organization_id`/`project_id`/`scope_entity_id` is
-    applied as an equality filter only when given; `require_module_role`'s
-    own callers always supply the combination matching the role's declared
+    Checks the direct `UserModuleRole` table first (the common case, one
+    indexed lookup); only queries `GroupModuleRole`/expands group
+    membership when no direct grant matches. Each of `organization_id`/
+    `project_id`/`scope_entity_id` is applied as an equality filter only
+    when given, identically to both tables; `require_module_role`'s own
+    callers always supply the combination matching the role's declared
     scope (`organization_id` alone for `"org"`, `organization_id` +
     `project_id` for `"project"`, `organization_id` + `scope_entity_id` for
     a module-owned entity scope).
+
+    Group expansion mirrors `_direct_project_member_ids_base`'s own
+    `OrgGroupProjectRole` resolution exactly: a `GroupModuleRole`'s grant
+    extends to every user who is a member (directly, or transitively via a
+    nested org group) of the granted group — `_descendant_org_group_ids`
+    finds the nested groups, then a single `OrgGroupMember` query checks
+    `user_id` against the granted group plus all of them.
     """
     query = select(UserModuleRole.id).where(
         UserModuleRole.user_id == user_id,
@@ -2206,7 +2242,31 @@ def _has_module_role_grant(
         query = query.where(UserModuleRole.project_id == project_id)
     if scope_entity_id is not None:
         query = query.where(UserModuleRole.scope_entity_id == scope_entity_id)
-    return db.scalar(query) is not None
+    if db.scalar(query) is not None:
+        return True
+
+    group_query = select(GroupModuleRole.org_group_id).where(
+        GroupModuleRole.module_key == module_key,
+        GroupModuleRole.role_key == role_key,
+    )
+    if organization_id is not None:
+        group_query = group_query.where(GroupModuleRole.organization_id == organization_id)
+    if project_id is not None:
+        group_query = group_query.where(GroupModuleRole.project_id == project_id)
+    if scope_entity_id is not None:
+        group_query = group_query.where(GroupModuleRole.scope_entity_id == scope_entity_id)
+    granted_group_ids = set(db.scalars(group_query).all())
+    if not granted_group_ids:
+        return False
+    all_group_ids = granted_group_ids | _descendant_org_group_ids(db, granted_group_ids)
+    return (
+        db.scalar(
+            select(OrgGroupMember.id).where(
+                OrgGroupMember.org_group_id.in_(all_group_ids), OrgGroupMember.user_id == user_id
+            )
+        )
+        is not None
+    )
 
 
 def user_satisfies_module_role(
@@ -2244,9 +2304,11 @@ def user_satisfies_module_role(
         tier further down than `"org"` itself.
       - `ProjectRole.PROJECT_MANAGER` on `project_id`, for a `"project"`-
         scoped role only.
-      - The specific `(module_key, role_key)` grant itself, scoped to
-        whichever of `organization_id`/`project_id`/`scope_entity_id`
-        matches the role's declared scope (`_has_module_role_grant`).
+      - The specific `(module_key, role_key)` grant itself — direct
+        (`UserModuleRole`) or via group membership (`GroupModuleRole`,
+        module system Phase 30) — scoped to whichever of `organization_id`/
+        `project_id`/`scope_entity_id` matches the role's declared scope
+        (`_has_module_role_grant`).
       - Any role named in this role's own `overridden_by` — checked at
         that override role's own natural scope: `"org"` uses
         `organization_id` alone, `"project"` uses `project_id`.
@@ -2336,9 +2398,11 @@ def require_module_role(module_key: str, role_key: str):
         effective roles on `organization_id`.
       - For `scope == "project"`: `ProjectRole.PROJECT_MANAGER` among the
         caller's effective roles on `project_id`.
-      - The caller holds the specific `(module_key, role_key)`
-        `UserModuleRole` grant itself (`_has_module_role_grant`), scoped
-        to `organization_id`/`project_id` as appropriate.
+      - The caller holds the specific `(module_key, role_key)` grant
+        itself, directly (`UserModuleRole`) or via membership in an org
+        group holding it (`GroupModuleRole`, module system Phase 30) —
+        `_has_module_role_grant`, scoped to `organization_id`/`project_id`
+        as appropriate.
     Otherwise, 403.
 
     This is generic module-system infrastructure with **no real caller

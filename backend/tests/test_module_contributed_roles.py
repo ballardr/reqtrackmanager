@@ -31,7 +31,8 @@ from fastapi import HTTPException
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.module import OrganizationModuleEnablement
-from app.models.module_role import ModuleRoleDefinitionRow, UserModuleRole
+from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
+from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.user import User
 from app.modules import registry as module_registry
 from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, build_registry, sync_module_role_definitions
@@ -287,6 +288,118 @@ def test_require_module_role_project_scope_composition(client, admin_token, org_
             )
         )
         db.commit()
+        result = dependency(project_id=project_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert result.id == plain_user.id
+    finally:
+        db.close()
+
+
+# --- Group-based grants (module system Phase 30) ----------------------------
+
+
+def test_require_module_role_org_scope_group_grant_composition(client, admin_token, org_id, fake_module):
+    """A `GroupModuleRole` grant (module system Phase 30) is honoured for a
+    user who is a member of the granted group, and stops being honoured
+    once they're removed from it or the grant itself is revoked — mirrors
+    `test_require_module_role_org_scope_composition`'s own direct-grant
+    assertion, one mechanism further."""
+    db = SessionLocal()
+    try:
+        org_uuid = uuid_lib.UUID(org_id)
+        dependency = require_module_role(fake_module, ORG_ROLE_KEY)
+
+        plain_id = create_org_user(client, admin_token, org_id, "group_grant_org_scope@example.com", role="member")
+        plain_user = db.get(User, uuid_lib.UUID(plain_id))
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert exc_info.value.status_code == 403
+
+        group = OrgGroup(organization_id=org_uuid, name="Group Grant Org Scope")
+        db.add(group)
+        db.flush()
+        db.add(GroupModuleRole(org_group_id=group.id, module_key=fake_module, role_key=ORG_ROLE_KEY, organization_id=org_uuid))
+        db.commit()
+
+        # Not yet a member of the granted group — still refused.
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert exc_info.value.status_code == 403
+
+        member_row = OrgGroupMember(org_group_id=group.id, user_id=plain_user.id)
+        db.add(member_row)
+        db.commit()
+
+        # Now a member of the granted group — passes.
+        result = dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert result.id == plain_user.id
+
+        # Removed from the group — refused again.
+        db.delete(member_row)
+        db.commit()
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert exc_info.value.status_code == 403
+    finally:
+        db.close()
+
+
+def test_require_module_role_org_scope_group_grant_honours_nested_groups(client, admin_token, org_id, fake_module):
+    """A user who is only a member of a subgroup nested inside the granted
+    group must also pass — mirrors `OrgGroupProjectRole`'s own descendant
+    expansion (`_direct_project_member_ids_base`) one level down for
+    module-contributed roles."""
+    db = SessionLocal()
+    try:
+        org_uuid = uuid_lib.UUID(org_id)
+        dependency = require_module_role(fake_module, ORG_ROLE_KEY)
+
+        plain_id = create_org_user(client, admin_token, org_id, "nested_group_grant@example.com", role="member")
+        plain_user = db.get(User, uuid_lib.UUID(plain_id))
+
+        parent_group = OrgGroup(organization_id=org_uuid, name="Nested Grant Parent")
+        child_group = OrgGroup(organization_id=org_uuid, name="Nested Grant Child")
+        db.add_all([parent_group, child_group])
+        db.flush()
+        db.add(GroupModuleRole(
+            org_group_id=parent_group.id, module_key=fake_module, role_key=ORG_ROLE_KEY, organization_id=org_uuid,
+        ))
+        # child_group nested inside parent_group.
+        db.add(OrgGroupMember(org_group_id=parent_group.id, member_org_group_id=child_group.id))
+        # plain_user is a direct member of the child, not the parent.
+        db.add(OrgGroupMember(org_group_id=child_group.id, user_id=plain_user.id))
+        db.commit()
+
+        result = dependency(organization_id=org_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert result.id == plain_user.id
+    finally:
+        db.close()
+
+
+def test_require_module_role_project_scope_group_grant_composition(client, admin_token, org_id, fake_module):
+    project = create_project(client, admin_token, org_id, "Module Role Group Grant Project")
+    project_uuid = uuid_lib.UUID(project["id"])
+    db = SessionLocal()
+    try:
+        dependency = require_module_role(fake_module, PROJECT_ROLE_KEY)
+
+        plain_id = create_org_user(client, admin_token, org_id, "group_grant_project_scope@example.com", role="member")
+        client.post(f"/api/v1/projects/{project['id']}/roles", json={"user_id": plain_id, "role": "member"},
+                    headers=auth_headers(admin_token))
+        plain_user = db.get(User, uuid_lib.UUID(plain_id))
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(project_id=project_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
+        assert exc_info.value.status_code == 403
+
+        group = OrgGroup(organization_id=uuid_lib.UUID(org_id), name="Group Grant Project Scope")
+        db.add(group)
+        db.flush()
+        db.add(GroupModuleRole(
+            org_group_id=group.id, module_key=fake_module, role_key=PROJECT_ROLE_KEY,
+            organization_id=uuid_lib.UUID(org_id), project_id=project_uuid,
+        ))
+        db.add(OrgGroupMember(org_group_id=group.id, user_id=plain_user.id))
+        db.commit()
+
         result = dependency(project_id=project_uuid, request=_FakeRequest(), current_user=plain_user, db=db)
         assert result.id == plain_user.id
     finally:

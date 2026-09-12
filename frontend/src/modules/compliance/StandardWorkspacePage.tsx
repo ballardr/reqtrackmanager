@@ -58,7 +58,7 @@ import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
-import type { OrgUser } from "../../api/types";
+import type { OrgGroup, OrgUser } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { MetricTile } from "../../components/MetricTile";
@@ -112,6 +112,7 @@ export function StandardWorkspacePage() {
   const [notFound, setNotFound] = useState(false);
   const [actionTypes, setActionTypes] = useState<ComplianceActionType[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
@@ -148,6 +149,7 @@ export function StandardWorkspacePage() {
     if (!standard) return;
     complianceApi.listActionTypes(standard.organization_id).then(setActionTypes);
     api.get<OrgUser[]>(`/api/v1/orgs/${standard.organization_id}/users`).then(setOrgUsers);
+    api.get<OrgGroup[]>(`/api/v1/orgs/${standard.organization_id}/groups`).then(setOrgGroups);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id]);
 
@@ -268,7 +270,7 @@ export function StandardWorkspacePage() {
       )}
 
       {section === "members" && (
-        <StandardMembersSection orgId={standard.organization_id} standard={standard} orgUsers={orgUsers} />
+        <StandardMembersSection orgId={standard.organization_id} standard={standard} orgUsers={orgUsers} orgGroups={orgGroups} />
       )}
 
       {section === "projects" && (

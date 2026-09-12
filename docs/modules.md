@@ -321,10 +321,19 @@ module was uninstalled), so a historical grant made while a module was
 registered still resolves to a real display name later, even after the
 module is removed. Actual grants live in `user_module_roles`, a direct-grant
 table (`user_id`, `module_key`, `role_key`, `organization_id`, optional
-`project_id`) — **there is no group or project-hierarchy inheritance for
-module roles in V1**, unlike core roles. This is a deliberate scope boundary,
-not an oversight: it keeps a first version of this mechanism simple, at the
-cost of not yet supporting "grant this role to everyone in this group."
+`project_id`) — there is still no *project-hierarchy* inheritance for module
+roles, unlike core `ProjectRole`s. **Group-based grants were added by module
+system Phase 30**, reversing V1's original "direct grants only" scope
+boundary: `group_module_roles` (`org_group_id` in place of `user_id`,
+otherwise identical) lets a role be granted to an organisation group as a
+whole, resolved for every transitive member of that group at check time
+(`services/rbac.py::_has_module_role_grant`'s group-grant branch, via
+`effective_org_group_member_ids`) — mirroring `OrgGroupProjectRole`'s own
+already-shipped group-grant precedent for core `ProjectRole`s one tier up.
+This was a deliberate, user-requested reversal (see `docs/compliance-
+module-plan.md` Phase 30 and its `docs/decisions.md` entry), not a walk-back
+of the *hierarchy*-inheritance boundary above, which module roles still
+don't have.
 
 A module gates an endpoint on one of its own roles with
 `require_module_role(module_key, role_key)`. The check composes with the
@@ -444,12 +453,14 @@ Compliance's Phase 22) simply returns `None` (the default) and is skipped —
 core code never needs to know which modules, if any, care about a given
 group being removed from.
 
-This is a genuinely narrow mechanism, not a reopening of module roles'
-still-deferred "grant via group membership" capability (§4's own "no group
-or project-hierarchy inheritance for module roles in V1" boundary): it only
-answers "would this removal break a floor," it grants nothing on its own.
-See `app.modules.compliance.service.validate_fallback_group_member_removal`
-for the reference implementation.
+This mechanism is distinct from, and predates, module roles' own group-*grant*
+capability (§4's `group_module_roles`, added later by Phase 30): it only
+ever answers "would this removal break a floor" for the fallback-group path,
+it never grants a role on its own — a `group_module_roles` row is a real,
+standard-specific grant like any other, just held by a group instead of a
+user, and coexists with this floor mechanism rather than replacing it. See
+`app.modules.compliance.service.validate_fallback_group_member_removal` for
+the reference implementation.
 
 ---
 

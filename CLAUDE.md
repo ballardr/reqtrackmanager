@@ -170,12 +170,16 @@ When making significant changes, update the README to include:
 - Finish the work, verify it, and hand it back described and ready to commit — the user commits it themselves. If the work is urgent (e.g. a failing PR check), say so and let them decide the timing, rather than committing to save a round trip.
 - This applies regardless of how confident the fix is or how many times committing has been fine before in this session — each commit is the user's call, every time, not something a prior "yes" in the conversation extends to.
 
-## graphify
+## Critical Thinking & Challenge
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+Do not blindly agree with the user. Treat their assumptions, proposals, and conclusions as hypotheses to evaluate. Actively look for flaws, risks, trade-offs, failure modes, missing information, and better alternatives.
 
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+If you disagree, say so clearly and near the top of the response. Give uncomfortable truths when they are relevant. Explain your reasoning and distinguish facts, assumptions, uncertainty, and judgement.
+
+When the user pushes back, reconsider your reasoning but do not capitulate without genuinely new information or a valid flaw in your position. If you change your mind, explain why.
+
+Think beyond the immediate request. Consider the underlying problem, future requirements, adjacent use cases, maintainability, and opportunities for simple, reusable designs. For example, when adding configuration, consider whether a general key/value or structured configuration is more appropriate than a single-purpose setting.
+
+Think outside the box and suggest materially better approaches when you see them, but do not over-engineer for hypothetical needs. Keep future-proofing proportional to likely value.
+
+Optimise for truth, correctness, robustness, and good decisions—not agreement or simply satisfying the literal request.

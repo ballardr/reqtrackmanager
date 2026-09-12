@@ -1135,10 +1135,26 @@ class ComplianceStandardMemberOut(BaseModel):
     role_keys: list[Literal["standards_manager", "standards_contributor"]]
 
 
+class ComplianceStandardGroupMemberOut(BaseModel):
+    """One org group holding at least one direct standard-scoped role grant
+    on a given standard (`GroupModuleRole`, module system Phase 30) — the
+    group-grant sibling of `ComplianceStandardMemberOut`. `member_count` is
+    resolved live (every transitive `OrgGroupMember`, via `services.rbac.
+    effective_org_group_member_ids`), not stored, so the roster always
+    reflects the group's current membership."""
+
+    org_group_id: UUID
+    group_name: str
+    role_keys: list[Literal["standards_manager", "standards_contributor"]]
+    member_count: int
+
+
 class ComplianceStandardMembersOut(BaseModel):
-    """Response of `GET .../standards/{id}/members` (Phase 22)."""
+    """Response of `GET .../standards/{id}/members` (Phase 22; `group_
+    members` added by Phase 30)."""
 
     members: list[ComplianceStandardMemberOut]
+    group_members: list[ComplianceStandardGroupMemberOut] = []
     # Whether this standard's manager floor is *also* satisfied by the
     # org's designated fallback compliance-managers group currently having
     # at least one member — when `True`, the frontend may let the last
@@ -1174,4 +1190,15 @@ class ComplianceStandardMemberRoleAssign(BaseModel):
     `module_key`/`role_key` pair) since this endpoint only ever grants a
     role of this one module, at this one scope."""
 
+    role_key: Literal["standards_manager", "standards_contributor"]
+
+
+class ComplianceStandardGroupRoleAssign(BaseModel):
+    """Body for `POST .../standards/{id}/group-roles` (module system
+    Phase 30) — the group-grant counterpart to `ComplianceStandardMember
+    RoleAssign`, mirroring `OrgGroupProjectRoleAssign`'s own "org_group_id
+    in the body, not the URL, for the collection-style POST" convention
+    (`routers/projects.py::assign_group_project_role`) one level down."""
+
+    org_group_id: UUID
     role_key: Literal["standards_manager", "standards_contributor"]

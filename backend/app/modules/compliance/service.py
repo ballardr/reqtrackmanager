@@ -1182,38 +1182,49 @@ def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uui
 
 def _effective_org_group_member_ids(db: Session, org_group_id: uuid.UUID) -> set[uuid.UUID]:
     """Every user who is a direct or transitively-nested member of
-    `org_group_id` (BFS through `OrgGroupMember.member_org_group_id`,
-    mirroring `services.rbac._descendant_org_group_ids`'s own directionality
-    but resolved down to user ids rather than group ids).
+    `org_group_id`.
 
-    A narrow, compliance-owned helper — **not** a generalisation of
-    `services.rbac`'s own group-membership resolution (which today only
-    ever walks *up* from a user to their groups, never *down* from a group
-    to its members) — deliberately scoped to this one, single use (Phase
-    22's fallback-group floor check), per that phase's own "narrow, not a
-    reopening of Phase 2's deferred general group-based-module-role-grants
-    capability" boundary. See docs/compliance-module-plan.md Phase 22's own
-    notes."""
-    from app.models.organization import OrgGroupMember
+    Originally a narrow, compliance-owned BFS (Phase 22's own fallback-
+    group floor check), deliberately *not* a generalisation of
+    `services.rbac`'s own group-membership resolution back when Phase 2's
+    "grant a module role via group membership" capability was still out of
+    scope. Phase 30 reversed that scope boundary and built the general
+    mechanism in core (`services.rbac.effective_org_group_member_ids`,
+    used by `_has_module_role_grant`'s own new group-grant branch) — this
+    is now a thin wrapper over that shared implementation rather than a
+    second copy of the same BFS."""
+    from app.services import rbac
 
-    seen_group_ids = {org_group_id}
-    frontier = {org_group_id}
-    user_ids: set[uuid.UUID] = set()
-    while frontier:
-        rows = db.execute(
-            select(OrgGroupMember.user_id, OrgGroupMember.member_org_group_id).where(
-                OrgGroupMember.org_group_id.in_(frontier)
-            )
-        ).all()
-        next_frontier: set[uuid.UUID] = set()
-        for user_id, member_group_id in rows:
-            if user_id is not None:
-                user_ids.add(user_id)
-            elif member_group_id is not None and member_group_id not in seen_group_ids:
-                seen_group_ids.add(member_group_id)
-                next_frontier.add(member_group_id)
-        frontier = next_frontier
-    return user_ids
+    return rbac.effective_org_group_member_ids(db, org_group_id)
+
+
+def standard_manager_floor_covered_by_group_grants(
+    db: Session, standard_id: uuid.UUID, *, exclude_org_group_id: uuid.UUID | None = None
+) -> bool:
+    """Whether this standard's manager floor is currently covered by at
+    least one `GroupModuleRole` `standards_manager` grant whose granted
+    group has at least one effective (possibly transitive) member (module
+    system Phase 30) — the group-grant sibling of `standard_manager_floor_
+    covered_by_fallback`'s org-wide fallback-group check, checked
+    alongside it wherever a `standards_manager` grant is about to be
+    revoked (`router.py::revoke_standard_member_role`/`revoke_standard_
+    group_role`).
+
+    `exclude_org_group_id` lets `revoke_standard_group_role` ask "if I
+    remove *this* group's own grant, is the floor still covered by some
+    *other* group grant" without that grant's own about-to-be-revoked row
+    counting towards its own answer."""
+    from app.models.module_role import GroupModuleRole
+
+    query = select(GroupModuleRole.org_group_id).where(
+        GroupModuleRole.module_key == "compliance",
+        GroupModuleRole.role_key == "standards_manager",
+        GroupModuleRole.scope_entity_id == standard_id,
+    )
+    if exclude_org_group_id is not None:
+        query = query.where(GroupModuleRole.org_group_id != exclude_org_group_id)
+    group_ids = db.scalars(query).all()
+    return any(len(_effective_org_group_member_ids(db, group_id)) > 0 for group_id in group_ids)
 
 
 def get_default_standards_manager_group_id(db: Session, organization_id: uuid.UUID) -> uuid.UUID | None:

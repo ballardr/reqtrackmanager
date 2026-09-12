@@ -34,6 +34,7 @@ function mockWorkspaceApis() {
     if (path === `/api/v1/compliance/standards/${STANDARD.id}`) return STANDARD;
     if (path.endsWith("/action-types")) return ACTION_TYPES;
     if (path.endsWith("/users")) return ORG_USERS;
+    if (path.endsWith("/groups")) return [];
     if (path.endsWith("/versions")) return [VERSION];
     if (path.endsWith("/history")) return HISTORY;
     if (path.endsWith("/exclusions")) return [];
@@ -187,6 +188,7 @@ export const EntitySwitcherOffersSiblingStandards: Story = {
       if (path === `/api/v1/compliance/standards/${STANDARD.id}`) return STANDARD;
       if (path.endsWith("/action-types")) return ACTION_TYPES;
       if (path.endsWith("/users")) return ORG_USERS;
+      if (path.endsWith("/groups")) return [];
       if (path.endsWith("/versions")) return [VERSION];
       if (path.endsWith("/history")) return HISTORY;
       if (path.endsWith("/exclusions")) return [];

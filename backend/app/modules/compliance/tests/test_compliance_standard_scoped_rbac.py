@@ -75,6 +75,21 @@ def _set_fallback_group(client, admin_token, org_id, group_id):
     return resp.json()
 
 
+def _grant_standard_group_role(client, token, org_id, standard_id, group_id, role_key, *, expect=204):
+    resp = client.post(
+        f"{_base(org_id)}/standards/{standard_id}/group-roles",
+        json={"org_group_id": group_id, "role_key": role_key}, headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp
+
+
+def _revoke_standard_group_role(client, token, org_id, standard_id, group_id, role_key):
+    return client.delete(
+        f"{_base(org_id)}/standards/{standard_id}/group-roles/{group_id}/{role_key}", headers=auth_headers(token),
+    )
+
+
 # --- Standard creation auto-grants the creator -------------------------------
 
 
@@ -296,6 +311,167 @@ def test_manage_gate_audit_logged(client, admin_token, org_id):
         event = db.query(AuditEvent).filter(
             AuditEvent.entity_type == "user_module_role", AuditEvent.action == "granted",
             AuditEvent.entity_id == other_id,
+        ).first()
+        assert event is not None
+        assert event.detail["role_key"] == "standards_manager"
+        assert event.detail["standard_id"] == standard["id"]
+    finally:
+        db.close()
+
+
+# --- Group-based grants (module system Phase 30) -------------------------------
+
+
+def test_group_grant_satisfies_standard_manage_for_group_member(client, admin_token, org_id):
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-1")
+    group_member_id = create_org_user(client, admin_token, org_id, "group_grant_member@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Standard Contributors Group")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_member_id)
+
+    # Not yet granted — refused.
+    member_token = login(client, "group_grant_member@example.com", "Password123!")
+    resp = client.post(f"{_base(org_id)}/standards/{standard['id']}/archive", headers=auth_headers(member_token))
+    assert resp.status_code == 403
+
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_manager")
+    resp = client.post(f"{_base(org_id)}/standards/{standard['id']}/archive", headers=auth_headers(member_token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_removing_group_member_removes_access_granted_via_group(client, admin_token, org_id):
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-2")
+    group_member_id = create_org_user(client, admin_token, org_id, "group_grant_leaver@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Leaver Group")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_member_id)
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_contributor")
+
+    versions = client.get(f"{_base(org_id)}/standards/{standard['id']}/versions", headers=auth_headers(admin_token))
+    version = versions.json()[0]
+    member_token = login(client, "group_grant_leaver@example.com", "Password123!")
+    resp = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/versions/{version['id']}/requirements",
+        json={"name": "Via group, before leaving"}, headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.delete(
+        f"/api/v1/orgs/{org_id}/groups/{group_id}/members/{group_member_id}", headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 204, resp.text
+
+    resp = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/versions/{version['id']}/requirements",
+        json={"name": "Via group, after leaving"}, headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 403
+
+
+def test_revoking_group_role_removes_access(client, admin_token, org_id):
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-3")
+    group_member_id = create_org_user(client, admin_token, org_id, "group_grant_revoked@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Revoked Grant Group")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_member_id)
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_contributor")
+    member_token = login(client, "group_grant_revoked@example.com", "Password123!")
+
+    resp = client.post(f"{_base(org_id)}/standards/{standard['id']}/archive", headers=auth_headers(member_token))
+    assert resp.status_code == 403  # contributor, not manager
+
+    resp = _revoke_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_contributor")
+    assert resp.status_code == 204, resp.text
+
+    versions = client.get(f"{_base(org_id)}/standards/{standard['id']}/versions", headers=auth_headers(admin_token))
+    version = versions.json()[0]
+    resp = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/versions/{version['id']}/requirements",
+        json={"name": "After group grant revoked"}, headers=auth_headers(member_token),
+    )
+    assert resp.status_code == 403
+
+
+def test_standard_group_grant_appears_in_members_roster_with_member_count(client, admin_token, org_id):
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-4")
+    group_member_id = create_org_user(client, admin_token, org_id, "group_grant_roster@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Roster Group")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_member_id)
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_contributor")
+
+    resp = client.get(f"{_base(org_id)}/standards/{standard['id']}/members", headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    group_members = resp.json()["group_members"]
+    assert len(group_members) == 1
+    assert group_members[0]["org_group_id"] == group_id
+    assert group_members[0]["group_name"] == "Roster Group"
+    assert group_members[0]["role_keys"] == ["standards_contributor"]
+    assert group_members[0]["member_count"] == 1
+
+
+def test_standards_contributor_cannot_call_group_grant_endpoints(client, admin_token, org_id):
+    """RBAC boundary mirroring `test_standards_contributor_can_edit_draft_
+    requirement_but_not_publish_or_manage_members`'s own assertion, one
+    mechanism further: a contributor may not grant or revoke a group role
+    either, same manager-tier-only gate as the direct-user endpoints."""
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-5")
+    contributor_id = create_org_user(client, admin_token, org_id, "group_endpoint_contributor@example.com", role="member")
+    _grant_standard_role(client, admin_token, org_id, standard["id"], contributor_id, "standards_contributor")
+    contributor_token = login(client, "group_endpoint_contributor@example.com", "Password123!")
+    group_id = _create_org_group(client, admin_token, org_id, name="Boundary Test Group")
+
+    _grant_standard_group_role(
+        client, contributor_token, org_id, standard["id"], group_id, "standards_contributor", expect=403
+    )
+    resp = _revoke_standard_group_role(client, contributor_token, org_id, standard["id"], group_id, "standards_contributor")
+    assert resp.status_code == 403
+
+
+def test_removing_last_explicit_manager_succeeds_when_a_group_grant_covers_the_floor(client, admin_token, org_id):
+    manager_id = create_org_user(client, admin_token, org_id, "group_floor_creator@example.com", role="member")
+    _grant_compliance_manager(client, admin_token, org_id, manager_id)
+    manager_token = login(client, "group_floor_creator@example.com", "Password123!")
+    standard = _create_standard(client, manager_token, org_id, reference="GROUP-FLOOR-1")
+
+    group_manager_id = create_org_user(client, admin_token, org_id, "group_floor_manager@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Group Floor Managers")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_manager_id)
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_manager")
+
+    # manager_id is the only *direct* standards_manager — a group grant with
+    # a member now also covers the floor, so removing it must succeed.
+    resp = _revoke_standard_role(client, admin_token, org_id, standard["id"], manager_id, "standards_manager")
+    assert resp.status_code == 204, resp.text
+
+
+def test_removing_only_group_manager_grant_400s_with_no_other_coverage(client, admin_token, org_id):
+    manager_id = create_org_user(client, admin_token, org_id, "group_floor_only_creator@example.com", role="member")
+    _grant_compliance_manager(client, admin_token, org_id, manager_id)
+    manager_token = login(client, "group_floor_only_creator@example.com", "Password123!")
+    standard = _create_standard(client, manager_token, org_id, reference="GROUP-FLOOR-2")
+
+    group_manager_id = create_org_user(client, admin_token, org_id, "group_floor_only_manager@example.com", role="member")
+    group_id = _create_org_group(client, admin_token, org_id, name="Only Group Floor Managers")
+    _add_org_group_member(client, admin_token, org_id, group_id, group_manager_id)
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_manager")
+
+    # Remove the creator's own direct grant first, leaving the group grant
+    # as the standard's only manager coverage.
+    resp = _revoke_standard_role(client, admin_token, org_id, standard["id"], manager_id, "standards_manager")
+    assert resp.status_code == 204, resp.text
+
+    # Now removing the group's own grant must 400 — it's the last coverage.
+    resp = _revoke_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_manager")
+    assert resp.status_code == 400, resp.text
+
+
+def test_group_grant_audit_logged(client, admin_token, org_id):
+    standard = _create_standard(client, admin_token, org_id, reference="GROUP-AUDIT-1")
+    group_id = _create_org_group(client, admin_token, org_id, name="Audit Group")
+    _grant_standard_group_role(client, admin_token, org_id, standard["id"], group_id, "standards_manager")
+
+    db = SessionLocal()
+    try:
+        event = db.query(AuditEvent).filter(
+            AuditEvent.entity_type == "group_module_role", AuditEvent.action == "granted",
+            AuditEvent.entity_id == group_id,
         ).first()
         assert event is not None
         assert event.detail["role_key"] == "standards_manager"

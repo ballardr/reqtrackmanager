@@ -268,6 +268,19 @@ export function revokeStandardMemberRole(
   return api.delete(`${base(orgId)}/standards/${standardId}/members/${userId}/roles/${roleKey}`);
 }
 
+// Compliance module Phase 30 — group-based grants (`GroupModuleRole`).
+export function assignStandardGroupRole(
+  orgId: string, standardId: string, orgGroupId: string, roleKey: ComplianceStandardRoleKey
+): Promise<void> {
+  return api.post(`${base(orgId)}/standards/${standardId}/group-roles`, { org_group_id: orgGroupId, role_key: roleKey });
+}
+
+export function revokeStandardGroupRole(
+  orgId: string, standardId: string, orgGroupId: string, roleKey: ComplianceStandardRoleKey
+): Promise<void> {
+  return api.delete(`${base(orgId)}/standards/${standardId}/group-roles/${orgGroupId}/${roleKey}`);
+}
+
 // --- Standard versions ---------------------------------------------------------
 
 export function listStandardVersions(orgId: string, standardId: string): Promise<ComplianceStandardVersion[]> {

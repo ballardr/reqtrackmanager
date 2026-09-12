@@ -197,8 +197,20 @@ export interface ComplianceStandardMember {
   role_keys: ComplianceStandardRoleKey[];
 }
 
+// Compliance module Phase 30 — a group-based grant on a standard
+// (`GroupModuleRole`, module system Phase 30's generic group-grant
+// mechanism), the group-grant sibling of `ComplianceStandardMember`.
+// `member_count` is resolved live by the backend, not stored.
+export interface ComplianceStandardGroupMember {
+  org_group_id: string;
+  group_name: string;
+  role_keys: ComplianceStandardRoleKey[];
+  member_count: number;
+}
+
 export interface ComplianceStandardMembers {
   members: ComplianceStandardMember[];
+  group_members: ComplianceStandardGroupMember[];
   manager_floor_covered_by_fallback: boolean;
 }
 
