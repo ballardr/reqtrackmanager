@@ -147,6 +147,11 @@ export function ProjectComplianceDetail({
                 Contains non-compliant requirements
               </span>
             )}
+            {!liveStatus.has_non_compliant && liveStatus.not_yet_assessed && (
+              <span className="badge" style={{ background: "var(--color-warning)", color: "white" }}>
+                Not yet assessed
+              </span>
+            )}
           </div>
           <div className="row" style={{ flexWrap: "wrap", gap: "0.75rem" }}>
             {Object.entries(liveStatus.counts_by_status).map(([key, count]) => (

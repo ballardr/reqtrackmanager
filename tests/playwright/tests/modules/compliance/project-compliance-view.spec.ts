@@ -76,6 +76,12 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await assignDialog.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
+    // --- Phase 31: fresh assignment, zero assessments yet — the
+    //     "Non-compliant" column must read "Unknown", never "No" (which
+    //     would misleadingly imply this has been checked and found clean).
+    const assignmentRow = page.getByRole("row", { name: new RegExp(reference) });
+    await expect(assignmentRow.getByRole("cell", { name: "Unknown", exact: true })).toBeVisible();
+
     // --- Phase 17d: the project overview page now shows a compliance
     //     summary tile for this standard, linking straight back here.
     await page.getByRole("link", { name: "Overview", exact: true }).click();

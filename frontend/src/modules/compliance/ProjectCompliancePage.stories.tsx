@@ -30,7 +30,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
     target_compliance_date: "2026-12-31", assigned_at: "2026-01-01T00:00:00Z",
     total_requirements: 10, applicable_count: 9, not_applicable_count: 1,
     counts_by_status: { compliant: 7, in_progress: 1, non_compliant: 1 },
-    compliance_percentage: 77.8, has_non_compliant: true,
+    compliance_percentage: 77.8, has_non_compliant: true, not_yet_assessed: false,
     overall_compliance_state: "non_compliant", overall_approval_state: "assessed", ...overrides,
   };
 }
@@ -101,6 +101,25 @@ export const ListsAssignedStandards: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
     await expect(canvas.getByText(/77.8%/)).toBeInTheDocument();
+  },
+};
+
+// Phase 31: a standard attached but never assessed must render "Unknown" in
+// the Non-compliant column, never "No" (which would read as confirmed clean).
+export const ListsUnassessedStandard: Story = {
+  beforeEach: () =>
+    mockApis({
+      statuses: [
+        status({
+          has_non_compliant: false, not_yet_assessed: true, overall_compliance_state: "in_progress",
+          compliance_percentage: 0, applicable_count: 9, counts_by_status: { not_started: 9 },
+        }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Unknown")).toBeInTheDocument());
+    expect(canvas.queryByText("No")).not.toBeInTheDocument();
   },
 };
 

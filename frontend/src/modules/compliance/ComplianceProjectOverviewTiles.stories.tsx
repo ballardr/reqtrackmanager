@@ -23,7 +23,7 @@ const complianceStatus: ProjectComplianceStatus[] = [
     standard_version_id: "version-1", version_label: "v2.0", target_compliance_date: null,
     assigned_at: "2026-01-01T00:00:00Z", total_requirements: 20, applicable_count: 18, not_applicable_count: 2,
     counts_by_status: { compliant: 15, non_compliant: 1, in_progress: 2 }, compliance_percentage: 83,
-    has_non_compliant: true, overall_compliance_state: "in_progress", overall_approval_state: "not_assessed",
+    has_non_compliant: true, not_yet_assessed: false, overall_compliance_state: "in_progress", overall_approval_state: "not_assessed",
   },
 ];
 

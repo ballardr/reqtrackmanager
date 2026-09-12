@@ -537,6 +537,7 @@ class ProjectComplianceStatusOut(BaseModel):
     counts_by_status: dict[str, int]
     compliance_percentage: float
     has_non_compliant: bool
+    not_yet_assessed: bool
     overall_compliance_state: Literal["compliant", "non_compliant", "in_progress", "not_applicable"]
     overall_approval_state: ComplianceApprovalState
 

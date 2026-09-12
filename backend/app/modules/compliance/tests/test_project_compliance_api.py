@@ -438,9 +438,10 @@ def test_self_service_assignment_rejects_archived_standard(client, admin_token, 
 
 def test_project_status_calculation(client, admin_token, org_id):
     """§20: total/applicable/not-applicable counts, per-status breakdown,
-    compliance percentage, has_non_compliant flag, and overall_compliance_state
-    — computed from four requirements (one made Not Applicable) with a
-    deliberate mix of statuses among the rest."""
+    compliance percentage, has_non_compliant flag, not_yet_assessed flag
+    (Phase 31), and overall_compliance_state — computed from four
+    requirements (one made Not Applicable) with a deliberate mix of statuses
+    among the rest."""
     standard = _create_standard(client, admin_token, org_id, reference="STATUS-STD")
     version = _create_version(client, admin_token, org_id, standard["id"])
     requirement_ids = []
@@ -456,6 +457,16 @@ def test_project_status_calculation(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     ).json()
     pcr_by_requirement_id = {p["requirement_id"]: p for p in pcrs}
+
+    # Phase 31: freshly assigned, zero assessments performed yet — every
+    # applicable row is still Not Started. `not_yet_assessed` must be True
+    # and `has_non_compliant` must be False, so a caller rendering a binary
+    # "non-compliant?" affordance from `has_non_compliant` alone can check
+    # this field first rather than reading an unassessed standard as clean.
+    fresh_status = client.get(f"{_project_base(project['id'])}/status", headers=auth_headers(admin_token)).json()[0]
+    assert fresh_status["has_non_compliant"] is False
+    assert fresh_status["not_yet_assessed"] is True
+    assert fresh_status["overall_compliance_state"] == "in_progress"
 
     def _assess(requirement_id, status_value, justification=""):
         pcr_id = pcr_by_requirement_id[requirement_id]["id"]
@@ -490,6 +501,10 @@ def test_project_status_calculation(client, admin_token, org_id):
     assert summary["counts_by_status"]["in_progress"] == 1
     assert summary["compliance_percentage"] == round(2 / 3 * 100, 1)
     assert summary["has_non_compliant"] is False
+    # Partial progress (two assessed compliant, one in progress, none left
+    # Not Started) is distinct from the fresh, zero-assessment state above —
+    # `not_yet_assessed` must not still read True once assessment has begun.
+    assert summary["not_yet_assessed"] is False
     assert summary["overall_compliance_state"] == "in_progress"
     # Phase 9: performing an assessment always advances that row's own
     # approval_state to "assessed" (service.py::advance_approval_state_on_
@@ -504,6 +519,7 @@ def test_project_status_calculation(client, admin_token, org_id):
     _assess(requirement_ids[2], "non_compliant", justification="Did not pass inspection.")
     status_list_2 = client.get(f"{_project_base(project['id'])}/status", headers=auth_headers(admin_token)).json()[0]
     assert status_list_2["has_non_compliant"] is True
+    assert status_list_2["not_yet_assessed"] is False
     assert status_list_2["overall_compliance_state"] == "non_compliant"
 
     non_compliant = client.get(

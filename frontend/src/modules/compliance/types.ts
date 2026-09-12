@@ -121,6 +121,19 @@ export const COMPLIANCE_OVERALL_STATE_LABEL: Record<ComplianceOverallState, stri
   not_applicable: "Not applicable",
 };
 
+/** Three-state "Non-compliant" risk label shared by `ProjectCompliancePage`'s
+ * list column and `ProjectComplianceDetail`'s badge (compliance-module-plan.md
+ * Phase 31). Never collapses "nobody has assessed this yet" into the same
+ * reading as "assessed and found compliant" — a status with `not_yet_assessed`
+ * true renders as "Unknown", not "No", even though `has_non_compliant` is
+ * also false in that case. */
+export type ComplianceRiskLabel = "Yes" | "Unknown" | "No";
+export function complianceRiskLabel(status: { has_non_compliant: boolean; not_yet_assessed: boolean }): ComplianceRiskLabel {
+  if (status.has_non_compliant) return "Yes";
+  if (status.not_yet_assessed) return "Unknown";
+  return "No";
+}
+
 // Compliance module Phase 20 — `ComplianceStandard.applicability_default`
 // (backend `app.modules.compliance.enums.ComplianceStandardApplicabilityDefault`).
 // Kept in this module-local file rather than `frontend/src/api/types.ts`,
@@ -437,6 +450,13 @@ export interface ProjectComplianceStatus {
   counts_by_status: Record<string, number>;
   compliance_percentage: number;
   has_non_compliant: boolean;
+  /** True when every applicable requirement is still Not Started — i.e.
+   * this assignment has had zero assessment activity. A UI rendering a
+   * binary "non-compliant?" affordance from `has_non_compliant` alone
+   * must check this first, so "nobody has assessed this yet" is never
+   * displayed the same way as "assessed and found compliant"
+   * (compliance-module-plan.md Phase 31). */
+  not_yet_assessed: boolean;
   overall_compliance_state: ComplianceOverallState;
   overall_approval_state: ComplianceApprovalState;
 }

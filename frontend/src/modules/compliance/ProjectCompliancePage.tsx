@@ -58,7 +58,7 @@ import * as complianceApi from "./api";
 import { EvidencePanel } from "./EvidencePanel";
 import { OutstandingPanel } from "./OutstandingPanel";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
-import type { ComplianceStandard, ComplianceStandardVersion, ProjectCompliance, ProjectComplianceStatus } from "./types";
+import { complianceRiskLabel, type ComplianceStandard, type ComplianceStandardVersion, type ProjectCompliance, type ProjectComplianceStatus } from "./types";
 
 type ComplianceTabKey = "standards" | "evidence" | "outstanding";
 
@@ -171,7 +171,7 @@ export function ProjectCompliancePage() {
     },
     {
       key: "outstanding", label: "Non-compliant",
-      render: (row) => (row.status ? (row.status.has_non_compliant ? "Yes" : "No") : "—"),
+      render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
     },
     { key: "target_date", label: "Target date", render: (row) => row.assignment.target_compliance_date ?? "—" },
   ];

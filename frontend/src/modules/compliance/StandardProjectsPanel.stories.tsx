@@ -20,7 +20,7 @@ const ROWS: ProjectComplianceStatus[] = [
     target_compliance_date: null, assigned_at: "2026-01-01T00:00:00Z",
     total_requirements: 10, applicable_count: 10, not_applicable_count: 0,
     counts_by_status: { compliant: 10 }, compliance_percentage: 100,
-    has_non_compliant: false, overall_compliance_state: "compliant", overall_approval_state: "approved",
+    has_non_compliant: false, not_yet_assessed: false, overall_compliance_state: "compliant", overall_approval_state: "approved",
   },
   {
     project_compliance_id: "pc-2", project_id: "proj-2", project_name: "Beta Tunnel", standard_id: STANDARD.id,
@@ -28,7 +28,7 @@ const ROWS: ProjectComplianceStatus[] = [
     target_compliance_date: null, assigned_at: "2026-01-01T00:00:00Z",
     total_requirements: 10, applicable_count: 10, not_applicable_count: 0,
     counts_by_status: { compliant: 6, non_compliant: 2, in_progress: 2 }, compliance_percentage: 60,
-    has_non_compliant: true, overall_compliance_state: "non_compliant", overall_approval_state: "assessed",
+    has_non_compliant: true, not_yet_assessed: false, overall_compliance_state: "non_compliant", overall_approval_state: "assessed",
   },
 ];
 

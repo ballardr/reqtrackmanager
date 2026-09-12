@@ -503,6 +503,7 @@ class ProjectComplianceStatusSummary:
         counts_by_status: dict[str, int],
         compliance_percentage: float,
         has_non_compliant: bool,
+        not_yet_assessed: bool,
         overall_compliance_state: Literal["compliant", "non_compliant", "in_progress", "not_applicable"],
         overall_approval_state: ComplianceApprovalState,
     ) -> None:
@@ -512,6 +513,7 @@ class ProjectComplianceStatusSummary:
         self.counts_by_status = counts_by_status
         self.compliance_percentage = compliance_percentage
         self.has_non_compliant = has_non_compliant
+        self.not_yet_assessed = not_yet_assessed
         self.overall_compliance_state = overall_compliance_state
         self.overall_approval_state = overall_approval_state
 
@@ -574,11 +576,25 @@ def summarize_project_compliance(
       — always shown, per §20's "If any requirement is Non-Compliant, the
       overall compliance state should clearly indicate this," regardless
       of how high the percentage is.
+    - `not_yet_assessed`: `True` when there is at least one applicable
+      requirement and every single one of them is still `NOT_STARTED` —
+      i.e. this assignment has had literally zero assessment activity.
+      Deliberately a field of its own rather than a value folded into
+      `overall_compliance_state` (which already has four other call
+      sites depending on its existing meaning): a caller that renders a
+      binary "is this non-compliant?" affordance from `has_non_compliant`
+      alone must check this field too, so "nobody has assessed this yet"
+      is never displayed the same way as "assessed and found compliant"
+      (compliance-module-plan.md Phase 31 — a prior binary Yes/No render
+      of `has_non_compliant` alone did exactly that).
     - `overall_compliance_state`: `"not_applicable"` if nothing is
       applicable; else `"non_compliant"` if `has_non_compliant`; else
       `"compliant"` if every applicable row is `COMPLIANT`; else
       `"in_progress"` (some mix of Not Started/In Progress/Blocked/
-      Pending Review/Rejected, but no outright Non-Compliant row).
+      Pending Review/Rejected, but no outright Non-Compliant row — this
+      bucket also covers the all-`NOT_STARTED`/`not_yet_assessed` case;
+      it is not further split here so existing consumers of this field's
+      four-value meaning are unaffected).
     - `overall_approval_state`: see `_aggregate_approval_state` — kept as
       a **separate** field from `overall_compliance_state`, never folded
       into it, per §20's explicit "Approval/sign-off should be reflected
@@ -615,6 +631,7 @@ def summarize_project_compliance(
         approval_states.append(pcr.approval_state)
 
     compliance_percentage = 100.0 if applicable_count == 0 else round(compliant_count / applicable_count * 100, 1)
+    not_yet_assessed = applicable_count > 0 and counts_by_status[ComplianceStatus.NOT_STARTED.value] == applicable_count
 
     overall_compliance_state: Literal["compliant", "non_compliant", "in_progress", "not_applicable"]
     if applicable_count == 0:
@@ -633,6 +650,7 @@ def summarize_project_compliance(
         counts_by_status=counts_by_status,
         compliance_percentage=compliance_percentage,
         has_non_compliant=has_non_compliant,
+        not_yet_assessed=not_yet_assessed,
         overall_compliance_state=overall_compliance_state,
         overall_approval_state=_aggregate_approval_state(approval_states),
     )
@@ -729,6 +747,7 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
         counts_by_status=summary.counts_by_status,
         compliance_percentage=summary.compliance_percentage,
         has_non_compliant=summary.has_non_compliant,
+        not_yet_assessed=summary.not_yet_assessed,
         overall_compliance_state=summary.overall_compliance_state,
         overall_approval_state=summary.overall_approval_state,
     )

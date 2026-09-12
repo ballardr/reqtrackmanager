@@ -25,7 +25,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
     target_compliance_date: "2026-12-31", assigned_at: "2026-01-01T00:00:00Z",
     total_requirements: 3, applicable_count: 3, not_applicable_count: 0,
     counts_by_status: { compliant: 2, in_progress: 1 },
-    compliance_percentage: 66.7, has_non_compliant: false,
+    compliance_percentage: 66.7, has_non_compliant: false, not_yet_assessed: false,
     overall_compliance_state: "in_progress", overall_approval_state: "not_assessed", ...overrides,
   };
 }
@@ -102,6 +102,41 @@ export const ArchiveFlow: Story = {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/projects/${PROJECT_ID}/project-compliance/pc-1/archive`
     ));
+  },
+};
+
+export const NonCompliantAssignment: Story = {
+  beforeEach: () => mockApis(),
+  args: {
+    orgId: ORG_ID, projectId: PROJECT_ID,
+    assignment: assignment(),
+    status: status({ has_non_compliant: true, not_yet_assessed: false, overall_compliance_state: "non_compliant" }),
+    orgUsers: [], onBack: () => {}, onArchiveToggled: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Contains non-compliant requirements")).toBeInTheDocument();
+    expect(canvas.queryByText("Not yet assessed")).not.toBeInTheDocument();
+  },
+};
+
+// Phase 31: a standard attached but never assessed must never render the
+// same as "assessed and found compliant" — see `types.ts::complianceRiskLabel`.
+export const NotYetAssessedAssignment: Story = {
+  beforeEach: () => mockApis(),
+  args: {
+    orgId: ORG_ID, projectId: PROJECT_ID,
+    assignment: assignment(),
+    status: status({
+      has_non_compliant: false, not_yet_assessed: true, overall_compliance_state: "in_progress",
+      compliance_percentage: 0, counts_by_status: { not_started: 3 },
+    }),
+    orgUsers: [], onBack: () => {}, onArchiveToggled: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Not yet assessed")).toBeInTheDocument();
+    expect(canvas.queryByText("Contains non-compliant requirements")).not.toBeInTheDocument();
   },
 };
 
