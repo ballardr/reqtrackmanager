@@ -22,6 +22,7 @@ import type {
 } from "../api/types";
 import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
+import { AssigneePicker } from "../components/AssigneePicker";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -1106,20 +1107,16 @@ export function RequirementDetailPage() {
                 ))}
               </select>
             </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
+            <div className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.assignee}
-              <select
-                className="input" aria-label={strings.actions.assignee}
-                value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)}
-              >
-                <option value="">{strings.reviews.unassigned}</option>
-                {orgUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {u.display_name} ({u.email})
-                  </option>
-                ))}
-              </select>
-            </label>
+              <AssigneePicker
+                orgUsers={orgUsers}
+                organizationId={organizationId ?? undefined}
+                assigneeId={newActionAssigneeId}
+                onChange={setNewActionAssigneeId}
+                ariaLabel={strings.actions.assignee}
+              />
+            </div>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.dueDate}
               <input

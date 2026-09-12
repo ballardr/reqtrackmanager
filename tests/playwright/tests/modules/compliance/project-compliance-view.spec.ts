@@ -37,8 +37,23 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     const standardName = `E2E Project Compliance Standard ${suffix}`;
     const requirementName = `E2E Access Control Requirement ${suffix}`;
     const evidenceTitle = `E2E Access Review Evidence ${suffix}`;
+    const actionTypeName = `E2E PCV Action Type ${suffix}`;
+    const requiredActionName = `E2E PCV Required Action ${suffix}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+
+    // --- An action type is needed for the required action below —
+    // created first via org compliance settings, same flow
+    // `compliance-standards-management.spec.ts` uses.
+    await page.goto("/standards");
+    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
+    await page.getByPlaceholder("Action type name").fill(actionTypeName);
+    await page.getByRole("button", { name: "Add action type" }).click();
+    await expect(async () => {
+      const values = await page.locator("input.input").evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value));
+      expect(values).toContain(actionTypeName);
+    }).toPass();
 
     // --- Author a published standard/version/requirement to assign, via
     // the top-level `/standards` page (compliance-module-plan.md Phase 18 —
@@ -52,6 +67,17 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByLabel("Requirement name").fill(requirementName);
     await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(requirementName)).toBeVisible();
+
+    // --- Phase 32: give this requirement a required action, so the
+    // project-side assessment panel's assignee field (a searchable
+    // `AssigneePicker`, not a plain unfiltered `<select>`) has something to
+    // exercise below.
+    await page.getByRole("button", { name: `Expand ${requirementName}` }).click();
+    await page.getByRole("button", { name: "Add required action" }).click();
+    await page.getByLabel("Required action name").fill(requiredActionName);
+    await page.getByLabel("Action type").selectOption({ label: actionTypeName });
+    await page.getByRole("dialog", { name: "New required action" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(requiredActionName)).toBeVisible();
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
@@ -108,6 +134,18 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
 
     // --- Open the requirement, assess it Compliant, submit and approve.
     await page.getByText(requirementName).click();
+
+    // --- Phase 32: the required action's assignee field is a searchable
+    // `AssigneePicker`, not a plain unfiltered `<select>` — search narrows
+    // to the matching org member, picking them persists it, and
+    // "Unassign" clears it back to "Unassigned".
+    const assigneeSearch = page.getByRole("combobox", { name: `Assignee for ${requiredActionName}` });
+    await assigneeSearch.fill("Member AlphaBeta");
+    await page.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
+    await expect(page.getByText(new RegExp(PERSONAS.memberAlphaBeta.name))).toBeVisible();
+    await page.getByRole("button", { name: `Unassign: Assignee for ${requiredActionName}` }).click();
+    await expect(page.getByText(new RegExp(PERSONAS.memberAlphaBeta.name))).toHaveCount(0);
+
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Compliant" });
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByRole("button", { name: "Submit for approval" })).toBeVisible();

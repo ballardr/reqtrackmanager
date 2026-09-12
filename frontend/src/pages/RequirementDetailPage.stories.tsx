@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
+import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
 import {
   buildActionType,
   buildComment,
@@ -45,6 +45,8 @@ function mockRequirementDetailApis(
     otherRequirements?: Requirement[];
     history?: RequirementVersionEntry[];
     orgResources?: FileAsset[];
+    orgUsers?: OrgUser[];
+    orgUserSearchMembers?: OrgUser[];
   } = {}
 ) {
   const requirement = buildRequirement({ id: REQUIREMENT_ID, project_id: PROJECT_ID, ...requirementOverrides });
@@ -67,7 +69,12 @@ function mockRequirementDetailApis(
     if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return extra.otherRequirements ?? [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
     if (path.endsWith("/resources")) return extra.orgResources ?? [];
-    if (path.includes("/users")) return [];
+    if (path.includes("/users/search")) {
+      const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
+      const pool = extra.orgUserSearchMembers ?? extra.orgUsers ?? [];
+      return { members: pool.filter((u) => u.display_name.toLowerCase().includes(needle)), external: null };
+    }
+    if (path.includes("/users")) return extra.orgUsers ?? [];
     throw new Error(`unmocked path: ${path}`);
   });
   spyOn(api, "post").mockResolvedValue(buildComment({ author_display_name: "Alex Morgan" }));
@@ -721,6 +728,62 @@ export const LinkFromSharedResourcesHiddenWhenLocked: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Attachments" })).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Link from shared resources" })).not.toBeInTheDocument();
+  },
+};
+
+const ORG_USERS_FOR_ASSIGNEE: OrgUser[] = [
+  {
+    user_id: "u1", email: "alex.morgan@example.com", display_name: "Alex Morgan", is_active: true,
+    is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+  },
+  {
+    user_id: "u2", email: "jamie.lee@example.com", display_name: "Jamie Lee", is_active: true,
+    is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+  },
+];
+
+/** Phase 32 (compliance-module-plan.md): "Create and link a new action"'s
+ * assignee field is `AssigneePicker` (a searchable `UserAutocomplete`), not
+ * a plain unfiltered `<select>` — searching narrows the org's users and
+ * picking one is included in the create-and-link payload. */
+export const CreateActionAssigneeSearchAndAssign: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], {}, { orgUsers: ORG_USERS_FOR_ASSIGNEE });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
+    const panel = within(dialog);
+    await userEvent.type(panel.getByPlaceholderText("Title"), "Confirm access review");
+    await userEvent.selectOptions(panel.getByLabelText("Type"), "Review");
+    await userEvent.type(panel.getByRole("combobox", { name: "Assignee" }), "jamie");
+    await waitFor(() => expect(panel.getByText("Jamie Lee")).toBeInTheDocument());
+    await userEvent.click(panel.getByText("Jamie Lee"));
+    await userEvent.click(panel.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions/create-and-link`,
+      { title: "Confirm access review", description: "", action_type_id: "at1", assignee_id: "u2", due_date: null }
+    ));
+  },
+};
+
+/** Picking an assignee then unassigning clears the field back to its
+ * default, the same way the old `<select>`'s empty "Unassigned" option did. */
+export const CreateActionAssigneeUnassign: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], {}, { orgUsers: ORG_USERS_FOR_ASSIGNEE });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
+    const panel = within(dialog);
+    await userEvent.type(panel.getByRole("combobox", { name: "Assignee" }), "jamie");
+    await userEvent.click(await panel.findByText("Jamie Lee"));
+    await expect(panel.getByText("Jamie Lee (jamie.lee@example.com)")).toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: "Unassign: Assignee" }));
+    await expect(panel.getByText("Unassigned")).toBeInTheDocument();
   },
 };
 

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { OrgUser } from "../../api/types";
 import { withToast } from "../../testing/storybook-helpers";
 import { RequirementAssessmentPanel } from "./RequirementAssessmentPanel";
 import type { ComplianceRequiredAction, ComplianceRequiredActionAssessment, ComplianceRequirementNode, ProjectComplianceRequirement } from "./types";
@@ -52,6 +53,10 @@ function actionAssessment(overrides: Partial<ComplianceRequiredActionAssessment>
  */
 function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceRequiredActionAssessment[] = [actionAssessment()]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/users/search")) {
+      const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
+      return { members: ORG_USERS.filter((u) => u.display_name.toLowerCase().includes(needle)), external: null };
+    }
     if (path.includes("/required-action-assessments")) return assessments;
     if (path.includes("/required-actions")) return [ACTION_DEF];
     if (path.endsWith("/evidence")) return [];
@@ -68,6 +73,17 @@ function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceR
     return pcrRow;
   });
 }
+
+const ORG_USERS: OrgUser[] = [
+  {
+    user_id: "u1", email: "alex.morgan@example.com", display_name: "Alex Morgan", is_active: true,
+    is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+  },
+  {
+    user_id: "u2", email: "jamie.lee@example.com", display_name: "Jamie Lee", is_active: true,
+    is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+  },
+];
 
 const meta: Meta<typeof RequirementAssessmentPanel> = {
   title: "Modules/Compliance/RequirementAssessmentPanel",
@@ -145,6 +161,44 @@ export const RejectRequiresDecisionNote: Story = {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/reject`,
       { decision_note: "Evidence does not support this control." }
+    ));
+  },
+};
+
+/** Phase 32 (compliance-module-plan.md): the required action's assignee
+ * field is `AssigneePicker` (a `UserAutocomplete`, not a plain unfiltered
+ * `<select>`) — searching narrows the org's users and picking one saves via
+ * the same `updateRequiredActionAssessment` PATCH the old `<select>` used. */
+export const RequiredActionAssigneeSearchAndAssign: Story = {
+  beforeEach: () => mockApis(pcr()),
+  args: { pcr: pcr(), orgUsers: ORG_USERS },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+    const input = body.getByRole("combobox", { name: /Assignee for Complete access review/ });
+    await userEvent.type(input, "jamie");
+    await waitFor(() => expect(body.getByText("Jamie Lee")).toBeInTheDocument());
+    await userEvent.click(body.getByText("Jamie Lee"));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
+      { assignee_id: "u2", due_date: null, notes: "" }
+    ));
+  },
+};
+
+/** Unassigning an already-assigned required action clears it the same way
+ * the old `<select>`'s empty "Unassigned" option did. */
+export const RequiredActionUnassign: Story = {
+  beforeEach: () => mockApis(pcr(), [actionAssessment({ assignee_id: "u1" })]),
+  args: { pcr: pcr(), orgUsers: ORG_USERS },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+    await expect(body.getByText("Alex Morgan (alex.morgan@example.com)")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: /Unassign: Assignee for Complete access review/ }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
+      { assignee_id: null, due_date: null, notes: "" }
     ));
   },
 };

@@ -74,6 +74,7 @@ export function UserAutocomplete({
   organizationId,
   projectId,
   placeholder,
+  ariaLabel,
 }: {
   users: OrgUser[];
   onSelect: (userId: string) => void;
@@ -95,6 +96,12 @@ export function UserAutocomplete({
   organizationId?: string;
   projectId?: string;
   placeholder?: string;
+  /** Accessible name for the search input, for callers where the visible
+   * `placeholder` alone isn't enough to disambiguate multiple instances on
+   * the same page (e.g. one per row in a list) — same reasoning as any
+   * other form control's `aria-label`. Falls back to `placeholder` when
+   * omitted, unchanged from before this prop existed. */
+  ariaLabel?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -258,6 +265,7 @@ export function UserAutocomplete({
         aria-controls={listboxId}
         aria-autocomplete="list"
         aria-activedescendant={showDropdown && highlightedIndex >= 0 ? optionId(highlightedIndex) : undefined}
+        aria-label={ariaLabel ?? placeholder}
         placeholder={placeholder}
         value={query}
         onChange={(e) => {

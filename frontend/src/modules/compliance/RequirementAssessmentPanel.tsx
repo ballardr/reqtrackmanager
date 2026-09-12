@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 
 import type { OrgUser } from "../../api/types";
 import { activityActionLabel } from "../../api/types";
+import { AssigneePicker } from "../../components/AssigneePicker";
 import { Modal } from "../../components/Modal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
@@ -343,19 +344,16 @@ export function RequirementAssessmentPanel({
                       </label>
                     </div>
                     <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                      <label className="row" style={{ gap: "0.3rem" }}>
+                      <div className="stack" style={{ gap: "0.2rem" }}>
                         <span className="text-muted" style={{ fontSize: "0.8rem" }}>Assignee</span>
-                        <select
-                          className="input" value={assessment.assignee_id ?? ""}
-                          onChange={(e) => updateActionAssignee(assessment, e.target.value)}
-                          aria-label={`Assignee for ${def?.name ?? "required action"}`}
-                        >
-                          <option value="">Unassigned</option>
-                          {orgUsers.map((u) => (
-                            <option key={u.user_id} value={u.user_id}>{u.display_name}</option>
-                          ))}
-                        </select>
-                      </label>
+                        <AssigneePicker
+                          orgUsers={orgUsers}
+                          organizationId={orgId}
+                          assigneeId={assessment.assignee_id}
+                          onChange={(userId) => updateActionAssignee(assessment, userId)}
+                          ariaLabel={`Assignee for ${def?.name ?? "required action"}`}
+                        />
+                      </div>
                       <label className="row" style={{ gap: "0.3rem" }}>
                         <span className="text-muted" style={{ fontSize: "0.8rem" }}>Due date</span>
                         <input
