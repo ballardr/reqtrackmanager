@@ -219,6 +219,37 @@ What doesn't change: `SidePanel` keeps its one remaining job — the one the rea
 
 *Why:* `Tabs.tsx` literally rendered `` `btn ${active === tb.key ? "btn-primary" : ""}` `` on each tab button — not just similar styling by coincidence, the exact same CSS classes a primary button uses, so an active tab and a "Save" button were pixel-identical (same fill, border-radius, padding). This was the direct cause of a human review flagging "tabs and buttons look the same." Principle 4 ("one component per pattern") already prevented three hand-rolled tab bars from drifting apart from each other structurally; it didn't prevent the one shared component from borrowing another pattern's visual identity wholesale. A future pattern reusing an existing component's classes for convenience should check whether doing so also borrows that component's *meaning* ("this is clickable" is fine to share; "this is the primary action" is not, for something that is actually wayfinding).
 
+## Pattern: status colour
+
+*(New 2026-09-13 — Platform review 2026-09, Phase 4.)*
+
+A status/outcome badge's colour comes from a `BadgeTone` (`"muted" | "info" | "accent" | "danger"`, `frontend/src/api/types.ts`), applied as a `.badge--<tone>` CSS modifier (`theme.css`) on top of the plain `.badge` shape — never an inline colour at the call site, and never a fifth ad hoc tone. Every status/outcome enum rendered as a badge has a `*_TONE` map living next to its existing `*_LABEL` map — `REQUIREMENT_STATUS_TONE`, `CHANGE_REQUEST_STATUS_TONE`, `REQUIREMENT_ACTION_OUTCOME_TONE` today — so a new enum value added later is required to pick a tone at the same time it picks a label, the same discipline Principle 12 already established for labels themselves.
+
+```mermaid
+flowchart LR
+  A["draft / withdrawn / archived"] --> M["muted — --color-text-muted"]
+  B["reviewed / submitted / in_review / pending"] --> I["info — --color-info (aqua)"]
+  C["approved / completed"] --> G["accent — --color-accent (moss green)"]
+  D["rejected / failed"] --> R["danger — --color-danger"]
+```
+
+*Why `info` is its own token, not `--color-warning`:* `--color-warning` is reserved for things that actually need attention (an applicability override, an overdue review) — routine "awaiting a decision" states are not a warning, and overloading the same colour for both would make the genuine warnings harder to spot. `FilterBadge` (used for every clickable status filter chip) takes an optional `tone` prop for this; a plain `<span className="badge">` applies `badge--<tone>` directly. Badges that aren't a status/outcome at all (a target-stage filter, a role) stay untoned.
+
+## Pattern: entity-type accent
+
+*(New 2026-09-13 — Platform review 2026-09, Phase 4.)*
+
+A 3px coloured left-border (`.entity-accent-row` for a `<tr>`, `.entity-accent-card` for a card/div — `theme.css`) marks which top-level artefact kind a row or card represents, driven by `ENTITY_ACCENT_COLOR` (`frontend/src/api/types.ts`) and set via the `--entity-accent-color` custom property at each call site — never a one-off hex value. v1 covers the four kinds that exist today:
+
+| Kind | Token | Where it's applied |
+|---|---|---|
+| Requirement | `--color-entity-requirement` (indigo) | `RequirementsPage` rows/cards; `RequirementDetailPage`'s own requirement-link rows |
+| Action | `--color-entity-action` (teal) | `ProjectActionsPage` rows; `RequirementDetailPage`'s linked-actions rows |
+| Change Request | `--color-entity-change-request` (violet) | `ChangeRequestsPage` rows/cards |
+| Compliance | `--color-entity-compliance` (terracotta) | `RequirementTraceabilityLinksSection.tsx`'s compliance-requirement-link rows |
+
+The main payoff is a *mixed* list, not a homogeneous one — e.g. a requirement's own Links card shows requirement-to-requirement links directly above compliance-requirement links from the same card, and the accent is what lets a user tell which is which without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/future-modules-2026-09-overview.md](future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
+
 ## Pattern: action menu
 
 *(New 2026-08-25 — see [Org Admin: Users/Groups, org-level actions, and two still-inline create forms](ux-audit-2026-08.md#org-admin-usersgroups-org-level-actions-and-two-still-inline-create-forms), roadmap item 519.)*
@@ -525,6 +556,11 @@ Sortable columns are the obvious ones only — a name/title, a status, an ID/cod
 | `--color-accent` | `#2f855a` (moss) | `#68d391` | Success/positive state |
 | `--color-danger` | `#c53030` | `#fc8181` | Destructive actions, errors |
 | `--color-warning` | `#b7791f` | `#f6c667` | Warnings |
+| `--color-info` | `#0e7490` (cyan) | `#67e8f9` | Status colour: "awaiting a decision" (Pattern: status colour) — deliberately not `--color-warning`, see that pattern |
+| `--color-entity-requirement` | `#3b5bdb` (indigo) | `#7c96f0` | Entity-type accent: Requirement (Pattern: entity-type accent) |
+| `--color-entity-action` | `#0f766e` (teal) | `#5eead4` | Entity-type accent: Action |
+| `--color-entity-change-request` | `#7c3aed` (violet) | `#c4b5fd` | Entity-type accent: Change Request |
+| `--color-entity-compliance` | `#c2410c` (terracotta) | `#fdba74` | Entity-type accent: Compliance |
 | `--color-bg` | `#eef1f5` | `#14181f` | Page background |
 | `--color-surface` | `#ffffff` | `#1c222c` | Card/panel background |
 | `--color-header-bg` | `#14161c` (fixed, both themes) | — | App-chrome header — deliberately theme-independent, see `docs/decisions.md` |

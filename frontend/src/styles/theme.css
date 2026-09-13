@@ -37,6 +37,19 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
+  /* Platform review 2026-09, Phase 4: "awaiting decision" status tone
+     (reviewed/submitted/in_review/pending), deliberately distinct from
+     --color-warning so routine in-progress states don't compete visually
+     with things that actually need attention (e.g. an applicability
+     override, an overdue review). See docs/decisions.md. */
+  --color-info: #0e7490;
+  /* Entity-type accent (Phase 4, item 2) — v1, 4 kinds. A future module
+     adds its own token here + one ENTITY_ACCENT_COLOR entry
+     (frontend/src/api/types.ts); it does not redesign this set. */
+  --color-entity-requirement: #3b5bdb;
+  --color-entity-action: #0f766e;
+  --color-entity-change-request: #7c3aed;
+  --color-entity-compliance: #c2410c;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -53,6 +66,11 @@
   --color-accent: #68d391;
   --color-danger: #fc8181;
   --color-warning: #f6c667;
+  --color-info: #67e8f9;
+  --color-entity-requirement: #7c96f0;
+  --color-entity-action: #5eead4;
+  --color-entity-change-request: #c4b5fd;
+  --color-entity-compliance: #fdba74;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
@@ -259,6 +277,44 @@ textarea.input {
   font-size: 0.75rem;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
+}
+
+/* Platform review 2026-09, Phase 4 — status colour, applied as a modifier
+   on top of the plain `.badge` shape rather than a parallel badge
+   implementation. Text + border colour only (fill stays the neutral
+   --color-surface-alt) to keep this additive to the graphite palette
+   rather than a set of solid filled pills. Driven by the *_TONE maps next
+   to each status/outcome enum's *_LABEL map in api/types.ts — a status
+   should never get an inline one-off colour, only one of these 4 tones. */
+.badge--muted {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+.badge--info {
+  color: var(--color-info);
+  border-color: var(--color-info);
+}
+.badge--accent {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.badge--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* Entity-type accent (Phase 4, item 2): a left-border stripe applied to a
+   list row or card, coloured via the `--entity-accent-color` custom
+   property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
+   — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
+   (a border on `<tr>` itself is inconsistently painted across browsers
+   even with border-collapse); non-table rows/cards use border-left
+   directly via the `.entity-accent-card` variant. */
+.entity-accent-row {
+  box-shadow: inset 3px 0 0 0 var(--entity-accent-color, transparent);
+}
+.entity-accent-card {
+  border-left: 3px solid var(--entity-accent-color, transparent);
 }
 
 /* The unread-notification count needs to read as "something needs your

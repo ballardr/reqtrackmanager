@@ -18,7 +18,12 @@ import type {
   Requirement,
   RequirementAction,
 } from "../api/types";
-import { CHANGE_REQUEST_STATUS_LABEL, CHANGEABLE_FIELD_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
+import {
+  CHANGE_REQUEST_STATUS_LABEL,
+  CHANGE_REQUEST_STATUS_TONE,
+  CHANGEABLE_FIELD_LABEL,
+  REQUIREMENT_LEVEL_LABEL,
+} from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { Modal } from "../components/Modal";
@@ -248,7 +253,9 @@ export function ChangeRequestDetailPage() {
       <div className="stack">
       <div className="card stack">
         <div className="row">
-          <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
+          <span className={`badge badge--${CHANGE_REQUEST_STATUS_TONE[cr.status]}`}>
+            {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+          </span>
           {cr.kind !== "add_action" && (
             <>
               <span className="badge">Target: {targetLabel()}</span>

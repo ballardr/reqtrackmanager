@@ -20,7 +20,14 @@ import type {
   RequirementReviewOutcome,
   RequirementVersionEntry,
 } from "../api/types";
-import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import {
+  ENTITY_ACCENT_COLOR,
+  REQUIREMENT_ACTION_OUTCOME_LABEL,
+  REQUIREMENT_ACTION_OUTCOME_TONE,
+  REQUIREMENT_LEVEL_LABEL,
+  REQUIREMENT_STATUS_LABEL,
+  REQUIREMENT_STATUS_TONE,
+} from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { AssigneePicker } from "../components/AssigneePicker";
 import { CommentThread } from "../components/CommentThread";
@@ -623,7 +630,9 @@ export function RequirementDetailPage() {
             </div>
           )}
           <div className="row">
-            <span className="badge">{strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}</span>
+            <span className={`badge badge--${REQUIREMENT_STATUS_TONE[requirement.status]}`}>
+              {strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}
+            </span>
             {/* C-G-11: completion is a separate overlay marker from lifecycle
                 status — rendered as its own badge rather than merged into the
                 status badge above, since the two are now independent
@@ -959,7 +968,15 @@ export function RequirementDetailPage() {
         {[...links]
           .sort((a, b) => a.display_name.localeCompare(b.display_name) || a.other_requirement_unique_code.localeCompare(b.other_requirement_unique_code))
           .map((link) => (
-            <div key={link.id} className="row" style={{ justifyContent: "space-between" }}>
+            <div
+              key={link.id}
+              className="row entity-accent-card"
+              style={{
+                justifyContent: "space-between",
+                paddingLeft: "0.5rem",
+                ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement,
+              }}
+            >
               <span>
                 <span className="badge">{link.display_name}</span>{" "}
                 <Link to={`/projects/${projectId}/requirements/${link.other_requirement_id}`}>
@@ -1068,10 +1085,20 @@ export function RequirementDetailPage() {
           <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinkedActions}</p>
         )}
         {linkedActions.map((a) => (
-          <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
+          <div
+            key={a.id}
+            className="row entity-accent-card"
+            style={{
+              justifyContent: "space-between",
+              paddingLeft: "0.5rem",
+              ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action,
+            }}
+          >
             <span>
               <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
-              <span className="badge">{REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}</span>
+              <span className={`badge badge--${REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}`}>
+                {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
+              </span>
             </span>
             <button
               className="btn btn-danger"

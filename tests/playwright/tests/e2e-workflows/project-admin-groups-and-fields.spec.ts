@@ -214,6 +214,31 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // Principle 7 — every mutation ends with feedback.
       await expect(page.getByText("Group created")).toBeVisible();
       await expect(dialog).not.toBeVisible();
+      // Beta-2 is a shared, persistent project (see this file's own
+      // docstring) that accumulates a group per run of this spec with no
+      // reseed in between, the same way it accumulates custom fields —
+      // the Groups tab paginates (`GROUPS_PAGE_SIZE`, `ProjectAdminPage
+      // .tsx`), so without narrowing to this run's own group by name
+      // first, enough prior runs push the just-created row off the
+      // DirectoryTable's first page and this assertion times out finding
+      // no row at all, not a wrong one.
+      //
+      // `createProjectGroup` triggers this page's shared `reload()` (every
+      // mutation handler on this page does), which itself re-fetches the
+      // Groups tab's own unfiltered list as one step in a long sequential
+      // chain of unrelated awaited requests (project/stages/components/
+      // categories/custom fields/...). Typing into the search box *before*
+      // that chain settles races it: the search request often resolves
+      // first, then `reload()`'s own stale, unfiltered fetch (using the
+      // empty `groupSearch` it closed over before this search existed)
+      // lands after it and overwrites the filtered result with the full
+      // list — a real, pre-existing latent bug in how broadly `reload()`
+      // scopes itself on every mutation across this whole page (out of
+      // scope to fix here as a drive-by; narrowing every one of this
+      // page's ~35 `reload()` call sites is its own piece of work).
+      // Waiting for the network to settle first avoids racing it.
+      await page.waitForLoadState("networkidle");
+      await page.getByPlaceholder("Search by name").fill(newGroupName);
       // The group's Name cell is a real `<button>` (`DirectoryTable`'s
       // `onRowClick`) — the role `MultiSelectDropdown` sits in a sibling
       // `<td>`, so this checks the whole `<tr>`, not just the button itself.

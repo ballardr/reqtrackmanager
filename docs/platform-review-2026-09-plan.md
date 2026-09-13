@@ -8,16 +8,16 @@ This document is the persistent, session-resumable implementation plan for a bat
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-13 (Phase 3 complete).
+**Last updated:** 2026-09-13 (Phase 4 complete).
 
-**Overall progress:** 3 / 8 phases complete. **Do not implement a further phase until the user has confirmed this plan** — several remaining phases contain open design points (see "Open decisions") that were reasoned through during planning but not yet explicitly signed off phase-by-phase.
+**Overall progress:** 4 / 8 phases complete. **Do not implement a further phase until the user has confirmed this plan** — several remaining phases contain open design points (see "Open decisions") that were reasoned through during planning but not yet explicitly signed off phase-by-phase.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | CI runtime reduction (pytest-xdist, Playwright parallelism, Docker layer caching) | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 1" entry |
 | 2 | Nav-rail collapse/expand toggle — circular, centered on the divider | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 2" entry |
 | 3 | Tabs vs. buttons — distinct visual language | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 3" entry |
-| 4 | Subtle colour system — status/type colour coding | [ ] Not started |
+| 4 | Subtle colour system — status/type colour coding | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 4" entry |
 | 5 | Access review page — groups/org "show more" + modals off the action menu | [ ] Not started |
 | 6 | Project members table — groups get their own row (editable role, removable) | [ ] Not started |
 | 7 | Requirement-to-requirement link picker — browse (cascade) + search | [ ] Not started |
@@ -42,7 +42,7 @@ Two items were clarified with the user before this plan was drafted:
 - **Phase 1 (CI) requires a test-isolation investigation before any parallelism flag is flipped — Decided by: Agent, pending verification.** This repo's own memory/CLAUDE.md already documents that concurrent pytest invocations wedge the shared test database, and that Playwright specs must not depend on shared mutable seed state. `pytest-xdist` workers inside *one* invocation, and Playwright's `fullyParallel`/multiple `workers`, both raise the same underlying question — concurrent writers against one Postgres instance and one seeded fixture set — just inside a single CI job instead of across two. Phase 1's spec below treats "confirm real per-test/per-worker isolation, then parallelise" as one step, not "flip the flag and see."
 - **Phase 8's default value: the new setting defaults to *not required* (opt-in, project must turn it on) — Decided by: Agent**, matching the user's own framing ("however some projects may desire not to restrict this") and the existing precedent (`Project.allow_member_change_requests` defaults permissive), and avoiding retroactively breaking every existing/seeded project that has no links yet.
 - **Phase 8's exact enforcement scope (which of the three approval code paths; whether an existing action *link* is enough or an action *outcome* is also required) is intentionally left for the implementing session to resolve against the current code** — see Phase 8's spec; the research behind this plan identified the three code paths but the user has not been asked to confirm outcome-vs-existence semantics yet.
-- **Phase 4's concrete colour choices are a first proposal, not yet confirmed with the user — Decided by: Agent, pending sign-off.** See Phase 4's spec for the proposal and why it stays deliberately small.
+- **Phase 4's concrete colour choices and entity-accent scope were proposed and confirmed with the user before implementation — Decided by: User.** See `docs/decisions.md`'s "Platform review 2026-09, Phase 4" entry for the confirmed choices and reasoning; resolved, no longer open.
 
 ---
 

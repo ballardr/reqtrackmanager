@@ -62,6 +62,55 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   completed: "Completed",
   failed: "Failed",
 };
+
+// Platform review 2026-09, Phase 4 (status colour). A `BadgeTone` is one of
+// only 4 values, each backed by a `.badge--<tone>` CSS modifier
+// (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
+// archived), info = awaiting a decision (in review/pending — deliberately
+// NOT --color-warning, which stays reserved for things that need
+// attention, not routine in-progress states), accent = a positive
+// terminal outcome (approved/completed), danger = a negative terminal
+// outcome (rejected/failed). Every status/outcome enum rendered as a
+// badge should have a *_TONE map here alongside its *_LABEL map, never an
+// inline colour at the call site.
+export type BadgeTone = "muted" | "info" | "accent" | "danger";
+export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
+  draft: "muted",
+  reviewed: "info",
+  approved: "accent",
+  archived: "muted",
+};
+export const CHANGE_REQUEST_STATUS_TONE: Record<ChangeRequestStatus, BadgeTone> = {
+  draft: "muted",
+  submitted: "info",
+  in_review: "info",
+  approved: "accent",
+  rejected: "danger",
+  withdrawn: "muted",
+};
+export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, BadgeTone> = {
+  pending: "info",
+  completed: "accent",
+  failed: "danger",
+};
+
+// Entity-type accent (Phase 4, item 2) — a left-border stripe/box-shadow
+// (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) applied
+// consistently wherever these kinds appear as a list row or card, so a
+// user scanning a mixed list (e.g. a requirement's own Links card, which
+// shows both requirement-to-requirement links and compliance-requirement
+// links side by side) can tell the entity kind apart at a glance. v1
+// covers the 4 entity kinds that exist today; a future module (see
+// docs/future-modules-2026-09-overview.md) adds its own token + entry
+// here when it actually ships, rather than this set trying to
+// pre-reserve colours for entity kinds that don't exist yet.
+export type EntityAccentKind = "requirement" | "action" | "change_request" | "compliance";
+export const ENTITY_ACCENT_COLOR: Record<EntityAccentKind, string> = {
+  requirement: "var(--color-entity-requirement)",
+  action: "var(--color-entity-action)",
+  change_request: "var(--color-entity-change-request)",
+  compliance: "var(--color-entity-compliance)",
+};
 // Compliance module enums/label maps (Phase 5/6/12) live in this module's
 // own `frontend/src/modules/compliance/types.ts`, not here — see that
 // file's own docstring for why a module's enum is that module's own display

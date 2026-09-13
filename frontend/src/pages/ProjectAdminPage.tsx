@@ -307,14 +307,28 @@ export function ProjectAdminPage() {
 
   const GROUPS_PAGE_SIZE = 20;
 
+  // Belt-and-suspenders guard (same pattern/reasoning as
+  // `RequirementsPage.tsx`'s `loadRequirementsRequestIdRef`): `reload()`
+  // kicks off its own unfiltered `loadGroups` call as part of a long
+  // sequential chain of awaited requests, so a user (or a test) typing
+  // into the Groups search box right after a mutation that triggers
+  // `reload()` (e.g. creating a group) can otherwise have that faster,
+  // newer, filtered response overwritten once the older, slower,
+  // unfiltered `reload()` call finally resolves — each call claims the
+  // next id; a response is applied only if no newer call has started
+  // since.
+  const loadGroupsRequestIdRef = useRef(0);
+
   async function loadGroups(
     search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort
   ) {
     if (!projectId) return;
+    const requestId = ++loadGroupsRequestIdRef.current;
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (sort) params.set("order", sort.direction);
     const page = await api.getPage<ProjectGroup>(`/api/v1/projects/${projectId}/groups?${params.toString()}`);
+    if (requestId !== loadGroupsRequestIdRef.current) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
     setGroupsTotal(page.total);
   }

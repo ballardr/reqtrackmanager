@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { api } from "../../api/client";
-import type { LinkTypeDefinition } from "../../api/types";
+import { ENTITY_ACCENT_COLOR, type LinkTypeDefinition } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Popover } from "../../components/Popover";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -188,7 +188,15 @@ export function RequirementTraceabilityLinksSection({ projectId, requirementId, 
       </div>
       {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>No compliance requirement links yet.</p>}
       {links.map((link) => (
-        <div key={link.id} className="row" style={{ justifyContent: "space-between" }}>
+        <div
+          key={link.id}
+          className="row entity-accent-card"
+          style={{
+            justifyContent: "space-between",
+            paddingLeft: "0.5rem",
+            ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.compliance,
+          }}
+        >
           <span>
             <span className="badge">{link.display_name}</span>{" "}
             {link.standard_reference} — {link.compliance_requirement_reference ? `${link.compliance_requirement_reference} ` : ""}
