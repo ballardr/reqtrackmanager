@@ -1191,6 +1191,8 @@ Also fixed in passing: a pre-existing `ruff` line-length violation in `reports.p
 
 No `seed_demo_data.py`/`seed_e2e_dataset.py` changes needed — this phase adds request-time filters, not new model fields or seeded state.
 
+**Hardening pass (2026-09-13, follow-on to this phase):** confirmed no cross-tenant leakage or privilege mismatch from the four new filter params (each only narrows an already-scoped result set; every Export trigger sits behind the same auth gate as the panel's own existing data). One real defect found and fixed: the PDF empty-state message could falsely claim "no assigned compliance standards" when the true cause was a filter matching zero of several real assignments — fixed via a `filtered` flag on both report-data dataclasses plus two new testable message helpers, with 4 new tests. Full identify/verify/remediate account in `docs/decisions.md`'s "Hardening pass on Phase 43 (report export scoping filters)" entry.
+
 ---
 
 ## Verification (for this planning session)

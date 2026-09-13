@@ -17,7 +17,11 @@ import uuid
 from app.database import SessionLocal
 from app.models.project import Project
 from app.modules.compliance.reports import (
+    OrgComplianceReportData,
+    ProjectComplianceReportData,
     _narrative_requirement_paragraph,
+    _org_report_empty_message,
+    _project_report_empty_message,
     collect_org_compliance_report,
     collect_project_compliance_report,
 )
@@ -418,3 +422,61 @@ def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin
     assert empty_resp.status_code == 200
     empty_rows = list(csv.reader(io.StringIO(empty_resp.content.decode("utf-8"))))
     assert len(empty_rows) == 1  # header only, no data rows
+
+
+# --- Phase 43 hardening pass: filtered-empty vs. genuinely-unassigned PDF message -
+
+
+def test_project_report_empty_message_distinguishes_filtered_from_unassigned():
+    """Found during Phase 43's own hardening pass: the PDF's empty-state
+    text must not claim "this project has no assigned compliance standards"
+    when the true cause is a Standard/Standard version/Sub-section filter
+    matching none of several real assignments — a materially misleading
+    claim in an exported document. `ProjectComplianceReportData.filtered`
+    (set by `collect_project_compliance_report` whenever any of those three
+    kwargs is non-`None`) is what `_project_report_empty_message` branches
+    on."""
+    assert _project_report_empty_message(ProjectComplianceReportData()) == "This project has no assigned compliance standards."
+    assert _project_report_empty_message(ProjectComplianceReportData(filtered=True)) == "No assigned requirements match the applied filters."
+
+
+def test_org_report_empty_message_distinguishes_filtered_from_unassigned():
+    """Org-level counterpart to the project-level test above — same Phase 43
+    hardening-pass finding, `OrgComplianceReportData.filtered` set whenever
+    any of `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
+    is non-`None`."""
+    assert _org_report_empty_message(OrgComplianceReportData()) == "No projects in this organisation are assigned any compliance standard."
+    assert _org_report_empty_message(OrgComplianceReportData(filtered=True)) == "No assignments match the applied filters."
+
+
+def test_collect_project_compliance_report_sets_filtered_flag_from_any_scoping_kwarg(client, admin_token, org_id):
+    """Confirms `collect_project_compliance_report` itself sets `filtered`
+    correctly — not just that the message-selection helper branches
+    correctly in isolation — for each of the three scoping kwargs
+    individually, and for none of them."""
+    project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Filtered Flag Project")
+    db = SessionLocal()
+    try:
+        proj = db.get(Project, project["id"])
+        assert collect_project_compliance_report(db, proj).filtered is False
+        assert collect_project_compliance_report(db, proj, standard_id=uuid.uuid4()).filtered is True
+        assert collect_project_compliance_report(db, proj, standard_version_id=uuid.uuid4()).filtered is True
+        assert collect_project_compliance_report(db, proj, requirement_id=uuid.uuid4()).filtered is True
+    finally:
+        db.close()
+
+
+def test_collect_org_compliance_report_sets_filtered_flag_from_any_scoping_kwarg(client, admin_token, org_id):
+    """Org-level counterpart — also confirms `project_id` (the org-only
+    scoping kwarg) sets `filtered`."""
+    _project_with_assessment(client, admin_token, org_id, project_name="Org Filtered Flag Project")
+    db = SessionLocal()
+    try:
+        org_uuid = uuid.UUID(org_id)
+        assert collect_org_compliance_report(db, org_uuid).filtered is False
+        assert collect_org_compliance_report(db, org_uuid, project_id=uuid.uuid4()).filtered is True
+        assert collect_org_compliance_report(db, org_uuid, standard_id=uuid.uuid4()).filtered is True
+        assert collect_org_compliance_report(db, org_uuid, standard_version_id=uuid.uuid4()).filtered is True
+        assert collect_org_compliance_report(db, org_uuid, requirement_id=uuid.uuid4()).filtered is True
+    finally:
+        db.close()

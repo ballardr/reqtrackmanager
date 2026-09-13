@@ -100,6 +100,16 @@ own Phase 40 note), and narrowing a report's background appendices to a
 single sub-section would cut context a reader of the exported document
 still needs, not just repeat what's already on screen.
 
+Both `ProjectComplianceReportData`/`OrgComplianceReportData` also carry a
+`filtered` flag (Phase 43 hardening pass, found while reviewing the new
+scoping filters above): a filtered report reaching zero rows is a state
+distinct from "nothing is assigned here at all," and the PDF's empty-state
+message (`_project_report_empty_message`/`_org_report_empty_message`) must
+say so — claiming a project/organisation has no assigned compliance
+standards when several are assigned but none matched the requested filter
+is a materially misleading statement to leave in an exported, potentially
+audit-facing document.
+
 Security note (data classification, `docs/soc2/policies/
 data-classification-and-confidentiality-policy.md`): every field surfaced
 here (requirement text, justifications/notes, evidence titles/metadata,
@@ -385,12 +395,19 @@ class ComplianceReportMappingRow:
 class ProjectComplianceReportData:
     """Everything `generate_project_compliance_pdf`/`_csv` need, collected
     once by `collect_project_compliance_report` — see that function's own
-    docstring for exactly what each field covers."""
+    docstring for exactly what each field covers.
+
+    `filtered` (Phase 43) records whether any `standard_id`/`standard_
+    version_id`/`requirement_id` scoping filter was passed to the collector
+    — the PDF's empty-state message needs this to avoid claiming "this
+    project has no assigned compliance standards" when the true cause is
+    that a filter matched none of several real assignments."""
 
     requirement_rows: list[ComplianceReportRequirementRow] = field(default_factory=list)
     evidence_rows: list[ComplianceReportEvidenceRow] = field(default_factory=list)
     review_rows: list[ComplianceReportReviewRow] = field(default_factory=list)
     mapping_rows: list[ComplianceReportMappingRow] = field(default_factory=list)
+    filtered: bool = False
 
 
 def _requirement_label(reference: str | None, name: str) -> str:
@@ -443,7 +460,7 @@ def collect_project_compliance_report(
         query = query.where(ProjectCompliance.is_archived.is_(False))
     assignments = list(db.scalars(query).all())
 
-    data = ProjectComplianceReportData()
+    data = ProjectComplianceReportData(filtered=standard_id is not None or standard_version_id is not None or requirement_id is not None)
     all_requirement_ids: set[uuid.UUID] = set()
     organization_id = project.organization_id
 
@@ -730,6 +747,26 @@ def _narrative_requirement_paragraph(row: ComplianceReportRequirementRow) -> Par
     return Paragraph("<br/>".join(segments), _TABLE_CELL_STYLE)
 
 
+def _project_report_empty_message(data: ProjectComplianceReportData) -> str:
+    """The PDF's empty-state text when `data.requirement_rows` is empty —
+    two different, genuinely distinct causes (Phase 43 hardening pass:
+    found while reviewing the new scoping filters, since a filtered report
+    reaching zero rows is a state Phase 15's original message was never
+    written to distinguish from "nothing is assigned at all"), so the
+    message must not claim "this project has no assigned compliance
+    standards" when the truth is "several are assigned, but none matched
+    the requested Standard/Standard version/Sub-section filter" — a
+    materially misleading claim in an exported, potentially audit-facing
+    document. Extracted as its own function so both cases are covered by a
+    direct unit test, per this module's own "no PDF-text-extraction
+    dependency" test convention."""
+    return (
+        "No assigned requirements match the applied filters."
+        if data.filtered
+        else "This project has no assigned compliance standards."
+    )
+
+
 def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceReportData) -> bytes:
     """Builds a PDF compliance report for one project — suitable for
     internal review and external audit preparation alike (§29's explicit
@@ -754,7 +791,7 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
     ]
 
     if not data.requirement_rows:
-        story.append(Paragraph("This project has no assigned compliance standards.", _styles["BodyText"]))
+        story.append(Paragraph(_project_report_empty_message(data), _styles["BodyText"]))
     else:
         # "Requirement" is a Phase 42 narrative cell (title, then any of
         # reasoning/description/clarification/justification/notes present)
@@ -863,12 +900,16 @@ class OrgComplianceReportAssignmentRow:
 @dataclass
 class OrgComplianceReportData:
     """Everything `generate_org_compliance_pdf`/`_csv` need, collected once
-    by `collect_org_compliance_report`."""
+    by `collect_org_compliance_report`.
+
+    `filtered` (Phase 43) — see `ProjectComplianceReportData`'s identical
+    field for why the PDF's empty-state message needs it."""
 
     assignment_rows: list[OrgComplianceReportAssignmentRow] = field(default_factory=list)
     non_compliant_rows: list[tuple[str, ComplianceReportRequirementRow]] = field(default_factory=list)
     pending_approval_rows: list[tuple[str, ComplianceReportRequirementRow]] = field(default_factory=list)
     expiring_evidence_rows: list[tuple[str, ComplianceReportEvidenceRow]] = field(default_factory=list)
+    filtered: bool = False
 
 
 def _requirement_top_level_ancestors_for_standard(db: Session, standard_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
@@ -948,7 +989,8 @@ def collect_org_compliance_report(
     projects = list(db.scalars(select(Project).where(Project.organization_id == organization_id)).all())
     if project_id is not None:
         projects = [p for p in projects if p.id == project_id]
-    data = OrgComplianceReportData()
+    any_filter_applied = project_id is not None or standard_id is not None or standard_version_id is not None or requirement_id is not None
+    data = OrgComplianceReportData(filtered=any_filter_applied)
 
     requirement_top_level_by_id: dict[uuid.UUID, uuid.UUID] = (
         _requirement_top_level_ancestors_for_standard(db, standard_id)
@@ -1027,6 +1069,19 @@ def _requirement_report_row_from_out(row, *, is_pending: bool = False) -> Compli
     )
 
 
+def _org_report_empty_message(data: OrgComplianceReportData) -> str:
+    """The org PDF's empty-state text when `data.assignment_rows` is empty
+    — see `_project_report_empty_message`'s identical reasoning (Phase 43
+    hardening pass): must not claim no project in the organisation is
+    assigned any standard when the true cause is a Project/Standard/
+    Standard version filter matching none of several real assignments."""
+    return (
+        "No assignments match the applied filters."
+        if data.filtered
+        else "No projects in this organisation are assigned any compliance standard."
+    )
+
+
 def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) -> bytes:
     """Builds an organisation-wide PDF compliance roll-up: a main table (one
     row per project/assigned-standard-version pair, §29's "organisation-
@@ -1042,7 +1097,7 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     ]
 
     if not data.assignment_rows:
-        story.append(Paragraph("No projects in this organisation are assigned any compliance standard.", _styles["BodyText"]))
+        story.append(Paragraph(_org_report_empty_message(data), _styles["BodyText"]))
     else:
         rows = [["Project", "Standard", "Compliance %", "Overall status", "Approval status", "Non-compliant", "Target date"]]
         for a in data.assignment_rows:
