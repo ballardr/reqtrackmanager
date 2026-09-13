@@ -5047,3 +5047,25 @@ Also re-confirmed, unchanged from the first pass: Storybook's own global preview
 ### Files changed
 
 `frontend/src/components/Layout.tsx` (toggle button moved out of `.nav-rail`, `left` set inline from `railCollapsed`, doc-comment updated), `frontend/src/styles/theme.css` (`.nav-rail-toggle` rule, mobile-breakpoint selector retargeted, dead sibling-selector rules removed), `docs/ux-style-guide.md` ("App chrome" section updated to describe the new toggle position/mechanism), `docs/platform-review-2026-09-plan.md` (Phase 2 ticked), `docs/decisions.md` (this entry).
+
+## Platform review 2026-09, Phase 3: Tabs vs. buttons — distinct visual language (2026-09-13)
+
+Third phase of the September 2026 platform review's 8-item combined plan (`docs/platform-review-2026-09-plan.md`) — picked up as "the next phase" per that document's resume instructions. **Decided by: User** on doing this batch as one combined plan (see Phase 1's entry above); this phase's spec, like Phase 2's, had no open design points requiring sign-off, so it was implemented directly. All implementation choices below are **Decided by: Agent**, applying the plan's own root-cause diagnosis and instruction to give `Tabs` "its own visual language, distinct from `.btn`."
+
+### Change
+
+`frontend/src/components/Tabs.tsx`: the active-tab button previously rendered `` className={`btn ${active === tb.key ? "btn-primary" : ""}`} ``, making an active tab literally reuse a primary button's fill/border/radius/padding — the exact cause of the reported "tabs and buttons look the same." Replaced with two new classes: `.tabs-tab` on every tab (transparent background, no border, muted text) and `.tabs-tab--active` added only to the selected tab (bold text, a 2px `border-bottom` in `--color-primary`). The tablist wrapper's inline `style` (a hand-rolled `border-bottom`/`padding-bottom`) became a `.tabs-list` class carrying the same rule, keeping the JSX free of inline styling for something now genuinely reusable.
+
+`frontend/src/styles/theme.css`: added `.tabs-list`, `.tabs-tab`, `.tabs-tab:hover`, `.tabs-tab:focus` (reusing the existing `outline: 2px solid var(--color-primary); outline-offset: 1px` convention from `.rich-text-editable:focus` rather than inventing a new focus treatment), and `.tabs-tab--active`, placed directly after the `.split-button` rules with a doc-comment explaining why this can't just be a `.btn` modifier.
+
+`docs/ux-style-guide.md`: added a new "Pattern: Tabs" section (no such section existed previously — confirmed via `graphify query` before writing, so this documents a genuinely new rule rather than restating one) explaining the underline-vs-fill distinction and naming the specific `.btn btn-primary` reuse as the failure this pattern exists to prevent, the same way Principle 12 documents its own recurring failure for future sessions to check against.
+
+No component using `Tabs` needed its own changes — `grep 'role="tab"'` confirmed `Tabs.tsx` is the only tab implementation in the frontend (Principle 4's "one component per pattern" already holding), so fixing the one shared component fixed every call site at once.
+
+### Verification
+
+`tsc -b && vite build`: succeeds (pre-existing unrelated chunk-size warning only). `eslint .`: clean. `Tabs.stories.tsx`'s 5 Storybook tests (click-switches-tab, tablist/tabpanel ARIA linkage, arrow-key roving tabindex, light/dark theme) all pass unchanged — they assert on `role`/`aria-*`/focus behaviour, not on class names, so the visual-only change didn't need test changes. Manually checked both themes via a local Storybook instance (`components-tabs--dark-theme` and the default light story): the active tab shows a clear primary-colour underline and bold text against an otherwise plain strip in both themes, visually distinct from `.btn`/`.btn-primary` elsewhere on the same pages; screenshots taken then discarded, not committed.
+
+### Files changed
+
+`frontend/src/components/Tabs.tsx`, `frontend/src/styles/theme.css`, `docs/ux-style-guide.md` (new "Pattern: Tabs" section), `docs/platform-review-2026-09-plan.md` (Phase 3 ticked), `docs/decisions.md` (this entry).

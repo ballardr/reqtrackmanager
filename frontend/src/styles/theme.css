@@ -168,6 +168,46 @@ textarea {
   padding-right: 0.5rem;
 }
 
+/* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
+   the active tab used to be styled `.btn btn-primary`, making it
+   pixel-identical to a primary button (see docs/decisions.md, "Platform
+   review 2026-09, Phase 3"). An underline indicator reads as "the current
+   view of this object," not "an action to take," which a filled button
+   shape doesn't. */
+.tabs-list {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabs-tab {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.1rem;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabs-tab:hover {
+  color: var(--color-text);
+}
+
+.tabs-tab:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.tabs-tab--active {
+  color: var(--color-text);
+  font-weight: 600;
+  border-bottom-color: var(--color-primary);
+}
+
 /* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
    surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
    need their own rule here because their base styles pull --color-surface/
