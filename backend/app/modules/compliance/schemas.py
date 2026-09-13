@@ -1203,3 +1203,47 @@ class ComplianceStandardGroupRoleAssign(BaseModel):
 
     org_group_id: UUID
     role_key: Literal["standards_manager", "standards_contributor"]
+
+
+# --- Phase 34: traceability links between core Requirements and ComplianceRequirements --
+
+
+class ComplianceRequirementTraceabilityLinkCreate(BaseModel):
+    """Payload for `POST .../requirements/{requirement_id}/traceability-
+    links` (Phase 34). `compliance_requirement_id` may name a requirement
+    in any standard/version in this project's own organisation — the
+    router verifies it, and `link_type_id`, belong to that organisation
+    (404/400 on a mismatch, mirroring `RequirementLinkCreate`'s own
+    `link_type_id` check on the core router)."""
+
+    compliance_requirement_id: UUID
+    link_type_id: UUID
+
+
+class ComplianceRequirementTraceabilityLinkOut(BaseModel):
+    """A traceability link between a core `Requirement` and a compliance
+    standard's own `ComplianceRequirement`, resolved server-side (mirrors
+    core's own `RequirementLinkOut`/`_link_to_out` convention) so the
+    frontend's Links card can render the compliance side without a second
+    round trip: `display_name` is the link type's `forward_name` (read
+    from the core requirement's side — see `models.py`'s own Phase 34
+    notes on why there is no direction ambiguity to resolve here), and the
+    remaining `compliance_*`/`standard_*` fields identify the linked
+    requirement and the standard/version it belongs to."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    requirement_id: UUID
+    compliance_requirement_id: UUID
+    link_type_id: UUID
+    display_name: str
+    compliance_requirement_reference: str | None
+    compliance_requirement_name: str
+    standard_id: UUID
+    standard_reference: str
+    standard_name: str
+    standard_version_id: UUID
+    standard_version_label: str
+    created_by: UUID
+    created_at: datetime

@@ -10,6 +10,7 @@ import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
+import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import { StandardListPage } from "./StandardListPage";
 import { StandardNavSection } from "./StandardNavSection";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
@@ -123,6 +124,13 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * entry). `ComplianceProjectOverviewTiles.tsx` owns the fetch and renders
  * zero or more `MetricTile`s; `ProjectOverviewPage.tsx` renders it without
  * knowing compliance exists.
+ *
+ * `requirementDetailSections` (compliance-module-plan.md Phase 34): this
+ * module's linked-compliance-requirements list plus an "add a link" picker
+ * (`RequirementTraceabilityLinksSection.tsx`), rendered inside core's own
+ * `pages/RequirementDetailPage.tsx` Links card. V1 ships only the
+ * core-requirement-initiated direction — a compliance-requirement-side
+ * picker is deliberately deferred (Phase 34's own scope note).
  */
 const strings = t();
 
@@ -180,6 +188,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "status",
       render: ({ projectId }) => createElement(ComplianceProjectOverviewTiles, { projectId }),
+    },
+  ],
+  requirementDetailSections: [
+    {
+      key: "traceability-links",
+      render: ({ projectId, requirementId, organizationId }) =>
+        createElement(RequirementTraceabilityLinksSection, { projectId, requirementId, organizationId }),
     },
   ],
 };

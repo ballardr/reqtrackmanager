@@ -1494,3 +1494,70 @@ class ComplianceOrgSettings(UUIDPKMixin, TimestampMixin, Base):
     default_standards_manager_group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="SET NULL"), nullable=True
     )
+
+
+# --- Phase 34: traceability links between core Requirements and ComplianceRequirements --
+
+
+class ComplianceRequirementTraceabilityLink(UUIDPKMixin, TimestampMixin, Base):
+    """A traceability link between a core `Requirement` and a compliance
+    standard's own `ComplianceRequirement` (Phase 34) — e.g. tracing a
+    project's own "SW-SEC-014" requirement to the SOC2 standard's "CC6.1"
+    clause it satisfies. Distinct from `ComplianceRequirementMapping`
+    (Phase 11), which links two `ComplianceRequirement` rows to each other
+    across standards; this table's `requirement_id` side instead reaches
+    into core's own `requirements` table.
+
+    Deliberately owned by this module, not core: core's own `RequirementLink`
+    (`app.models.requirement.RequirementLink`) links two core requirements
+    to each other and must not gain a dependency on this module's tables —
+    a core file/model importing from a module's own directory would violate
+    the Modular Feature System Boundary (`CLAUDE.md`), and would leave a
+    dangling/undeletable-safely reference if this module were ever disabled
+    for an org. `link_type_id` reuses core's existing, org-scoped
+    `RequirementLinkTypeDefinition` vocabulary rather than a second,
+    compliance-only type table, so link-type naming stays consistent
+    between core-to-core links and this core-to-compliance kind. Neither
+    FK column has an ORM `relationship()` to its target's model class —
+    mirroring this file's own established "plain FK, no cross-module
+    import" convention (see this module's own docstring on
+    `parent_requirement_id` for the precedent) — callers resolve both sides
+    with a plain `db.get()`.
+
+    Attributes:
+        requirement_id: The core `Requirement` this link originates from.
+            `ondelete="CASCADE"`: the core requirement being deleted leaves
+            nothing for this link to mean.
+        compliance_requirement_id: The `ComplianceRequirement` this
+            requirement traces to. `ondelete="CASCADE"`: mirrors
+            `ComplianceRequirementMapping`'s own requirement FKs — only a
+            still-`DRAFT` version's requirements are ever deleted, at which
+            point a link to one has nothing left to mean either.
+        link_type_id: Which `RequirementLinkTypeDefinition` this link is.
+            Displayed using its `forward_name` from the core requirement's
+            side — unlike core-to-core `RequirementLink`, there is no
+            direction ambiguity to resolve here, since the two sides are
+            never the same kind of row (this phase's V1 scope renders only
+            this one direction; see `project_router.py`'s own Phase 34
+            notes on the deferred reverse/compliance-side picker).
+        created_by: The user who created this link.
+    """
+
+    __tablename__ = "compliance_requirement_traceability_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "requirement_id", "compliance_requirement_id", "link_type_id",
+            name="uq_compliance_req_traceability_links_req_creq_type",
+        ),
+    )
+
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), index=True
+    )
+    compliance_requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
+    )
+    link_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id")
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

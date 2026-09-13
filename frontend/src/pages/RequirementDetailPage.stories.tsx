@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
+import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
 import {
   buildActionType,
   buildComment,
@@ -47,6 +47,19 @@ function mockRequirementDetailApis(
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
     orgUserSearchMembers?: OrgUser[];
+    // No module enabled for this fixture's org — no module-contributed
+    // Links-card sections (compliance-module-plan.md Phase 34's
+    // `requirementDetailSections`; see `RequirementTraceabilityLinksSection
+    // .stories.tsx` for the Compliance module's own populated case,
+    // mirroring `ProjectOverviewPage.stories.tsx`'s identical convention
+    // for `projectOverviewTiles`).
+    enabledModules?: ModuleNavEntry[];
+    // The Compliance module's own `RequirementTraceabilityLinksSection`
+    // (rendered when `enabledModules` includes it) fetches these two of
+    // its own endpoints; both default empty the same way `links` above
+    // does.
+    complianceTraceabilityLinks?: unknown[];
+    complianceStandards?: unknown[];
   } = {}
 ) {
   const requirement = buildRequirement({ id: REQUIREMENT_ID, project_id: PROJECT_ID, ...requirementOverrides });
@@ -68,6 +81,9 @@ function mockRequirementDetailApis(
     if (path.endsWith(`/projects/${PROJECT_ID}/actions`)) return extra.projectActions ?? [];
     if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return extra.otherRequirements ?? [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+    if (path.endsWith("/enabled-modules")) return extra.enabledModules ?? [];
+    if (path.endsWith("/traceability-links")) return extra.complianceTraceabilityLinks ?? [];
+    if (path.includes("/modules/compliance/standards")) return extra.complianceStandards ?? [];
     if (path.endsWith("/resources")) return extra.orgResources ?? [];
     if (path.includes("/users/search")) {
       const needle = new URLSearchParams(path.split("?")[1]).get("q")?.toLowerCase() ?? "";
@@ -328,6 +344,37 @@ export const LinksCardPopulated: Story = {
     // "Depends on" also appears as an <option> in the "add link" type
     // select below, so this is scoped to the link row's own badge.
     await expect(canvas.getByText("Depends on", { selector: "span.badge" })).toBeInTheDocument();
+  },
+};
+
+/** The Links card also renders every installed module's own contributed
+ * section (`modules/types.ts`'s `requirementDetailSections`,
+ * compliance-module-plan.md Phase 34) — this page has no notion of what a
+ * "compliance requirement" is and just renders whatever the Compliance
+ * module hands it once the project reports that module enabled. See
+ * `modules/compliance/RequirementTraceabilityLinksSection.stories.tsx` for
+ * that component's own dedicated coverage (mirroring `ProjectOverviewPage
+ * .stories.tsx`'s "module tiles get their own story file" convention) —
+ * this story only pins that it actually renders inside this page's card. */
+export const LinksCardWithComplianceLink: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      enabledModules: [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }],
+      complianceTraceabilityLinks: [
+        {
+          id: "trace-link-1", requirement_id: REQUIREMENT_ID, compliance_requirement_id: "creq-1", link_type_id: "lt-1",
+          display_name: "Derives from", compliance_requirement_reference: "A.5.15", compliance_requirement_name: "Logical access control",
+          standard_id: "standard-1", standard_reference: "ISO-27001", standard_name: "Corporate Security Standard",
+          standard_version_id: "version-1", standard_version_label: "2.0", created_by: "user-1", created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Compliance requirement links")).toBeInTheDocument());
+    await expect(canvas.getByText(/A\.5\.15 Logical access control/)).toBeInTheDocument();
+    await expect(canvas.getByText("Derives from", { selector: "span.badge" })).toBeInTheDocument();
   },
 };
 

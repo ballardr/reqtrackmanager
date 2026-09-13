@@ -65,6 +65,7 @@ import type {
   ComplianceRequirement,
   ComplianceRequirementMapping,
   ComplianceRequirementNode,
+  ComplianceRequirementTraceabilityLink,
   ComplianceReview,
   ComplianceStandard,
   ComplianceStandardApplicabilityDefault,
@@ -848,4 +849,27 @@ export function linkReviewEvidence(projectId: string, reviewId: string, evidence
 
 export function unlinkReviewEvidence(projectId: string, reviewId: string, evidenceId: string): Promise<void> {
   return api.delete(`${projectBase(projectId)}/reviews/${reviewId}/evidence-links/${evidenceId}`);
+}
+
+// --- Phase 34: traceability links between core Requirements and ComplianceRequirements --
+
+function traceabilityLinksBase(projectId: string, requirementId: string): string {
+  return `${projectBase(projectId)}/requirements/${requirementId}/traceability-links`;
+}
+
+export function listRequirementTraceabilityLinks(
+  projectId: string, requirementId: string
+): Promise<ComplianceRequirementTraceabilityLink[]> {
+  return api.get(traceabilityLinksBase(projectId, requirementId));
+}
+
+export function createRequirementTraceabilityLink(
+  projectId: string, requirementId: string,
+  payload: { compliance_requirement_id: string; link_type_id: string }
+): Promise<ComplianceRequirementTraceabilityLink> {
+  return api.post(traceabilityLinksBase(projectId, requirementId), payload);
+}
+
+export function deleteRequirementTraceabilityLink(projectId: string, requirementId: string, linkId: string): Promise<void> {
+  return api.delete(`${traceabilityLinksBase(projectId, requirementId)}/${linkId}`);
 }

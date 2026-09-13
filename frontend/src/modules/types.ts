@@ -141,6 +141,28 @@ export interface OrgOverviewTileDef {
 }
 
 /**
+ * One extra section a Tier A module contributes to
+ * `pages/RequirementDetailPage.tsx`'s own "Links" card (compliance-module-
+ * plan.md Phase 34 — the first consumer is Compliance's own linked-
+ * compliance-requirements list plus a picker to add one). Mirrors
+ * `ProjectOverviewTileDef`'s exact "module hands the parent a render
+ * function, parent has no idea what's inside it" shape, gated the same
+ * way (this project's own currently-enabled-modules list) — `render`
+ * decides everything about what it shows, including rendering nothing.
+ * `RequirementDetailPage.tsx` never imports a specific module's own entity
+ * (e.g. it has no notion of what a "compliance requirement" is) — see
+ * that page's own Links-card comment for why this exists, and CLAUDE.md's
+ * "Modular Feature System Boundary" for the rule this satisfies.
+ */
+export interface RequirementDetailSectionDef {
+  /** Must be unique across every installed module's requirement-detail
+   * sections — used only as this contribution's React list `key`, never
+   * rendered. */
+  key: string;
+  render: (props: { projectId: string; requirementId: string; organizationId: string }) => ReactNode;
+}
+
+/**
  * A first-party (or npm-installed third-party) Tier A module's frontend
  * registration — the module ships its own route components and registers
  * them here, the same way this file's own first-party pages are declared
@@ -218,4 +240,10 @@ export interface TierAModuleDefinition {
    * stats header (compliance-module-plan.md Phase 25b). Omitted (or empty)
    * for a module with no headline gauge of its own. */
   orgOverviewTiles?: OrgOverviewTileDef[];
+  /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s
+   * own Links card (compliance-module-plan.md Phase 34), gated on this
+   * project's own `enabled-modules` list the same way `projectOverviewTiles`
+   * is. Omitted (or empty) for a module with no requirement-detail
+   * contribution of its own. */
+  requirementDetailSections?: RequirementDetailSectionDef[];
 }
