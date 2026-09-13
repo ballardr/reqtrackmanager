@@ -521,6 +521,32 @@ textarea.input {
   margin-left: var(--nav-rail-width-collapsed);
 }
 
+/* Collapse/expand toggle: a small circular button straddling the rail/
+   content divider, rather than living inside the rail's own scrolling
+   content — a fixed-position element whose vertical position never
+   moves with rail scroll or content length. `left` is set inline from
+   Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
+   the same two tokens .app-content's own margin above uses) rather than
+   via a `.nav-rail ~ .nav-rail-toggle` sibling selector, since the button
+   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span (for its
+   hover-bubble positioning) and so is not actually a DOM sibling of
+   `.nav-rail`, only a visual neighbour of one — a sibling-combinator rule
+   here would silently never match. transform: translateX(-50%) is what
+   actually centres the button on that left value rather than sitting to
+   one side of it. */
+.nav-rail-toggle {
+  position: fixed;
+  top: calc(var(--header-height) + 12px);
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  z-index: 11;
+  transition: left 0.15s ease;
+}
+
 /* Content-width preference (U-U-01-adjacent display preference, stored
    like nav-rail-collapsed): "boxed" caps and centres content at the same
    1200px the app used everywhere before this pass, for readability on
@@ -818,7 +844,7 @@ td:has(> .disclosure-toggle) {
      leaving it visible reads as a broken button rather than an
      unavailable one. Hide it rather than show a control that never
      changes the layout. */
-  .nav-rail-toggle-row {
+  .nav-rail-toggle {
     display: none;
   }
   .nav-rail:not(.nav-rail-icons) {

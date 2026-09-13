@@ -54,11 +54,18 @@ export function NavRailLink({
  * is `position: fixed` against the true left edge, full viewport height
  * below the header, and stays on-screen while the content column scrolls
  * (rather than living inside the same centred/padded container as the
- * page content). `railCollapsed` shrinks it to icons-only, toggled from
- * the icon button pinned top-right of the rail (above the section links,
- * so it's reachable without scrolling past a long project section first)
- * — the header's hamburger button was removed as a pure duplicate of that
- * same control — and persisted via `useUiPreference` (`nav_rail_collapsed`)
+ * page content). `railCollapsed` shrinks it to icons-only, toggled from a
+ * small circular button (`.nav-rail-toggle`, theme.css) fixed to the
+ * viewport and centred on the rail/content divider, not part of the
+ * rail's own scrolling content, so it stays put regardless of rail scroll
+ * position or content length. Its `left` is set inline here from
+ * `railCollapsed` (`var(--nav-rail-width)` / `var(--nav-rail-width-
+ * collapsed)`, the same tokens `.app-content`'s own margin uses) rather
+ * than via a CSS sibling selector on `.nav-rail`, because the button
+ * renders inside `Tooltip`'s own wrapping span and so isn't actually a
+ * DOM sibling of `.nav-rail` — the header's hamburger button was removed
+ * as a pure duplicate of that same control — and persisted via
+ * `useUiPreference` (`nav_rail_collapsed`)
  * so it follows the user across devices the same way their theme/
  * landing-page choices already do.
  * `contentBoxed` (`useUiPreference("content_boxed", false)`) is a second,
@@ -180,17 +187,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
           className={`nav-rail stack ${railCollapsed ? "nav-rail-icons" : ""}`}
           style={{ gap: "0.15rem" }}
         >
-          <div className="row nav-rail-toggle-row" style={{ justifyContent: "flex-end" }}>
-            <Tooltip label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}>
-              <button
-                className="btn"
-                onClick={() => setRailCollapsed(!railCollapsed)}
-                aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
-              >
-                {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-              </button>
-            </Tooltip>
-          </div>
           {projectId && (
             <>
               <div className="nav-section-label">{strings.nav.projectSectionLabel}</div>
@@ -287,6 +283,18 @@ function LayoutShell({ children }: { children: ReactNode }) {
             </div>
           )}
         </nav>
+      )}
+      {user && (
+        <Tooltip label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}>
+          <button
+            className="btn nav-rail-toggle"
+            style={{ left: `var(${railCollapsed ? "--nav-rail-width-collapsed" : "--nav-rail-width"})` }}
+            onClick={() => setRailCollapsed(!railCollapsed)}
+            aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
+          >
+            {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </Tooltip>
       )}
       <main className={`app-content${contentBoxed ? " boxed" : ""}`}>
         {contentBoxed ? <div className="content-inner">{children}</div> : children}
