@@ -171,5 +171,32 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByLabel("Link existing evidence").selectOption({ label: evidenceTitle });
     await page.getByRole("button", { name: "Link" }).click();
     await expect(page.getByRole("button", { name: `Unlink ${evidenceTitle}` })).toBeVisible();
+
+    // --- Phase 33: "Upload new evidence" creates a new evidence record,
+    //     auto-links it to this requirement (no separate manual "link
+    //     existing" step), then lets you attach the actual file to it —
+    //     all without leaving this panel.
+    const inlineEvidenceTitle = `E2E Inline Upload Evidence ${suffix}`;
+    await page.getByRole("button", { name: "Upload new evidence" }).click();
+    const createEvidenceDialog = page.getByRole("dialog", { name: "Add evidence" });
+    await createEvidenceDialog.getByLabel("Evidence title").fill(inlineEvidenceTitle);
+    await createEvidenceDialog.getByRole("button", { name: "Save" }).click();
+
+    const attachFilesDialog = page.getByRole("dialog", { name: `Attach files to "${inlineEvidenceTitle}"` });
+    await expect(attachFilesDialog).toBeVisible();
+    await attachFilesDialog.locator('input[type="file"]').setInputFiles({
+      name: "inline-evidence.txt", mimeType: "text/plain", buffer: Buffer.from("Playwright inline evidence upload test"),
+    });
+    await expect(attachFilesDialog.getByText("inline-evidence.txt")).toBeVisible();
+    await attachFilesDialog.getByRole("button", { name: "Done" }).click();
+
+    // Linked immediately — no manual "link existing" step needed for it.
+    await expect(page.getByRole("button", { name: `Unlink ${inlineEvidenceTitle}` })).toBeVisible();
+
+    // And visible in the project's own Evidence library too.
+    await page.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "← Back" }).click();
+    await page.getByRole("tab", { name: "Evidence" }).click();
+    await expect(page.getByText(inlineEvidenceTitle)).toBeVisible();
   });
 });

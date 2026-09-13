@@ -385,6 +385,57 @@ def test_evidence_file_upload_download_and_isolation(client, admin_token, org_id
     assert gone.status_code == 404
 
 
+def test_inline_upload_from_assessment_panel_creates_uploads_and_links_like_the_library_flow(
+    client, admin_token, org_id
+):
+    """Phase 33 (compliance-module-plan.md): `RequirementAssessmentPanel`'s
+    "Upload new evidence" affordance is pure frontend composition of three
+    already-existing endpoints (create, upload file, link-to-requirement) —
+    no new backend endpoint. Pins that chaining them in that order (create
+    with no links yet, attach a file, link to the requirement) produces the
+    exact same `Evidence` record shape/audit trail as creating one already
+    linked via `project_compliance_requirement_ids` at creation time
+    (`test_create_evidence_linked_to_requirement_and_action`, above), and
+    that the new evidence is immediately visible from the requirement's own
+    evidence listing.
+    """
+    project, assignment, pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
+
+    evidence = _create_evidence(client, admin_token, project["id"], description="Inline-uploaded evidence")
+    assert evidence["linked_requirement_ids"] == []
+
+    upload = client.post(
+        f"{_project_base(project['id'])}/evidence/{evidence['id']}/files",
+        files={"file": ("certificate.pdf", b"%PDF-1.4 fake certificate", "application/pdf")},
+        headers=auth_headers(admin_token),
+    )
+    assert upload.status_code == 201, upload.text
+
+    link = client.post(
+        f"{_project_base(project['id'])}/evidence/{evidence['id']}/requirement-links",
+        json={"project_compliance_requirement_id": pcr_id}, headers=auth_headers(admin_token),
+    )
+    assert link.status_code == 201, link.text
+    linked_evidence = link.json()
+    assert linked_evidence["linked_requirement_ids"] == [pcr_id]
+    assert linked_evidence["provided_by"]
+    assert linked_evidence["provided_at"]
+    assert linked_evidence["is_archived"] is False
+
+    files = client.get(
+        f"{_project_base(project['id'])}/evidence/{evidence['id']}/files", headers=auth_headers(admin_token)
+    )
+    assert files.status_code == 200
+    assert [f["filename"] for f in files.json()] == ["certificate.pdf"]
+
+    req_evidence = client.get(
+        f"{_project_base(project['id'])}/project-compliance/{assignment['id']}/requirements/{pcr_id}/evidence",
+        headers=auth_headers(admin_token),
+    )
+    assert req_evidence.status_code == 200, req_evidence.text
+    assert [e["id"] for e in req_evidence.json()] == [evidence["id"]]
+
+
 # --- Cross-project isolation --------------------------------------------------------
 
 

@@ -15,18 +15,31 @@
  * `update_requirement_assessment`, 400 on a missing justification), so a
  * stale client check can never let a bad payload through undetected: any
  * 400 still surfaces as a toast either way.
+ *
+ * Evidence section (Phase 33): alongside linking already-existing evidence,
+ * "Upload new evidence" reuses `EvidencePanel.tsx`'s own exported
+ * `EvidenceFormModal` to create a new `Evidence` record the same way that
+ * panel does, immediately auto-links it to this assessment (no separate
+ * manual "link existing" step), then reuses `FileAttachmentList`/
+ * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
+ * — so the actual file attaches in the same flow.
  */
+import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { OrgUser } from "../../api/types";
+import { api } from "../../api/client";
+import type { FileAsset, OrgUser } from "../../api/types";
 import { activityActionLabel } from "../../api/types";
 import { AssigneePicker } from "../../components/AssigneePicker";
+import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
+import { ResourcePickerModal } from "../../components/ResourcePickerModal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { ApplicabilityBadge } from "./ApplicabilityBadge";
+import { EvidenceFormModal } from "./EvidencePanel";
 import {
   COMPLIANCE_APPLICABILITY_LABEL,
   COMPLIANCE_APPROVAL_STATE_LABEL,
@@ -87,6 +100,10 @@ export function RequirementAssessmentPanel({
   const [linkEvidenceId, setLinkEvidenceId] = useState("");
   const [history, setHistory] = useState<ComplianceAuditEvent[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+
+  const [creatingEvidence, setCreatingEvidence] = useState(false);
+  const [newEvidence, setNewEvidence] = useState<{ evidence: ComplianceEvidence; files: FileAsset[] } | null>(null);
+  const [showNewEvidenceResourcePicker, setShowNewEvidenceResourcePicker] = useState(false);
 
   async function reloadRequiredActions() {
     const [defs, rows] = await Promise.all([
@@ -244,6 +261,22 @@ export function RequirementAssessmentPanel({
     }
   }
 
+  async function createAndLinkEvidence(values: {
+    title: string; description: string; issuing_organisation: string | null; issued_date: string | null;
+    expiry_date?: string | null; notes: string;
+  }) {
+    try {
+      const created = await complianceApi.createEvidence(projectId, values);
+      await complianceApi.linkEvidenceToRequirement(projectId, created.id, pcr.id);
+      setCreatingEvidence(false);
+      showToast("Evidence created and linked — attach a file below.");
+      setNewEvidence({ evidence: created, files: [] });
+      await reloadEvidence();
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not create evidence."), "error");
+    }
+  }
+
   const linkableEvidence = (allEvidence ?? []).filter(
     (e) => !(linkedEvidence ?? []).some((linked) => linked.id === e.id)
   );
@@ -386,17 +419,20 @@ export function RequirementAssessmentPanel({
               ))}
             </ul>
           )}
-          {linkableEvidence.length > 0 && (
-            <div className="row" style={{ gap: "0.5rem" }}>
-              <select className="input" value={linkEvidenceId} onChange={(e) => setLinkEvidenceId(e.target.value)} aria-label="Link existing evidence">
-                <option value="">Select evidence to link…</option>
-                {linkableEvidence.map((e) => (
-                  <option key={e.id} value={e.id}>{e.title}</option>
-                ))}
-              </select>
-              <button className="btn" disabled={!linkEvidenceId} onClick={linkEvidence}>Link</button>
-            </div>
-          )}
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            {linkableEvidence.length > 0 && (
+              <>
+                <select className="input" value={linkEvidenceId} onChange={(e) => setLinkEvidenceId(e.target.value)} aria-label="Link existing evidence">
+                  <option value="">Select evidence to link…</option>
+                  {linkableEvidence.map((e) => (
+                    <option key={e.id} value={e.id}>{e.title}</option>
+                  ))}
+                </select>
+                <button className="btn" disabled={!linkEvidenceId} onClick={linkEvidence}>Link</button>
+              </>
+            )}
+            <button className="btn" onClick={() => setCreatingEvidence(true)}>Upload new evidence</button>
+          </div>
         </section>
 
         <section className="stack">
@@ -449,6 +485,53 @@ export function RequirementAssessmentPanel({
           )}
         </section>
       </div>
+
+      {creatingEvidence && (
+        <EvidenceFormModal onCancel={() => setCreatingEvidence(false)} onSave={createAndLinkEvidence} />
+      )}
+
+      {newEvidence && (
+        <Modal title={`Attach files to "${newEvidence.evidence.title}"`} onClose={() => setNewEvidence(null)}>
+          <div className="stack">
+            <FileAttachmentList
+              files={newEvidence.files}
+              onUpload={async (file) => {
+                const asset = await complianceApi.uploadEvidenceAttachment(projectId, newEvidence.evidence.id, file);
+                setNewEvidence((prev) => prev && { ...prev, files: [...prev.files, asset] });
+              }}
+              onRemove={async (fileId) => {
+                await complianceApi.unlinkEvidenceFile(projectId, newEvidence.evidence.id, fileId);
+                setNewEvidence((prev) => prev && { ...prev, files: prev.files.filter((f) => f.id !== fileId) });
+              }}
+            />
+            <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => setShowNewEvidenceResourcePicker(true)}>
+              <FolderOpen size={14} /> Link from shared resources
+            </button>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn btn-primary" onClick={() => setNewEvidence(null)}>Done</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showNewEvidenceResourcePicker && newEvidence && (
+        <ResourcePickerModal
+          title="Link from shared resources"
+          sources={[
+            { id: "org-resources", label: "Organisation shared resources", loadFiles: () => api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`) },
+          ]}
+          onClose={() => setShowNewEvidenceResourcePicker(false)}
+          onAttach={async (fileIds) => {
+            for (const fileId of fileIds) {
+              const asset = await complianceApi.linkEvidenceOrgResource(projectId, newEvidence.evidence.id, fileId);
+              setNewEvidence((prev) =>
+                prev && (prev.files.some((f) => f.id === asset.id) ? prev : { ...prev, files: [...prev.files, asset] })
+              );
+            }
+            setShowNewEvidenceResourcePicker(false);
+          }}
+        />
+      )}
 
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>

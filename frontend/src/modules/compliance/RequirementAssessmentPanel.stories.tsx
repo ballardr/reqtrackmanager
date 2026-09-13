@@ -3,9 +3,15 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildFileAsset, withToast } from "../../testing/storybook-helpers";
 import { RequirementAssessmentPanel } from "./RequirementAssessmentPanel";
-import type { ComplianceRequiredAction, ComplianceRequiredActionAssessment, ComplianceRequirementNode, ProjectComplianceRequirement } from "./types";
+import type {
+  ComplianceEvidence,
+  ComplianceRequiredAction,
+  ComplianceRequiredActionAssessment,
+  ComplianceRequirementNode,
+  ProjectComplianceRequirement,
+} from "./types";
 
 const ORG_ID = "org-1";
 const PROJECT_ID = "proj-1";
@@ -72,6 +78,58 @@ function mockApis(pcrRow: ProjectComplianceRequirement, assessments: ComplianceR
     if (path.endsWith("/reject")) return { ...pcrRow, approval_state: "rejected" };
     return pcrRow;
   });
+}
+
+function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEvidence {
+  return {
+    id: "ev-1", project_id: PROJECT_ID, title: "Existing Access Review", description: "",
+    issuing_organisation: null, issued_date: null, expiry_date: null,
+    provided_by: "user-1", provided_at: "2026-01-01T00:00:00Z", notes: "", validity_state: "valid",
+    is_archived: false, archived_at: null, archived_by: null,
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+    linked_requirement_ids: [], linked_required_action_assessment_ids: [], ...overrides,
+  };
+}
+
+/** Phase 33: the Evidence section's "link existing" `<select>` alongside its
+ * new "Upload new evidence" create-and-link-and-attach flow. Distinct from
+ * `mockApis` above since it needs to track evidence state (linked vs.
+ * library-only) across requests, the same way `EvidencePanel.stories.tsx`'s
+ * own `mockApis` does for its create flow. */
+function mockEvidenceApis(pcrRow: ProjectComplianceRequirement) {
+  let library: ComplianceEvidence[] = [evidence()];
+  let linked: ComplianceEvidence[] = [];
+
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/required-action-assessments")) return [];
+    if (path.includes("/required-actions")) return [];
+    if (path.includes("/requirements/") && path.endsWith("/evidence")) return linked;
+    if (path.endsWith("/evidence")) return library;
+    if (path.endsWith("/history")) return [];
+    return [];
+  });
+  spyOn(api, "post").mockImplementation(async (path: string, body?: unknown) => {
+    if (path.endsWith("/evidence")) {
+      const payload = body as { title: string };
+      const created = evidence({ id: `ev-${library.length + 1}`, title: payload.title });
+      library = [...library, created];
+      return created;
+    }
+    if (path.endsWith("/requirement-links")) {
+      const evidenceId = path.split("/evidence/")[1].split("/requirement-links")[0];
+      const found = library.find((e) => e.id === evidenceId)!;
+      const updated = { ...found, linked_requirement_ids: [...found.linked_requirement_ids, (body as { project_compliance_requirement_id: string }).project_compliance_requirement_id] };
+      library = library.map((e) => (e.id === evidenceId ? updated : e));
+      linked = [...linked, updated];
+      return updated;
+    }
+    throw new Error(`unmocked POST: ${path}`);
+  });
+  spyOn(api, "postFile").mockImplementation(async (path: string) => {
+    if (path.endsWith("/files")) return buildFileAsset({ id: "file-1", filename: "certificate.pdf" });
+    throw new Error(`unmocked postFile: ${path}`);
+  });
+  spyOn(api, "patch").mockImplementation(async () => pcrRow);
 }
 
 const ORG_USERS: OrgUser[] = [
@@ -200,6 +258,62 @@ export const RequiredActionUnassign: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/project-compliance/${PC_ID}/requirements/pcr-1/required-action-assessments/aa-1`,
       { assignee_id: null, due_date: null, notes: "" }
     ));
+  },
+};
+
+/** Phase 33 (compliance-module-plan.md): the Evidence section's two paths
+ * side by side — linking an already-existing library item via the
+ * "Link existing evidence" `<select>`, and the new "Upload new evidence"
+ * flow, which creates a fresh `Evidence` record (`EvidencePanel.tsx`'s own
+ * reused `EvidenceFormModal`), auto-links it to this assessment with no
+ * separate manual link step, then attaches a file to it via the same
+ * `FileAttachmentList` mechanism `EvidencePanel.tsx` itself uses. */
+export const EvidenceLinkExistingAndUploadNew: Story = {
+  beforeEach: () => mockEvidenceApis(pcr()),
+  args: { pcr: pcr() },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+
+    await waitFor(() => expect(body.getByText("No evidence linked yet.")).toBeInTheDocument());
+
+    // --- Link existing.
+    await userEvent.selectOptions(body.getByLabelText("Link existing evidence"), "ev-1");
+    await userEvent.click(body.getByRole("button", { name: "Link" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1/requirement-links`,
+      { project_compliance_requirement_id: "pcr-1" }
+    ));
+    await waitFor(() => expect(body.getByText("Existing Access Review")).toBeInTheDocument());
+
+    // --- Upload new: create + auto-link + attach, one flow, no separate
+    //     manual "link existing" step for the newly-created record.
+    await userEvent.click(body.getByRole("button", { name: "Upload new evidence" }));
+    const createDialog = await waitFor(() => body.getByRole("dialog", { name: "Add evidence" }));
+    await userEvent.type(within(createDialog).getByLabelText("Evidence title"), "New Access Report");
+    await userEvent.click(within(createDialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence`,
+      expect.objectContaining({ title: "New Access Report" })
+    ));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-2/requirement-links`,
+      { project_compliance_requirement_id: "pcr-1" }
+    ));
+
+    const filesDialog = await waitFor(() => body.getByRole("dialog", { name: 'Attach files to "New Access Report"' }));
+    const filesDialogScope = within(filesDialog);
+    const file = new File(["data"], "certificate.pdf", { type: "application/pdf" });
+    const input = filesDialog.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-2/files`, file
+    ));
+    await waitFor(() => expect(filesDialogScope.getByText("certificate.pdf")).toBeInTheDocument());
+    await userEvent.click(filesDialogScope.getByRole("button", { name: "Done" }));
+
+    await waitFor(() => expect(body.getByText("New Access Report")).toBeInTheDocument());
   },
 };
 

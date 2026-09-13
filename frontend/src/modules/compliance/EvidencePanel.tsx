@@ -15,8 +15,11 @@
  *
  * Linking evidence to a specific requirement/required-action assessment is
  * done from the requirement side (`RequirementAssessmentPanel`'s own
- * "Link existing evidence" control) — this panel is the canonical evidence
- * CRUD surface, not a second place to manage linkage.
+ * "Link existing evidence" control, plus Phase 33's "Upload new evidence"
+ * inline create-and-link flow, which reuses this file's own exported
+ * `EvidenceFormModal` and the same `FileAttachmentList`/`ResourcePickerModal`
+ * files step below) — this panel is the canonical evidence CRUD surface,
+ * not a second place to manage linkage.
  */
 import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -271,7 +274,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
   );
 }
 
-function EvidenceFormModal({
+export function EvidenceFormModal({
   initial,
   onCancel,
   onSave,
