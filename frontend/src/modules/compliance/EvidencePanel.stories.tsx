@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { buildFileAsset, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
 
@@ -67,6 +67,10 @@ function mockApis(initial: ComplianceEvidence[]) {
     items = items.map((e) => (e.id === id ? { ...e, ...payload } : e));
     return items.find((e) => e.id === id);
   });
+  spyOn(api, "postFile").mockImplementation(async (path: string, file: File) => {
+    if (path.endsWith("/files")) return buildFileAsset({ id: `file-${file.name}`, filename: file.name });
+    throw new Error(`unmocked postFile: ${path}`);
+  });
 }
 
 const meta: Meta<typeof EvidencePanel> = {
@@ -102,6 +106,50 @@ export const AddEvidence: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence`,
       expect.objectContaining({ title: "IP67 Water Ingress Report" })
     ));
+  },
+};
+
+/** Phase 41 (compliance-module-plan.md): attaching file(s) at evidence
+ * creation time itself, rather than saving first and attaching afterwards
+ * from the newly-created record's own Files section. One staged file is
+ * removed before save (proving the local staging list, not just the upload
+ * call), and the remaining file is uploaded immediately after the evidence
+ * record is created — one user action, not two. */
+export const AddEvidenceWithFileAttachment: Story = {
+  beforeEach: () => mockApis([]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await waitFor(() => expect(canvas.getByText("No evidence recorded for this project yet.")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add evidence" }));
+    const dialog = await waitFor(() => body.getByRole("dialog", { name: "Add evidence" }));
+    const dialogScope = within(dialog);
+    await userEvent.type(dialogScope.getByLabelText("Evidence title"), "IP67 Water Ingress Report");
+
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    const removedFile = new File(["data"], "draft.pdf", { type: "application/pdf" });
+    const keptFile = new File(["data"], "certificate.pdf", { type: "application/pdf" });
+    await userEvent.upload(input, removedFile);
+    await userEvent.upload(input, keptFile);
+    await expect(dialogScope.getByText("draft.pdf")).toBeInTheDocument();
+    await expect(dialogScope.getByText("certificate.pdf")).toBeInTheDocument();
+
+    await userEvent.click(dialogScope.getByRole("button", { name: "Remove draft.pdf" }));
+    await expect(dialogScope.queryByText("draft.pdf")).not.toBeInTheDocument();
+
+    await userEvent.click(dialogScope.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence`,
+      expect.objectContaining({ title: "IP67 Water Ingress Report" })
+    ));
+    await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-new/files`, keptFile
+    ));
+    // Removing draft.pdf before save means only the kept file was ever
+    // uploaded — a single postFile call, not two.
+    await expect(api.postFile).toHaveBeenCalledTimes(1);
   },
 };
 

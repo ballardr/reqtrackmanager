@@ -317,5 +317,40 @@ export const EvidenceLinkExistingAndUploadNew: Story = {
   },
 };
 
+/** Phase 41 (compliance-module-plan.md): `EvidenceFormModal`'s create form
+ * itself now stages a file before save, so attaching one there uploads it in
+ * the same step and skips the old follow-up "Attach files to..." modal
+ * entirely — a user who already attached a file at creation isn't asked
+ * again, unlike `EvidenceLinkExistingAndUploadNew` above (no file staged),
+ * which still falls back to that modal. */
+export const EvidenceUploadNewWithFileSkipsFollowUpModal: Story = {
+  beforeEach: () => mockEvidenceApis(pcr()),
+  args: { pcr: pcr() },
+  play: async ({ canvasElement }) => {
+    void canvasElement;
+    const body = within(document.body);
+
+    await userEvent.click(body.getByRole("button", { name: "Upload new evidence" }));
+    const createDialog = await waitFor(() => body.getByRole("dialog", { name: "Add evidence" }));
+    const createDialogScope = within(createDialog);
+    await userEvent.type(createDialogScope.getByLabelText("Evidence title"), "New Access Report");
+
+    const file = new File(["data"], "certificate.pdf", { type: "application/pdf" });
+    const input = createDialog.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, file);
+    await userEvent.click(createDialogScope.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence`,
+      expect.objectContaining({ title: "New Access Report" })
+    ));
+    await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-2/files`, file
+    ));
+    await expect(body.queryByRole("dialog", { name: 'Attach files to "New Access Report"' })).not.toBeInTheDocument();
+    await waitFor(() => expect(body.getByText("New Access Report")).toBeInTheDocument());
+  },
+};
+
 export const LightTheme: Story = { ...NotAssessedYet };
 export const DarkTheme: Story = { ...NotAssessedYet, globals: { theme: "dark" } };

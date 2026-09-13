@@ -21,7 +21,7 @@
  * files step below) — this panel is the canonical evidence CRUD surface,
  * not a second place to manage linkage.
  */
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Paperclip, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { FileAsset } from "../../api/types";
@@ -29,6 +29,7 @@ import { api } from "../../api/client";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
+import { FileUploadTrigger } from "../../components/FileUploadTrigger";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { Modal } from "../../components/Modal";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
@@ -141,10 +142,13 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
       {creating && (
         <EvidenceFormModal
           onCancel={() => setCreating(false)}
-          onSave={async (values) => {
+          onSave={async (values, files) => {
             try {
-              await complianceApi.createEvidence(projectId, values);
-              showToast("Evidence created.");
+              const created = await complianceApi.createEvidence(projectId, values);
+              for (const file of files) {
+                await complianceApi.uploadEvidenceAttachment(projectId, created.id, file);
+              }
+              showToast(files.length > 0 ? "Evidence created and file(s) attached." : "Evidence created.");
               setCreating(false);
               await reload();
             } catch (err) {
@@ -281,10 +285,13 @@ export function EvidenceFormModal({
 }: {
   initial?: ComplianceEvidence;
   onCancel: () => void;
-  onSave: (values: {
-    title: string; description: string; issuing_organisation: string | null; issued_date: string | null;
-    expiry_date?: string | null; notes: string;
-  }) => void;
+  onSave: (
+    values: {
+      title: string; description: string; issuing_organisation: string | null; issued_date: string | null;
+      expiry_date?: string | null; notes: string;
+    },
+    files: File[]
+  ) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -292,6 +299,7 @@ export function EvidenceFormModal({
   const [issuedDate, setIssuedDate] = useState(initial?.issued_date ?? "");
   const [expiryDate, setExpiryDate] = useState(initial?.expiry_date ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
 
   return (
     <Modal title={initial ? "Edit evidence" : "Add evidence"} onClose={onCancel}>
@@ -322,15 +330,43 @@ export function EvidenceFormModal({
           <span>Notes</span>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        {!initial && (
+          <div className="stack" style={{ gap: "0.25rem" }}>
+            <span>Files</span>
+            {stagedFiles.map((file, index) => (
+              <div key={`${file.name}-${index}`} className="row" style={{ justifyContent: "space-between" }}>
+                <span>{file.name}</span>
+                <button
+                  className="btn btn-danger"
+                  title={`Remove ${file.name}`}
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => setStagedFiles((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            <FileUploadTrigger
+              onSelect={(file) => setStagedFiles((prev) => [...prev, file])}
+              title="Attach a file"
+              aria-label="Attach a file"
+            >
+              <Paperclip size={14} /> Attach a file
+            </FileUploadTrigger>
+          </div>
+        )}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel}>Cancel</button>
           <button
             className="btn btn-primary" disabled={!title.trim()}
             onClick={() =>
-              onSave({
-                title, description, issuing_organisation: issuingOrganisation || null,
-                issued_date: issuedDate || null, expiry_date: initial ? undefined : (expiryDate || null), notes,
-              })
+              onSave(
+                {
+                  title, description, issuing_organisation: issuingOrganisation || null,
+                  issued_date: issuedDate || null, expiry_date: initial ? undefined : (expiryDate || null), notes,
+                },
+                stagedFiles
+              )
             }
           >
             Save

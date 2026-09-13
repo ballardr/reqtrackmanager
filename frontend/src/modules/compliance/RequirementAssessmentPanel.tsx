@@ -22,7 +22,11 @@
  * panel does, immediately auto-links it to this assessment (no separate
  * manual "link existing" step), then reuses `FileAttachmentList`/
  * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
- * — so the actual file attaches in the same flow.
+ * — so the actual file attaches in the same flow. Since Phase 41,
+ * `EvidenceFormModal`'s create form itself stages files before save, so
+ * `createAndLinkEvidence` uploads those in the same step and only falls
+ * back to the follow-up "Attach files" modal when none were staged —
+ * a user who already attached a file at creation time isn't asked again.
  */
 import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -261,16 +265,26 @@ export function RequirementAssessmentPanel({
     }
   }
 
-  async function createAndLinkEvidence(values: {
-    title: string; description: string; issuing_organisation: string | null; issued_date: string | null;
-    expiry_date?: string | null; notes: string;
-  }) {
+  async function createAndLinkEvidence(
+    values: {
+      title: string; description: string; issuing_organisation: string | null; issued_date: string | null;
+      expiry_date?: string | null; notes: string;
+    },
+    files: File[]
+  ) {
     try {
       const created = await complianceApi.createEvidence(projectId, values);
       await complianceApi.linkEvidenceToRequirement(projectId, created.id, pcr.id);
       setCreatingEvidence(false);
-      showToast("Evidence created and linked — attach a file below.");
-      setNewEvidence({ evidence: created, files: [] });
+      if (files.length > 0) {
+        for (const file of files) {
+          await complianceApi.uploadEvidenceAttachment(projectId, created.id, file);
+        }
+        showToast("Evidence created, linked, and file(s) attached.");
+      } else {
+        showToast("Evidence created and linked — attach a file below.");
+        setNewEvidence({ evidence: created, files: [] });
+      }
       await reloadEvidence();
     } catch (err) {
       showToast(toErrorMessage(err, "Could not create evidence."), "error");
