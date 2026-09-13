@@ -79,6 +79,27 @@ spreadsheet/pivot use, since a CSV cell has no rich-text/bold-prefix concept
 and was never affected by the title-loss bug (it already carries the
 requirement's title as its own separate column).
 
+Report scoping (Phase 43, docs/compliance-module-plan.md): both collectors
+accept optional `standard_id`/`standard_version_id`/`requirement_id`
+filters (plus `project_id` at org scope), narrowing a report to exactly
+what a filtered on-screen panel is showing — `OrgComplianceStandardsPanel.tsx`,
+`OrgComplianceOutstandingPanel.tsx`, and `OutstandingPanel.tsx` each gained
+an inline Export trigger (`docs/ux-style-guide.md`'s new "report export
+trigger" pattern) that passes its own current filter state through as query
+params on `GET .../reports/{pdf,csv}`, rather than always downloading an
+unfiltered whole-project/whole-org report regardless of what the user has
+filtered the page to. `requirement_id` is a "sub-section" filter (a
+top-level requirement) matched via each row's *top-level ancestor*
+(`_top_level_ancestor_id`/`_requirement_top_level_ancestors_for_standard`),
+mirroring `api.ts::findTopLevelAncestor`'s identical client-side definition
+exactly. Evidence/mapping appendices and review history are deliberately
+unaffected by `standard_id`/`standard_version_id`/`requirement_id` (only by
+`project_id`) — neither Outstanding panel's own Evidence section is
+standard-scoped in the first place (see `OrgComplianceOutstandingPanel.tsx`'s
+own Phase 40 note), and narrowing a report's background appendices to a
+single sub-section would cut context a reader of the exported document
+still needs, not just repeat what's already on screen.
+
 Security note (data classification, `docs/soc2/policies/
 data-classification-and-confidentiality-policy.md`): every field surfaced
 here (requirement text, justifications/notes, evidence titles/metadata,
@@ -227,6 +248,29 @@ def _requirement_ancestor_breadcrumb(
     return " > ".join(reversed(parts))
 
 
+def _top_level_ancestor_id(requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]) -> uuid.UUID:
+    """Walks `requirement` up through its `parent_requirement_id` chain and
+    returns the id of its ultimate ancestor (or its own id, if it has none)
+    — the server-side mirror of `api.ts::findTopLevelAncestor`, which both
+    Outstanding-items panels already use client-side to resolve their own
+    "Sub-section" filter (a picked top-level requirement) against a
+    possibly-nested row. Phase 43 reuses the identical "sub-section means
+    top-level ancestor" definition so a report export's `requirement_id`
+    filter matches exactly what the filtered panel it's exported from is
+    already showing. Cycle-safe the same way `_requirement_ancestor_
+    breadcrumb` is, for the same reason.
+    """
+    current = requirement
+    seen: set[uuid.UUID] = set()
+    while current.parent_requirement_id is not None and current.id not in seen:
+        seen.add(current.id)
+        parent = by_id.get(current.parent_requirement_id)
+        if parent is None:
+            break
+        current = parent
+    return current.id
+
+
 def _requirement_path(requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]) -> str:
     """Builds a breadcrumb ("3 > 3.2 > 3.2.1") from a requirement up through
     its ancestors, using each row's `reference` where set and its `name`
@@ -354,7 +398,9 @@ def _requirement_label(reference: str | None, name: str) -> str:
 
 
 def collect_project_compliance_report(
-    db: Session, project: Project, *, include_archived: bool = False
+    db: Session, project: Project, *, include_archived: bool = False,
+    standard_id: uuid.UUID | None = None, standard_version_id: uuid.UUID | None = None,
+    requirement_id: uuid.UUID | None = None,
 ) -> ProjectComplianceReportData:
     """Gathers every field §29 asks a compliance report to be capable of
     including, for one project, across every standard it is (or, with
@@ -375,6 +421,19 @@ def collect_project_compliance_report(
             archived (stopped tracking) — off by default, mirroring every
             other listing in this module's own "active unless asked
             otherwise" convention.
+        standard_id: When set (Phase 43, §29's own reporting scope extended
+            to match `OutstandingPanel.tsx`'s own Phase 40 filters), skips
+            any assignment not for this standard.
+        standard_version_id: When set, skips any assignment not for this
+            exact standard version.
+        requirement_id: When set, a "sub-section" filter — only requirement
+            rows whose top-level ancestor (`_top_level_ancestor_id`) is this
+            requirement are included, mirroring `OutstandingPanel.tsx`'s own
+            client-side Sub-section filter definition exactly, so an export
+            triggered from a filtered panel reports only what that panel is
+            showing. Reviews and the evidence/mappings appendices are
+            unaffected — see this function's own "Review history"/appendix
+            comments below for why.
 
     Returns:
         The collected report data.
@@ -391,6 +450,10 @@ def collect_project_compliance_report(
     for pc in assignments:
         version = db.get(ComplianceStandardVersion, pc.standard_version_id)
         standard = db.get(ComplianceStandard, version.standard_id)
+        if standard_id is not None and standard.id != standard_id:
+            continue
+        if standard_version_id is not None and version.id != standard_version_id:
+            continue
         requirements = list(
             db.scalars(
                 select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)
@@ -460,6 +523,8 @@ def collect_project_compliance_report(
         for requirement in _ordered_requirements(requirements):
             pcr = pcr_by_requirement_id.get(requirement.id)
             if pcr is None:
+                continue
+            if requirement_id is not None and _top_level_ancestor_id(requirement, by_id) != requirement_id:
                 continue
             effective, source = applicability[requirement.id]
             actions = actions_by_requirement.get(requirement.id, [])
@@ -806,7 +871,48 @@ class OrgComplianceReportData:
     expiring_evidence_rows: list[tuple[str, ComplianceReportEvidenceRow]] = field(default_factory=list)
 
 
-def collect_org_compliance_report(db: Session, organization_id: uuid.UUID) -> OrgComplianceReportData:
+def _requirement_top_level_ancestors_for_standard(db: Session, standard_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+    """Maps every requirement id under any version of `standard_id` to its
+    top-level ancestor's id (`_top_level_ancestor_id`) — the org report's
+    equivalent of `collect_project_compliance_report`'s per-assignment
+    `by_id` tree, needed here because the org roll-up's non-compliant/
+    pending-approval appendix rows (`NonCompliantRequirementOut`/
+    `PendingApprovalOut`) carry only a flat `requirement_id`, not the
+    surrounding tree, and can span more than one version of the filtered
+    standard across different projects."""
+    version_ids = [
+        v.id for v in db.scalars(select(ComplianceStandardVersion).where(ComplianceStandardVersion.standard_id == standard_id)).all()
+    ]
+    if not version_ids:
+        return {}
+    requirements = list(
+        db.scalars(select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id.in_(version_ids))).all()
+    )
+    by_id = {r.id: r for r in requirements}
+    return {r.id: _top_level_ancestor_id(r, by_id) for r in requirements}
+
+
+def _matches_requirement_filter(
+    row_requirement_id: uuid.UUID, requirement_id: uuid.UUID | None, top_level_by_id: dict[uuid.UUID, uuid.UUID]
+) -> bool:
+    """Applies an org report's `requirement_id` (sub-section) filter to one
+    appendix row. Falls back to a direct id match when `top_level_by_id` is
+    empty — reachable only if a caller passes `requirement_id` without also
+    passing `standard_id` (the UI never does this: `OrgComplianceOutstandingPanel.tsx`'s
+    own Sub-section filter only ever appears once a standard is already
+    selected), rather than silently excluding every row in that case."""
+    if requirement_id is None:
+        return True
+    if top_level_by_id:
+        return top_level_by_id.get(row_requirement_id) == requirement_id
+    return row_requirement_id == requirement_id
+
+
+def collect_org_compliance_report(
+    db: Session, organization_id: uuid.UUID, *,
+    project_id: uuid.UUID | None = None, standard_id: uuid.UUID | None = None,
+    standard_version_id: uuid.UUID | None = None, requirement_id: uuid.UUID | None = None,
+) -> OrgComplianceReportData:
     """Gathers an organisation-wide compliance roll-up: every project's
     every (non-archived) standard assignment with its computed §20 status,
     plus cross-project appendices for non-compliant requirements, pending
@@ -819,12 +925,36 @@ def collect_org_compliance_report(db: Session, organization_id: uuid.UUID) -> Or
     Args:
         db: An active database session.
         organization_id: The organisation to report on.
+        project_id: When set (Phase 43, matching `OrgComplianceStandardsPanel.tsx`/
+            `OrgComplianceOutstandingPanel.tsx`'s own Phase 40 filters),
+            restricts the whole report — assignment rows and every appendix,
+            evidence included — to this one project.
+        standard_id: When set, skips any assignment/appendix row not for
+            this standard. Evidence rows are unaffected (evidence isn't
+            standard-scoped in the data model — see `OrgComplianceOutstandingPanel.tsx`'s
+            own Phase 40 note on why its Evidence section stays governed by
+            Project + Evidence status alone).
+        standard_version_id: When set, skips any assignment/appendix row not
+            for this exact standard version. Evidence unaffected, as above.
+        requirement_id: When set, a "sub-section" filter over the non-
+            compliant/pending-approval appendices only (mirroring
+            `OrgComplianceOutstandingPanel.tsx`'s own Sub-section filter,
+            which likewise only narrows its three per-requirement sections) —
+            see `_matches_requirement_filter`.
 
     Returns:
         The collected report data.
     """
     projects = list(db.scalars(select(Project).where(Project.organization_id == organization_id)).all())
+    if project_id is not None:
+        projects = [p for p in projects if p.id == project_id]
     data = OrgComplianceReportData()
+
+    requirement_top_level_by_id: dict[uuid.UUID, uuid.UUID] = (
+        _requirement_top_level_ancestors_for_standard(db, standard_id)
+        if requirement_id is not None and standard_id is not None
+        else {}
+    )
 
     for project in projects:
         assignments = list(
@@ -836,6 +966,10 @@ def collect_org_compliance_report(db: Session, organization_id: uuid.UUID) -> Or
         )
         for pc in assignments:
             status_out = build_status_out(db, pc)
+            if standard_id is not None and status_out.standard_id != standard_id:
+                continue
+            if standard_version_id is not None and status_out.standard_version_id != standard_version_id:
+                continue
             data.assignment_rows.append(OrgComplianceReportAssignmentRow(
                 project_name=project.name, standard_reference=status_out.standard_reference,
                 standard_name=status_out.standard_name, version_label=status_out.version_label,
@@ -849,8 +983,20 @@ def collect_org_compliance_report(db: Session, organization_id: uuid.UUID) -> Or
             ))
 
         for row in list_non_compliant_requirements_for_project(db, project_id=project.id):
+            if standard_id is not None and row.standard_id != standard_id:
+                continue
+            if standard_version_id is not None and row.standard_version_id != standard_version_id:
+                continue
+            if not _matches_requirement_filter(row.requirement_id, requirement_id, requirement_top_level_by_id):
+                continue
             data.non_compliant_rows.append((project.name, _requirement_report_row_from_out(row)))
         for row in list_pending_approvals_for_project(db, project_id=project.id):
+            if standard_id is not None and row.standard_id != standard_id:
+                continue
+            if standard_version_id is not None and row.standard_version_id != standard_version_id:
+                continue
+            if not _matches_requirement_filter(row.requirement_id, requirement_id, requirement_top_level_by_id):
+                continue
             data.pending_approval_rows.append((project.name, _requirement_report_row_from_out(row, is_pending=True)))
         for evidence in list_expiring_or_expired_evidence(db, project_id=project.id):
             evidence_out = build_evidence_out(db, evidence)
@@ -930,7 +1076,10 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     )
     _appendix(
         "Pending Approvals", data.pending_approval_rows, ["Project", "Standard", "Requirement", "Status"],
-        lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _narrative_requirement_paragraph(r), _p(r.compliance_status)],
+        lambda project_name, r: [
+            _p(project_name), _p(f"{r.standard_reference} v{r.version_label}"),
+            _narrative_requirement_paragraph(r), _p(r.compliance_status),
+        ],
         [3 * cm, 3 * cm, 7 * cm, 4 * cm],
     )
     _appendix(

@@ -44,6 +44,14 @@
  * straight to `downloadBlob`; `importStandard` uploads via `api.postFile`,
  * the same helper `ProjectListPage.tsx`'s own project-bundle import uses.
  *
+ * Phase 43 adds `downloadOrgComplianceReport`/`downloadProjectComplianceReport`
+ * — the same `api.getForBlob` + `downloadBlob` shape as `exportStandard`
+ * above, but for the Phase 15 compliance-report endpoints themselves,
+ * scoped by an optional `ComplianceReportFilters` so a report export
+ * triggered from an already-filtered panel (`OrgComplianceStandardsPanel.tsx`,
+ * `OrgComplianceOutstandingPanel.tsx`, `OutstandingPanel.tsx`) downloads
+ * only what that panel currently shows.
+ *
  * Endpoints intentionally NOT covered here (out of this phase's own scope):
  * the project-scoped version-migration action (§27, `migrate-version`) —
  * deliberately not built into this phase's UI either, a flagged scope trim
@@ -207,6 +215,50 @@ export function getStandardProjectSummary(orgId: string, standardId: string): Pr
 
 export function exportStandard(orgId: string, standardId: string): Promise<Blob> {
   return api.getForBlob(`${base(orgId)}/standards/${standardId}/export`);
+}
+
+// --- Phase 43: scoped compliance report export -----------------------------------
+
+/** The Standard/Standard version/Sub-section (+ Project, at org scope)
+ * filters a report export narrows to — the same filter dimensions
+ * `OrgComplianceStandardsPanel.tsx`, `OrgComplianceOutstandingPanel.tsx`,
+ * and `OutstandingPanel.tsx` already hold as client-side filter state
+ * (Phase 40), passed through as query params so "Export" always means
+ * "export what this panel is currently showing," not "export everything." */
+export interface ComplianceReportFilters {
+  projectId?: string;
+  standardId?: string;
+  standardVersionId?: string;
+  requirementId?: string;
+}
+
+function reportQueryString(filters: ComplianceReportFilters): string {
+  const params = new URLSearchParams();
+  if (filters.projectId) params.set("project_id", filters.projectId);
+  if (filters.standardId) params.set("standard_id", filters.standardId);
+  if (filters.standardVersionId) params.set("standard_version_id", filters.standardVersionId);
+  if (filters.requirementId) params.set("requirement_id", filters.requirementId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}`, scoped by
+ * `filters` — the org-wide report `OrgComplianceDashboard.tsx`'s own
+ * unfiltered "Download PDF/CSV report" already calls unscoped; this is the
+ * filtered counterpart `OrgComplianceStandardsPanel.tsx`/
+ * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. */
+export function downloadOrgComplianceReport(orgId: string, kind: "pdf" | "csv", filters: ComplianceReportFilters = {}): Promise<Blob> {
+  return api.getForBlob(`${base(orgId)}/reports/${kind}${reportQueryString(filters)}`);
+}
+
+/** `GET .../projects/{id}/modules/compliance/reports/{pdf,csv}`, scoped by
+ * `filters` — the filtered counterpart to `ProjectCompliancePage.tsx`'s own
+ * unfiltered whole-project report download, used by `OutstandingPanel.tsx`'s
+ * Export trigger. */
+export function downloadProjectComplianceReport(
+  projectId: string, kind: "pdf" | "csv", filters: Omit<ComplianceReportFilters, "projectId"> = {}
+): Promise<Blob> {
+  return api.getForBlob(`${projectBase(projectId)}/reports/${kind}${reportQueryString(filters)}`);
 }
 
 /** `resolution` is only needed on a retry after a 409 (reference collision)

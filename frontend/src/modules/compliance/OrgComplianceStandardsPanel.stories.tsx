@@ -165,6 +165,30 @@ export const GroupedByProjectViaUrl: Story = {
   },
 };
 
+/** Phase 43: the "Export" trigger scopes its download to this panel's
+ * current Standard/Standard version/Project filters, so the exported
+ * report matches what's on screen rather than the whole organisation. */
+export const ExportPassesActiveFiltersAsQueryParams: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
+  beforeEach: () => {
+    mockApis(STATUS_ROWS);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["csv"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("table")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Standard"), "std-1");
+    await userEvent.selectOptions(canvas.getByLabelText("Project"), "proj-2");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/csv?project_id=proj-2&standard_id=std-1`
+    ));
+  },
+};
+
 export const NoAssignments: Story = {
   decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis([]),

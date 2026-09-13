@@ -2584,7 +2584,9 @@ def list_org_recent_activity(
 
 @router.get("/reports/pdf")
 def get_org_compliance_report_pdf(
-    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    organization_id: UUID, project_id: UUID | None = Query(None), standard_id: UUID | None = Query(None),
+    standard_version_id: UUID | None = Query(None), requirement_id: UUID | None = Query(None),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Generates an organisation-wide PDF compliance roll-up (§29's
     "organisation-level reporting") — one row per project/assigned-standard-
@@ -2594,9 +2596,18 @@ def get_org_compliance_report_pdf(
     projects" is a Compliance Manager capability, not general org
     membership) — see this router's own Phase 14 comment for the full
     reasoning, which applies identically to a report as to the live
-    dashboard listings it's built from."""
+    dashboard listings it's built from.
+
+    `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
+    (Phase 43) are optional scoping filters — see `collect_org_compliance_
+    report`'s own docstring — passed by `OrgComplianceStandardsPanel.tsx`'s
+    and `OrgComplianceOutstandingPanel.tsx`'s own Export triggers to match
+    whichever of their filters is currently applied."""
     org = db.get(Organization, organization_id)
-    data = collect_org_compliance_report(db, organization_id)
+    data = collect_org_compliance_report(
+        db, organization_id, project_id=project_id, standard_id=standard_id,
+        standard_version_id=standard_version_id, requirement_id=requirement_id,
+    )
     pdf_bytes = generate_org_compliance_pdf(org.name, data)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
@@ -2606,12 +2617,18 @@ def get_org_compliance_report_pdf(
 
 @router.get("/reports/csv")
 def get_org_compliance_report_csv(
-    organization_id: UUID, current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
+    organization_id: UUID, project_id: UUID | None = Query(None), standard_id: UUID | None = Query(None),
+    standard_version_id: UUID | None = Query(None), requirement_id: UUID | None = Query(None),
+    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Generates a flat CSV export of the organisation-wide compliance
-    roll-up (§29) — one row per project/assigned-standard-version pair."""
+    roll-up (§29) — one row per project/assigned-standard-version pair. See
+    the PDF endpoint above for the Phase 43 scoping filters shared by both."""
     org = db.get(Organization, organization_id)
-    data = collect_org_compliance_report(db, organization_id)
+    data = collect_org_compliance_report(
+        db, organization_id, project_id=project_id, standard_id=standard_id,
+        standard_version_id=standard_version_id, requirement_id=requirement_id,
+    )
     csv_bytes = generate_org_compliance_csv(data)
     return Response(
         content=csv_bytes, media_type="text/csv",

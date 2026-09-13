@@ -154,6 +154,11 @@ export const AssignStandardFlow: Story = {
   },
 };
 
+/** Phase 43: the Standards tab's report download moved onto the shared
+ * `ReportExportButton` (a single "Export" trigger opening a PDF/CSV
+ * `Popover`) — see that component's own docstring for why this page's
+ * previously-separate "Download PDF report"/"Download CSV report" buttons
+ * were consolidated. */
 export const DownloadReport: Story = {
   beforeEach: () => {
     mockApis();
@@ -162,7 +167,9 @@ export const DownloadReport: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Download PDF report" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports/pdf`
     ));

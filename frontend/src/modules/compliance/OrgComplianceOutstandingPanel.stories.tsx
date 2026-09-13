@@ -199,6 +199,35 @@ export const FilteredByProjectStandardAndSubSection: Story = {
   },
 };
 
+/** Phase 43: the "Export" trigger scopes its download to this panel's
+ * current Project/Standard/Sub-section filters, matching `OrgComplianceStandardsPanel.tsx`'s
+ * identical convention. */
+export const ExportPassesActiveFiltersAsQueryParams: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
+  beforeEach: () => {
+    mockApis({
+      nonCompliant: NON_COMPLIANT, pending: PENDING, outstandingActions: OUTSTANDING_ACTIONS,
+      expiringEvidence: EXPIRING_EVIDENCE, reviewsDue: REVIEWS_DUE,
+      versions: [VER_1], requirementsByVersion: { "ver-1": REQUIREMENTS_VER_1 },
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Missing MFA on admin accounts/)).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Standard"), "std-1");
+    await waitFor(() => expect(canvas.getByLabelText("Sub-section")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Sub-section"), "sec-5");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/pdf?standard_id=std-1&requirement_id=sec-5`
+    ));
+  },
+};
+
 export const NothingOutstanding: Story = {
   decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis(),

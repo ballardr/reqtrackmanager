@@ -12,10 +12,15 @@ from __future__ import annotations
 
 import csv
 import io
+import uuid
 
 from app.database import SessionLocal
 from app.models.project import Project
-from app.modules.compliance.reports import _narrative_requirement_paragraph, collect_project_compliance_report
+from app.modules.compliance.reports import (
+    _narrative_requirement_paragraph,
+    collect_org_compliance_report,
+    collect_project_compliance_report,
+)
 from app.modules.compliance.tests.test_compliance_standards_api import (
     _base,
     _create_action_type,
@@ -252,3 +257,164 @@ def test_narrative_requirement_paragraph_omits_empty_sections(client, admin_toke
     assert "Description:" not in text
     assert "Clarification:" not in text
     assert "Justification:" in text  # the Not Applicable decision's own justification is present and must still show
+
+
+# --- Phase 43: scoped report export (standard/version/sub-section/project) ------
+
+
+def test_project_compliance_report_filters_by_standard_version_and_sub_section(client, admin_token, org_id):
+    """`OutstandingPanel.tsx`'s Export trigger passes its own Standard/
+    Standard version/Sub-section filters through as `collect_project_
+    compliance_report` kwargs — each narrows the requirement rows exactly
+    the way the panel's own client-side `matchesStandardVersion`/
+    `matchesSubSection` do, individually and combined."""
+    standard, version, parent, child, _pa, _ca = _setup_published_standard_with_tree(client, admin_token, org_id)
+    project = create_project(client, admin_token, org_id, name="Filter Project")
+    _assign_standard_to_project(client, admin_token, org_id, project["id"], standard["id"], version["id"])
+
+    other_standard = _create_standard(client, admin_token, org_id, reference="OTH-1", name="Other Standard")
+    other_version = _create_version(client, admin_token, org_id, other_standard["id"], version_label="1.0")
+    other_requirement = _create_requirement(
+        client, admin_token, org_id, other_standard["id"], other_version["id"], name="Other requirement", reference="1",
+    )
+    _publish_version(client, admin_token, org_id, other_standard["id"], other_version["id"])
+    _assign_standard_to_project(client, admin_token, org_id, project["id"], other_standard["id"], other_version["id"])
+
+    db = SessionLocal()
+    try:
+        proj = db.get(Project, project["id"])
+        unfiltered = collect_project_compliance_report(db, proj)
+        assert {r.standard_reference for r in unfiltered.requirement_rows} == {standard["reference"], other_standard["reference"]}
+
+        by_standard = collect_project_compliance_report(db, proj, standard_id=uuid.UUID(standard["id"]))
+        assert {r.standard_reference for r in by_standard.requirement_rows} == {standard["reference"]}
+        assert len(by_standard.requirement_rows) == 2  # parent ("4") + child ("4.1")
+
+        by_version = collect_project_compliance_report(db, proj, standard_version_id=uuid.UUID(other_version["id"]))
+        assert {r.standard_reference for r in by_version.requirement_rows} == {other_standard["reference"]}
+
+        # Sub-section: filtering to the parent ("4") includes the child
+        # ("4.1") too, since the child's top-level ancestor is the parent —
+        # the same "sub-section means top-level ancestor" definition
+        # `api.ts::findTopLevelAncestor` uses client-side.
+        by_sub_section = collect_project_compliance_report(db, proj, requirement_id=uuid.UUID(parent["id"]))
+        assert {r.requirement_reference for r in by_sub_section.requirement_rows} == {"4", "4.1"}
+
+        # A sub-section filter naming a requirement from a *different*
+        # standard's tree matches nothing (no crash on the mismatched tree).
+        cross_standard = collect_project_compliance_report(
+            db, proj, standard_id=uuid.UUID(standard["id"]), requirement_id=uuid.UUID(other_requirement["id"])
+        )
+        assert cross_standard.requirement_rows == []
+    finally:
+        db.close()
+
+
+def test_project_compliance_report_pdf_with_no_matching_filter_is_still_a_valid_pdf(client, admin_token, org_id):
+    """A filtered request matching zero rows returns a valid, empty-bodied
+    report rather than erroring."""
+    project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Empty PDF Filter Project")
+    resp = client.get(
+        f"{_project_base(project['id'])}/reports/pdf",
+        params={"standard_id": str(uuid.uuid4())},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.content[:5] == b"%PDF-"
+
+
+def test_project_compliance_report_csv_endpoint_accepts_standard_filter(client, admin_token, org_id):
+    """End-to-end check (not just the collector directly) that the CSV
+    endpoint's `standard_id` query param actually reaches `collect_project_
+    compliance_report`."""
+    project, standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Endpoint Filter Project")
+    resp = client.get(
+        f"{_project_base(project['id'])}/reports/csv",
+        params={"standard_id": standard["id"]}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    header, data_rows = rows[0], rows[1:]
+    standard_col = header.index("Standard reference")
+    assert len(data_rows) == 2
+    assert all(r[standard_col] == standard["reference"] for r in data_rows)
+
+
+def test_org_compliance_report_filters_by_project_standard_and_sub_section(client, admin_token, org_id):
+    """`OrgComplianceStandardsPanel.tsx`/`OrgComplianceOutstandingPanel.tsx`'s
+    Export triggers pass Project/Standard/Standard version/Sub-section
+    through as `collect_org_compliance_report` kwargs. Two projects share
+    one standard assignment (to exercise `project_id` without also changing
+    `standard_id`), plus a second, project-A-only standard (to exercise
+    `standard_id` without collapsing to a single-assignment result)."""
+    standard, version, parent, child, _pa, _ca = _setup_published_standard_with_tree(client, admin_token, org_id)
+    project_a = create_project(client, admin_token, org_id, name="Org Filter Project A")
+    project_b = create_project(client, admin_token, org_id, name="Org Filter Project B")
+    assignment_a = _assign_standard_to_project(client, admin_token, org_id, project_a["id"], standard["id"], version["id"])
+    _assign_standard_to_project(client, admin_token, org_id, project_b["id"], standard["id"], version["id"])
+
+    child_pcr = _find_pcr(client, admin_token, project_a["id"], assignment_a["id"], child["id"])
+    assess_resp = client.patch(
+        f"{_project_base(project_a['id'])}/project-compliance/{assignment_a['id']}/requirements/{child_pcr['id']}/assessment",
+        json={"compliance_status": "non_compliant", "justification": "Investigating"},
+        headers=auth_headers(admin_token),
+    )
+    assert assess_resp.status_code == 200, assess_resp.text
+
+    other_standard = _create_standard(client, admin_token, org_id, reference="OTH-2", name="Other Org Standard")
+    other_version = _create_version(client, admin_token, org_id, other_standard["id"], version_label="1.0")
+    _create_requirement(
+        client, admin_token, org_id, other_standard["id"], other_version["id"], name="Other requirement", reference="1",
+    )
+    _publish_version(client, admin_token, org_id, other_standard["id"], other_version["id"])
+    _assign_standard_to_project(client, admin_token, org_id, project_a["id"], other_standard["id"], other_version["id"])
+
+    db = SessionLocal()
+    try:
+        org_uuid = uuid.UUID(org_id)
+        unfiltered = collect_org_compliance_report(db, org_uuid)
+        assert len(unfiltered.assignment_rows) == 3
+        assert len(unfiltered.non_compliant_rows) == 1
+
+        by_project = collect_org_compliance_report(db, org_uuid, project_id=uuid.UUID(project_a["id"]))
+        assert {r.project_name for r in by_project.assignment_rows} == {project_a["name"]}
+        assert len(by_project.assignment_rows) == 2  # `standard` + `other_standard`, both on project A
+
+        by_standard = collect_org_compliance_report(db, org_uuid, standard_id=uuid.UUID(standard["id"]))
+        assert len(by_standard.assignment_rows) == 2  # project A + B, both assigned `standard`
+        assert all(r.standard_reference == standard["reference"] for r in by_standard.assignment_rows)
+        assert len(by_standard.non_compliant_rows) == 1
+
+        by_sub_section = collect_org_compliance_report(
+            db, org_uuid, standard_id=uuid.UUID(standard["id"]), requirement_id=uuid.UUID(parent["id"])
+        )
+        assert len(by_sub_section.non_compliant_rows) == 1  # child's top-level ancestor is the parent
+
+        no_match = collect_org_compliance_report(db, org_uuid, project_id=uuid.uuid4())
+        assert no_match.assignment_rows == []
+        assert no_match.non_compliant_rows == []
+    finally:
+        db.close()
+
+
+def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin_token, org_id):
+    """End-to-end check that the CSV endpoint's `project_id` query param
+    actually reaches `collect_org_compliance_report`, and that a filter
+    matching zero rows still returns a valid, header-only CSV."""
+    project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Org Endpoint Filter Project")
+    create_project(client, admin_token, org_id, name="Org Endpoint Other Project")
+
+    resp = client.get(f"{_base(org_id)}/reports/csv", params={"project_id": project["id"]}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    header, data_rows = rows[0], rows[1:]
+    project_col = header.index("Project")
+    assert len(data_rows) == 1
+    assert data_rows[0][project_col] == project["name"]
+
+    empty_resp = client.get(
+        f"{_base(org_id)}/reports/csv", params={"project_id": str(uuid.uuid4())}, headers=auth_headers(admin_token)
+    )
+    assert empty_resp.status_code == 200
+    empty_rows = list(csv.reader(io.StringIO(empty_resp.content.decode("utf-8"))))
+    assert len(empty_rows) == 1  # header only, no data rows

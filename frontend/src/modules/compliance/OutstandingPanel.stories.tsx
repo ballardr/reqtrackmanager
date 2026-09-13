@@ -142,6 +142,30 @@ export const FilteredByStandardAndSubSection: Story = {
   },
 };
 
+/** Phase 43: the "Export" trigger scopes its download to this panel's
+ * current Standard/Standard version/Sub-section filters — no Project filter
+ * to pass through, since this page is already scoped to one project. */
+export const ExportPassesActiveFiltersAsQueryParams: Story = {
+  beforeEach: () => {
+    mockApis(NON_COMPLIANT, PENDING, OUTSTANDING_ACTIONS, REVIEWS_DUE, [VER_1], { "ver-1": REQUIREMENTS_VER_1 });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["csv"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Missing MFA on admin accounts/)).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Standard"), "std-1");
+    await waitFor(() => expect(canvas.getByLabelText("Sub-section")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Sub-section"), "sec-5");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports/csv?standard_id=std-1&requirement_id=sec-5`
+    ));
+  },
+};
+
 export const WithOutstandingItems: Story = {
   beforeEach: () => mockApis(NON_COMPLIANT, PENDING, OUTSTANDING_ACTIONS, REVIEWS_DUE),
   play: async ({ canvasElement }) => {

@@ -29,12 +29,21 @@
  * `OrgComplianceOutstandingPanel.tsx`'s own Phase 40 notes for why
  * Evidence and the per-requirement Sub-section filter are scoped the way
  * they are.
+ *
+ * Phase 43 adds an "Export" trigger (`ReportExportButton`) scoped to this
+ * panel's current Standard/Standard version/Sub-section filters —
+ * `complianceApi.downloadProjectComplianceReport` passes them through as
+ * query params, matching `OrgComplianceOutstandingPanel.tsx`'s identical
+ * convention (minus a Project filter, since this page is already
+ * project-scoped by URL).
  */
 import { useEffect, useMemo, useState } from "react";
 
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import {
   COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
@@ -142,6 +151,23 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
     return top !== null && top.id === subSectionFilter;
   }
 
+  async function downloadReport(kind: "pdf" | "csv") {
+    try {
+      // Scoped to this panel's own current Standard/Standard version/Sub-
+      // section filters (Phase 43) — matches `OrgComplianceOutstandingPanel.tsx`'s
+      // identical convention. No Project filter here to pass through (this
+      // page is already scoped to one project by URL).
+      const blob = await complianceApi.downloadProjectComplianceReport(projectId, kind, {
+        standardId: standardFilter || undefined,
+        standardVersionId: versionFilter || undefined,
+        requirementId: subSectionFilter || undefined,
+      });
+      downloadBlob(blob, `outstanding-compliance-items-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the outstanding items report."), "error");
+    }
+  }
+
   if (nonCompliant === null || pending === null || outstandingActions === null || reviewsDue === null) return <Spinner />;
 
   const filteredNonCompliant = nonCompliant.filter(
@@ -158,6 +184,9 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
   return (
     <div className="side-grid">
       <div className="stack">
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <ReportExportButton onDownload={downloadReport} />
+        </div>
         <section className="card stack">
           <h3 style={{ margin: 0 }}>Non-compliant requirements ({filteredNonCompliant.length})</h3>
           {filteredNonCompliant.length === 0 ? (

@@ -716,6 +716,8 @@ def list_outstanding_required_actions(
 @router.get("/reports/pdf")
 def get_project_compliance_report_pdf(
     project_id: UUID, include_archived: bool = Query(False),
+    standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
+    requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Generates a PDF compliance report for this project (§29) — every
@@ -725,9 +727,18 @@ def get_project_compliance_report_pdf(
     according to existing project permissions") — a report never surfaces
     anything this same caller couldn't already read via the JSON endpoints
     it's built from (see `app.modules.compliance.reports`'s own module
-    docstring)."""
+    docstring).
+
+    `standard_id`/`standard_version_id`/`requirement_id` (Phase 43) are
+    optional scoping filters — see `collect_project_compliance_report`'s own
+    docstring — passed by `OutstandingPanel.tsx`'s Export trigger to match
+    whatever that panel's own Standard/Standard version/Sub-section filters
+    currently show."""
     project = db.get(Project, project_id)
-    data = collect_project_compliance_report(db, project, include_archived=include_archived)
+    data = collect_project_compliance_report(
+        db, project, include_archived=include_archived,
+        standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,
+    )
     pdf_bytes = generate_project_compliance_pdf(project.name, data)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
@@ -738,12 +749,18 @@ def get_project_compliance_report_pdf(
 @router.get("/reports/csv")
 def get_project_compliance_report_csv(
     project_id: UUID, include_archived: bool = Query(False),
+    standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
+    requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Generates a flat CSV export of this project's compliance assessments
-    (§29) — one row per requirement per assigned standard."""
+    (§29) — one row per requirement per assigned standard. See the PDF
+    endpoint above for the Phase 43 scoping filters shared by both."""
     project = db.get(Project, project_id)
-    data = collect_project_compliance_report(db, project, include_archived=include_archived)
+    data = collect_project_compliance_report(
+        db, project, include_archived=include_archived,
+        standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,
+    )
     csv_bytes = generate_project_compliance_csv(data)
     return Response(
         content=csv_bytes, media_type="text/csv",

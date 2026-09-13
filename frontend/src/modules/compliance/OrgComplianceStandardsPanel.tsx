@@ -53,14 +53,25 @@
  * lone version behind an already-explicit "expand this standard" click has
  * nothing left to disambiguate (Decided by: User, live follow-up during
  * this phase's implementation).
+ *
+ * Phase 43 adds an "Export" trigger (`ReportExportButton`, the same shape
+ * `OrgComplianceDashboard.tsx`'s own report download uses) above the table,
+ * scoped to this panel's current Standard/Standard version/Project filters
+ * — `complianceApi.downloadOrgComplianceReport` passes them through as
+ * query params so the downloaded PDF/CSV matches what's on screen, not an
+ * unfiltered organisation-wide dump. `groupBy`/`stateFilter` have no
+ * report-side equivalent and aren't passed through — see this panel's own
+ * `downloadReport` for why.
  */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import {
   COMPLIANCE_OVERALL_STATE_LABEL,
@@ -208,11 +219,32 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     });
   }
 
+  async function downloadReport(kind: "pdf" | "csv") {
+    try {
+      // Scoped to this panel's own current filters (Phase 43) — "Export"
+      // means "export what I'm looking at," not the whole organisation.
+      // `groupBy`/`stateFilter` have no report-side equivalent (the
+      // backend's assignment-row filter set mirrors this panel's Phase 40
+      // filters only) and are deliberately not passed through.
+      const blob = await complianceApi.downloadOrgComplianceReport(orgId, kind, {
+        standardId: standardFilter || undefined,
+        standardVersionId: versionFilter || undefined,
+        projectId: projectFilter || undefined,
+      });
+      downloadBlob(blob, `compliance-by-standard-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the compliance report."), "error");
+    }
+  }
+
   if (statusRows === null) return <Spinner />;
 
   return (
     <div className="side-grid">
       <div className="stack">
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <ReportExportButton onDownload={downloadReport} />
+        </div>
         {groups.length === 0 ? (
           <p className="text-muted">No compliance assignments match these filters.</p>
         ) : (

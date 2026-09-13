@@ -47,13 +47,24 @@
  * requirement, only to a standard/version as a whole) — see
  * `api.ts::findTopLevelAncestor`'s own docstring for why "section" means
  * "top-level ancestor requirement" here.
+ *
+ * Phase 43 adds an "Export" trigger (`ReportExportButton`) scoped to this
+ * panel's current Project/Standard/Standard version/Sub-section filters —
+ * `complianceApi.downloadOrgComplianceReport` passes them through as query
+ * params, matching `_matches_requirement_filter`'s server-side "sub-section
+ * means top-level ancestor" definition on the backend
+ * (`app.modules.compliance.reports`). `category`/`evidenceValidity` have no
+ * report-side equivalent (the report always covers every category) and
+ * aren't passed through.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import {
   COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL,
@@ -207,6 +218,25 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
     return top !== null && top.id === subSectionFilter;
   }
 
+  async function downloadReport(kind: "pdf" | "csv") {
+    try {
+      // Scoped to this panel's own current filters (Phase 43) — matches
+      // `OrgComplianceStandardsPanel.tsx`'s identical convention.
+      // `category`/`evidenceValidity` have no report-side equivalent (the
+      // exported report always covers every category) and aren't passed
+      // through.
+      const blob = await complianceApi.downloadOrgComplianceReport(orgId, kind, {
+        projectId: projectFilter || undefined,
+        standardId: standardFilter || undefined,
+        standardVersionId: versionFilter || undefined,
+        requirementId: subSectionFilter || undefined,
+      });
+      downloadBlob(blob, `outstanding-compliance-items-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the outstanding items report."), "error");
+    }
+  }
+
   if (nonCompliant === null || pending === null || outstandingActions === null || expiringEvidence === null || reviewsDue === null) {
     return <Spinner />;
   }
@@ -236,6 +266,9 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
   return (
     <div className="side-grid">
       <div className="stack">
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <ReportExportButton onDownload={downloadReport} />
+        </div>
         {(category === "" || category === "non_compliant") && (
           <section className="card stack">
             <h3 style={{ margin: 0 }}>Non-compliant requirements ({filteredNonCompliant.length})</h3>

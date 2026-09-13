@@ -121,14 +121,19 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await complianceTile.click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
-    // --- Phase 15: download the project's own compliance report, PDF and CSV.
+    // --- Phase 15: download the project's own compliance report, PDF and
+    // CSV — behind the shared `ReportExportButton`'s "Export" trigger since
+    // Phase 43 (previously two permanently-visible buttons).
+    await page.getByRole("button", { name: "Export" }).click();
+    const exportMenu = page.getByRole("dialog", { name: "Export" });
     const pdfDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF report" }).click();
+    await exportMenu.getByRole("button", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
 
+    await page.getByRole("button", { name: "Export" }).click();
     const csvDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download CSV report" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     const csvDownload = await csvDownloadPromise;
     expect(csvDownload.suggestedFilename()).toContain("compliance-report.csv");
 
@@ -293,5 +298,18 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await expect(page.getByText(childRequirementName)).toHaveCount(0);
     await selectFilterOption(page, "Sub-section", sectionAName);
     await expect(page.getByText(childRequirementName)).toBeVisible();
+
+    // Phase 43: the Outstanding tab's Export trigger carries its active
+    // Standard/Sub-section filters as query params, mirroring the org-wide
+    // Outstanding group's identical coverage in `org-compliance-view.spec.ts`.
+    const reportRequestPromise = page.waitForRequest(
+      (req) =>
+        req.url().includes("/modules/compliance/reports/csv") &&
+        req.url().includes("standard_id=") &&
+        req.url().includes("requirement_id=")
+    );
+    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await reportRequestPromise;
   });
 });

@@ -37,7 +37,10 @@
  * 11's "two blocks competing for the same job," the exact shape the CSV
  * wizard's own Export/Download-template pair already had) behind one
  * "Export" `Popover` trigger, mirroring `CsvImportWizard.tsx`'s identical
- * fix.
+ * fix; Phase 43 extracted that trigger into the shared `ReportExportButton`
+ * once three more panels needed the identical shape — see that component's
+ * own docstring — and moved `ProjectCompliancePage.tsx`'s own still-two-
+ * button layout onto it in the same change.
  *
  * The nine `StatCard`s below (four headline + five detail) render as one
  * single `.grid.grid-metrics` grid (Phase 25c) rather than three separately
@@ -74,14 +77,13 @@
  * take up a full row rather than share one with the other two detail
  * cards.
  */
-import { Download } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import { MetricTile } from "../../components/MetricTile";
-import { Popover } from "../../components/Popover";
+import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { StatCard } from "../../components/StatCard";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -113,20 +115,13 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
   const statusRows = useOrgComplianceStatus(orgId);
   const [data, setData] = useState<DashboardData | null>(null);
-  const [downloading, setDownloading] = useState<"pdf" | "csv" | null>(null);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const exportTriggerRef = useRef<HTMLButtonElement>(null);
 
   async function downloadReport(kind: "pdf" | "csv") {
-    setExportMenuOpen(false);
-    setDownloading(kind);
     try {
       const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports/${kind}`);
       downloadBlob(blob, `organisation-compliance-report.${kind}`);
     } catch (err) {
       showToast(toErrorMessage(err, "Could not generate the organisation compliance report."), "error");
-    } finally {
-      setDownloading(null);
     }
   }
 
@@ -175,31 +170,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button
-          ref={exportTriggerRef}
-          type="button" className="btn"
-          onClick={() => setExportMenuOpen((v) => !v)}
-        >
-          <Download size={16} /> {downloading ? "Exporting…" : "Export"}
-        </button>
-        {exportMenuOpen && (
-          <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
-            <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
-              <button
-                type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                onClick={() => downloadReport("pdf")}
-              >
-                <Download size={14} /> {downloading === "pdf" ? "…" : "Download PDF report"}
-              </button>
-              <button
-                type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                onClick={() => downloadReport("csv")}
-              >
-                <Download size={14} /> {downloading === "csv" ? "…" : "Download CSV report"}
-              </button>
-            </div>
-          </Popover>
-        )}
+        <ReportExportButton onDownload={downloadReport} />
       </div>
       <div className="grid grid-metrics">
         <StatCard label="Active compliance standards" value={activeStandardCount} />
