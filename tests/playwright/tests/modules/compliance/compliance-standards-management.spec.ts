@@ -65,8 +65,14 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     // --- Org compliance settings: create an action type, needed for the
     // required action below (`/standards/settings/:orgId`, superseding the
     // old org-admin "Compliance" -> "Action types" tab).
+    // `exact: true`: Phase 35a's default tiles view renders every standard
+    // as its own card link whose accessible name also contains the org
+    // name (name + reference + org), so a plain substring match on
+    // `ORG_NAMES.alpha` now resolves to every tile card too, not just the
+    // "Compliance settings" link below — that link's own accessible name
+    // is the org name alone, so `exact` disambiguates it from every card.
     await page.goto("/standards");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
     await page.getByPlaceholder("Action type name").fill(actionTypeName);
     await page.getByRole("button", { name: "Add action type" }).click();
@@ -210,5 +216,34 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
       await page.getByRole("button", { name: "Tree view" }).click();
     }
     await expect(page.getByText("Who may access what, and how it's reviewed.")).toBeVisible();
+  });
+
+  test("Standards list page offers a tiles/list view toggle (Phase 35a)", async ({ page }) => {
+    const suffix = Date.now();
+    const reference = `E2E-35A-${suffix}`;
+    const standardName = `E2E View Toggle Standard ${suffix}`;
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
+
+    await page.goto("/standards");
+    // Defaults to tiles view (`ProjectListPage.tsx`'s own default) — the
+    // standard renders as a card link, not a table row.
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: new RegExp(standardName) })).toBeVisible();
+
+    await page.getByRole("button", { name: "List view" }).click();
+    try {
+      await expect(page.getByRole("table")).toBeVisible();
+      await expect(page.getByRole("cell", { name: standardName })).toBeVisible();
+    } finally {
+      // `view_mode:standards` (`useViewMode`) is a per-user preference
+      // shared across every run of this shared `orgAdminAlphaBeta` persona,
+      // not scoped to this one test — reset to the default here regardless
+      // of what happens above, mirroring this file's own "Overview stat
+      // tiles…" test's identical reasoning for the requirement browser's
+      // own toggle.
+      await page.getByRole("button", { name: "Tile view" }).click();
+    }
   });
 });

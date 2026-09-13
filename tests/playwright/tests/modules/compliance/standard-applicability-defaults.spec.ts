@@ -86,8 +86,11 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // --- Switch the standard's applicability default; reconciliation
     // should materialise a real assignment for every current project in
     // the org, with no manual per-project action.
+    // A `link`, not a `button`, per Phase 35a: `/standards` defaults to its
+    // new tiles view, whose cards are `<Link>`s (`StandardListPage.tsx`'s
+    // pre-35a `DirectoryTable`-only list rendered rows as `<button>`s).
     await page.goto("/standards");
-    await page.getByRole("button", { name: reference }).click();
+    await page.getByRole("link", { name: new RegExp(reference) }).click();
     await expect(page.getByRole("switch", { name: "Applies to all projects by default" })).toHaveAttribute("aria-checked", "false");
     await page.getByRole("switch", { name: "Applies to all projects by default" }).click();
     await expect(page.getByRole("switch", { name: "Applies to all projects by default" })).toHaveAttribute("aria-checked", "true");
@@ -110,7 +113,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     // --- Except Gamma-1 back out — its reconciled assignment archives,
     // never deletes, preserving whatever history it may have accrued.
     await page.goto("/standards");
-    await page.getByRole("button", { name: reference }).click();
+    await page.getByRole("link", { name: new RegExp(reference) }).click();
     await page.getByRole("button", { name: "Exclude a project" }).click();
     const excludeDialog = page.getByRole("dialog", { name: "Exclude a project" });
     await excludeDialog.getByLabel("Project").selectOption({ label: PROJECT_NAMES.gamma1 });

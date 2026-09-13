@@ -35,6 +35,15 @@
  * "lowercase/trim the query, filter on it, hide everything when empty"
  * idiom (not the component itself — this list has no user/group-selection
  * semantics) rather than inventing a second filtering convention.
+ *
+ * Phase 35b: the trigger uses its own borderless `.entity-switcher-trigger`
+ * class (`theme.css`), not the generic `.btn` — `.btn`'s own border/
+ * background gave the bare chevron a separately bordered-chip look next to
+ * the entity name rather than reading as part of it, the same defect class
+ * already fixed once for `StandardNavSection.tsx`'s disclosure toggle
+ * (Phase 29d, `.nav-link-row-toggle`). Fixed here at the source so every
+ * consuming page (Org Overview, Project Overview, Project Admin, the
+ * Standard workspace, Org Admin) gets it in one change.
  */
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -107,7 +116,7 @@ export function EntitySwitcher({
       <button
         ref={triggerRef}
         type="button"
-        className="btn"
+        className="entity-switcher-trigger"
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}

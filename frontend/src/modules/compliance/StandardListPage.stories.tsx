@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Organization } from "../../api/types";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardListPage } from "./StandardListPage";
 import type { ComplianceStandard } from "./types";
 
@@ -62,7 +62,10 @@ function mockStandardListApis(orgs: Organization[], standardsByOrg: Record<strin
 const meta: Meta<typeof StandardListPage> = {
   title: "Modules/Compliance/StandardListPage",
   component: StandardListPage,
-  decorators: [withToast(), withAuth(buildUser({ is_server_admin: false })), withRouter("/standards")],
+  // `withStatefulAuth`, not the plain no-op `withAuth`: Phase 35a's
+  // `ViewToggle` reads/writes `useUiPreference`, so switching tiles/list
+  // needs a real `setUiPreference` for the UI to actually change.
+  decorators: [withToast(), withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/standards")],
 };
 export default meta;
 
@@ -121,6 +124,36 @@ export const CreateStandardWithOrgPicker: Story = {
       "/api/v1/orgs/org-2/modules/compliance/standards",
       expect.objectContaining({ reference: "NIST-CSF", name: "NIST Cybersecurity Framework" })
     ));
+  },
+};
+
+/** Phase 35a: `ViewToggle` brings this page into line with
+ * `docs/ux-style-guide.md`'s "Pattern: view toggle" — the same tile/list
+ * split `ProjectListPage.tsx` already offers. Defaults to tiles; switching
+ * to list shows the pre-existing `DirectoryTable`. */
+export const TogglesBetweenTilesAndListView: Story = {
+  beforeEach: () =>
+    mockStandardListApis(
+      [org(), org({ id: "org-2", name: "Beta Industries" })],
+      {
+        "org-1": [standard()],
+        "org-2": [standard({ id: "std-2", organization_id: "org-2", reference: "SOC2", name: "SOC 2 Type II" })],
+      }
+    ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
+
+    // Defaults to tiles: no table role, but the standard's card is a link.
+    await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: /ISO 27001/ })).toHaveAttribute("href", "/standards/std-1");
+
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(canvas.getByRole("table")).toBeInTheDocument();
+    await expect(canvas.getByText("SOC 2 Type II")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Tile view" }));
+    await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
   },
 };
 

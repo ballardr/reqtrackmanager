@@ -35,6 +35,11 @@
  * (Principle 5/11), grouping the rarer import path behind the same
  * trigger rather than a second, permanently-visible button competing with
  * "New standard".
+ *
+ * Phase 35a adds the `ViewToggle` tile/list split `docs/ux-style-guide.md`'s
+ * "Pattern: view toggle" already requires of any list page like this one —
+ * `ProjectListPage.tsx`'s own tile card is the direct precedent for the
+ * tiles-mode render below (name + org + status, in card form).
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -44,6 +49,7 @@ import type { Organization } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
+import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -67,6 +73,7 @@ export function StandardListPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [viewMode, setViewMode] = useViewMode("standards");
 
   async function reload() {
     setRows(null);
@@ -150,8 +157,15 @@ export function StandardListPage() {
 
       <div className="side-grid">
         <div className="stack">
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
+
           {rows === null && <p>Loading…</p>}
-          {rows !== null && (
+          {rows !== null && rows.length > 0 && filtered.length === 0 && (
+            <p className="text-muted">No compliance standards match your search.</p>
+          )}
+          {rows !== null && filtered.length > 0 && viewMode === "list" && (
             <DirectoryTable
               ariaLabel="Compliance standards"
               columns={columns}
@@ -161,6 +175,27 @@ export function StandardListPage() {
               emptyState={<p className="text-muted">No compliance standards yet.</p>}
             />
           )}
+          {rows !== null && filtered.length > 0 && viewMode === "tiles" && (
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+              {filtered.map((s) => (
+                <Link
+                  key={s.id}
+                  to={`/standards/${s.id}`}
+                  className="card stack"
+                  style={{ gap: "0.5rem", color: "inherit", textDecoration: "none" }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: "1.05rem" }}>{s.name}</div>
+                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>
+                  {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.organization_name}</div>}
+                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    Issuing organisation: {s.issuing_organisation ?? "—"}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.is_archived ? "Archived" : "Active"}</div>
+                </Link>
+              ))}
+            </div>
+          )}
+          {rows !== null && rows.length === 0 && <p className="text-muted">No compliance standards yet.</p>}
         </div>
 
         <FilterPanel

@@ -104,5 +104,29 @@ export const SelectingASiblingClosesThePopover: Story = {
   },
 };
 
+/** Phase 35b: the trigger is borderless/transparent at rest — no separately
+ * bordered chip next to the entity name — the same "icon affordance, not a
+ * bolted-on `.btn`" treatment already applied once to
+ * `StandardNavSection.tsx`'s disclosure toggle (Phase 29d). `theme.css`'s
+ * `.entity-switcher-trigger:hover`/`:focus-visible` rules give it a
+ * background on hover/focus (not asserted here via `getComputedStyle` —
+ * `:hover`/`:focus-visible` pseudo-classes aren't reliably observable
+ * through `userEvent.hover`'s synthetic pointer events in this test
+ * runner, the same reason no other story in this codebase snapshot-tests a
+ * CSS-only hover state); the class/border assertions below are the real
+ * regression guard for the chrome fix itself. */
+export const ChevronChromeIsBorderless: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+
+    await expect(trigger).toHaveClass("entity-switcher-trigger");
+    await expect(trigger).not.toHaveClass("btn");
+    const atRest = getComputedStyle(trigger);
+    await expect(atRest.borderStyle === "none" || atRest.borderWidth === "0px").toBe(true);
+    await expect(atRest.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  },
+};
+
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };

@@ -45,8 +45,12 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     // --- An action type is needed for the required action below —
     // created first via org compliance settings, same flow
     // `compliance-standards-management.spec.ts` uses.
+    // `exact: true`: Phase 35a's default tiles view renders every standard
+    // as a card whose accessible name also contains the org name, so a
+    // plain substring match on `ORG_NAMES.alpha` now also resolves to
+    // every tile card, not just the "Compliance settings" link below.
     await page.goto("/standards");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
     await page.getByPlaceholder("Action type name").fill(actionTypeName);
     await page.getByRole("button", { name: "Add action type" }).click();

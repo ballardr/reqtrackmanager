@@ -647,6 +647,32 @@ textarea.input {
   display: none;
 }
 
+/* `EntitySwitcher`'s chevron trigger (compliance-module-plan.md Phase 35b)
+   — the same "no separately bordered chip" fix `.nav-link-row-toggle`
+   above already applies to the expandable nav-rail disclosure toggle
+   (Phase 29d), given to the entity quick-switch chevron itself since it
+   has no wrapping row of its own to inherit a shared hover surface from
+   (it sits directly beside a page's plain `<h1>` text, owned by each
+   caller, not by this component). Borderless and transparent at rest so
+   it reads as part of the adjacent entity name rather than a bolted-on
+   control; a hover/focus background gives it the same affordance any
+   other icon-only button in the app has. */
+.entity-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.entity-switcher-trigger:hover,
+.entity-switcher-trigger:focus-visible {
+  background: var(--color-surface-alt);
+}
+
 .nav-rail-icons .nav-link {
   justify-content: center;
 }
