@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for a bat
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-13 (Phase 4 complete).
+**Last updated:** 2026-09-14 (Phase 5 complete).
 
-**Overall progress:** 4 / 8 phases complete. **Do not implement a further phase until the user has confirmed this plan** — several remaining phases contain open design points (see "Open decisions") that were reasoned through during planning but not yet explicitly signed off phase-by-phase.
+**Overall progress:** 5 / 8 phases complete. **Do not implement a further phase until the user has confirmed this plan** — several remaining phases contain open design points (see "Open decisions") that were reasoned through during planning but not yet explicitly signed off phase-by-phase.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -18,7 +18,7 @@ This document is the persistent, session-resumable implementation plan for a bat
 | 2 | Nav-rail collapse/expand toggle — circular, centered on the divider | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 2" entry |
 | 3 | Tabs vs. buttons — distinct visual language | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 3" entry |
 | 4 | Subtle colour system — status/type colour coding | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 4" entry |
-| 5 | Access review page — groups/org "show more" + modals off the action menu | [ ] Not started |
+| 5 | Access review page — groups/org "show more" + modals off the action menu | [x] Done — see `docs/decisions.md`'s "Platform review 2026-09, Phase 5" entry |
 | 6 | Project members table — groups get their own row (editable role, removable) | [ ] Not started |
 | 7 | Requirement-to-requirement link picker — browse (cascade) + search | [ ] Not started |
 | 8 | Per-project opt-in: require traceability/action links before approval | [ ] Not started |

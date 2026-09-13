@@ -55,17 +55,21 @@ export const AccessReviewOrphanedAccounts: Story = {
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await expect(canvas.getByText("None")).toBeInTheDocument();
 
-    // Deactivate/ban now sit behind one `ActionMenu` kebab instead of
-    // separate always-visible buttons — style guide "Pattern: action menu",
-    // same "OrgAdminPage.tsx" consolidation applied here. Grant/revoke
-    // server admin moved to the "Server roles" `MultiSelectDropdown` column
+    // Deactivate/ban/assign-roles now all sit behind one `ActionMenu` kebab
+    // instead of separate always-visible buttons/columns — style guide
+    // "Pattern: action menu", same "OrgAdminPage.tsx" consolidation applied
+    // here. "Assign server roles" moved here in Platform review 2026-09,
+    // Phase 5, off its own always-visible "Server roles" dropdown column
     // (module system Phase 0) — see `AccessReviewGrantServerAdmin` below.
     await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
     const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Deactivate" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Orphan User's server roles" })).toHaveTextContent(
-      "No server roles"
-    );
+
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
+    const rolesGroup = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await expect(
+      within(rolesGroup).getByRole("checkbox", { name: "Grant Server admin to Orphan User" })
+    ).not.toBeChecked();
   },
 };
 
@@ -77,7 +81,65 @@ export const AccessReviewShowsGroups: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("grouped@example.com")).toBeInTheDocument());
+    // 2 groups fits the compact summary as-is, no "+N more"/modal needed.
     await expect(canvas.getByText("Engineering, Platform")).toBeInTheDocument();
+  },
+};
+
+/** Platform review 2026-09, Phase 5: past 2 groups the row shows a "+N
+ * more" summary instead of an unbounded joined string, with the full list
+ * reachable via "View groups" on the row's `ActionMenu`. */
+export const AccessReviewGroupsShowMoreAndViewGroups: Story = {
+  beforeEach: () =>
+    mockServerManagementApis([
+      systemUser({
+        user_id: "u1",
+        email: "grouped@example.com",
+        display_name: "Grouped User",
+        group_names: ["Engineering", "Platform", "Security", "Data"],
+      }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("grouped@example.com")).toBeInTheDocument());
+    await expect(canvas.getByText("Engineering, Platform, +2 more")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Grouped User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Grouped User's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "View groups" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Grouped User's groups" });
+    for (const name of ["Engineering", "Platform", "Security", "Data"]) {
+      await expect(within(dialog).getByText(name)).toBeInTheDocument();
+    }
+  },
+};
+
+/** Platform review 2026-09, Phase 5: the Organisations column stays inline
+ * (unlike Groups above) but gains a "Show all N" toggle past 2 orgs. */
+export const AccessReviewOrganisationsShowMore: Story = {
+  beforeEach: () =>
+    mockServerManagementApis([
+      systemUser({
+        user_id: "u1",
+        email: "multiorg@example.com",
+        display_name: "Multi Org User",
+        has_org_membership: true,
+        organization_count: 3,
+        organization_names: ["Alpha Robotics", "Beta Systems", "Gamma Labs"],
+      }),
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("multiorg@example.com")).toBeInTheDocument());
+    await expect(canvas.getByText("Alpha Robotics, Beta Systems")).toBeInTheDocument();
+    await expect(canvas.queryByText("Gamma Labs")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Show all 3" }));
+    await expect(canvas.getByText("Alpha Robotics, Beta Systems, Gamma Labs")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Show fewer" }));
+    await expect(canvas.getByText("Alpha Robotics, Beta Systems")).toBeInTheDocument();
   },
 };
 
@@ -90,26 +152,29 @@ export const AccessReviewBannedAndAdminBadges: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Banned")).toBeInTheDocument());
-    // The old standalone "Server admin" badge was dropped once the "Server
-    // roles" dropdown's own closed-state summary started showing the same
-    // fact (module system Phase 0) — asserted here instead.
-    await expect(canvas.getByRole("button", { name: "Admin User's server roles" })).toHaveTextContent("Server admin");
-
-    await userEvent.click(canvas.getByRole("button", { name: "Admin User's server roles" }));
-    const rolesPopover = within(document.body).getByRole("group", { name: "Admin User's server roles" });
+    // The old standalone "Server admin" badge, and the "Server roles"
+    // dropdown's own closed-state summary that replaced it (module system
+    // Phase 0), are both gone — Platform review 2026-09, Phase 5 moved role
+    // state behind an "Assign server roles" modal with no row-level summary
+    // at all, so this now opens the modal to confirm the checked state.
+    await userEvent.click(canvas.getByRole("button", { name: "Admin User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Admin User's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
+    const rolesGroup = within(document.body).getByRole("group", { name: "Admin User's server roles" });
     await expect(
-      within(rolesPopover).getByRole("checkbox", { name: "Revoke Server admin from Admin User" })
+      within(rolesGroup).getByRole("checkbox", { name: "Revoke Server admin from Admin User" })
     ).toBeChecked();
   },
 };
 
 /** Granting server admin opens the shared `ConfirmDialog` (sixth-pass audit
  * — this used to fire via `window.confirm`), then shows a success toast
- * once the role change completes. Module system Phase 0 (docs/compliance-
- * module-plan.md): grant/revoke now lives in the "Server roles"
- * `MultiSelectDropdown` column instead of the `ActionMenu`, mirroring
- * `OrgAdminPage.tsx`'s own roles column — but, unlike that column, still
- * confirms via `ConfirmDialog` first, since this grant is cross-tenant. */
+ * once the role change completes. Platform review 2026-09, Phase 5: role
+ * checkboxes moved from an always-visible "Server roles" dropdown column
+ * (module system Phase 0) into an "Assign server roles" modal opened from
+ * the `ActionMenu`, rendered directly rather than via `MultiSelectDropdown`
+ * — see `docs/decisions.md`. Still confirms via `ConfirmDialog` first,
+ * since this grant is cross-tenant. */
 export const AccessReviewGrantServerAdmin: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);
@@ -118,9 +183,11 @@ export const AccessReviewGrantServerAdmin: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's server roles" }));
-    const rolesPopover = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
-    await userEvent.click(within(rolesPopover).getByRole("checkbox", { name: "Grant Server admin to Orphan User" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
+    const rolesGroup = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await userEvent.click(within(rolesGroup).getByRole("checkbox", { name: "Grant Server admin to Orphan User" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: "Grant server admin to this user?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Grant server admin" }));
@@ -131,8 +198,8 @@ export const AccessReviewGrantServerAdmin: Story = {
 };
 
 /** Module system Phase 0: granting `MODULE_ADMINISTRATOR` follows the exact
- * same dropdown-then-`ConfirmDialog` flow as server admin above, via the
- * new `/server-roles` grant endpoint rather than `/server-admin`. */
+ * same modal-then-`ConfirmDialog` flow as server admin above, via the new
+ * `/server-roles` grant endpoint rather than `/server-admin`. */
 export const AccessReviewGrantModuleAdministrator: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);
@@ -141,10 +208,12 @@ export const AccessReviewGrantModuleAdministrator: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's server roles" }));
-    const rolesPopover = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
+    const rolesGroup = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
     await userEvent.click(
-      within(rolesPopover).getByRole("checkbox", { name: "Grant Module administrator to Orphan User" })
+      within(rolesGroup).getByRole("checkbox", { name: "Grant Module administrator to Orphan User" })
     );
 
     const dialog = within(document.body).getByRole("dialog", { name: "Grant module administrator to this user?" });

@@ -5108,3 +5108,36 @@ While running the Playwright specs that exercise the touched pages, `tests/e2e-w
 ### Files changed
 
 `frontend/src/styles/theme.css`, `frontend/src/api/types.ts`, `frontend/src/components/FilterBadge.tsx`, `frontend/src/components/FilterBadge.stories.tsx`, `frontend/src/pages/RequirementsPage.tsx`, `frontend/src/pages/RequirementDetailPage.tsx`, `frontend/src/pages/ChangeRequestsPage.tsx`, `frontend/src/pages/ChangeRequestDetailPage.tsx`, `frontend/src/pages/ProjectActionsPage.tsx`, `frontend/src/modules/compliance/RequirementTraceabilityLinksSection.tsx`, `docs/ux-style-guide.md`, `docs/platform-review-2026-09-plan.md` (Phase 4 ticked) — plus the incidental fix: `frontend/src/pages/ProjectAdminPage.tsx` (`loadGroups` request-id guard), `tests/playwright/tests/e2e-workflows/project-admin-groups-and-fields.spec.ts`, `docs/decisions.md` (this entry).
+
+## Platform review 2026-09, Phase 5: Access review page — groups/org "show more" + modals off the action menu (2026-09-14)
+
+Fifth phase of the September 2026 platform review's 8-item combined plan (`docs/platform-review-2026-09-plan.md`). The plan's own gate ("do not implement a further phase until the user has confirmed this plan") was satisfied by the user's explicit instruction to start this phase — **Decided by: User**. Phase 5's three sub-decisions (groups → modal, orgs → inline "show more", server roles → action-menu modal) were already recorded as **Decided by: User** in the plan itself from the original review conversation, so no further design sign-off was needed before implementing.
+
+### Change
+
+`frontend/src/pages/ServerManagementPage.tsx` (`AccessReviewTab`'s `usersColumns`):
+
+- **Groups column**: the old unconditional `group_names.join(", ")` (unreadable for a user in many groups) is now a compact summary — the first 2 names, plus `strings.system.groupsMore(n)` ("+N more") past that — with the full list reachable via a new "View groups" `ActionMenu` item opening a `Modal` (a plain `<ul>`, no new list component needed).
+- **Organisations column**: kept inline per the user's own reasoning (orgs are typically far fewer than groups) rather than moved to a modal, but gained a "Show all N" / "Show fewer" toggle past 2 orgs — reusing Org Admin's "View access" panel `ProjectRole`-expansion shape (`expandedAccessProjectIds`/small `.btn` with `fontSize: "0.75rem"`) rather than inventing a second expand affordance for the same underlying idea.
+- **Server roles**: the always-visible "Server roles" `MultiSelectDropdown` column (module system Phase 0) is gone; grant/revoke of `server_admin`/`module_administrator` now lives behind a new "Assign server roles" `ActionMenu` item opening a `Modal` with the two roles rendered as plain labelled checkboxes directly in the modal body, not via `MultiSelectDropdown` — **Decided by: Agent**: `MultiSelectDropdown` is a closed-by-default trigger that opens a `Popover`, built for an always-visible table cell; nesting that same closed/open behaviour a second time *inside* an already-open `Modal` would just be an extra click with no payoff, so the modal renders the checkbox list `MultiSelectDropdown` itself renders once opened. Each toggle still confirms via the existing `ConfirmDialog` first (unchanged grant/revoke functions, unchanged audit-relevant endpoints), including while nested inside the new "Assign server roles" modal — the same nested-`Modal`-over-`Modal` shape `OrgAdminPage.tsx`'s "Manage users" → "Add member" already establishes, so no new a11y work was needed (`dialogA11y.ts` already supports it).
+- **`ActionMenu` gating**: the menu itself now renders for every row (previously gated to `!has_org_membership` rows only) — "Assign server roles" and "View groups" apply regardless of org membership (I-M-08). Deactivate/reactivate and ban/unban stay scoped to org-less accounts only: checked before removing the gate wholesale (per the plan's own explicit instruction to verify this rather than assume) — that gate was protecting those two specific actions, not the menu container, so it moved down to the item list instead of being dropped.
+
+`frontend/src/i18n/strings.ts`: added `showAllOrganizations`/`showFewerOrganizations`, `groupsMore`/`viewGroups`/`groupsModalTitle`/`noGroups`, `assignServerRoles`/`assignServerRolesModalTitle`; removed the now-unused `serverRoles` (old column header) string.
+
+`docs/ux-style-guide.md`: added an icon-table row for `ShieldCheck` ("assign/manage roles" — an `ActionMenu` item opening a role-toggle modal, distinct from an inline `MultiSelectDropdown` roles column) and noted the new "View groups" use of the existing `Eye` icon.
+
+### SOC 2 / access-control note
+
+No new authorization logic was added — this phase only relocates the UI for two already-existing, already-gated mutations (`PUT /server-admin`, `POST`/`DELETE /server-roles`) from an always-visible column into a modal, preserving the exact same `ConfirmDialog` (Tier 1) confirmation step and the same backend endpoints. Reviewed against `docs/soc2/policies/access-control-policy.md` on that basis — no regression to flag.
+
+### Incidental finding (not re-fixed — already diagnosed and deferred in the Phase 4 entry above)
+
+Verifying this phase's Playwright coverage against the long-lived local `tests/container` stack reproduced `project-admin-groups-and-fields.spec.ts`'s "add and remove a project group member" step timing out waiting for its own freshly-created group's row. Root cause: `ProjectAdminPage.tsx`'s Project groups tab paginates at 20 (`GROUPS_PAGE_SIZE`), `helpers.ts`'s `openProjectGroupPanel` has no "Load more"/search step, and this local stack's Beta-2 project has accumulated more than 20 dynamically-named `E2E Beta-2 Group *` rows from repeated manual runs since Phase 4 — pushing the row this run just created past page 1. This is the identical local-debris pattern the Phase 4 entry above already root-caused and explicitly declined to chase further ("a `docker compose down -v` + rebuild + reseed of that local stack would clear it... left for the user to run when convenient") — not re-investigated here, and unrelated to this phase's own diff (confirmed by running this phase's target spec, `user-directory-and-bans.spec.ts`, in isolation, which passes cleanly). Flagged to the user rather than silently worked around.
+
+### Verification
+
+`tsc --noEmit`: clean. `eslint`: clean on all touched files. `npm run test-storybook -- src/pages/ServerManagementPage.stories.tsx`: 21 tests pass (including new/updated coverage for the groups "+N more"/"View groups" modal, the organisations "show all"/"show fewer" toggle, and the "Assign server roles" modal flow, replacing the old always-visible-dropdown assertions). Playwright, against the rebuilt `tests/container` frontend image: `user-directory-and-bans.spec.ts` (this page's own e2e coverage) passes in isolation — its `ActionMenu` still exposes Deactivate/Ban for the org-less orphan persona unchanged.
+
+### Files changed
+
+`frontend/src/pages/ServerManagementPage.tsx`, `frontend/src/pages/ServerManagementPage.stories.tsx`, `frontend/src/i18n/strings.ts`, `docs/ux-style-guide.md`, `docs/platform-review-2026-09-plan.md` (Phase 5 ticked), `docs/decisions.md` (this entry).

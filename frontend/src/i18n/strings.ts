@@ -1138,7 +1138,18 @@ const en = {
     organizations: (orgPlural: string) => orgPlural,
     organizationCount: (n: number, org: string) => `Member of ${n} ${org}(s)`,
     noOrganizations: "None",
+    // Platform review 2026-09, Phase 5: Organisations column "show more"
+    // toggle past 2 orgs, mirroring `orgAdmin.userAccessShowAllRoles`/
+    // `userAccessShowFewerRoles`'s copy shape.
+    showAllOrganizations: (n: number) => `Show all ${n}`,
+    showFewerOrganizations: "Show fewer",
     groups: "Groups",
+    // Platform review 2026-09, Phase 5: Groups column compact summary +
+    // "View groups" modal (replacing the old unconditional joined string).
+    groupsMore: (n: number) => `+${n} more`,
+    viewGroups: "View groups",
+    groupsModalTitle: (name: string) => `${name}'s groups`,
+    noGroups: "No groups",
     email: "Email",
     name: "Name",
     lastLogin: "Last login",
@@ -1178,14 +1189,19 @@ const en = {
     revokeServerAdminTitle: "Revoke server admin from this user?",
     revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
     revokedServerAdminToast: "Server admin revoked",
-    // Module system Phase 0 (docs/compliance-module-plan.md): "Server roles"
-    // MultiSelectDropdown column, mirroring Org Admin's own roles column
-    // string shapes (rolesFor/noRoles/grantRole/revokeRole).
-    serverRoles: "Server roles",
+    // Module system Phase 0 (docs/compliance-module-plan.md): server-tier
+    // role strings, mirroring Org Admin's own roles column string shapes
+    // (rolesFor/noRoles/grantRole/revokeRole). Originally an always-visible
+    // "Server roles" MultiSelectDropdown column; moved behind an ActionMenu
+    // modal in Platform review 2026-09, Phase 5 (see `assignServerRoles`/
+    // `assignServerRolesModalTitle` below) — these per-role strings are
+    // still used there.
     serverRolesFor: (name: string) => `${name}'s server roles`,
     noServerRoles: "No server roles",
     grantServerRole: (role: string, name: string) => `Grant ${role} to ${name}`,
     revokeServerRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
+    assignServerRoles: "Assign server roles",
+    assignServerRolesModalTitle: (name: string) => `${name}'s server roles`,
     grantModuleAdministrator: "Grant module administrator",
     revokeModuleAdministrator: "Revoke module administrator",
     grantModuleAdministratorTitle: "Grant module administrator to this user?",

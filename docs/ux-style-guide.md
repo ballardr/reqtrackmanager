@@ -584,8 +584,9 @@ Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont,
 | Expand / collapse | `ChevronUp` / `ChevronDown` | Reserved for `CollapsibleSection`. `SplitButtonTrigger` also uses a `ChevronDown` for its secondary-options affordance (`Pattern: split-button trigger`) — a different job at a different location (beside a button, not inside an accordion header), not a collision, but worth remembering both exist. |
 | Close a dialog | `X` | `Modal.tsx`/`SidePanel.tsx`'s own close button — distinct from `Trash2` above; not used for delete anywhere anymore. |
 | Archive / restore | `Archive` / `ArchiveRestore` | |
-| View a record's full detail | `Eye` | Org Admin's "View access" panel trigger. |
+| View a record's full detail | `Eye` | Org Admin's "View access" panel trigger; also `ServerManagementPage.tsx`'s "View groups" `ActionMenu` item (Platform review 2026-09, Phase 5). |
 | Open an `ActionMenu` (kebab/⋯) | `MoreVertical` | See "Pattern: action menu" — first use is `OrgAdminPage.tsx`'s Overview group (rename + export). |
+| Assign / manage roles (an `ActionMenu` item opening a role-toggle modal, not the roles column itself) | `ShieldCheck` | First use: `ServerManagementPage.tsx`'s "Assign server roles" (Platform review 2026-09, Phase 5, moved off an always-visible dropdown column). Distinct from a plain `MultiSelectDropdown` roles column (no icon of its own, e.g. Org Admin's Users table), which stays inline rather than behind a menu. |
 | Favourite | `Star` | Filled when favourited, outline otherwise (`ProjectListPage.tsx`, `FavouritesPage.tsx`, and the nav-rail Favourites link itself). |
 | Lock / unlock | `Lock` / `Unlock` | Currently one specific use — Org Admin's per-user "display name locked" toggle — not yet a general "this record is locked" convention; if a future requirement/action lock-state indicator is added (see the seventh pass's actions/change-request gate findings), reuse this pair rather than inventing a new one. |
 | Attachment | `Paperclip` | |
