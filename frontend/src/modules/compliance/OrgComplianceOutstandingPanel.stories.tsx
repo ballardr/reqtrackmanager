@@ -31,10 +31,12 @@ function mockApis(overrides: {
   });
 }
 
+const DEFAULT_PATH = "/orgs/org-1/overview/compliance-outstanding";
+
 const meta: Meta<typeof OrgComplianceOutstandingPanel> = {
   title: "Modules/Compliance/OrgComplianceOutstandingPanel",
   component: OrgComplianceOutstandingPanel,
-  decorators: [withRouter("/orgs/org-1/overview/compliance-outstanding"), withToast()],
+  decorators: [withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;
@@ -96,6 +98,7 @@ const REVIEWS_DUE: OrgReviewDue[] = [
 ];
 
 export const WithOutstandingItems: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () =>
     mockApis({
       nonCompliant: NON_COMPLIANT, pending: PENDING, outstandingActions: OUTSTANDING_ACTIONS,
@@ -112,7 +115,29 @@ export const WithOutstandingItems: Story = {
   },
 };
 
+/** Phase 36 — `OrgComplianceDashboard.tsx`'s "Projects with expired
+ * evidence" tile links here with `?category=evidence&validity=expired`, so
+ * only the Evidence section renders, narrowed to the expired row alone. */
+export const CategoryFilteredViaUrl: Story = {
+  decorators: [withRouter(`${DEFAULT_PATH}?category=evidence&validity=expired`)],
+  beforeEach: () =>
+    mockApis({
+      nonCompliant: NON_COMPLIANT, pending: PENDING, outstandingActions: OUTSTANDING_ACTIONS,
+      expiringEvidence: EXPIRING_EVIDENCE, reviewsDue: REVIEWS_DUE,
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Thermal test certificate/)).toBeInTheDocument());
+    await expect(canvas.getByText("Evidence expired (1)")).toBeInTheDocument();
+    // The other four sections' own content is absent, not just collapsed.
+    await expect(canvas.queryByText(/Missing MFA on admin accounts/)).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Enable MFA for admin accounts/)).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Annual security review/)).not.toBeInTheDocument();
+  },
+};
+
 export const NothingOutstanding: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

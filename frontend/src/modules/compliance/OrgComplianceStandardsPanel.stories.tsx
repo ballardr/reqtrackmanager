@@ -42,10 +42,12 @@ function mockApis(rows: ProjectComplianceStatus[]) {
   });
 }
 
+const DEFAULT_PATH = "/orgs/org-1/overview/compliance-by-standard";
+
 const meta: Meta<typeof OrgComplianceStandardsPanel> = {
   title: "Modules/Compliance/OrgComplianceStandardsPanel",
   component: OrgComplianceStandardsPanel,
-  decorators: [withRouter("/orgs/org-1/overview/compliance-by-standard"), withToast()],
+  decorators: [withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;
@@ -53,6 +55,7 @@ export default meta;
 type Story = StoryObj<typeof OrgComplianceStandardsPanel>;
 
 export const GroupedByStandard: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis(STATUS_ROWS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -69,6 +72,7 @@ export const GroupedByStandard: Story = {
 };
 
 export const FilterByProject: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis(STATUS_ROWS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -83,7 +87,32 @@ export const FilterByProject: Story = {
   },
 };
 
+/** Phase 36 — the "Group by" pivot, and its URL-driven initial state
+ * (`?groupBy=project&state=non_compliant`) so `OrgComplianceDashboard.tsx`'s
+ * "Non-compliant projects" tile can link straight into a pre-filtered,
+ * project-pivoted view. */
+export const GroupedByProjectViaUrl: Story = {
+  decorators: [withRouter(`${DEFAULT_PATH}?groupBy=project&state=non_compliant`)],
+  beforeEach: () => mockApis(STATUS_ROWS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("table")).toBeInTheDocument());
+    const table = within(canvas.getByRole("table"));
+    // Only Beta Tunnel has a non-compliant row (its ISO-27001 assignment) —
+    // Alpha Bridge (compliant) and Beta Tunnel's own EMC-1 (in-progress) are
+    // filtered out, and the grouping key is the project, not the standard.
+    await expect(table.getByText(/Beta Tunnel/)).toBeInTheDocument();
+    await expect(table.queryByText(/Alpha Bridge/)).not.toBeInTheDocument();
+    await expect(table.queryByText(/EMC-1/)).not.toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "Project" })).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: /Expand standards for Beta Tunnel/ }));
+    await waitFor(() => expect(table.getByText(/ISO-27001 — ISO 27001/)).toBeInTheDocument());
+  },
+};
+
 export const NoAssignments: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
   beforeEach: () => mockApis([]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

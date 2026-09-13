@@ -103,15 +103,27 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(page.getByText("Compliance standards in use")).toBeVisible();
     await expect(page.getByText("Projects out of compliance")).toBeVisible();
 
-    // --- Org-wide Dashboard: the non-compliant project is listed.
+    // --- Org-wide Dashboard: the non-compliant project count is a headline
+    //     tile (Phase 36) that drills through to "Compliance by standard"
+    //     pre-filtered/pre-pivoted to exactly the projects it counted,
+    //     rather than listing them inline on the tile itself.
     await selectOrgOverviewGroup(page, "Compliance dashboard");
     await expect(page.getByText("Active compliance standards")).toBeVisible();
-    await expect(page.getByText("Non-compliant projects")).toBeVisible();
-    const nonCompliantCard = page.locator("div.card", { hasText: "Non-compliant projects" });
-    await expect(nonCompliantCard.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toBeVisible();
+    const nonCompliantTile = page.getByRole("link", { name: /Non-compliant projects/ });
+    await expect(nonCompliantTile).toBeVisible();
+    await nonCompliantTile.click();
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview\/compliance-by-standard\?groupBy=project&state=non_compliant/);
+    const expandProjectButton = page.getByRole("button", { name: new RegExp(`Expand standards for ${PROJECT_NAMES.alpha1}`) });
+    await expect(expandProjectButton).toBeVisible();
+    await expandProjectButton.click();
+    // `getByText` alone would also match this standard's own <option> in the
+    // "Standard"/"Standard version" filter selects — scope to the expanded
+    // row's own link.
+    await expect(page.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
 
     // --- Phase 15/25b: download the organisation-wide compliance report,
     //     now behind the "Export" popover trigger (Principle 11).
+    await selectOrgOverviewGroup(page, "Compliance dashboard");
     await page.getByRole("button", { name: "Export" }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF report" }).click();

@@ -44,6 +44,23 @@
  * `flex-wrap`-ped rows of uneven size (4/5) — a consistent column count
  * across breakpoints regardless of how many cards happen to fit a given
  * row width.
+ *
+ * Phase 36: the top grid's `StatCard`s no longer embed a variable-length
+ * `<ProjectList>` as `children` — a long list in one card was making that
+ * whole grid row taller than its neighbours even though CSS Grid's default
+ * `stretch` equalises heights within a row (see `docs/ux-style-guide.md`'s
+ * Phase 36 addendum to the Phase 27b/25c rule). Every card that used to
+ * carry a project list is now a plain-number `MetricTile` (the established
+ * "stat tile → click navigates to a filtered view" idiom, `docs/ux-style-
+ * guide.md`'s Phase 23 note) linking through to the same data on a real
+ * `ResourceMenu` group — "Compliance by standard" (pivoted by project via
+ * `?groupBy=project`, optionally pre-filtered by `?state=`) for the
+ * standards-status-derived counts, or "Outstanding compliance items"
+ * (pre-filtered by `?category=`/`?validity=`) for the rest — rather than an
+ * unbounded list awkwardly embedded in a stat tile. The second block's
+ * three "detail" cards also dropped their `alignItems: "flex-start"` (which
+ * opted out of the row's default `stretch`) and had their own list lengths
+ * bounded, for the same height-variance reason.
  */
 import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -51,6 +68,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
+import { MetricTile } from "../../components/MetricTile";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
 import { StatCard } from "../../components/StatCard";
@@ -77,19 +95,6 @@ interface DashboardData {
   reviewsDue: OrgReviewDue[];
   reviewsIncludingUpcoming: OrgReviewDue[];
   recentActivity: ComplianceRecentActivity[];
-}
-
-function ProjectList({ projects }: { projects: { id: string; name: string }[] }) {
-  if (projects.length === 0) return <p className="text-muted" style={{ margin: 0 }}>None.</p>;
-  return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      {projects.map((p) => (
-        <li key={p.id}>
-          <Link to={`/projects/${p.id}/modules/compliance`}>{p.name}</Link>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
@@ -121,7 +126,11 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
       complianceApi.listOrgExpiringEvidence(orgId),
       complianceApi.listOrgReviewsDue(orgId, false),
       complianceApi.listOrgReviewsDue(orgId, true),
-      complianceApi.listOrgRecentActivity(orgId, 10),
+      // Bounded to 5 (Phase 36), matching this card's sibling detail cards'
+      // own bounded length, rather than the 10 fetched pre-Phase-36 — a
+      // long list here was one of the two contributors to the second
+      // block's row-height variance (see this file's own Phase 36 note).
+      complianceApi.listOrgRecentActivity(orgId, 5),
     ])
       .then(([nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity]) => {
         setData({ nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity });
@@ -142,7 +151,8 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const upcomingReviews = reviewsIncludingUpcoming
     .filter((r) => r.review.schedule_state === "upcoming")
     .sort((a, b) => a.review.next_due_date.localeCompare(b.review.next_due_date))
-    .slice(0, 8);
+    // Bounded to 5 (Phase 36) — see this file's own Phase 36 note.
+    .slice(0, 5);
 
   const issuesByStandard = new Map<string, number>();
   for (const row of [...nonCompliant, ...pending, ...outstandingActions]) {
@@ -181,31 +191,47 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
       </div>
       <div className="grid grid-metrics">
         <StatCard label="Active compliance standards" value={activeStandardCount} />
-        <StatCard label="Projects subject to compliance" value={projectsSubjectToCompliance.length}>
-          <ProjectList projects={projectsSubjectToCompliance} />
-        </StatCard>
+        <MetricTile
+          label="Projects subject to compliance"
+          value={projectsSubjectToCompliance.length}
+          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project`}
+        />
         <StatCard label="Overall compliance" value={Math.round(overallCompliancePercentage)}>
           <span className="text-muted">%, weighted by applicable requirements</span>
         </StatCard>
-        <StatCard label="Non-compliant projects" value={nonCompliantProjects.length}>
-          <ProjectList projects={nonCompliantProjects} />
-        </StatCard>
-        <StatCard label="Projects with outstanding actions" value={outstandingActionProjects.length}>
-          <ProjectList projects={outstandingActionProjects} />
-        </StatCard>
-        <StatCard label="Projects with expired evidence" value={expiredEvidenceProjects.length}>
-          <ProjectList projects={expiredEvidenceProjects} />
-        </StatCard>
-        <StatCard label="Projects with evidence approaching expiry" value={expiringSoonEvidenceProjects.length}>
-          <ProjectList projects={expiringSoonEvidenceProjects} />
-        </StatCard>
-        <StatCard label="Projects with overdue compliance reviews" value={overdueReviewProjects.length}>
-          <ProjectList projects={overdueReviewProjects} />
-        </StatCard>
-        <StatCard label="Assessments awaiting approval" value={pending.length} />
+        <MetricTile
+          label="Non-compliant projects"
+          value={nonCompliantProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project&state=non_compliant`}
+        />
+        <MetricTile
+          label="Projects with outstanding actions"
+          value={outstandingActionProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=actions`}
+        />
+        <MetricTile
+          label="Projects with expired evidence"
+          value={expiredEvidenceProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expired`}
+        />
+        <MetricTile
+          label="Projects with evidence approaching expiry"
+          value={expiringSoonEvidenceProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expiring_soon`}
+        />
+        <MetricTile
+          label="Projects with overdue compliance reviews"
+          value={overdueReviewProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=reviews`}
+        />
+        <MetricTile
+          label="Assessments awaiting approval"
+          value={pending.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=pending`}
+        />
       </div>
 
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
         <div className="card stack" style={{ flex: "1 1 260px" }}>
           <h3 style={{ margin: 0 }}>Standards with the most outstanding issues</h3>
           {standardsWithMostIssues.length === 0 ? (

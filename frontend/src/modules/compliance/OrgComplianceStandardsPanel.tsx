@@ -18,9 +18,19 @@
  * parallel requirement-level drill-down at org scope. See
  * docs/compliance-module-plan.md's Phase 14 notes for why this reuse-the-
  * existing-page approach was chosen over a second requirement browser.
+ *
+ * Phase 36 added a "Group by" pivot (standard, the original/default shape,
+ * or project) over the exact same `statusRows` — the "way to view all
+ * projects for a compliance manager" that phase asked for, following the
+ * user's own suggested direction of extending this tab rather than adding
+ * a fourth widget shape elsewhere. `groupBy`/`stateFilter` also read an
+ * initial value off the URL (`?groupBy=`/`?state=`) so `OrgComplianceDashboard.tsx`'s
+ * top-grid tiles can link straight into a pre-filtered, pre-pivoted view
+ * rather than landing on the unfiltered default and asking the user to
+ * re-apply the same filter the tile already counted.
  */
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Spinner } from "../../components/Spinner";
@@ -32,38 +42,57 @@ import {
   type ProjectComplianceStatus,
 } from "./types";
 
-interface StandardGroup {
-  standardId: string;
-  standardReference: string;
-  standardName: string;
+type GroupBy = "standard" | "project";
+
+interface Group {
+  key: string;
+  /** Full row label, e.g. "ISO-27001 — ISO 27001" for a standard group, or
+   * just the project name for a project group. */
+  displayLabel: string;
+  /** Shorter form used in the expand/collapse control's accessible name —
+   * kept distinct from `displayLabel` so the default (group-by-standard)
+   * shape's aria-label text is unchanged from before this pivot existed
+   * (existing Playwright coverage asserts on it verbatim). */
+  ariaLabel: string;
   rows: ProjectComplianceStatus[];
 }
 
-function groupByStandard(rows: ProjectComplianceStatus[]): StandardGroup[] {
-  const byStandard = new Map<string, StandardGroup>();
+function groupRows(rows: ProjectComplianceStatus[], groupBy: GroupBy): Group[] {
+  const byKey = new Map<string, Group>();
   for (const row of rows) {
-    let group = byStandard.get(row.standard_id);
+    const key = groupBy === "project" ? row.project_id : row.standard_id;
+    let group = byKey.get(key);
     if (!group) {
-      group = { standardId: row.standard_id, standardReference: row.standard_reference, standardName: row.standard_name, rows: [] };
-      byStandard.set(row.standard_id, group);
+      group =
+        groupBy === "project"
+          ? { key, displayLabel: row.project_name, ariaLabel: row.project_name, rows: [] }
+          : { key, displayLabel: `${row.standard_reference} — ${row.standard_name}`, ariaLabel: row.standard_reference, rows: [] };
+      byKey.set(key, group);
     }
     group.rows.push(row);
   }
-  return [...byStandard.values()].sort((a, b) => a.standardReference.localeCompare(b.standardReference));
+  return [...byKey.values()].sort((a, b) => a.displayLabel.localeCompare(b.displayLabel));
 }
 
 function countByState(rows: ProjectComplianceStatus[], state: ComplianceOverallState): number {
   return rows.filter((r) => r.overall_compliance_state === state).length;
 }
 
+const COMPLIANCE_OVERALL_STATES = Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[];
+
 export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
   const [statusRows, setStatusRows] = useState<ProjectComplianceStatus[] | null>(null);
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => (searchParams.get("groupBy") === "project" ? "project" : "standard"));
   const [standardFilter, setStandardFilter] = useState("");
   const [versionFilter, setVersionFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
-  const [stateFilter, setStateFilter] = useState<ComplianceOverallState | "">("");
-  const [expandedStandardIds, setExpandedStandardIds] = useState<Set<string>>(new Set());
+  const [stateFilter, setStateFilter] = useState<ComplianceOverallState | "">(() => {
+    const initial = searchParams.get("state");
+    return initial && COMPLIANCE_OVERALL_STATES.includes(initial as ComplianceOverallState) ? (initial as ComplianceOverallState) : "";
+  });
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     complianceApi
@@ -107,13 +136,14 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     });
   }, [statusRows, standardFilter, versionFilter, projectFilter, stateFilter]);
 
-  const groups = useMemo(() => groupByStandard(filteredRows), [filteredRows]);
+  const groups = useMemo(() => groupRows(filteredRows, groupBy), [filteredRows, groupBy]);
+  const counterpartNoun = groupBy === "project" ? "standards" : "projects";
 
-  function toggleExpanded(standardId: string) {
-    setExpandedStandardIds((prev) => {
+  function toggleExpanded(groupKey: string) {
+    setExpandedGroupKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(standardId)) next.delete(standardId);
-      else next.add(standardId);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
       return next;
     });
   }
@@ -130,8 +160,8 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
             <table>
               <thead>
                 <tr>
-                  <th>Standard</th>
-                  <th>Projects</th>
+                  <th>{groupBy === "project" ? "Project" : "Standard"}</th>
+                  <th>{groupBy === "project" ? "Standards" : "Projects"}</th>
                   <th>Compliant</th>
                   <th>Non-Compliant</th>
                   <th>In Progress</th>
@@ -140,21 +170,21 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
               </thead>
               <tbody>
                 {groups.map((group) => {
-                  const expanded = expandedStandardIds.has(group.standardId);
+                  const expanded = expandedGroupKeys.has(group.key);
                   const avgPercentage =
                     group.rows.reduce((sum, r) => sum + r.compliance_percentage, 0) / group.rows.length;
                   return (
-                    <Fragment key={group.standardId}>
+                    <Fragment key={group.key}>
                       <tr>
                         <td>
                           <button
                             type="button"
                             className="btn"
                             aria-expanded={expanded}
-                            aria-label={`${expanded ? "Collapse" : "Expand"} projects for ${group.standardReference}`}
-                            onClick={() => toggleExpanded(group.standardId)}
+                            aria-label={`${expanded ? "Collapse" : "Expand"} ${counterpartNoun} for ${group.ariaLabel}`}
+                            onClick={() => toggleExpanded(group.key)}
                           >
-                            {expanded ? "▾" : "▸"} {group.standardReference} — {group.standardName}
+                            {expanded ? "▾" : "▸"} {group.displayLabel}
                           </button>
                         </td>
                         <td>{group.rows.length}</td>
@@ -174,7 +204,9 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                   style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
                                 >
                                   <span>
-                                    <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>
+                                    <Link to={`/projects/${row.project_id}/modules/compliance`}>
+                                      {groupBy === "project" ? `${row.standard_reference} — ${row.standard_name}` : row.project_name}
+                                    </Link>
                                     <span className="text-muted"> — {row.version_label}</span>
                                   </span>
                                   <span>
@@ -197,6 +229,23 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
       </div>
 
       <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
+        <FilterField label="Group by">
+          <select
+            className="input"
+            value={groupBy}
+            onChange={(e) => {
+              setGroupBy(e.target.value as GroupBy);
+              // Different group keys (project ids vs standard ids) can
+              // coincidentally overlap in value; simplest to just start
+              // collapsed again rather than risk a stale expand carrying
+              // over onto an unrelated group under the new pivot.
+              setExpandedGroupKeys(new Set());
+            }}
+          >
+            <option value="standard">Standard</option>
+            <option value="project">Project</option>
+          </select>
+        </FilterField>
         <FilterField label="Standard">
           <select
             className="input"

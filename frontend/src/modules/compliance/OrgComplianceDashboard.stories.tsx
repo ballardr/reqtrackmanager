@@ -184,5 +184,36 @@ export const StatsRenderAsOneEqualSizeGrid: Story = {
   },
 };
 
+/** Phase 36 — the top grid's headline cards no longer embed a variable-
+ * length project list as their own `children`; instead each is a
+ * `MetricTile` link to a pre-filtered destination (`OrgComplianceStandardsPanel.tsx`'s
+ * project pivot, or `OrgComplianceOutstandingPanel.tsx`'s category filter). */
+export const HeadlineTilesLinkToFilteredViews: Story = {
+  beforeEach: mockApis,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nonCompliantTile = await waitFor(() => canvas.getByRole("link", { name: /Non-compliant projects/ }));
+    await expect(nonCompliantTile).toHaveAttribute(
+      "href",
+      `/orgs/${ORG_ID}/overview/compliance-by-standard?groupBy=project&state=non_compliant`
+    );
+    // No embedded project list inside the tile itself any more.
+    await expect(within(nonCompliantTile).queryByRole("link", { name: "Beta Tunnel" })).not.toBeInTheDocument();
+
+    await expect(canvas.getByRole("link", { name: /Projects with outstanding actions/ })).toHaveAttribute(
+      "href",
+      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=actions`
+    );
+    await expect(canvas.getByRole("link", { name: /Projects with expired evidence/ })).toHaveAttribute(
+      "href",
+      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=evidence&validity=expired`
+    );
+    await expect(canvas.getByRole("link", { name: /Assessments awaiting approval/ })).toHaveAttribute(
+      "href",
+      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=pending`
+    );
+  },
+};
+
 export const LightTheme: Story = { ...Populated };
 export const DarkTheme: Story = { ...Populated, globals: { theme: "dark" } };
