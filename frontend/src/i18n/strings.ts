@@ -708,6 +708,20 @@ const en = {
     // scoped to this one row's own outcome instead of a count.
     convertToDirectSuccess: (name: string) => `Converted ${name}'s inherited access to a direct role.`,
     convertToDirectNoOp: (name: string) => `${name} already holds an equal or higher direct role — nothing to convert.`,
+    // Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+    // direct `OrgGroupProjectRole` grant on this project now gets its own
+    // `kind: "group"` row instead of being visible only through a member's
+    // own `direct_org_group_role` Source line. `rolesFor`/`grantRole`/
+    // `revokeRole`/`actionsFor` above are already name-generic and reused
+    // verbatim for a group's own name — no group-specific duplicates needed.
+    groupRowBadge: "Group",
+    groupDirectGrantSource: "Direct grant on this {project}",
+    removeGroup: "Remove group",
+    removeGroupConfirmTitle: (name: string) => `Remove ${name} from this {project}?`,
+    removeGroupConfirmMessage: (name: string) =>
+      `This revokes every role ${name} holds on this {project}. Its members will need another way to regain access.`,
+    removeGroupConfirmButton: "Remove group",
+    removeGroupSuccess: (name: string) => `Removed ${name}'s access.`,
   },
   serverSettings: {
     title: "Platform branding",

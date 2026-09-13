@@ -1609,14 +1609,20 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
 
 function mockProjectsWorkflowWithOneProject(overrides: {
   effectiveMembers?: unknown[];
+  groupRoles?: unknown[];
   pendingInvites?: unknown[];
 } = {}) {
   const effectiveMembers = overrides.effectiveMembers ?? [];
+  const groupRoles = overrides.groupRoles ?? [];
   const pendingInvites = overrides.pendingInvites ?? [];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return org;
     if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
     if (path === "/api/v1/projects/proj-1/effective-members") return effectiveMembers;
+    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // third data source, fetched alongside effective-members/pending-invites
+    // by `openManageUsers`/`reloadManageUsersGroupRoles`.
+    if (path === "/api/v1/projects/proj-1/group-roles") return groupRoles;
     if (path === "/api/v1/projects/proj-1/pending-invites") return pendingInvites;
     // Module system Phase 2: `openManageUsers` fetches this alongside
     // effective-members/pending-invites — must be mocked or that
@@ -1827,6 +1833,53 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
       )
     );
     await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 6 (docs/platform-review-2026-09-plan.md): the group this modal's
+ * own add-control (`ManageUsersModalAddMemberAutocompleteMatchesGroup`
+ * above) grants a role to now renders as its own row here too, not just on
+ * `ProjectAdminPage.tsx`'s Members section — same shared `ProjectMembersTable`
+ * component, same `onToggleGroupRole`/`onRemoveGroup` wiring, scoped to
+ * `manageUsersProjectId` instead of the page's own `projectId`. */
+export const ManageUsersModalGroupRowRoleToggleAndRemove: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject({
+      groupRoles: [{ org_group_id: "grp1", org_group_name: "Engineering", roles: ["stakeholder"] }],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const body = within(document.body);
+    const modal = body.getByRole("dialog", { name: "Manage users — Beta" });
+    const row = within(modal).getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's roles" }));
+    const roleGroup = body.getByRole("group", { name: "Engineering's roles" });
+    await userEvent.click(within(roleGroup).getByRole("checkbox", { name: "Grant Member to Engineering" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/v1/projects/proj-1/group-roles",
+        { org_group_id: "grp1", role: "member" },
+      )
+    );
+
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's actions" }));
+    const menu = body.getByRole("menu", { name: "Engineering's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove group" }));
+    const dialog = body.getByRole("dialog", { name: "Remove Engineering from this project?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove group" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith("/api/v1/projects/proj-1/group-roles/grp1/stakeholder")
+    );
   },
 };
 

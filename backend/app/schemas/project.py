@@ -444,6 +444,23 @@ class OrgGroupProjectRoleAssign(BaseModel):
     role: ProjectRole
 
 
+class OrgGroupProjectRoleSummaryOut(BaseModel):
+    """One organisation group holding at least one direct `OrgGroupProjectRole`
+    grant on this project (`GET /{project_id}/group-roles`) — the read
+    counterpart `assign_group_project_role`/`revoke_group_project_role`
+    (PR4) never got, added in Phase 6 of `docs/platform-review-2026-09-
+    plan.md` so a group granted a role via the Members section's add-
+    control is actually visible and manageable afterward, not just
+    grantable blind. `roles` aggregates every role this one group holds
+    directly on this project into a single row, mirroring how
+    `ProjectGroupOut.roles` already aggregates a project group's own
+    `ProjectGroupRole` rows."""
+
+    org_group_id: UUID
+    org_group_name: str
+    roles: list[ProjectRole]
+
+
 class ProjectGroupRoleAssign(BaseModel):
     """Body for `POST /{project_id}/groups/{group_id}/roles` (PR7) — grants
     a project group one more role, directly, as its own independently-

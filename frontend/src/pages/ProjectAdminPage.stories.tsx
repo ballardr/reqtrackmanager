@@ -10,6 +10,7 @@ import type {
   EffectiveMember,
   ModuleRoleDefinition,
   OrgGroup,
+  OrgGroupProjectRoleSummary,
   PendingInvite,
   ProjectGroup,
   ProjectMemberSource,
@@ -59,6 +60,7 @@ function mockProjectAdminApis(
     memberSources?: ProjectMemberSource[];
     children?: ReturnType<typeof buildProjectListItem>[];
     effectiveMembers?: EffectiveMember[];
+    groupRoles?: OrgGroupProjectRoleSummary[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
     moduleRoles?: ModuleRoleDefinition[];
@@ -105,6 +107,13 @@ function mockProjectAdminApis(
     // Members section's own module-role fetch throws as unmocked and
     // rejects `reload()`'s own `Promise.all`.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
+    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // third data source — checked before the plain "/groups" check above
+    // doesn't apply here since "/group-roles" isn't a substring of
+    // "/groups" (the reverse isn't true either), so ordering doesn't matter,
+    // but this sits next to "/effective-members" for readability since both
+    // feed the same table.
+    if (path.includes("/group-roles")) return overrides.groupRoles ?? [];
     if (path.includes("/effective-members")) return overrides.effectiveMembers ?? [];
     if (path.includes(`/projects/${PROJECT_ID}/children`)) return overrides.children ?? [];
     if (path.startsWith("/api/v1/projects?")) return overrides.orgProjects ?? [];
@@ -697,6 +706,56 @@ export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
     );
     // Closes the same way a user pick does.
     await expect(within(document.body).queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+ * direct `OrgGroupProjectRole` grant on this project (the mechanism the
+ * story above grants through) now renders as its own row in the Members
+ * table — badge, editable role dropdown, and a "Remove group" action —
+ * instead of being visible only through a member's own Source line
+ * (`MembersTabAddMemberAutocompleteMatchesGroup` above still exercises
+ * that grant flow itself; this covers what happens to the grant afterward). */
+export const MembersTabGroupRowRoleToggleAndRemove: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      groupRoles: [{ org_group_id: "og1", org_group_name: "Engineering", roles: ["stakeholder"] }],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Members" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering's roles" })).toBeInTheDocument());
+
+    const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+    await expect(within(row).getByText(/Direct grant on this project \(Stakeholder\)/)).toBeInTheDocument();
+
+    // Granting a second role calls the same `POST .../group-roles` the
+    // "Add member" autocomplete's own grant flow uses.
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's roles" }));
+    const roleGroup = within(document.body).getByRole("group", { name: "Engineering's roles" });
+    await userEvent.click(within(roleGroup).getByRole("checkbox", { name: "Grant Member to Engineering" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/group-roles`,
+        { org_group_id: "og1", role: "member" },
+      )
+    );
+
+    // "Remove group" (Actions column) loops the per-role DELETE over every
+    // role the group currently holds, behind a Tier-1 ConfirmDialog.
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Engineering's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove group" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove Engineering from this project?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove group" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/group-roles/og1/stakeholder`)
+    );
+    await expect(within(document.body).getByText("Removed Engineering's access.")).toBeInTheDocument();
   },
 };
 

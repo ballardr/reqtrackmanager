@@ -687,11 +687,15 @@ export type MemberSourceProvenanceKind =
  * per-user members table would revoke the role for every other member of
  * that group too, which is a materially different, higher-blast-radius
  * action than what this predicate's current callers assume "direct and
- * revocable" means. A future group-row UI (tracked for a later PR) that
- * wants to offer a real toggle for this kind should use its own predicate
- * against the raw `"direct_org_group_role"` kind rather than extending this
- * one — conflating the two would make a per-user toggle silently do
- * group-wide damage. See docs/decisions.md's PR4 entry. */
+ * revocable" means. The group-row UI this comment used to describe as
+ * future work now exists (`ProjectMembersTable`'s `kind: "group"` row,
+ * Phase 6, docs/platform-review-2026-09-plan.md) — it does not extend this
+ * predicate or filter a user's own `sources` at all, since `GET
+ * /{project_id}/group-roles` (`OrgGroupProjectRoleSummary` below) already
+ * names exactly which roles each group holds directly, with no per-source
+ * `kind` check needed. Conflating a group's own row with a per-user toggle
+ * would make it silently do group-wide damage. See docs/decisions.md's PR4
+ * entry. */
 export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
   return kind === "direct_role";
 }
@@ -726,6 +730,20 @@ export interface EffectiveMember {
 export interface MaterializeResult {
   created: { user_id: string; role: string }[];
   skipped: { user_id: string; role: string }[];
+}
+
+/** One organisation group holding at least one direct `OrgGroupProjectRole`
+ * grant on a project (`GET /{project_id}/group-roles`) — the read
+ * counterpart to `POST`/`DELETE /{project_id}/group-roles/...` (PR4),
+ * added in Phase 6 (docs/platform-review-2026-09-plan.md) so
+ * `ProjectMembersTable` can render this group as its own row instead of
+ * only being visible through a member's `"direct_org_group_role"`
+ * provenance line. `roles` aggregates every role this one group holds
+ * directly on the project. */
+export interface OrgGroupProjectRoleSummary {
+  org_group_id: string;
+  org_group_name: string;
+  roles: ProjectRole[];
 }
 
 /** Org-definable project status (C-G-XX) — seeded with Proposed/Active/

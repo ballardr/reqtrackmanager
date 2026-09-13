@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
-import type { EffectiveMember, ModuleRoleDefinition, PendingInvite } from "../api/types";
+import type { EffectiveMember, ModuleRoleDefinition, OrgGroupProjectRoleSummary, PendingInvite } from "../api/types";
 import { ProjectMembersTable } from "./ProjectMembersTable";
 
 const MEMBERS: EffectiveMember[] = [
@@ -387,6 +387,108 @@ export const ModuleRolesAvailable: Story = {
     await expect(unchecked).not.toBeDisabled();
     await userEvent.click(unchecked);
     await expect(args.onToggleModuleRole).toHaveBeenCalledWith("u-alex", "compliance", "evidence_reviewer", true);
+  },
+};
+
+// --- Group rows (Phase 6, docs/platform-review-2026-09-plan.md) -----------
+//
+// An org group holding a direct `OrgGroupProjectRole` grant on this project
+// now gets its own `kind: "group"` row (previously visible only through a
+// member's own `direct_org_group_role` Source line — see
+// `NamedOrgGroupRoleSourceLine` above, which pins that provenance line's
+// own continued existence unchanged).
+
+const GROUP_ROLES: OrgGroupProjectRoleSummary[] = [
+  { org_group_id: "og-engineering", org_group_name: "Engineering", roles: ["stakeholder", "member"] },
+];
+
+/** The group row's Name cell carries a "Group" badge (this table has no
+ * dedicated Type column — see the component's own docstring for why a
+ * badge in an existing cell was chosen instead), its Email cell is blank
+ * (a group has none), and its Source column states plainly that each
+ * listed role is a direct grant — one line per role, no provenance chain
+ * to walk, unlike a member row. */
+export const GroupRow: Story = {
+  args: { groupRoles: GROUP_ROLES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Scoped via the group's own (unique) role-dropdown trigger, not a
+    // `getByRole("row", { name: /Engineering/ })` lookup — Morgan Casey's
+    // fixture row also mentions "Engineering" in its own Source line
+    // (`NamedOrgGroupRoleSourceLine`'s `direct_org_group_role` provenance),
+    // which would otherwise match too and make the row lookup ambiguous.
+    const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+    await expect(within(row).getByText(/Direct grant on this project \(Stakeholder\)/)).toBeInTheDocument();
+    await expect(within(row).getByText(/Direct grant on this project \(Member\)/)).toBeInTheDocument();
+  },
+};
+
+/** A group row's Role options are always freely togglable in both
+ * directions — no `purelyDirect`/"last manager" disabling the way a
+ * member row's options get, since the row's very existence already means
+ * every option reflects this group's own direct grant (see the component's
+ * own docstring for why a client-side "last manager" hint would be
+ * actively misleading here). */
+export const GroupRowRoleToggle: Story = {
+  args: { groupRoles: GROUP_ROLES, onToggleGroupRole: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering's roles" }));
+    const group = within(document.body).getByRole("group", { name: "Engineering's roles" });
+
+    const checked = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Engineering" });
+    await expect(checked).not.toBeDisabled();
+    await userEvent.click(checked);
+    await expect(args.onToggleGroupRole).toHaveBeenCalledWith("og-engineering", "stakeholder", false);
+
+    const unchecked = within(group).getByRole("checkbox", { name: "Grant Project manager to Engineering" });
+    await expect(unchecked).not.toBeDisabled();
+    await userEvent.click(unchecked);
+    await expect(args.onToggleGroupRole).toHaveBeenCalledWith("og-engineering", "project_manager", true);
+  },
+};
+
+/** "Remove group" (Actions column) revokes every role the group holds at
+ * once, behind the same Tier-1 `ConfirmDialog` "Remove all access" already
+ * uses for a member row — `onRemoveGroup` is only ever called after
+ * confirming. */
+export const GroupRowRemoveAction: Story = {
+  args: { groupRoles: GROUP_ROLES, onRemoveGroup: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Engineering's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Engineering's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove group" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove Engineering from this project?" });
+    await expect(args.onRemoveGroup).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove group" }));
+    await expect(args.onRemoveGroup).toHaveBeenCalledWith("og-engineering");
+  },
+};
+
+/** A group row renders alongside member/invited rows, not instead of them
+ * — and the search box matches a group's own name the same way it already
+ * matches a member's name/email. */
+export const GroupRowAlongsideMembersAndSearch: Story = {
+  args: { groupRoles: GROUP_ROLES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("cell", { name: "Alex Morgan" })).toBeInTheDocument();
+    await expect(canvas.getByText("invitee@example.com")).toBeInTheDocument();
+    // Not a `getByRole("row", { name: /Engineering/ })` lookup here — before
+    // filtering, Morgan Casey's fixture row also mentions "Engineering" in
+    // its own Source line, making that query ambiguous (see `GroupRow`'s own
+    // comment above for the same reason).
+    await expect(canvas.getByRole("button", { name: "Engineering's roles" })).toBeInTheDocument();
+
+    await userEvent.type(canvas.getByPlaceholderText("Search by name or email"), "Engin");
+    // Unambiguous now — search only matches a group's own name (not a
+    // member's unrelated Source-line mention of it), so Morgan Casey's row
+    // is filtered out and the group row is the only "Engineering" match left.
+    await expect(canvas.getByRole("row", { name: /Engineering/ })).toBeInTheDocument();
+    await expect(canvas.queryByRole("cell", { name: "Alex Morgan" })).not.toBeInTheDocument();
   },
 };
 

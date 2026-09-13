@@ -118,6 +118,17 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
     await test.step("add and remove a project group member", async () => {
       await selectProjectAdminGroup(page, "Project groups");
+      // Beta-2 is a shared, persistent project (see this file's own
+      // docstring) that accumulates a group per run of this spec with no
+      // reseed in between — the Groups tab paginates (`GROUPS_PAGE_SIZE`,
+      // `ProjectAdminPage.tsx`), so without narrowing to this run's own
+      // group by name first, enough prior runs push the just-created row
+      // off the first page and `openProjectGroupPanel` below times out
+      // finding no row at all, not a wrong one — the same reasoning the
+      // "create a new project group" step further down already applies to
+      // its own row lookup.
+      await page.getByPlaceholder("Search by name").fill(memberGroupName);
+      await page.waitForLoadState("networkidle");
       // Each group row now opens a `SidePanel` (Phase 5, docs/decisions.md)
       // instead of an always-expanded `CollapsibleSection` accordion — the
       // panel's own accessible name ("<group> details") scopes every
@@ -131,6 +142,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await removeButton.click();
       await expect(panel.getByText(PERSONAS.memberAlphaBeta.email)).toHaveCount(0);
       await page.getByRole("button", { name: "Close" }).click();
+      // Reset the filter this step introduced — the search box's own state
+      // isn't scoped to this step (no reload/navigation follows), and a
+      // later step's own `reload()` call closes over whatever it's
+      // currently holding (see the "create a new project group" step's own
+      // comment on that race). Left non-empty, it would silently replace a
+      // later step's own unrelated group list with this narrowed one.
+      await page.getByPlaceholder("Search by name").fill("");
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("?openGroup= deep link opens that group's SidePanel directly", async () => {
@@ -179,6 +198,12 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await page.reload();
 
       await selectProjectAdminGroup(page, "Project groups");
+      // Same accumulated-groups/pagination reasoning as the "add and remove
+      // a project group member" step above — the search box's own state
+      // doesn't survive the `page.reload()` just above, so this needs its
+      // own narrowing again, not just once per test.
+      await page.getByPlaceholder("Search by name").fill(memberGroupName);
+      await page.waitForLoadState("networkidle");
       const panel = await openProjectGroupPanel(page, memberGroupName);
       const nestSelect = panel.getByRole("combobox", { name: /Nest an? .*group…/ });
       await nestSelect.selectOption({ label: groupName });
@@ -189,6 +214,11 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       await orgGroupRow.getByRole("button").click();
       await expect(panel.getByText(new RegExp(`^${groupName} \\(`))).toHaveCount(0);
       await page.getByRole("button", { name: "Close" }).click();
+      // Reset the filter this step introduced — see the "add and remove a
+      // project group member" step's own identical comment for why leaving
+      // this non-empty would corrupt a later step's own `reload()` race.
+      await page.getByPlaceholder("Search by name").fill("");
+      await page.waitForLoadState("networkidle");
     });
 
     // Style guide "Pattern: create panels, popovers, and one door for
@@ -227,16 +257,15 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // mutation handler on this page does), which itself re-fetches the
       // Groups tab's own unfiltered list as one step in a long sequential
       // chain of unrelated awaited requests (project/stages/components/
-      // categories/custom fields/...). Typing into the search box *before*
-      // that chain settles races it: the search request often resolves
-      // first, then `reload()`'s own stale, unfiltered fetch (using the
-      // empty `groupSearch` it closed over before this search existed)
-      // lands after it and overwrites the filtered result with the full
-      // list — a real, pre-existing latent bug in how broadly `reload()`
-      // scopes itself on every mutation across this whole page (out of
-      // scope to fix here as a drive-by; narrowing every one of this
-      // page's ~35 `reload()` call sites is its own piece of work).
-      // Waiting for the network to settle first avoids racing it.
+      // categories/custom fields/...). This used to race a search typed
+      // into the box before that chain settled — `reload()`'s own slower,
+      // stale-search fetch could resolve after a fresh, filtered one and
+      // silently overwrite it with the unfiltered list. `loadGroups` now
+      // guards against that with a request-id ref (Platform review 2026-09
+      // Phase 4, docs/decisions.md), so this is no longer a live race —
+      // waiting for the network to settle first here is just the ordinary
+      // "let the create mutation's own refresh finish before searching"
+      // sequencing, not a workaround for a bug still open.
       await page.waitForLoadState("networkidle");
       await page.getByPlaceholder("Search by name").fill(newGroupName);
       // The group's Name cell is a real `<button>` (`DirectoryTable`'s
@@ -321,13 +350,55 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // this direct grant from the nesting mechanism's own wording.
         const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
         await expect(memberRow.getByText(`Via group '${directGroupName}' (direct)`)).toBeVisible();
+
+        // Phase 6 (docs/platform-review-2026-09-plan.md): the grant just
+        // made above is now also visible and manageable as the group's own
+        // row — previously there was no way to see, edit, or remove it
+        // except by reaching into a member's Source line above, or calling
+        // the DELETE endpoint by hand (as this test's own `finally` cleanup
+        // below used to be the only way to do).
+        await test.step("the granting group gets its own row, editable and removable", async () => {
+          const groupRow = page.getByRole("button", { name: `${directGroupName}'s roles` }).locator("xpath=ancestor::tr[1]");
+          await expect(groupRow.getByText("Group")).toBeVisible();
+          await expect(groupRow.getByText("Direct grant on this project (Stakeholder)")).toBeVisible();
+
+          // The role dropdown is directly editable from this row — grant a
+          // second role the same way `MembersTabGroupRowRoleToggleAndRemove`
+          // (ProjectMembersTable.stories.tsx) covers in isolation.
+          await groupRow.getByRole("button", { name: `${directGroupName}'s roles` }).click();
+          const roleGroup = page.getByRole("group", { name: `${directGroupName}'s roles` });
+          await roleGroup.getByRole("checkbox", { name: `Grant Member to ${directGroupName}` }).click();
+          await expect(groupRow.getByText("Direct grant on this project (Member)")).toBeVisible();
+
+          // "Remove group" (Actions column) revokes every role at once,
+          // behind the same Tier-1 ConfirmDialog every other destructive
+          // action in this table uses.
+          await groupRow.getByRole("button", { name: `${directGroupName}'s actions` }).click();
+          await page.getByRole("menuitem", { name: "Remove group" }).click();
+          await page.getByRole("dialog", { name: `Remove ${directGroupName} from this project?` })
+            .getByRole("button", { name: "Remove group" }).click();
+          await expect(page.getByText(`Removed ${directGroupName}'s access.`)).toBeVisible();
+          await expect(page.getByRole("button", { name: `${directGroupName}'s roles` })).toHaveCount(0);
+          await expect(memberRow.getByText(`Via group '${directGroupName}' (direct)`)).toHaveCount(0);
+        });
       } finally {
-        // This grants a real stakeholder role to a persona (memberAlphaBeta)
-        // several other specs share on Beta-2 — revoked so it doesn't leak
-        // into their own assertions, this project's test-independence rule.
-        await page.request.delete(
-          `http://localhost:8000/api/v1/projects/${projectId}/group-roles/${orgGroup.id}/stakeholder`,
-          { headers: authHeaders },
+        // Defensive backstop, not the primary cleanup any more — the step
+        // above already removes both roles it grants (stakeholder, then
+        // member) through the real "Remove group" UI. Revoking an
+        // already-revoked (group, project, role) grant is a documented
+        // no-op 204 (test_revoke_of_a_nonexistent_grant_is_a_no_op_204,
+        // backend/tests/test_org_group_project_roles.py), so deleting both
+        // unconditionally stays safe even when the step above already
+        // removed them — this only matters if that step fails partway
+        // through, which would otherwise leak a real stakeholder/member
+        // grant on memberAlphaBeta into other specs sharing Beta-2.
+        await Promise.all(
+          ["stakeholder", "member"].map((role) =>
+            page.request.delete(
+              `http://localhost:8000/api/v1/projects/${projectId}/group-roles/${orgGroup.id}/${role}`,
+              { headers: authHeaders },
+            )
+          )
         );
       }
     });

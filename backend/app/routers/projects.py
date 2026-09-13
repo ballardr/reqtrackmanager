@@ -82,6 +82,7 @@ from app.schemas.project import (
     MaterializeResultOut,
     MoveDirection,
     OrgGroupProjectRoleAssign,
+    OrgGroupProjectRoleSummaryOut,
     PendingInviteOut,
     ProjectAncestorOut,
     ProjectCreate,
@@ -2909,6 +2910,42 @@ def assign_project_role(
                 project_id=project.id, actor_id=current_user.id,
             )
         db.commit()
+
+
+@router.get("/{project_id}/group-roles", response_model=list[OrgGroupProjectRoleSummaryOut])
+def list_group_project_roles(
+    project_id: UUID,
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists every organisation group holding at least one direct
+    `OrgGroupProjectRole` grant on this project — the read side PR4's
+    assign/revoke endpoints never got (Phase 6, docs/platform-review-2026-
+    09-plan.md). Before this endpoint, a group granted a role through the
+    Members section's add-control (`assign_group_project_role`) had no way
+    to be seen, edited, or removed again except by reaching into a
+    member's own per-role Source line (`direct_org_group_role` provenance)
+    or calling the DELETE endpoint by hand — this is what lets
+    `ProjectMembersTable`'s own group row exist at all.
+
+    `require_project_manage`-gated like `get_effective_members`, the
+    equivalent read for user rows, and like the assign/revoke endpoints
+    this is the read counterpart to.
+    """
+    rows = db.execute(
+        select(OrgGroupProjectRole.org_group_id, OrgGroupProjectRole.role, OrgGroup.name)
+        .join(OrgGroup, OrgGroup.id == OrgGroupProjectRole.org_group_id)
+        .where(OrgGroupProjectRole.project_id == project_id)
+        .order_by(OrgGroup.name)
+    ).all()
+    grouped: dict[UUID, OrgGroupProjectRoleSummaryOut] = {}
+    for org_group_id, role, org_group_name in rows:
+        entry = grouped.get(org_group_id)
+        if entry is None:
+            entry = OrgGroupProjectRoleSummaryOut(org_group_id=org_group_id, org_group_name=org_group_name, roles=[])
+            grouped[org_group_id] = entry
+        entry.roles.append(role)
+    return list(grouped.values())
 
 
 @router.post("/{project_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)

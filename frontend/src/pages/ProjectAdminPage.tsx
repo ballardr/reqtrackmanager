@@ -15,6 +15,7 @@ import type {
   MaterializeResult,
   ModuleRoleDefinition,
   OrgGroup,
+  OrgGroupProjectRoleSummary,
   OrgUser,
   PendingInvite,
   Project,
@@ -215,6 +216,11 @@ export function ProjectAdminPage() {
   const [addMirrorMode, setAddMirrorMode] = useState<ProjectRoleInheritanceMode>("member_only");
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
+  // Phase 6 (docs/platform-review-2026-09-plan.md): organisation groups
+  // holding a direct `OrgGroupProjectRole` grant on this project, fed into
+  // `ProjectMembersTable`'s own `kind: "group"` rows — the read side the
+  // existing `addProjectGroupRole` grant flow never had a way to display.
+  const [groupRoles, setGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [materializing, setMaterializing] = useState(false);
   // Module system Phase 2: project-scoped module-contributed role
   // definitions currently available to grant on this project, fed into
@@ -403,6 +409,7 @@ export function ProjectAdminPage() {
     // visiting the "members" group.
     setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
     await reloadEffectiveMembers();
+    await reloadGroupRoles();
     await reloadPendingInvites();
     // Module system Phase 2 — same "fetched alongside the rest of this
     // page's own reload()" treatment every other Members-section data
@@ -413,6 +420,15 @@ export function ProjectAdminPage() {
   async function reloadEffectiveMembers() {
     if (!projectId) return;
     setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
+  }
+
+  /** `ProjectMembersTable`'s own third data source (Phase 6) — same
+   * "re-fetch just this" treatment `reloadEffectiveMembers` uses. Called
+   * from `reload()` (below) and after every group-role mutation, since a
+   * grant/revoke/removal changes exactly this list. */
+  async function reloadGroupRoles() {
+    if (!projectId) return;
+    setGroupRoles(await api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${projectId}/group-roles`));
   }
 
   async function reloadPendingInvites() {
@@ -939,6 +955,52 @@ export function ProjectAdminPage() {
   async function addProjectGroupRole(orgGroupId: string, role: ProjectRole) {
     await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
     await reloadEffectiveMembers();
+    // Phase 6: the group this just granted a role to now needs its own
+    // `ProjectMembersTable` row, not just its members' updated provenance.
+    await reloadGroupRoles();
+  }
+
+  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6) — grants/
+   * revokes one role on a group's `kind: "group"` row directly, the same
+   * `POST`/`DELETE .../group-roles[...]` calls `addProjectGroupRole`/the
+   * backend's `revoke_group_project_role` already expose, just reachable
+   * from the row itself now instead of only from the "Add member"
+   * autocomplete's one-shot grant. Re-fetches both group roles and
+   * effective members, since a group's role change also changes its
+   * members' own Source column provenance. */
+  async function toggleProjectMemberOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/group-roles/${orgGroupId}/${role}`);
+      }
+      await reloadGroupRoles();
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s own "Remove group" (Actions column, Phase 6)
+   * — loops the per-role `DELETE .../group-roles/{org_group_id}/{role}`
+   * over every role the group currently holds, the group-row counterpart
+   * to `removeAllProjectMemberAccess`'s per-user loop. Confirmed via
+   * `ConfirmDialog` inside `ProjectMembersTable` itself before this is
+   * ever called. */
+  async function removeProjectMemberOrgGroup(orgGroupId: string) {
+    const group = groupRoles.find((g) => g.org_group_id === orgGroupId);
+    if (!group) return;
+    try {
+      await Promise.all(
+        group.roles.map((role) => api.delete(`/api/v1/projects/${projectId}/group-roles/${orgGroupId}/${role}`))
+      );
+      showToast(strings.membersTable.removeGroupSuccess(group.org_group_name));
+      await reloadGroupRoles();
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
@@ -1958,11 +2020,14 @@ export function ProjectAdminPage() {
             <ProjectMembersTable
               members={effectiveMembers}
               invites={pendingInvites}
+              groupRoles={groupRoles}
               onToggleRole={toggleProjectMemberRole}
+              onToggleGroupRole={toggleProjectMemberOrgGroupRole}
               onResendInvite={resendProjectInvite}
               resendingInviteId={resendingInviteId}
               onRemoveAllAccess={removeAllProjectMemberAccess}
               onConvertToDirect={convertProjectMemberToDirect}
+              onRemoveGroup={removeProjectMemberOrgGroup}
               ariaLabel={strings.admin.membersNav}
               availableModuleRoles={availableModuleRoles}
               onToggleModuleRole={toggleProjectMemberModuleRole}

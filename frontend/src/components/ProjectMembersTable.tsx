@@ -100,11 +100,45 @@
  *   through with no confirm step, matching the bulk "Convert all inherited
  *   access to direct roles" button's own (confirm-free) treatment on
  *   `ProjectAdminPage.tsx`.
+ * - A third row kind, `kind: "group"` (Phase 6, docs/platform-review-2026-
+ *   09-plan.md): an organisation group holding at least one direct
+ *   `OrgGroupProjectRole` grant on this project (`groupRoles`, from `GET
+ *   /{project_id}/group-roles`) — a real, first-class mechanism the Members
+ *   section's "Add member" autocomplete has always been able to *create*
+ *   (picking an org group there calls `POST .../group-roles`), but which
+ *   had no row of its own to show it afterward, only a `direct_org_group_
+ *   role`-kind Source line on whichever members happened to belong to that
+ *   group. Its Role cell is a `MultiSelectDropdown` over the four core
+ *   `ProjectRole`s (module-contributed roles are out of scope here — see
+ *   `EffectiveMember.module_roles`'s own docstring; a module role's group-
+ *   grant path, module system Phase 30, is a separate mechanism/table),
+ *   always freely togglable in both directions since the row's very
+ *   existence *is* the direct grant (no `purelyDirect`-style disabling
+ *   needed, unlike a user row's Role cell) — `onToggleGroupRole` is the
+ *   caller's own `POST`/`DELETE .../group-roles[...]` call. Its Actions
+ *   column offers only "Remove group" (`onRemoveGroup`, behind this
+ *   component's own Tier-1 `ConfirmDialog`, mirroring "Remove all access"'s
+ *   treatment) — revokes every role the group holds at once. No email, no
+ *   Source-column provenance chain (there's nothing upstream of a group's
+ *   own direct grant to attribute it to) — the Name cell instead carries a
+ *   small "Group" badge so the row doesn't read as a person with a blank
+ *   email, and the Source cell states plainly that each listed role is a
+ *   direct grant. `groupRoles` defaults to `[]` and `onToggleGroupRole`/
+ *   `onRemoveGroup` are optional, same "omit to hide" contract `onRemoveAllAccess`/
+ *   `onConvertToDirect` already use, so a future read-only rendering of this
+ *   table doesn't need a no-op stub.
  */
 import { Send, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { EffectiveMember, MemberSourceProvenance, ModuleRoleDefinition, PendingInvite, ProjectRole } from "../api/types";
+import type {
+  EffectiveMember,
+  MemberSourceProvenance,
+  ModuleRoleDefinition,
+  OrgGroupProjectRoleSummary,
+  PendingInvite,
+  ProjectRole,
+} from "../api/types";
 import { PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import type { Strings } from "../i18n/strings";
@@ -119,7 +153,10 @@ import { cycleSort, type SortState } from "./sortState";
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
 
-type Row = { kind: "member"; member: EffectiveMember } | { kind: "invited"; invite: PendingInvite };
+type Row =
+  | { kind: "member"; member: EffectiveMember }
+  | { kind: "invited"; invite: PendingInvite }
+  | { kind: "group"; group: OrgGroupProjectRoleSummary };
 type SortKey = "name" | "email";
 
 /** Per-role provenance text for the Source column — one line per source a
@@ -162,11 +199,14 @@ function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
 export function ProjectMembersTable({
   members,
   invites,
+  groupRoles = [],
   onToggleRole,
+  onToggleGroupRole,
   onResendInvite,
   resendingInviteId,
   onRemoveAllAccess,
   onConvertToDirect,
+  onRemoveGroup,
   addControl,
   ariaLabel,
   availableModuleRoles = [],
@@ -174,11 +214,27 @@ export function ProjectMembersTable({
 }: {
   members: EffectiveMember[];
   invites: PendingInvite[];
+  /** Organisation groups holding a direct `OrgGroupProjectRole` grant on
+   * this project (Phase 6) — rendered as their own `kind: "group"` rows,
+   * alongside (not replacing) the member/invited rows above. Defaults to
+   * `[]`, matching this table's pre-Phase-6 behavior for a caller that
+   * hasn't fetched `GET /{project_id}/group-roles` yet. */
+  groupRoles?: OrgGroupProjectRoleSummary[];
   /** Grants `role` to the user when `checked` is true, revokes it otherwise
    * — only ever called for an option whose sole source is `direct_role`
    * (see the module docstring); a non-`direct_role` option is rendered
    * disabled, so it can't reach this callback via the UI. */
   onToggleRole: (userId: string, role: ProjectRole, checked: boolean) => void;
+  /** Grants/revokes one role on a group's own `kind: "group"` row (Phase
+   * 6) — always freely callable in both directions, since (unlike a user's
+   * `onToggleRole`) there is no inherited/group-sourced state to guard
+   * against here: the row's existence already means every listed role is
+   * this group's own direct grant. The caller's own `POST`/`DELETE
+   * .../group-roles[...]` call, same division of responsibility as
+   * `onToggleRole`. Required only when `groupRoles` is non-empty in
+   * practice; typed optional so a caller with nothing to pass doesn't need
+   * a no-op stub. */
+  onToggleGroupRole?: (orgGroupId: string, role: ProjectRole, checked: boolean) => void;
   onResendInvite: (invite: PendingInvite) => void;
   /** The invite currently being resent, if any — disables that row's
    * Resend button while the request is in flight. */
@@ -199,6 +255,13 @@ export function ProjectMembersTable({
    * /{project_id}/materialize-inherited-access/{user_id}` endpoint and
    * refreshes `members` itself. Omit to hide the Actions column entirely. */
   onConvertToDirect?: (userId: string) => void;
+  /** A group row's own "Remove group" (Actions column, Phase 6) — called
+   * only after the built-in `ConfirmDialog` is confirmed. The caller loops
+   * `DELETE .../group-roles/{org_group_id}/{role}` over every role the
+   * group currently holds, same division of responsibility as
+   * `onRemoveAllAccess`'s per-user loop. Omit to hide "Remove group" (the
+   * rest of the Actions column, if any, still renders). */
+  onRemoveGroup?: (orgGroupId: string) => void;
   /** Caller-composed "add a member" control (`UserAutocomplete` + a role
    * `<select>`) — differs slightly per call site, so this table only
    * provides the slot. Omit for a read-only rendering. */
@@ -228,6 +291,7 @@ export function ProjectMembersTable({
   const [sort, setSort] = useState<SortState<SortKey> | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<string | null>(null);
+  const [confirmRemoveGroupId, setConfirmRemoveGroupId] = useState<string | null>(null);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -255,12 +319,25 @@ export function ProjectMembersTable({
       })
     : filteredMembers;
 
-  // Invited rows always render ahead of the sorted member rows rather than
-  // interleaved into that sort order — same precedent Org Admin's own Users
-  // table set for its "kind: user | invited" merge (there's no meaningful
-  // name to sort an invited row by yet).
+  // Same search/role-filter treatment as `filteredMembers` above, applied
+  // to group rows (Phase 6) — a group has no email, so search only matches
+  // its name.
+  const filteredGroupRoles = groupRoles.filter((g) => {
+    if (needle && !g.org_group_name.toLowerCase().includes(needle)) return false;
+    if (roleFilter && !g.roles.includes(roleFilter)) return false;
+    return true;
+  });
+
+  // Invited and group rows always render ahead of the sorted member rows
+  // rather than interleaved into that sort order — same precedent Org
+  // Admin's own Users table set for its "kind: user | invited" merge
+  // (there's no meaningful name to sort an invited row by yet), and the
+  // style guide's "type-badged mixed rows" pattern's own "fixed kind first"
+  // rule (both invited and group rows here are small, fully-loaded sets,
+  // unlike the paginated/sortable member rows).
   const rows: Row[] = [
     ...filteredInvites.map((invite): Row => ({ kind: "invited", invite })),
+    ...filteredGroupRoles.map((group): Row => ({ kind: "group", group })),
     ...sortedMembers.map((member): Row => ({ kind: "member", member })),
   ];
   const visible = rows.slice(0, visibleCount);
@@ -281,13 +358,31 @@ export function ProjectMembersTable({
       key: "name",
       label: strings.membersTable.name,
       sortable: true,
-      render: (row) => (row.kind === "member" ? row.member.display_name : <span className="text-muted">—</span>),
+      render: (row) => {
+        if (row.kind === "member") return row.member.display_name;
+        if (row.kind === "invited") return <span className="text-muted">—</span>;
+        // `kind === "group"` (Phase 6) — a small "Group" badge ahead of the
+        // name so the row doesn't read as a person with a blank email (the
+        // Email column below), matching this table's own existing "badge
+        // signals kind" idiom (the invited row's status badge in the Role
+        // column) rather than a whole extra Type column.
+        return (
+          <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+            <span className="badge">{strings.membersTable.groupRowBadge}</span>
+            {row.group.org_group_name}
+          </span>
+        );
+      },
     },
     {
       key: "email",
       label: strings.membersTable.email,
       sortable: true,
-      render: (row) => (row.kind === "member" ? row.member.email : row.invite.email),
+      render: (row) => {
+        if (row.kind === "member") return row.member.email;
+        if (row.kind === "invited") return row.invite.email;
+        return <span className="text-muted">—</span>;
+      },
     },
     {
       key: "role",
@@ -308,6 +403,36 @@ export function ProjectMembersTable({
                 <Send size={14} /> {strings.admin.resendInvite}
               </button>
             </div>
+          );
+        }
+        if (row.kind === "group") {
+          const group = row.group;
+          // No `purelyDirect`/`isLastManager` treatment here (unlike the
+          // member branch below) — this row's very existence means every
+          // listed role is this group's own direct `OrgGroupProjectRole`
+          // grant, and `get_effective_project_managers` never counts a
+          // group-derived manager towards the C-U-08 floor in the first
+          // place (see `revoke_group_project_role`'s own docstring), so a
+          // client-side "last manager" hint would almost never accurately
+          // predict a real block. The backend's own guard is authoritative;
+          // a rejected revoke surfaces via the caller's own error toast.
+          return (
+            <MultiSelectDropdown
+              triggerLabel={strings.membersTable.rolesFor(group.org_group_name)}
+              emptyLabel={strings.membersTable.noRoles}
+              options={PROJECT_ROLES.map((role) => {
+                const checked = group.roles.includes(role);
+                return {
+                  value: role,
+                  label: PROJECT_ROLE_LABEL[role],
+                  checked,
+                  optionLabel: checked
+                    ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], group.org_group_name)
+                    : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], group.org_group_name),
+                  onToggle: () => onToggleGroupRole?.(group.org_group_id, role, !checked),
+                };
+              })}
+            />
           );
         }
         const member = row.member;
@@ -375,6 +500,22 @@ export function ProjectMembersTable({
             </span>
           );
         }
+        if (row.kind === "group") {
+          // No provenance chain to walk (unlike a member's `sources`) —
+          // there's nothing upstream of a group's own direct grant to
+          // attribute it to, so each listed role just states plainly that
+          // it's a direct grant, mirroring the member branch's own
+          // "one line per role, role name in parens" shape.
+          return (
+            <div className="stack" style={{ gap: "0.15rem" }}>
+              {row.group.roles.map((role) => (
+                <span key={role} className="text-muted" style={{ fontSize: "0.85rem" }}>
+                  {strings.membersTable.groupDirectGrantSource} ({PROJECT_ROLE_LABEL[role]})
+                </span>
+              ))}
+            </div>
+          );
+        }
         return (
           <div className="stack" style={{ gap: "0.15rem" }}>
             {row.member.sources.map((s, i) => (
@@ -388,12 +529,24 @@ export function ProjectMembersTable({
     },
   ];
 
-  if (onRemoveAllAccess || onConvertToDirect) {
+  if (onRemoveAllAccess || onConvertToDirect || onRemoveGroup) {
     columns.push({
       key: "actions",
       label: "",
       render: (row) => {
         if (row.kind === "invited") return null;
+        if (row.kind === "group") {
+          if (!onRemoveGroup) return null;
+          const group = row.group;
+          const items: ActionMenuItem[] = [
+            {
+              label: strings.membersTable.removeGroup,
+              icon: <Trash2 size={14} />,
+              onSelect: () => setConfirmRemoveGroupId(group.org_group_id),
+            },
+          ];
+          return <ActionMenu triggerLabel={strings.membersTable.actionsFor(group.org_group_name)} items={items} />;
+        }
         const member = row.member;
         // "Remove all access" is only safe (and only offered) when every
         // source this member holds is a genuine, individually-revocable
@@ -431,6 +584,9 @@ export function ProjectMembersTable({
 
   const filtersActive = Boolean(needle) || Boolean(roleFilter) || !showInvited;
   const confirmRemoveMember = confirmRemoveUserId ? members.find((m) => m.user_id === confirmRemoveUserId) : undefined;
+  const confirmRemoveGroup = confirmRemoveGroupId
+    ? groupRoles.find((g) => g.org_group_id === confirmRemoveGroupId)
+    : undefined;
 
   return (
     <div className="stack">
@@ -445,6 +601,18 @@ export function ProjectMembersTable({
             setConfirmRemoveUserId(null);
           }}
           onCancel={() => setConfirmRemoveUserId(null)}
+        />
+      )}
+      {confirmRemoveGroup && onRemoveGroup && (
+        <ConfirmDialog
+          title={strings.membersTable.removeGroupConfirmTitle(confirmRemoveGroup.org_group_name)}
+          message={strings.membersTable.removeGroupConfirmMessage(confirmRemoveGroup.org_group_name)}
+          confirmLabel={strings.membersTable.removeGroupConfirmButton}
+          onConfirm={() => {
+            onRemoveGroup(confirmRemoveGroup.org_group_id);
+            setConfirmRemoveGroupId(null);
+          }}
+          onCancel={() => setConfirmRemoveGroupId(null)}
         />
       )}
       {/* `FilterPanel` renders as a full-width bar ABOVE the table
@@ -482,7 +650,13 @@ export function ProjectMembersTable({
         ariaLabel={ariaLabel}
         columns={columns}
         rows={visible}
-        rowKey={(row) => (row.kind === "member" ? `member-${row.member.user_id}` : `invited-${row.invite.id}`)}
+        rowKey={(row) =>
+          row.kind === "member"
+            ? `member-${row.member.user_id}`
+            : row.kind === "invited"
+              ? `invited-${row.invite.id}`
+              : `group-${row.group.org_group_id}`
+        }
         sort={sort}
         onSort={(key) => applySort(key as SortKey)}
         total={rows.length}

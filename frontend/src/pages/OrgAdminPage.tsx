@@ -18,6 +18,7 @@ import type {
   ModuleRoleDefinition,
   OrgAdvancedSettings,
   OrgGroup,
+  OrgGroupProjectRoleSummary,
   OrgModule,
   OrgMergePreviewResult,
   OrgMergeResult,
@@ -371,6 +372,11 @@ export function OrgAdminPage() {
   const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
   const [manageUsersProjectName, setManageUsersProjectName] = useState("");
   const [manageUsersMembers, setManageUsersMembers] = useState<EffectiveMember[]>([]);
+  // Phase 6 (docs/platform-review-2026-09-plan.md): this modal's own copy
+  // of `ProjectMembersTable`'s third data source — same "fetched fresh on
+  // open, re-fetched after every mutation" treatment `manageUsersMembers`
+  // already gets.
+  const [manageUsersGroupRoles, setManageUsersGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [manageUsersInvites, setManageUsersInvites] = useState<PendingInvite[]>([]);
   const [manageUsersResendingInviteId, setManageUsersResendingInviteId] = useState<string | null>(null);
   const [manageUsersAddRole, setManageUsersAddRole] = useState<ProjectRole>("member");
@@ -806,8 +812,11 @@ export function OrgAdminPage() {
   async function openManageUsers(project: OrgProjectSummary) {
     setManageUsersProjectId(project.id);
     setManageUsersProjectName(project.name);
-    const [members, invites, moduleRoles] = await Promise.all([
+    const [members, groupRoles, invites, moduleRoles] = await Promise.all([
       api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
+      // Phase 6: this modal's own copy of `ProjectMembersTable`'s third
+      // data source — fetched fresh per open, same as `members` above.
+      api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${project.id}/group-roles`),
       api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
       // Module system Phase 2: this project's own available project-scoped
       // module roles — fetched fresh per open, same as `members`/`invites`
@@ -817,6 +826,7 @@ export function OrgAdminPage() {
     ]);
     setManageUsersAvailableModuleRoles(moduleRoles);
     setManageUsersMembers(members);
+    setManageUsersGroupRoles(groupRoles);
     setManageUsersInvites(invites);
   }
 
@@ -824,6 +834,7 @@ export function OrgAdminPage() {
     setManageUsersProjectId(null);
     setManageUsersProjectName("");
     setManageUsersMembers([]);
+    setManageUsersGroupRoles([]);
     setManageUsersInvites([]);
     setManageUsersAvailableModuleRoles([]);
     setManageUsersAddMemberModalOpen(false);
@@ -832,6 +843,16 @@ export function OrgAdminPage() {
   async function reloadManageUsersMembers() {
     if (!manageUsersProjectId) return;
     setManageUsersMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${manageUsersProjectId}/effective-members`));
+  }
+
+  /** `ProjectMembersTable`'s own third data source (Phase 6), scoped to
+   * `manageUsersProjectId` — same "re-fetch just this" treatment
+   * `reloadManageUsersMembers` uses. */
+  async function reloadManageUsersGroupRoles() {
+    if (!manageUsersProjectId) return;
+    setManageUsersGroupRoles(
+      await api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${manageUsersProjectId}/group-roles`)
+    );
   }
 
   /** `ProjectMembersTable`'s own `onToggleRole` — only ever called for an
@@ -892,6 +913,48 @@ export function OrgAdminPage() {
     if (!manageUsersProjectId) return;
     await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role: manageUsersAddRole });
     await reloadManageUsersMembers();
+    // Phase 6: the group this just granted a role to now needs its own
+    // `ProjectMembersTable` row, not just its members' updated provenance.
+    await reloadManageUsersGroupRoles();
+  }
+
+  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6), scoped to
+   * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
+   * `toggleProjectMemberOrgGroupRole` uses. */
+  async function toggleManageUsersOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
+    if (!manageUsersProjectId) return;
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${manageUsersProjectId}/group-roles/${orgGroupId}/${role}`);
+      }
+      await reloadManageUsersGroupRoles();
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s own "Remove group" (Phase 6), scoped to
+   * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
+   * `removeProjectMemberOrgGroup` uses. */
+  async function removeManageUsersOrgGroup(orgGroupId: string) {
+    if (!manageUsersProjectId) return;
+    const group = manageUsersGroupRoles.find((g) => g.org_group_id === orgGroupId);
+    if (!group) return;
+    try {
+      await Promise.all(
+        group.roles.map((role) =>
+          api.delete(`/api/v1/projects/${manageUsersProjectId}/group-roles/${orgGroupId}/${role}`)
+        )
+      );
+      showToast(strings.membersTable.removeGroupSuccess(group.org_group_name));
+      await reloadManageUsersGroupRoles();
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
@@ -2728,11 +2791,14 @@ export function OrgAdminPage() {
                 <ProjectMembersTable
                   members={manageUsersMembers}
                   invites={manageUsersInvites}
+                  groupRoles={manageUsersGroupRoles}
                   onToggleRole={toggleManageUsersRole}
+                  onToggleGroupRole={toggleManageUsersOrgGroupRole}
                   onResendInvite={resendManageUsersInvite}
                   resendingInviteId={manageUsersResendingInviteId}
                   onRemoveAllAccess={removeAllManageUsersMemberAccess}
                   onConvertToDirect={convertManageUsersMemberToDirect}
+                  onRemoveGroup={removeManageUsersOrgGroup}
                   ariaLabel={strings.orgAdmin.manageUsers}
                   availableModuleRoles={manageUsersAvailableModuleRoles}
                   onToggleModuleRole={toggleManageUsersModuleRole}

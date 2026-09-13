@@ -740,6 +740,96 @@ def test_materialize_for_group_audit_log_has_expected_detail(client, admin_token
     )
 
 
+# --- Listing (Phase 6, docs/platform-review-2026-09-plan.md) ----------------
+#
+# `GET /{project_id}/group-roles` — the read side the assign/revoke
+# endpoints above never got, added so a group's direct grant is visible and
+# manageable in `ProjectMembersTable`'s own new group row, not just
+# discoverable via a member's per-role Source line.
+
+
+def _list_group_roles(client, token, project_id):
+    return client.get(f"/api/v1/projects/{project_id}/group-roles", headers=auth_headers(token))
+
+
+def test_list_is_empty_when_no_group_holds_a_direct_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles Empty Project")
+    resp = _list_group_roles(client, admin_token, project["id"])
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_shows_a_group_with_its_granted_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles Basic Project")
+    org_group = _create_org_group(client, admin_token, org_id, "List Group Roles Group")
+    assert _grant(client, admin_token, project["id"], org_group["id"], "stakeholder").status_code == 204
+
+    resp = _list_group_roles(client, admin_token, project["id"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["org_group_id"] == org_group["id"]
+    assert body[0]["org_group_name"] == "List Group Roles Group"
+    assert body[0]["roles"] == ["stakeholder"]
+
+
+def test_list_aggregates_multiple_roles_for_the_same_group_into_one_row(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles Aggregate Project")
+    org_group = _create_org_group(client, admin_token, org_id, "List Group Roles Aggregate Group")
+    assert _grant(client, admin_token, project["id"], org_group["id"], "stakeholder").status_code == 204
+    assert _grant(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
+
+    body = _list_group_roles(client, admin_token, project["id"]).json()
+    assert len(body) == 1, "both roles must aggregate onto the group's single row, not two rows"
+    assert set(body[0]["roles"]) == {"stakeholder", "member"}
+
+
+def test_list_returns_one_row_per_distinct_group_sorted_by_name(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles Multi Group Project")
+    group_z = _create_org_group(client, admin_token, org_id, "Zeta Group")
+    group_a = _create_org_group(client, admin_token, org_id, "Alpha Group")
+    assert _grant(client, admin_token, project["id"], group_z["id"], "member").status_code == 204
+    assert _grant(client, admin_token, project["id"], group_a["id"], "member").status_code == 204
+
+    body = _list_group_roles(client, admin_token, project["id"]).json()
+    assert [row["org_group_name"] for row in body] == ["Alpha Group", "Zeta Group"]
+
+
+def test_list_omits_a_group_after_its_only_role_is_revoked(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles Revoked Project")
+    org_group = _create_org_group(client, admin_token, org_id, "List Group Roles Revoked Group")
+    assert _grant(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
+    assert len(_list_group_roles(client, admin_token, project["id"]).json()) == 1
+
+    assert _revoke(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
+    assert _list_group_roles(client, admin_token, project["id"]).json() == []
+
+
+def test_list_only_shows_groups_holding_a_role_on_this_specific_project(client, admin_token, org_id):
+    project_a = create_project(client, admin_token, org_id, "List Group Roles Scope Project A")
+    project_b = create_project(client, admin_token, org_id, "List Group Roles Scope Project B")
+    org_group = _create_org_group(client, admin_token, org_id, "List Group Roles Scope Group")
+    assert _grant(client, admin_token, project_a["id"], org_group["id"], "member").status_code == 204
+
+    assert _list_group_roles(client, admin_token, project_b["id"]).json() == []
+    assert len(_list_group_roles(client, admin_token, project_a["id"]).json()) == 1
+
+
+def test_list_requires_project_manage(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "List Group Roles NonManager Project")
+    org_group = _create_org_group(client, admin_token, org_id, "List Group Roles NonManager Group")
+    assert _grant(client, admin_token, project["id"], org_group["id"], "member").status_code == 204
+    outsider_id = create_org_user(client, admin_token, org_id, "list-group-roles-outsider@example.com", role="member")
+    assert client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": outsider_id, "role": "stakeholder"},
+        headers=auth_headers(admin_token),
+    ).status_code == 204
+    outsider_token = login(client, "list-group-roles-outsider@example.com", "Password123!")
+
+    resp = _list_group_roles(client, outsider_token, project["id"])
+    assert resp.status_code == 403
+
+
 def test_materialize_for_group_requires_project_manage(client, admin_token, org_id):
     parent = create_project(client, admin_token, org_id, "Group Materialize NonManager Parent", can_be_parent=True)
     org_group = _create_org_group(client, admin_token, org_id, "Group Materialize NonManager Group")
