@@ -24,6 +24,13 @@ own docstrings for exactly why. Forcing pytest onto a separate, dedicated
 database name (below) is what makes that safe to run at any time, repeatedly,
 without disturbing whatever manually-seeded demo/dev data the same
 docker-compose stack's backend is also serving requests against.
+
+Under `pytest-xdist` (`-n <workers>`), the same DROP-and-truncate-everything
+behaviour is only safe per-process, not shared across worker processes — so
+each worker additionally gets its own database, `reqtrack_pytest_test_gw0`,
+`reqtrack_pytest_test_gw1`, etc. (see `tests/_pytest_database.py`'s
+`_worker_db_suffix()`). Each worker's own `_ensure_test_database()` call
+below creates its database on first use.
 """
 
 import os
@@ -37,7 +44,7 @@ import os
 # file) on every import that follows it. See that module's own docstring
 # for the full mechanical reason, and its `dedicated_pytest_database_url`
 # docstring for *why* this rewrite exists at all.
-from tests._pytest_database import dedicated_pytest_database_url
+from tests._pytest_database import PYTEST_DB_NAME, dedicated_pytest_database_url
 
 # NOTE: `setdefault` here is a convenience for local/CI runners that haven't
 # set DATABASE_URL at all — it seeds a sensible default before the
@@ -88,15 +95,17 @@ def build_alembic_config() -> Config:
 
 _settings_for_guard = get_settings()
 _test_db_name = _settings_for_guard.database_url.rpartition("/")[2]
-if not _test_db_name.endswith("_test"):
+if not _test_db_name.startswith(PYTEST_DB_NAME):
     raise RuntimeError(
         "Refusing to run the test suite: DATABASE_URL resolves to "
-        f"database {_test_db_name!r}, which doesn't look like a test database "
-        "(expected a name ending in '_test'). This suite drops and recreates "
-        "the entire public schema, including at session teardown — running it "
-        "against the wrong database destroys real data. Set DATABASE_URL to a "
-        "*_test database explicitly, e.g. "
-        "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_pytest_test."
+        f"database {_test_db_name!r}, which doesn't look like pytest's own "
+        f"dedicated database (expected a name starting with {PYTEST_DB_NAME!r} "
+        "— exactly that name, or that name plus a pytest-xdist worker suffix "
+        "such as '_gw0'). This suite drops and recreates the entire public "
+        "schema, including at session teardown — running it against the "
+        "wrong database destroys real data. Set DATABASE_URL to a "
+        f"{PYTEST_DB_NAME} database explicitly, e.g. "
+        f"postgresql://reqtrack:reqtrack@localhost:5432/{PYTEST_DB_NAME}."
     )
 
 

@@ -223,6 +223,48 @@ jobs:
           cache: npm
           cache-dependency-path: tests/playwright/package-lock.json
 
+      - uses: docker/setup-buildx-action@v4
+
+      # Pre-build each of tests/container/docker-compose.yml's three
+      # buildable images via buildx directly (rather than letting `docker
+      # compose up --build` build them) so each can use its own GitHub
+      # Actions cache scope for BuildKit layers (`cache-from`/`cache-to:
+      # type=gha`) — layers for unchanged dependency files (requirements.txt,
+      # package-lock.json) then survive between CI runs instead of every run
+      # reinstalling every dependency from scratch. `load: true` puts each
+      # built image into the runner's local Docker daemon under the exact
+      # `<compose-project>-<service>` name Compose would otherwise build
+      # itself (the project name defaults to this directory's basename,
+      # "container" — see docker-compose.yml's own top comment), so the
+      # `docker compose up -d` step below finds a matching image already
+      # present and skips building it again.
+      - name: Build backend image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          tags: container-backend:latest
+          load: true
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          tags: container-frontend:latest
+          load: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Build mcp-server image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./mcp-server
+          tags: container-mcp-server:latest
+          load: true
+          cache-from: type=gha,scope=mcp-server
+          cache-to: type=gha,mode=max,scope=mcp-server
+
       # The dev/test stack (db, minio, mailhog, keycloak, backend, frontend)
       # is the same one developers run locally, and the only one the backend
       # test suite is allowed to run against — tests/conftest.py hard-fails
@@ -231,10 +273,13 @@ jobs:
       # wiping the live database"). Using the real compose file here, rather
       # than hand-rolled GitHub Actions `services:` blocks, keeps CI's
       # environment identical to what's documented and what a developer
-      # actually runs — no second config to keep in sync.
-      - name: Build and start the dev/test stack
+      # actually runs — no second config to keep in sync. No `--build`: the
+      # three steps above already built (and cached) backend/frontend/
+      # mcp-server; passing `--build` here would rebuild them a second time
+      # with none of buildx's GHA cache wired in.
+      - name: Start the dev/test stack
         working-directory: tests/container
-        run: docker compose up -d --build
+        run: docker compose up -d
 
       - name: Wait for backend to become healthy
         working-directory: tests/container
@@ -268,7 +313,7 @@ jobs:
       - name: Run backend tests with coverage
         working-directory: tests/container
         run: |
-          docker compose exec -T backend python -m pytest \
+          docker compose exec -T backend python -m pytest -n 2 \
             --cov=app --cov-report=xml --cov-report=term-missing --cov-report=html \
             --junitxml=pytest-report.xml -q
           docker compose cp backend:/app/coverage.xml ./coverage.xml

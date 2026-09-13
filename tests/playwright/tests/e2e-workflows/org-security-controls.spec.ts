@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, logout, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, loginAs, PASSWORD, selectOrgAdminGroup, selectPreferencesGroup, selectProjectAdminGroup } from "./helpers";
+
+const apiBaseUrl = "http://localhost:8000";
 
 /**
  * Job to be done: an org admin can require 2FA org-wide (blocking every
@@ -10,14 +12,54 @@ import { ensureExpanded, ensureTwoFactorSectionExpanded, generateTotpCode, login
  * and control whether external, not-yet-member accounts can be added to
  * projects.
  *
- * Uses Gamma so the org-wide 2FA requirement (which blocks every member of
- * the org, including its own admin, from project access until 2FA is
- * enabled) doesn't interfere with Alpha/Beta specs sharing this suite's
- * single-worker run.
+ * Uses a brand-new, disposable organisation + admin + project created via
+ * the API (mirroring org-admin-project-statuses-and-link-types.spec.ts),
+ * not the shared "E2E Gamma Labs" org/PERSONAS.orgAdminGamma this spec
+ * previously ran against. That sharing was originally chosen specifically
+ * *because* Gamma was otherwise untouched by the other 2FA-agnostic Alpha/
+ * Beta specs in this suite's old single-worker, serial-only run — but it
+ * still meant this spec's org-wide 2FA toggle (which blocks every member
+ * of the org, including its own admin, from project access until 2FA is
+ * enabled) could collide with any *other* spec reading/writing Gamma
+ * concurrently once the suite runs with more than one worker (Phase 1,
+ * docs/platform-review-2026-09-plan.md) — org-admin-modules.spec.ts is a
+ * real example, since it also flips a Gamma-wide toggle. A disposable org
+ * removes the collision entirely, the same way the statuses/link-types
+ * spec's own disposable org removed an analogous risk for Beta.
  */
 test.describe("org security controls: 2FA requirement, display-name lock, member filters", () => {
   test("org-wide 2FA requirement blocks access until enabled; display-name lock; member filters", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminGamma.email);
+    const suffix = Date.now();
+    const orgName = `E2E Security Org ${suffix}`;
+    const adminEmail = `e2e-security-admin-${suffix}@example.com`;
+    const adminName = "E2E Security Admin";
+    const projectName = `E2E Security Project ${suffix}`;
+
+    const serverAdminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: "admin@example.com", password: "ChangeMe123!" },
+    });
+    const serverAdminToken = (await serverAdminLoginResp.json()).access_token;
+    const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+
+    const org = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverAdminHeaders, data: { name: orgName } })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+      headers: serverAdminHeaders,
+      data: { email: adminEmail, display_name: adminName, password: PASSWORD, role: "org_admin" },
+    });
+
+    const ownerToken = (
+      await (
+        await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, { data: { email: adminEmail, password: PASSWORD } })
+      ).json()
+    ).access_token;
+    await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+      data: { organization_id: org.id, name: projectName, summary: "E2E seed project." },
+    });
+
+    await loginAs(page, adminEmail, PASSWORD);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
@@ -34,7 +76,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // implicitly clears another), so each is unchecked explicitly rather
       // than via a single "Clear filters" button, which no longer exists.
       await page.getByRole("checkbox", { name: "No 2FA" }).click();
-      await expect(page.getByText(PERSONAS.orgAdminGamma.email)).toBeVisible();
+      await expect(page.getByText(adminEmail)).toBeVisible();
       await page.getByRole("checkbox", { name: "No 2FA" }).click();
 
       await page.getByRole("checkbox", { name: "Stale (180+ days)" }).click();
@@ -50,10 +92,10 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // org-rename-and-test-email.spec.ts already use for other
       // `ActionMenu` call sites (waiting for the menu itself before
       // clicking an item, since the popover repositions after mount).
-      const row = page.locator("tr", { hasText: PERSONAS.orgAdminGamma.email });
+      const row = page.locator("tr", { hasText: adminEmail });
       // The menu trigger's accessible name (`usersActionsFor`, strings.ts)
       // is keyed off the user's display name, not their email.
-      const menuTriggerName = `${PERSONAS.orgAdminGamma.name}'s actions`;
+      const menuTriggerName = `${adminName}'s actions`;
       await row.getByRole("button", { name: menuTriggerName }).click();
       await expect(page.getByRole("menu", { name: menuTriggerName })).toBeVisible();
       await page.getByRole("menuitem", { name: "Lock display name" }).click();
@@ -69,7 +111,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       await page.keyboard.press("Escape");
     });
 
-    let gamma1Id = "";
+    let projectId = "";
     await test.step("enabling org-wide 2FA blocks the admin's own project/settings access until they enrol", async () => {
       // 2FA/self-signup/external-user-policy live in the "Security"
       // top-level resource-menu group (2026-08 UX audit's Org Admin
@@ -92,7 +134,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // The cross-org project *list* deliberately isn't gated per-org (a
       // user could belong to other, non-2FA-required orgs too) — only
       // project-*specific* endpoints enforce a single org's requirement.
-      gamma1Id = (await projectsResp.json()).find((p: { name: string }) => p.name === PROJECT_NAMES.gamma1).id;
+      projectId = (await projectsResp.json()).find((p: { name: string }) => p.name === projectName).id;
 
       // Wait for the project-detail fetch this click triggers (which
       // resolves 403, driving the "2FA required" UI) before asserting on
@@ -102,8 +144,8 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // elsewhere in this pass (project-history.spec.ts,
       // requirements-and-cr-filters.spec.ts).
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes(`/api/v1/projects/${gamma1Id}`) && r.request().method() === "GET"),
-        page.getByText(PROJECT_NAMES.gamma1).click(),
+        page.waitForResponse((r) => r.url().includes(`/api/v1/projects/${projectId}`) && r.request().method() === "GET"),
+        page.getByText(projectName).click(),
       ]);
       // This step (via toggleDisplayNameLock's own reload()) is exactly
       // what surfaced a real OrgAdminPage.tsx race, not a test-timing
@@ -119,7 +161,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
 
     await test.step("a direct API call against the specific project is also blocked, not just the UI", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const resp = await page.request.get(`http://localhost:8000/api/v1/projects/${gamma1Id}`, {
+      const resp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(resp.status()).toBe(403);
@@ -142,8 +184,8 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
 
     await test.step("2FA now enabled, access is restored and the org-wide requirement can be turned back off, cleaning up for later specs", async () => {
       await page.goto("/projects");
-      await page.getByText(PROJECT_NAMES.gamma1).click();
-      await expect(page.getByText(PROJECT_NAMES.gamma1)).toBeVisible();
+      await page.getByText(projectName).click();
+      await expect(page.getByText(projectName)).toBeVisible();
 
       await page.goto("/orgs");
       await selectOrgAdminGroup(page, "Security");
@@ -170,7 +212,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // place, so log back in (with a plain password now — 2FA is off)
       // before continuing.
       await page.waitForURL(/\/login$/);
-      await loginAs(page, PERSONAS.orgAdminGamma.email);
+      await loginAs(page, adminEmail);
     });
 
     await test.step("external-user-on-project policy: 'anyone' allows adding a not-yet-member by email", async () => {
@@ -184,7 +226,7 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       ]);
 
       await page.goto("/projects");
-      await page.getByText(PROJECT_NAMES.gamma1).click();
+      await page.getByText(projectName).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       // No group is auto-created on project creation any more (follow-up
       // UX batch Phase C, 2026-08-31) — invite via the Members section's

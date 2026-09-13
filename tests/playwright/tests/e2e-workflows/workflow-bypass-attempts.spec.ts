@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
+const apiBaseUrl = "http://localhost:8000";
+
 /**
  * Job to be done: the requirement lifecycle's guarantees (edit-after-lock
  * requires a change request; only a PM can approve; archiving isn't a way
@@ -10,21 +12,70 @@ import { loginAs, logout, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } fro
  * behaved UI. Each step below is an attempted bypass, followed by
  * confirmation it was actually blocked (both in the UI and, where it
  * matters, at the API directly).
+ *
+ * Uses a brand-new, disposable project inside the existing Alpha org
+ * (created via the API, mirroring project-admin-structural.spec.ts), not
+ * Alpha-1 — approving a stage locks *every* requirement in the project it
+ * belongs to, which is fine to do once against a disposable project but
+ * not safe against Alpha-1 itself: 27 other spec files reference Alpha-1,
+ * and the lock is irreversible (no "unapprove" endpoint). Found during
+ * Phase 1 of docs/platform-review-2026-09-plan.md (turning on Playwright
+ * parallelism) — previously safe only because this suite ran single-
+ * worker/serial. Also grants stakeholderAlpha/memberAlphaBeta project
+ * roles on this disposable project rather than relying on their existing
+ * Alpha-1 roles, revoking both again at the end per this repo's
+ * idempotent-test convention (mirrors stage-review-and-completion.spec.ts's
+ * own stakeholder-grant cleanup).
  */
 test.describe("attempts to bypass requirement/change-request workflow guarantees", () => {
   test("locking a stage, then probing edit/archive/approve boundaries", async ({ page }) => {
-    // A throwaway requirement created fresh by this run, rather than the
-    // seeded "Must log all state transitions" — this step's own later
-    // steps archive it and recreate it under a derived name, which isn't
-    // reversible from the UI, so reusing a fixed seeded name would leave
-    // this test unable to pass a second time against the same database
-    // (the seeded name would already be archived from the prior run). See
-    // CLAUDE.md's non-idempotent-test convention.
-    const targetReqName = `E2E Bypass Target ${Date.now()}`;
+    const suffix = Date.now();
+    const projectName = `E2E Bypass Project ${suffix}`;
+    const targetReqName = `E2E Bypass Target ${suffix}`;
+    let projectId = "";
+    let stakeholderId = "";
+    let memberId = "";
 
-    await test.step("create the throwaway requirement this test will lock and archive", async () => {
+    await test.step("PM creates a disposable project (with matching Hardware structure) and its throwaway requirement", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const pmHeaders = { Authorization: `Bearer ${pmToken}` };
+
+      const orgsResp = await page.request.get(`${apiBaseUrl}/api/v1/orgs`, { headers: pmHeaders });
+      const orgs: { id: string; name: string }[] = await orgsResp.json();
+      const alphaOrgId = orgs.find((o) => o.name === "E2E Alpha Robotics")!.id;
+
+      const project = await (
+        await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
+          headers: pmHeaders, data: { organization_id: alphaOrgId, name: projectName, summary: "E2E seed project." },
+        })
+      ).json();
+      projectId = project.id;
+
+      // Same Hardware component this project's "New Requirement" panel
+      // check below expects, mirroring project-admin-structural.spec.ts's
+      // own disposable-project setup.
+      const hw = await (
+        await page.request.post(`${apiBaseUrl}/api/v1/projects/${projectId}/components`, {
+          headers: pmHeaders, data: { name: "Hardware", prefix: "HW" },
+        })
+      ).json();
+      await page.request.post(`${apiBaseUrl}/api/v1/projects/${projectId}/categories`, {
+        headers: pmHeaders, data: { name: "Functional", prefix: "FN", component_id: hw.id },
+      });
+
+      const usersResp = await page.request.get(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/users`, { headers: pmHeaders });
+      const users: { user_id: string; email: string }[] = await usersResp.json();
+      stakeholderId = users.find((u) => u.email === PERSONAS.stakeholderAlpha.email)!.user_id;
+      memberId = users.find((u) => u.email === PERSONAS.memberAlphaBeta.email)!.user_id;
+      await page.request.post(`${apiBaseUrl}/api/v1/projects/${projectId}/roles`, {
+        headers: pmHeaders, data: { user_id: stakeholderId, role: "stakeholder" },
+      });
+      await page.request.post(`${apiBaseUrl}/api/v1/projects/${projectId}/roles`, {
+        headers: pmHeaders, data: { user_id: memberId, role: "member" },
+      });
+
+      await page.goto(`/projects/${projectId}`);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("button", { name: "New Requirement" }).click();
       const createPanel = page.getByRole("dialog", { name: "New Requirement" });
@@ -34,7 +85,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await expect(page.getByText(targetReqName)).toBeVisible();
     });
 
-    await test.step("PM approves Alpha-1's stage, locking all its requirements", async () => {
+    await test.step("PM approves the disposable project's stage, locking all its requirements", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       // Project stages now lives inside the merged "Structure" tab
       // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
@@ -70,24 +121,13 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     });
 
     let lockedRequirementUrl = "";
-    await test.step("a locked requirement offers no edit form in the UI", async () => {
+    await test.step("the locked requirement offers no edit form in the UI", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByRole("link", { name: "Must support configuration via file" }).click();
+      await page.getByRole("link", { name: targetReqName, exact: true }).click();
       lockedRequirementUrl = page.url();
-      // React Router 7 wraps navigation in React's startTransition by
-      // default (a behavior change from 6): the URL updates immediately,
-      // but the requirements list this just navigated from — now showing
-      // every one of Alpha-1's requirements locked by the stage approval
-      // above, each with its own "Locked (approved)" badge — can stay
-      // mounted for a beat longer, making a bare `getByText` match more
-      // than one badge. Waiting for this requirement's own heading first
-      // (unique to its detail page) proves the transition has actually
-      // landed before checking the — otherwise possibly-transient —
-      // lock status.
       // Not exact: the requirement detail page's h1 is "{unique_code} —
-      // {name}" (e.g. "SW-PERF-002 — Must support configuration via
-      // file"), not the bare name.
-      await expect(page.getByRole("heading", { name: "Must support configuration via file" })).toBeVisible();
+      // {name}", not the bare name.
+      await expect(page.locator("h1")).toContainText("—");
       await expect(page.getByText("Locked (approved)")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });
@@ -95,9 +135,9 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("a raw API edit attempt against the same locked requirement still 409s", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       const match = lockedRequirementUrl.match(/projects\/([0-9a-f-]+)\/requirements\/([0-9a-f-]+)/);
-      const [, projectId, requirementId] = match!;
+      const [, matchedProjectId, requirementId] = match!;
       const resp = await page.request.put(
-        `http://localhost:8000/api/v1/projects/${projectId}/requirements/${requirementId}`,
+        `${apiBaseUrl}/api/v1/projects/${matchedProjectId}/requirements/${requirementId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
           data: {
@@ -112,7 +152,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("archiving a locked requirement is hidden from a non-PM stakeholder", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await page.goto(`/projects/${projectId}`);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: targetReqName, exact: true }).click();
       await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(0);
@@ -124,7 +164,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("PM archives it, then a same-named recreation gets a distinct identity — no way to 'become' the old one", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-      await page.getByText(PROJECT_NAMES.alpha1).click();
+      await page.goto(`/projects/${projectId}`);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: targetReqName, exact: true }).click();
       // Wait for the detail page's own content to land before reading its
@@ -168,9 +208,12 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("a project member with no PM role cannot decide a change request via a direct API call either", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
       // fetch an existing submitted/in-review CR to target, or fall back to
-      // any CR on the project — the point is the role check, not the status.
-      const projectUrl = page.url().match(/projects\/([0-9a-f-]+)/)![1];
-      const crsResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectUrl}/change-requests`, {
+      // any CR on the project — the point is the role check, not the
+      // status. This disposable project starts with none, so this step is
+      // a no-op unless a future revision seeds one — the same behaviour
+      // dedicated CR-permission specs (e.g. change-request-approval-
+      // separation.spec.ts) already cover independently.
+      const crsResp = await page.request.get(`${apiBaseUrl}/api/v1/projects/${projectId}/change-requests`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const crs = await crsResp.json();
@@ -179,7 +222,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
         await loginAs(page, PERSONAS.memberAlphaBeta.email);
         const memberToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
         const resp = await page.request.post(
-          `http://localhost:8000/api/v1/projects/${projectUrl}/change-requests/${crs[0].id}/decide`,
+          `${apiBaseUrl}/api/v1/projects/${projectId}/change-requests/${crs[0].id}/decide`,
           { headers: { Authorization: `Bearer ${memberToken}` }, data: { approve: true, note: "unauthorized attempt" } }
         );
         expect(resp.status()).toBe(403);
@@ -190,7 +233,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const projectsResp = await page.request.get("http://localhost:8000/api/v1/projects?archived=false", {
+      const projectsResp = await page.request.get(`${apiBaseUrl}/api/v1/projects?archived=false`, {
         headers: { Authorization: `Bearer ${pmToken}` },
       });
       const projects = await projectsResp.json();
@@ -199,7 +242,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       const stakeholderToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const resp = await page.request.get(`http://localhost:8000/api/v1/projects/${beta1.id}`, {
+      const resp = await page.request.get(`${apiBaseUrl}/api/v1/projects/${beta1.id}`, {
         headers: { Authorization: `Bearer ${stakeholderToken}` },
       });
       expect(resp.status()).toBe(403);
@@ -208,6 +251,24 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       // navigated to directly by URL, not just that the API rejects it.
       await page.goto(`/projects/${beta1.id}`);
       await expect(page.getByText(PROJECT_NAMES.beta1)).toHaveCount(0);
+    });
+
+    await test.step("clean up: revoke stakeholderAlpha/memberAlphaBeta's grants on the disposable project", async () => {
+      // Both are shared personas other specs assert specific role/project
+      // counts for (see stage-review-and-completion.spec.ts's identical
+      // cleanup) — the disposable project above is otherwise never
+      // referenced again, but the *grant* itself would otherwise persist
+      // on these shared personas past this test.
+      await logout(page);
+      await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+      const pmToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+      const pmHeaders = { Authorization: `Bearer ${pmToken}` };
+      await page.request.delete(`${apiBaseUrl}/api/v1/projects/${projectId}/roles/${stakeholderId}/stakeholder`, {
+        headers: pmHeaders,
+      });
+      await page.request.delete(`${apiBaseUrl}/api/v1/projects/${projectId}/roles/${memberId}/member`, {
+        headers: pmHeaders,
+      });
     });
   });
 });
