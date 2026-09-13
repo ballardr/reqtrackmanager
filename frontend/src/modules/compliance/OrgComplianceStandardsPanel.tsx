@@ -28,7 +28,33 @@
  * top-grid tiles can link straight into a pre-filtered, pre-pivoted view
  * rather than landing on the unfiltered default and asking the user to
  * re-apply the same filter the tile already counted.
+ *
+ * Phase 39 fixes three defects in the expanded row: **39a** the expand/
+ * collapse control no longer renders as a separately bordered `.btn` chip
+ * — it's `.disclosure-toggle` (`theme.css`), a borderless row-filling
+ * button, the third instance of this fix after `StandardNavSection.tsx`
+ * (Phase 29d) and `EntitySwitcher.tsx` (Phase 35b); its `▾`/`▸` text
+ * glyphs are also replaced with fixed-size `ChevronDown`/`ChevronRight`
+ * icons, matching Phase 29d's own icon choice. **39c** the expanded child
+ * list is indented under its parent row using `RequirementTree.tsx`'s own
+ * nested-list convention (`marginLeft`/`borderLeft`/`paddingLeft`) so it
+ * reads as a tree rather than a flush-left list. **39d** the default
+ * (group-by-standard) view's expanded row now groups its projects by
+ * `standard_version_id` first, rendering one sub-heading per version with
+ * that version's projects nested a level deeper underneath — so a user no
+ * longer has to read every row's own version suffix to see which versions
+ * of a standard are actually in use. This is additive to the "Group by"
+ * pivot, not a third option — group-by-project's expanded row is
+ * unaffected (it lists one row per standard already, which has no further
+ * version dimension to add: a project's own assignment of a standard has
+ * exactly one, unambiguous version). Each version sub-group is itself
+ * collapsible when a standard has more than one — but when it has only
+ * one, that sub-group renders pre-expanded with no toggle at all, since a
+ * lone version behind an already-explicit "expand this standard" click has
+ * nothing left to disambiguate (Decided by: User, live follow-up during
+ * this phase's implementation).
  */
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -78,6 +104,30 @@ function countByState(rows: ProjectComplianceStatus[], state: ComplianceOverallS
   return rows.filter((r) => r.overall_compliance_state === state).length;
 }
 
+interface VersionGroup {
+  key: string;
+  label: string;
+  rows: ProjectComplianceStatus[];
+}
+
+/** 39d: the second nesting level inside a group-by-standard row's expanded
+ * project list — one sub-group per `standard_version_id`, so a standard
+ * with projects on more than one version reads as Standard -> Version ->
+ * Project rather than a flat list of projects each carrying their own
+ * version suffix. */
+function groupByVersion(rows: ProjectComplianceStatus[]): VersionGroup[] {
+  const byVersion = new Map<string, VersionGroup>();
+  for (const row of rows) {
+    let group = byVersion.get(row.standard_version_id);
+    if (!group) {
+      group = { key: row.standard_version_id, label: row.version_label, rows: [] };
+      byVersion.set(row.standard_version_id, group);
+    }
+    group.rows.push(row);
+  }
+  return [...byVersion.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
 const COMPLIANCE_OVERALL_STATES = Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[];
 
 export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
@@ -93,6 +143,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     return initial && COMPLIANCE_OVERALL_STATES.includes(initial as ComplianceOverallState) ? (initial as ComplianceOverallState) : "";
   });
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  const [expandedVersionKeys, setExpandedVersionKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     complianceApi
@@ -148,6 +199,15 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     });
   }
 
+  function toggleVersionExpanded(versionKey: string) {
+    setExpandedVersionKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(versionKey)) next.delete(versionKey);
+      else next.add(versionKey);
+      return next;
+    });
+  }
+
   if (statusRows === null) return <Spinner />;
 
   return (
@@ -179,12 +239,13 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                         <td>
                           <button
                             type="button"
-                            className="btn"
+                            className="disclosure-toggle"
                             aria-expanded={expanded}
                             aria-label={`${expanded ? "Collapse" : "Expand"} ${counterpartNoun} for ${group.ariaLabel}`}
                             onClick={() => toggleExpanded(group.key)}
                           >
-                            {expanded ? "▾" : "▸"} {group.displayLabel}
+                            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            {group.displayLabel}
                           </button>
                         </td>
                         <td>{group.rows.length}</td>
@@ -196,26 +257,98 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                       {expanded && (
                         <tr>
                           <td colSpan={6}>
-                            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                              {group.rows.map((row) => (
-                                <li
-                                  key={row.project_compliance_id}
-                                  className="row"
-                                  style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
-                                >
-                                  <span>
-                                    <Link to={`/projects/${row.project_id}/modules/compliance`}>
-                                      {groupBy === "project" ? `${row.standard_reference} — ${row.standard_name}` : row.project_name}
-                                    </Link>
-                                    <span className="text-muted"> — {row.version_label}</span>
-                                  </span>
-                                  <span>
-                                    <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
-                                    {row.compliance_percentage.toFixed(1)}%
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
+                            {groupBy === "standard" ? (
+                              (() => {
+                                const versionGroups = groupByVersion(group.rows);
+                                // A lone version behind an already-explicit "expand this
+                                // standard" click has nothing left to disambiguate — render it
+                                // pre-expanded with no toggle of its own, rather than making the
+                                // user click twice to see the one project list that exists.
+                                const singleVersion = versionGroups.length === 1;
+                                return (
+                                  <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                                    {versionGroups.map((versionGroup) => {
+                                      const versionExpanded = singleVersion || expandedVersionKeys.has(versionGroup.key);
+                                      return (
+                                        <li
+                                          key={versionGroup.key}
+                                          style={{ marginLeft: "1.75rem", borderLeft: "2px solid var(--color-border)", paddingLeft: "0.75rem", marginBottom: "0.5rem" }}
+                                        >
+                                          {singleVersion ? (
+                                            <h4 style={{ margin: "0.25rem 0" }}>{versionGroup.label}</h4>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              className="disclosure-toggle"
+                                              aria-expanded={versionExpanded}
+                                              aria-label={`${versionExpanded ? "Collapse" : "Expand"} projects for ${versionGroup.label}`}
+                                              onClick={() => toggleVersionExpanded(versionGroup.key)}
+                                            >
+                                              {versionExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                              <strong>{versionGroup.label}</strong>
+                                            </button>
+                                          )}
+                                          {versionExpanded && (
+                                            <ul
+                                              style={{
+                                                listStyle: "none",
+                                                margin: 0,
+                                                padding: 0,
+                                                marginLeft: "1.75rem",
+                                                borderLeft: "2px solid var(--color-border)",
+                                                paddingLeft: "0.75rem",
+                                              }}
+                                            >
+                                              {versionGroup.rows.map((row) => (
+                                                <li
+                                                  key={row.project_compliance_id}
+                                                  className="row"
+                                                  style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
+                                                >
+                                                  <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>
+                                                  <span>
+                                                    <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                                                    {row.compliance_percentage.toFixed(1)}%
+                                                  </span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                );
+                              })()
+                            ) : (
+                              <ul
+                                style={{
+                                  listStyle: "none",
+                                  margin: 0,
+                                  padding: 0,
+                                  marginLeft: "1.75rem",
+                                  borderLeft: "2px solid var(--color-border)",
+                                  paddingLeft: "0.75rem",
+                                }}
+                              >
+                                {group.rows.map((row) => (
+                                  <li
+                                    key={row.project_compliance_id}
+                                    className="row"
+                                    style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
+                                  >
+                                    <span>
+                                      <Link to={`/projects/${row.project_id}/modules/compliance`}>{`${row.standard_reference} — ${row.standard_name}`}</Link>
+                                      <span className="text-muted"> — {row.version_label}</span>
+                                    </span>
+                                    <span>
+                                      <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                                      {row.compliance_percentage.toFixed(1)}%
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </td>
                         </tr>
                       )}

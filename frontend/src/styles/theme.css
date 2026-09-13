@@ -756,6 +756,40 @@ th:has(> .th-sort) {
   color: var(--color-primary);
 }
 
+/* Borderless expand/collapse control that fills its own table cell — for a
+   plain disclosure toggle whose label and chevron are one single clickable
+   unit (unlike `.nav-link-row-toggle`, which sits beside a separately
+   navigable link). Mirrors `.th-sort` immediately above (zero the cell's
+   own padding, let the button re-add the same padding so it lines up with
+   a plain cell next to it), but with a hover *background* rather than a
+   text-colour change, since this control's whole row is the click target,
+   not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
+   (compliance-module-plan.md Phase 39a) — the third instance of "no
+   bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
+   toggle` (Phase 29d) and `.entity-switcher-trigger` (Phase 35b); see
+   docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
+td:has(> .disclosure-toggle) {
+  padding: 0;
+}
+.disclosure-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.disclosure-toggle:hover {
+  background: var(--color-surface-alt);
+}
+
 /* `DirectoryTable`'s row-opening first-column control — a real <button>
    (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
    directory row that opens a side panel and one that navigates to a URL

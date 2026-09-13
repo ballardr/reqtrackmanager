@@ -64,7 +64,11 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    // The exact toast text, not a bare "Published" substring match — once
+    // this standard has more than one version, an earlier one's own nav-
+    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
+    // substring match resolves to ambiguously alongside this toast.
+    await expect(page.getByText("Version published.")).toBeVisible();
 
     // --- Assign to Alpha-1 and assess the one requirement Non-Compliant.
     await page.goto("/projects");
@@ -148,5 +152,106 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await selectOrgOverviewGroup(page, "Outstanding compliance items");
     await expect(page.getByText(requirementName)).toBeVisible();
     await expect(page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).first()).toBeVisible();
+  });
+
+  /**
+   * Phase 39 (docs/compliance-module-plan.md) — "Compliance by standard"'s
+   * default (group-by-standard) expanded row now groups its projects by
+   * `standard_version_id` first (39d), each version's projects indented a
+   * level deeper (39c), rather than one flat list of projects each
+   * carrying its own version suffix — each version with more than one
+   * sibling is its own collapsible sub-group (a live follow-up during this
+   * phase: with only one version, per the first test in this file, that
+   * sub-group instead pre-expands with no toggle at all, since there's
+   * nothing left to disambiguate). Covers a standard with two published
+   * versions assigned to two different projects, confirming each version's
+   * sub-group lists only its own project — not the other version's — and
+   * that a project link inside the nested structure still navigates.
+   */
+  test("a standard on two versions groups its expanded row as Standard -> Version -> Project (Phase 39d)", async ({ page }) => {
+    const suffix = Date.now();
+    const reference = `E2E-ORG-NEST-${suffix}`;
+    const standardName = `E2E Org Nesting Standard ${suffix}`;
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
+    const standardId = new URL(page.url()).pathname.split("/").pop()!;
+
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
+    await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
+    await page.getByRole("button", { name: "v1.0" }).click();
+    await page.getByRole("button", { name: "Publish" }).click();
+    await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
+    // The exact toast text, not a bare "Published" substring match — once
+    // this standard has more than one version, an earlier one's own nav-
+    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
+    // substring match resolves to ambiguously alongside this toast.
+    await expect(page.getByText("Version published.")).toBeVisible();
+
+    // A second published version, so the standard has two to assign.
+    await page.goto(`/standards/${standardId}/versions`);
+    await page.getByRole("button", { name: "New version" }).click();
+    await page.getByLabel("Version label").fill("v2.0");
+    await page.getByRole("dialog", { name: "New version" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("button", { name: "v2.0" })).toBeVisible();
+    await page.getByRole("button", { name: "v2.0" }).click();
+    await page.getByRole("button", { name: "Publish" }).click();
+    await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
+    // The exact toast text, not a bare "Published" substring match — once
+    // this standard has more than one version, an earlier one's own nav-
+    // rail "Versions" entry also reads "v1.0 (Published)", which a plain
+    // substring match resolves to ambiguously alongside this toast.
+    await expect(page.getByText("Version published.")).toBeVisible();
+
+    async function assignStandard(projectName: string, versionLabel: string) {
+      await page.goto("/projects");
+      await page.getByRole("link", { name: projectName }).click();
+      await page.getByRole("link", { name: "Compliance", exact: true }).click();
+      await page.getByRole("button", { name: "Assign standard" }).click();
+      const dialog = page.getByRole("dialog", { name: "Assign compliance standard" });
+      await dialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} — ${standardName}` });
+      await dialog.getByLabel("Standard version").selectOption({ label: versionLabel });
+      await dialog.getByRole("button", { name: "Assign" }).click();
+      await expect(page.getByText(new RegExp(reference))).toBeVisible();
+    }
+
+    await assignStandard(PROJECT_NAMES.alpha1, "v1.0");
+    await assignStandard(PROJECT_NAMES.alpha2, "v2.0");
+
+    await page.goto("/org-overview");
+    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await selectOrgOverviewGroup(page, "Compliance by standard");
+    await page.getByRole("button", { name: new RegExp(`Expand projects for ${reference}`) }).click();
+
+    // More than one version behind this standard — each is its own
+    // collapsible sub-group (collapsed by default), unlike the single-
+    // version case which pre-expands with no toggle at all. Matches both
+    // "Expand"/"Collapse" — the toggle's own accessible name flips once
+    // clicked, and this same locator is reused afterwards to find the
+    // (now-expanded) group.
+    const v1Toggle = page.getByRole("button", { name: /^(Expand|Collapse) projects for v1\.0$/ });
+    const v2Toggle = page.getByRole("button", { name: /^(Expand|Collapse) projects for v2\.0$/ });
+    await expect(v1Toggle).toBeVisible();
+    await expect(v2Toggle).toBeVisible();
+    await v1Toggle.click();
+    await v2Toggle.click();
+
+    // Each version's sub-group lists only its own project. `xpath=..`
+    // walks to the immediate parent (the toggle button's own `<li>`) —
+    // chaining an `ancestor::` axis off another locator instead scopes the
+    // search to each matched element's own subtree, which can't find a
+    // node "above" it.
+    const v1Group = v1Toggle.locator("xpath=..");
+    await expect(v1Group.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toBeVisible();
+    await expect(v1Group.getByRole("link", { name: PROJECT_NAMES.alpha2 })).toHaveCount(0);
+
+    const v2Group = v2Toggle.locator("xpath=..");
+    await expect(v2Group.getByRole("link", { name: PROJECT_NAMES.alpha2 })).toBeVisible();
+    await expect(v2Group.getByRole("link", { name: PROJECT_NAMES.alpha1 })).toHaveCount(0);
+
+    // A project link inside the nested structure still navigates correctly.
+    await v2Group.getByRole("link", { name: PROJECT_NAMES.alpha2 }).click();
+    await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
   });
 });

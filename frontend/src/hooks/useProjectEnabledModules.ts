@@ -12,6 +12,15 @@ export interface ProjectEnabledModulesResult {
   loaded: boolean;
 }
 
+interface State {
+  /** The `projectId` this `modules`/`loaded` pair was resolved for — lets a
+   * render tell a genuinely-settled result apart from one left over from
+   * a `projectId` that has since changed. */
+  forId: string | null;
+  modules: ModuleNavEntry[];
+  loaded: boolean;
+}
+
 /**
  * Fetches the currently-enabled modules for `projectId`'s owning
  * organisation, with enough of each one's frontend manifest to render a nav
@@ -40,29 +49,49 @@ export interface ProjectEnabledModulesResult {
  * project-scoped path's module routes are still unknown, rather than
  * delaying every project page's render on this fetch — see that file's own
  * comment at the wildcard route.
+ *
+ * Found during compliance-module-plan.md Phase 39: that fix only covered a
+ * *fresh page load* landing directly on a project-scoped URL (`loaded`'s
+ * `useState` initializer reads the right `projectId` from the very first
+ * render). It missed the same race one step earlier — a client-side
+ * navigation from a project-less page (e.g. `/org-overview`) straight into
+ * a project's own module route, for the first time in that page's
+ * lifetime. On that transition's first render, `projectId` has already
+ * changed but the `useEffect` below (which resets `loaded`) hasn't run
+ * yet — it fires *after* this render commits — so this hook still returned
+ * the *previous* `projectId`'s state, typically `loaded: true, modules: []`
+ * left over from the "no project" case. `App.tsx` then saw an "already
+ * loaded, no modules" project and bounced straight to `/projects` before
+ * the real fetch ever started. Fixed by keying the returned state to the
+ * `projectId` it was actually resolved for and resetting synchronously
+ * during render when `projectId` changes (React's own documented "adjusting
+ * state when a prop changes" pattern) rather than waiting for the effect —
+ * so the very first render after any `projectId` change already reports
+ * `loaded: false` (or `true` immediately, for the "no project" case) with
+ * no stale carry-over from whatever `projectId` was current before.
  */
 export function useProjectEnabledModules(projectId: string | null): ProjectEnabledModulesResult {
-  const [modules, setModules] = useState<ModuleNavEntry[]>([]);
-  const [loaded, setLoaded] = useState(projectId === null);
+  const [state, setState] = useState<State>({ forId: projectId, modules: [], loaded: projectId === null });
+
+  if (state.forId !== projectId) {
+    setState({ forId: projectId, modules: [], loaded: projectId === null });
+  }
 
   useEffect(() => {
-    if (!projectId) {
-      setModules([]);
-      setLoaded(true);
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
-    setLoaded(false);
     api.get<ModuleNavEntry[]>(`/api/v1/projects/${projectId}/enabled-modules`).then((result) => {
-      if (!cancelled) {
-        setModules(result);
-        setLoaded(true);
-      }
+      if (!cancelled) setState({ forId: projectId, modules: result, loaded: true });
     });
     return () => {
       cancelled = true;
     };
   }, [projectId]);
 
-  return { modules, loaded };
+  // By this point `state.forId === projectId` always holds: calling
+  // `setState` during render (above) makes React immediately discard this
+  // render and retry with the new state before ever reaching here — React's
+  // own documented behaviour for this "adjusting state when a prop
+  // changes" pattern.
+  return { modules: state.modules, loaded: state.loaded };
 }

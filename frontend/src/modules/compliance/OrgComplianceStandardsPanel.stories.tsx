@@ -64,10 +64,64 @@ export const GroupedByStandard: Story = {
     await expect(table.getByText(/ISO-27001 — ISO 27001/)).toBeInTheDocument();
     await expect(table.getByText(/EMC-1 — EMC\/EMF Standard/)).toBeInTheDocument();
 
-    // Drilling down expands the underlying projects.
-    await userEvent.click(canvas.getByRole("button", { name: /Expand projects for ISO-27001/ }));
-    await waitFor(() => expect(table.getByRole("link", { name: "Alpha Bridge" })).toBeInTheDocument());
+    // 39a: a borderless disclosure toggle, not a bordered `.btn` chip.
+    const toggle = canvas.getByRole("button", { name: /Expand projects for ISO-27001/ });
+    await expect(toggle).toHaveClass("disclosure-toggle");
+    await expect(toggle).not.toHaveClass("btn");
+
+    // Drilling down expands the underlying projects, nested one level
+    // under their (single, shared) version heading — 39c/39d.
+    await userEvent.click(toggle);
+    await waitFor(() => expect(table.getByRole("heading", { name: "v1.0" })).toBeInTheDocument());
+    await expect(table.getByRole("link", { name: "Alpha Bridge" })).toBeInTheDocument();
     await expect(table.getByRole("link", { name: "Beta Tunnel" })).toBeInTheDocument();
+  },
+};
+
+/** Phase 39d — a standard assigned to projects on two different versions
+ * groups its expanded row as Standard -> Version -> Project, each version
+ * listing only the projects actually on it. */
+export const GroupedByStandardWithMultipleVersions: Story = {
+  decorators: [withRouter(DEFAULT_PATH)],
+  beforeEach: () =>
+    mockApis([
+      STATUS_ROWS[0],
+      {
+        ...STATUS_ROWS[0],
+        project_compliance_id: "pc-4",
+        project_id: "proj-3",
+        project_name: "Gamma Reactor",
+        standard_version_id: "ver-1b",
+        version_label: "v2.0",
+      },
+    ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("table")).toBeInTheDocument());
+    const table = within(canvas.getByRole("table"));
+    await userEvent.click(canvas.getByRole("button", { name: /Expand projects for ISO-27001/ }));
+
+    // More than one version behind the standard — each is its own
+    // collapsible sub-group, collapsed by default (unlike the single-
+    // version case in `GroupedByStandard` above, which has no toggle at
+    // all and is pre-expanded).
+    const v1Toggle = table.getByRole("button", { name: /Expand projects for v1.0/ });
+    const v2Toggle = table.getByRole("button", { name: /Expand projects for v2.0/ });
+    await expect(v1Toggle).toBeInTheDocument();
+    await expect(v2Toggle).toBeInTheDocument();
+    await expect(table.queryByRole("link", { name: "Alpha Bridge" })).not.toBeInTheDocument();
+
+    await userEvent.click(v1Toggle);
+    await userEvent.click(v2Toggle);
+
+    // Each version's group lists only its own project, not the other's.
+    const v1Group = v1Toggle.closest("li") as HTMLElement;
+    await waitFor(() => expect(within(v1Group).getByRole("link", { name: "Alpha Bridge" })).toBeInTheDocument());
+    await expect(within(v1Group).queryByRole("link", { name: "Gamma Reactor" })).not.toBeInTheDocument();
+
+    const v2Group = v2Toggle.closest("li") as HTMLElement;
+    await expect(within(v2Group).getByRole("link", { name: "Gamma Reactor" })).toBeInTheDocument();
+    await expect(within(v2Group).queryByRole("link", { name: "Alpha Bridge" })).not.toBeInTheDocument();
   },
 };
 
