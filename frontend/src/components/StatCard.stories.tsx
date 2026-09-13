@@ -11,12 +11,19 @@ export default meta;
 
 type Story = StoryObj<typeof StatCard>;
 
+/** Value renders above the label, matching `MetricTile`'s layout — the two
+ * are used interchangeably in the same `.grid.grid-metrics` row (e.g.
+ * `OrgComplianceDashboard.tsx`'s top grid), so they must share the same
+ * visual order or the row reads as inconsistent (found in live review). */
 export const Default: Story = {
   args: { label: "Projects", value: 12 },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("12")).toBeInTheDocument();
-    await expect(canvas.getByText("Projects")).toBeInTheDocument();
+    const value = canvas.getByText("12");
+    const label = canvas.getByText("Projects");
+    await expect(value).toBeInTheDocument();
+    await expect(label).toBeInTheDocument();
+    await expect(value.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   },
 };
 

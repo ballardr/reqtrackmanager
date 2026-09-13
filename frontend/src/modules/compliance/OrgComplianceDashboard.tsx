@@ -61,6 +61,18 @@
  * three "detail" cards also dropped their `alignItems: "flex-start"` (which
  * opted out of the row's default `stretch`) and had their own list lengths
  * bounded, for the same height-variance reason.
+ *
+ * Phase 38: Phase 36's own removal of `alignItems: "flex-start"` from the
+ * detail-card row didn't actually achieve `stretch` — `.row`
+ * (`styles/theme.css`) sets `align-items: center` itself, so cards of
+ * different content heights rendered vertically centred relative to one
+ * another rather than top-aligned. That row now sets `alignItems:
+ * "flex-start"` explicitly rather than relying on `.row`'s own default
+ * (see `docs/ux-style-guide.md`'s Phase 38 addendum). "Recently changed
+ * compliance assessments" also moved out of that row into its own
+ * full-width `.card` below it, per direct user feedback that it should
+ * take up a full row rather than share one with the other two detail
+ * cards.
  */
 import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -231,7 +243,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
         />
       </div>
 
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
+      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
         <div className="card stack" style={{ flex: "1 1 260px" }}>
           <h3 style={{ margin: 0 }}>Standards with the most outstanding issues</h3>
           {standardsWithMostIssues.length === 0 ? (
@@ -244,24 +256,6 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
                 </li>
               ))}
             </ol>
-          )}
-        </div>
-
-        <div className="card stack" style={{ flex: "1 1 260px" }}>
-          <h3 style={{ margin: 0 }}>Recently changed compliance assessments</h3>
-          {recentActivity.length === 0 ? (
-            <p className="text-muted" style={{ margin: 0 }}>None.</p>
-          ) : (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {recentActivity.map((event) => (
-                <li key={event.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                  <Link to={`/projects/${event.project_id}/modules/compliance`}>{event.project_name}</Link>
-                  {" — "}
-                  {event.requirement_reference ? `${event.requirement_reference} — ` : ""}
-                  {event.requirement_name} — {activityActionLabel(event.action)}
-                </li>
-              ))}
-            </ul>
           )}
         </div>
 
@@ -284,6 +278,24 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
             </ul>
           )}
         </div>
+      </div>
+
+      <div className="card stack">
+        <h3 style={{ margin: 0 }}>Recently changed compliance assessments</h3>
+        {recentActivity.length === 0 ? (
+          <p className="text-muted" style={{ margin: 0 }}>None.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {recentActivity.map((event) => (
+              <li key={event.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
+                <Link to={`/projects/${event.project_id}/modules/compliance`}>{event.project_name}</Link>
+                {" — "}
+                {event.requirement_reference ? `${event.requirement_reference} — ` : ""}
+                {event.requirement_name} — {activityActionLabel(event.action)}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

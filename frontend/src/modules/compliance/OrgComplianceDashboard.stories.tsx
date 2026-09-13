@@ -215,5 +215,32 @@ export const HeadlineTilesLinkToFilteredViews: Story = {
   },
 };
 
+/** Phase 38 — the second block's remaining two cards ("Standards with the
+ * most outstanding issues" / "Upcoming compliance deadlines/reviews") sit
+ * top-aligned in one row via an explicit `alignItems: "flex-start"` (never
+ * `.row`'s own `align-items: center` default, which is what actually
+ * produced the "not top justified" complaint — see this file's own Phase 38
+ * note), while "Recently changed compliance assessments" now renders as its
+ * own full-width card entirely outside that row. */
+export const DetailCardsTopAlignedAndRecentActivityFullWidth: Story = {
+  beforeEach: mockApis,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const standardsCard = await waitFor(() => canvas.getByText("Standards with the most outstanding issues").closest(".card"));
+    const upcomingCard = canvas.getByText("Upcoming compliance deadlines/reviews").closest(".card");
+    const recentActivityCard = canvas.getByText("Recently changed compliance assessments").closest(".card");
+
+    const sharedRow = standardsCard?.closest(".row");
+    await expect(sharedRow).not.toBeNull();
+    // Both remaining detail cards share one explicitly top-aligned row.
+    await expect(upcomingCard?.closest(".row")).toBe(sharedRow);
+    await expect((sharedRow as HTMLElement).style.alignItems).toBe("flex-start");
+
+    // "Recently changed" is no longer inside that row at all.
+    await expect(recentActivityCard?.closest(".row")).not.toBe(sharedRow);
+    await expect(within(recentActivityCard as HTMLElement).getByText(/Access control — assessed/)).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...Populated };
 export const DarkTheme: Story = { ...Populated, globals: { theme: "dark" } };
