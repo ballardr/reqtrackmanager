@@ -412,8 +412,31 @@ def test_reviews_due_listing_spans_project_and_standard_level(client, admin_toke
 
     due_listing = client.get(f"{_project_base(project['id'])}/reviews-due", headers=auth_headers(admin_token))
     assert due_listing.status_code == 200
-    ids = {r["id"] for r in due_listing.json()}
+    rows = due_listing.json()
+    ids = {r["id"] for r in rows}
     assert ids == {due_project_review["id"], due_standard_review["id"]}
+
+    # Phase 40: `standard_id`/`standard_reference`/`standard_name` are
+    # resolved for *both* kinds of review — a project-level one (through its
+    # assignment's own standard version) and a standard-level one (directly)
+    # — so a review can be filtered/grouped by standard regardless of which
+    # way it's scoped. `standard_version_id`/`version_label` are only set
+    # for the project-level one, since a standard-level review isn't tied
+    # to one specific version.
+    by_id = {r["id"]: r for r in rows}
+    project_row = by_id[due_project_review["id"]]
+    assert project_row["standard_id"] == standard["id"]
+    assert project_row["standard_version_id"] == version["id"]
+    assert project_row["standard_reference"] == standard["reference"]
+    assert project_row["standard_name"] == standard["name"]
+    assert project_row["version_label"] == version["version_label"]
+
+    standard_row = by_id[due_standard_review["id"]]
+    assert standard_row["standard_id"] == standard["id"]
+    assert standard_row["standard_version_id"] is None
+    assert standard_row["standard_reference"] == standard["reference"]
+    assert standard_row["standard_name"] == standard["name"]
+    assert standard_row["version_label"] is None
 
 
 # --- Event-driven notifications -----------------------------------------------------

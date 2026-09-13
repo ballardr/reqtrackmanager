@@ -529,6 +529,11 @@ def test_project_status_calculation(client, admin_token, org_id):
     assert len(non_compliant.json()) == 1
     assert non_compliant.json()[0]["requirement_id"] == requirement_ids[2]
     assert non_compliant.json()[0]["justification"] == "Did not pass inspection."
+    # Phase 40: `standard_id`/`standard_version_id` alongside the pre-
+    # existing display-only reference/name/label strings, so the frontend's
+    # Outstanding-items filters can match on a stable id.
+    assert non_compliant.json()[0]["standard_id"] == standard["id"]
+    assert non_compliant.json()[0]["standard_version_id"] == version["id"]
 
     # Compliance Manager can see this assignment's status cross-project too (§26).
     cross_project = client.get(f"{_base(org_id)}/project-compliance", headers=auth_headers(admin_token))

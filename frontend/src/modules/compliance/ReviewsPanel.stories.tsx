@@ -11,7 +11,9 @@ const PC_ID = "pc-1";
 
 function review(overrides: Partial<ComplianceReview> = {}): ComplianceReview {
   return {
-    id: "rev-1", standard_id: null, project_compliance_id: PC_ID, frequency_label: "Annual security review",
+    id: "rev-1", standard_id: "std-1", standard_version_id: "ver-1",
+    standard_reference: "ISO-27001", standard_name: "ISO 27001", version_label: "v1.0",
+    project_compliance_id: PC_ID, frequency_label: "Annual security review",
     recurrence_days: 365, next_due_date: "2026-12-01", owner_id: null, status: "scheduled", schedule_state: "upcoming",
     notes: "", outcome: null, completed_at: null, completed_by: null, created_by: "user-1",
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", linked_evidence_ids: [], ...overrides,

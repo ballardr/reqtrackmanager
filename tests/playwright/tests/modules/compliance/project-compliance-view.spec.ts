@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
-import { createStandardWithVersion } from "./helpers";
+import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
  * Job to be done: Compliance Module Phase 13 (docs/compliance-module-plan.md)
@@ -202,5 +202,81 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByRole("button", { name: "← Back" }).click();
     await page.getByRole("tab", { name: "Evidence" }).click();
     await expect(page.getByText(inlineEvidenceTitle)).toBeVisible();
+  });
+
+  /**
+   * Phase 40 (docs/compliance-module-plan.md) — parity with the org-level
+   * "Outstanding compliance items" filters (`org-compliance-view.spec.ts`),
+   * minus a Project filter (this tab is already scoped to one project).
+   * Same fixture shape: one top-level requirement ("section") with a
+   * child, the child assessed Non-Compliant, confirming the sub-section
+   * filter (derived from `parent_requirement_id`, since there is no
+   * dedicated "section" field) narrows the Outstanding tab's Non-compliant
+   * list correctly.
+   */
+  test("the project Outstanding tab's Standard/Standard version/Sub-section filters narrow rows", async ({ page }) => {
+    const suffix = Date.now();
+    const reference = `E2E-PCV-FILTER-${suffix}`;
+    const standardName = `E2E Project Outstanding Filter Standard ${suffix}`;
+    const sectionAName = `E2E PCV Section A ${suffix}`;
+    const sectionBName = `E2E PCV Section B ${suffix}`;
+    const childRequirementName = `E2E PCV Child Requirement ${suffix}`;
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
+
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
+    await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
+    await page.getByRole("button", { name: "v1.0" }).click();
+
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill(sectionAName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(sectionAName)).toBeVisible();
+
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill(sectionBName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(sectionBName)).toBeVisible();
+
+    await page.getByRole("button", { name: `Add child requirement under ${sectionAName}` }).click();
+    await page.getByLabel("Requirement name").fill(childRequirementName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(childRequirementName)).toBeVisible();
+
+    await page.getByRole("button", { name: "Publish" }).click();
+    await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
+    await expect(page.getByText("Published")).toBeVisible();
+
+    await page.goto("/projects");
+    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await page.getByRole("link", { name: "Compliance", exact: true }).click();
+    await page.getByRole("button", { name: "Assign standard" }).click();
+    const assignDialog = page.getByRole("dialog", { name: "Assign compliance standard" });
+    await assignDialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} — ${standardName}` });
+    await assignDialog.getByLabel("Standard version").selectOption({ label: "v1.0" });
+    await assignDialog.getByRole("button", { name: "Assign" }).click();
+    await expect(page.getByText(new RegExp(reference))).toBeVisible();
+
+    await page.getByText(new RegExp(reference)).click();
+    await page.getByText(childRequirementName).click();
+    await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
+    await page.getByLabel("Justification (required)").fill("Failed the required E2E filter-fixture inspection.");
+    await page.getByRole("button", { name: "Update assessment" }).click();
+    await expect(page.getByText("Current state: Assessed")).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "← Back" }).click();
+
+    await page.getByRole("tab", { name: "Outstanding" }).click();
+    await expect(page.getByText(childRequirementName)).toBeVisible();
+
+    await selectFilterOption(page, "Standard", `${reference} — ${standardName}`);
+    await expect(page.getByText("Sub-section", { exact: true })).toBeVisible();
+
+    await selectFilterOption(page, "Sub-section", sectionBName);
+    await expect(page.getByText(childRequirementName)).toHaveCount(0);
+    await selectFilterOption(page, "Sub-section", sectionAName);
+    await expect(page.getByText(childRequirementName)).toBeVisible();
   });
 });

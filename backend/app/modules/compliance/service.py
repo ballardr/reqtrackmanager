@@ -1042,18 +1042,41 @@ def compute_review_schedule_state(
 
 def build_review_out(db: Session, review: ComplianceReview) -> ComplianceReviewOut:
     """Builds the response schema for one `ComplianceReview` row, filling in
-    its computed `schedule_state` and current linked evidence ids — used by
-    every endpoint (`router.py`/`project_router.py`) that returns one or
-    more review rows, so these two derived/joined fields are never built ad
-    hoc per call site."""
+    its computed `schedule_state`, current linked evidence ids, and (Phase
+    40) its resolved standard/version identity — used by every endpoint
+    (`router.py`/`project_router.py`) that returns one or more review rows,
+    so these derived/joined fields are never built ad hoc per call site.
+
+    A review is scoped either directly to a `ComplianceStandard`
+    (`review.standard_id` set) or to one project's assignment of a specific
+    version of a standard (`review.project_compliance_id` set) — see
+    `ComplianceReview`'s own docstring. Either way, this resolves the same
+    `standard_id`/`standard_reference`/`standard_name` so a review can be
+    filtered/grouped by standard the same way regardless of which kind it
+    is; `standard_version_id`/`version_label` stay `None` for a
+    standard-level review since it isn't tied to one specific version."""
     linked_evidence_ids = list(
         db.scalars(
             select(ComplianceReviewEvidenceLink.evidence_id).where(ComplianceReviewEvidenceLink.review_id == review.id)
         ).all()
     )
+    standard: ComplianceStandard | None = None
+    version: ComplianceStandardVersion | None = None
+    if review.project_compliance_id is not None:
+        project_compliance = db.get(ProjectCompliance, review.project_compliance_id)
+        if project_compliance is not None:
+            version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
+            if version is not None:
+                standard = db.get(ComplianceStandard, version.standard_id)
+    elif review.standard_id is not None:
+        standard = db.get(ComplianceStandard, review.standard_id)
     return ComplianceReviewOut(
         id=review.id,
-        standard_id=review.standard_id,
+        standard_id=standard.id if standard is not None else None,
+        standard_version_id=version.id if version is not None else None,
+        standard_reference=standard.reference if standard is not None else None,
+        standard_name=standard.name if standard is not None else None,
+        version_label=version.version_label if version is not None else None,
         project_compliance_id=review.project_compliance_id,
         frequency_label=review.frequency_label,
         recurrence_days=review.recurrence_days,
@@ -2092,6 +2115,8 @@ def list_non_compliant_requirements_for_project(db: Session, *, project_id: uuid
             results.append(
                 NonCompliantRequirementOut(
                     project_compliance_id=project_compliance.id,
+                    standard_id=standard.id,
+                    standard_version_id=version.id,
                     standard_reference=standard.reference,
                     standard_name=standard.name,
                     version_label=version.version_label,
@@ -2141,6 +2166,8 @@ def list_pending_approvals_for_project(db: Session, *, project_id: uuid.UUID) ->
             results.append(
                 PendingApprovalOut(
                     project_compliance_id=project_compliance.id,
+                    standard_id=standard.id,
+                    standard_version_id=version.id,
                     standard_reference=standard.reference,
                     standard_name=standard.name,
                     version_label=version.version_label,
@@ -2215,6 +2242,8 @@ def list_outstanding_required_actions_for_project(
                         project_id=project_id,
                         project_name=project.name,
                         project_compliance_id=project_compliance.id,
+                        standard_id=standard.id,
+                        standard_version_id=version.id,
                         standard_reference=standard.reference,
                         standard_name=standard.name,
                         version_label=version.version_label,

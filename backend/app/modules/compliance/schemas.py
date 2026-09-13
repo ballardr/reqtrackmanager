@@ -545,9 +545,17 @@ class ProjectComplianceStatusOut(BaseModel):
 class NonCompliantRequirementOut(BaseModel):
     """One row of `GET .../non-compliant-requirements` (§20/§21 — "Non-
     Compliant requirements" as a distinct, drillable list, not just a
-    count)."""
+    count).
+
+    `standard_id`/`standard_version_id` (Phase 40) exist alongside the
+    display-only `standard_reference`/`standard_name`/`version_label`
+    strings above so the frontend's Outstanding-items filters can match on
+    a stable id rather than a reference string that only happens to be
+    unique per org today."""
 
     project_compliance_id: UUID
+    standard_id: UUID
+    standard_version_id: UUID
     standard_reference: str
     standard_name: str
     version_label: str
@@ -674,9 +682,12 @@ class PendingApprovalOut(BaseModel):
     """One row of `GET .../pending-approvals` (§12's "Pending Approval" as
     its own distinct, drillable list) — the `compliance_list_pending_
     approvals` MCP tool. Mirrors `NonCompliantRequirementOut`'s exact shape
-    one section up, for the same kind of cross-assignment listing."""
+    one section up, for the same kind of cross-assignment listing, including
+    its Phase 40 `standard_id`/`standard_version_id` id fields."""
 
     project_compliance_id: UUID
+    standard_id: UUID
+    standard_version_id: UUID
     standard_reference: str
     standard_name: str
     version_label: str
@@ -704,11 +715,15 @@ class OutstandingRequiredActionOut(BaseModel):
     unmodified by both `project_router.py`'s own new per-project endpoint
     and `router.py`'s org-wide aggregation, rather than needing a separate
     `Org*Out` subclass the way the two pre-existing schemas do (see
-    `router.py`'s Phase 14 section for that distinction)."""
+    `router.py`'s Phase 14 section for that distinction). Also carries
+    Phase 40's `standard_id`/`standard_version_id` id fields, mirroring
+    `NonCompliantRequirementOut`/`PendingApprovalOut`."""
 
     project_id: UUID
     project_name: str
     project_compliance_id: UUID
+    standard_id: UUID
+    standard_version_id: UUID
     standard_reference: str
     standard_name: str
     version_label: str
@@ -774,10 +789,25 @@ class ComplianceReviewOut(BaseModel):
     reviews" — see `service.py::compute_review_schedule_state`) and its
     current linked evidence ids (§17's "Notes/evidence associated with the
     review") — built explicitly by the router, the same reason
-    `ComplianceEvidenceOut` is."""
+    `ComplianceEvidenceOut` is.
+
+    `standard_id` is the *resolved* owning standard (Phase 40) — for a
+    standard-level review this is the same as the underlying model's own
+    `standard_id`, but for a project-level review (`project_compliance_id`
+    set) it's resolved through that assignment's standard version, so a
+    review can always be filtered/grouped by standard regardless of which
+    of the two ways it's scoped. `standard_version_id` is `None` for a
+    standard-level review (it isn't tied to one specific version) and set
+    for a project-level one; `standard_reference`/`standard_name`/
+    `version_label` are the matching display strings, `None`/`""` when
+    unresolvable. See `service.py::build_review_out`."""
 
     id: UUID
     standard_id: UUID | None
+    standard_version_id: UUID | None
+    standard_reference: str | None
+    standard_name: str | None
+    version_label: str | None
     project_compliance_id: UUID | None
     frequency_label: str
     recurrence_days: int | None

@@ -563,6 +563,40 @@ export function buildRequirementTree(flat: ComplianceRequirement[]): ComplianceR
 }
 
 /**
+ * Resolves the top-level ancestor (the requirement whose own
+ * `parent_requirement_id` is `null`) of `requirementId` within
+ * `requirementsById` — Phase 40's "sub-section" filter concept. There is no
+ * dedicated "section" field anywhere in the data model (a standard's
+ * hierarchy is purely `parent_requirement_id`-based, the same flat listing
+ * `buildRequirementTree` above nests), so a requirement's section is just
+ * its outermost ancestor, e.g. "Clause 4" of ISO 27001. Reused by both
+ * `OrgComplianceOutstandingPanel` and `OutstandingPanel` rather than each
+ * re-deriving it.
+ *
+ * Returns `null` if `requirementId` isn't in `requirementsById` at all
+ * (the caller hasn't fetched that requirement's own standard version's
+ * tree) or if a broken `parent_requirement_id` chain is hit — a "no
+ * section resolved" outcome should never throw, only leave that row out of
+ * every sub-section bucket.
+ */
+export function findTopLevelAncestor(
+  requirementsById: Map<string, ComplianceRequirement>,
+  requirementId: string
+): ComplianceRequirement | null {
+  let current = requirementsById.get(requirementId);
+  if (!current) return null;
+  const seen = new Set<string>();
+  while (current.parent_requirement_id) {
+    if (seen.has(current.id)) return null;
+    seen.add(current.id);
+    const parent = requirementsById.get(current.parent_requirement_id);
+    if (!parent) break;
+    current = parent;
+  }
+  return current;
+}
+
+/**
  * Resolves the `standard_id` that owns a given `standard_version_id` —
  * needed because every org-router requirement-tree endpoint is nested
  * under `/standards/{standard_id}/versions/{version_id}/...` (no

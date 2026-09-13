@@ -219,7 +219,7 @@ export function ProjectCompliancePage() {
       )}
       {tab === "outstanding" && (
         <div {...tabPanelProps("project-compliance", "outstanding")}>
-          <OutstandingPanel projectId={projectId} />
+          <OutstandingPanel projectId={projectId} orgId={project.organization_id} />
         </div>
       )}
 

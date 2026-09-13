@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
-import { createStandardWithVersion } from "./helpers";
+import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
  * Job to be done: Compliance Module Phase 14 (docs/compliance-module-plan.md)
@@ -253,5 +253,101 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // A project link inside the nested structure still navigates correctly.
     await v2Group.getByRole("link", { name: PROJECT_NAMES.alpha2 }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
+  });
+
+  /**
+   * Phase 40 (docs/compliance-module-plan.md) — the "Outstanding compliance
+   * items" group gets a real Standard/Standard version/Sub-section filter
+   * set (on top of the pre-existing Category/Evidence status pair), and
+   * moves its `FilterPanel` from a full-width top bar to the standard
+   * right-hand sidebar (`layout="side"`), per the style guide's own
+   * placement rule (`.filter-panel-top` should no longer render here at
+   * all, matching `.side-grid`'s own already-used-by-"Compliance by
+   * standard" shape). "Sub-section" means "top-level ancestor requirement"
+   * — a standard's hierarchy is purely `parent_requirement_id`-based, no
+   * dedicated section field exists — so this fixture creates one top-level
+   * requirement with a child, non-compliantly assesses the child, and
+   * confirms picking the *other* top-level requirement as the sub-section
+   * filter hides it while picking its real parent keeps it.
+   */
+  test("the Outstanding group's Standard/Standard version/Sub-section filters narrow rows, and its filter panel renders as a sidebar", async ({ page }) => {
+    const suffix = Date.now();
+    const reference = `E2E-ORG-FILTER-${suffix}`;
+    const standardName = `E2E Org Outstanding Filter Standard ${suffix}`;
+    const sectionAName = `E2E Section A ${suffix}`;
+    const sectionBName = `E2E Section B ${suffix}`;
+    const childRequirementName = `E2E Child Requirement ${suffix}`;
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
+
+    await page.getByRole("link", { name: "Versions", exact: true }).click();
+    await expect(page.getByRole("button", { name: "v1.0" })).toBeVisible();
+    await page.getByRole("button", { name: "v1.0" }).click();
+
+    // Two top-level requirements ("sections"), one of which (A) gets a
+    // child requirement — the one actually assessed Non-Compliant below.
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill(sectionAName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(sectionAName)).toBeVisible();
+
+    await page.getByRole("button", { name: "Add requirement" }).click();
+    await page.getByLabel("Requirement name").fill(sectionBName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(sectionBName)).toBeVisible();
+
+    await page.getByRole("button", { name: `Add child requirement under ${sectionAName}` }).click();
+    await page.getByLabel("Requirement name").fill(childRequirementName);
+    await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText(childRequirementName)).toBeVisible();
+
+    await page.getByRole("button", { name: "Publish" }).click();
+    await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
+    await expect(page.getByText("Version published.")).toBeVisible();
+
+    // --- Assign to Alpha-1 and assess the child requirement Non-Compliant.
+    await page.goto("/projects");
+    await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();
+    await page.getByRole("link", { name: "Compliance", exact: true }).click();
+    await page.getByRole("button", { name: "Assign standard" }).click();
+    const assignDialog = page.getByRole("dialog", { name: "Assign compliance standard" });
+    await assignDialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} — ${standardName}` });
+    await assignDialog.getByLabel("Standard version").selectOption({ label: "v1.0" });
+    await assignDialog.getByRole("button", { name: "Assign" }).click();
+    await expect(page.getByText(new RegExp(reference))).toBeVisible();
+
+    await page.getByText(new RegExp(reference)).click();
+    await page.getByText(childRequirementName).click();
+    await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
+    await page.getByLabel("Justification (required)").fill("Failed the required E2E filter-fixture inspection.");
+    await page.getByRole("button", { name: "Update assessment" }).click();
+    await expect(page.getByText("Current state: Assessed")).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+
+    // --- Outstanding group: sidebar layout, then the new filters.
+    await page.goto("/org-overview");
+    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await selectOrgOverviewGroup(page, "Outstanding compliance items");
+    await expect(page.getByText(childRequirementName)).toBeVisible();
+
+    // 40a: the filter panel is the right-hand sidebar, not a full-width top
+    // bar — `.filter-panel-top` must not render here at all.
+    await expect(page.locator(".filter-panel-top")).toHaveCount(0);
+    await expect(page.locator(".side-grid")).toBeVisible();
+
+    // 40b/40c: filtering by this standard narrows to its own rows and
+    // reveals the standard-scoped "Standard version"/"Sub-section" fields.
+    await selectFilterOption(page, "Standard", `${reference} — ${standardName}`);
+    await expect(page.getByText("Sub-section", { exact: true })).toBeVisible();
+
+    // 40d: picking the *other* top-level requirement (Section B) as the
+    // sub-section hides the child (it's under Section A), picking its real
+    // parent (Section A) brings it back.
+    await selectFilterOption(page, "Sub-section", sectionBName);
+    await expect(page.getByText(childRequirementName)).toHaveCount(0);
+    await selectFilterOption(page, "Sub-section", sectionAName);
+    await expect(page.getByText(childRequirementName)).toBeVisible();
   });
 });

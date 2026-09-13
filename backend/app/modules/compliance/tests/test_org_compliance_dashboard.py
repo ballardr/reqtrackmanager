@@ -94,7 +94,7 @@ def _setup_two_projects(client, admin_token, org_id):
 
 
 def test_org_non_compliant_requirements_aggregates_across_projects(client, admin_token, org_id):
-    _standard, project_a, _project_b, _assignment_a, child, _parent = _setup_two_projects(client, admin_token, org_id)
+    standard, project_a, _project_b, assignment_a, child, _parent = _setup_two_projects(client, admin_token, org_id)
 
     resp = client.get(f"{_base(org_id)}/non-compliant-requirements", headers=auth_headers(admin_token))
     assert resp.status_code == 200, resp.text
@@ -104,13 +104,17 @@ def test_org_non_compliant_requirements_aggregates_across_projects(client, admin
     assert rows[0]["project_name"] == project_a["name"]
     assert rows[0]["requirement_id"] == child["id"]
     assert rows[0]["justification"] == "Failed thermal test."
+    # Phase 40: `standard_id`/`standard_version_id` for the frontend's
+    # Outstanding-items filters to match on.
+    assert rows[0]["standard_id"] == standard["id"]
+    assert rows[0]["standard_version_id"] == assignment_a["standard_version_id"]
 
 
 # --- Pending approvals (org-wide) -------------------------------------------------
 
 
 def test_org_pending_approvals_aggregates_across_projects(client, admin_token, org_id):
-    _standard, project_a, _project_b, _assignment_a, _child, parent = _setup_two_projects(client, admin_token, org_id)
+    standard, project_a, _project_b, assignment_a, _child, parent = _setup_two_projects(client, admin_token, org_id)
 
     resp = client.get(f"{_base(org_id)}/pending-approvals", headers=auth_headers(admin_token))
     assert resp.status_code == 200, resp.text
@@ -119,6 +123,8 @@ def test_org_pending_approvals_aggregates_across_projects(client, admin_token, o
     assert rows[0]["project_id"] == project_a["id"]
     assert rows[0]["project_name"] == project_a["name"]
     assert rows[0]["requirement_id"] == parent["id"]
+    assert rows[0]["standard_id"] == standard["id"]
+    assert rows[0]["standard_version_id"] == assignment_a["standard_version_id"]
 
 
 # --- Outstanding required actions (org-wide + project-level) --------------------
@@ -131,7 +137,7 @@ def test_org_outstanding_required_actions_covers_every_project(client, admin_tok
     (still-incomplete) parent+child required actions with zero extra setup,
     proving this is a genuine per-project aggregation rather than an
     accidental single-project count."""
-    _standard, project_a, project_b, assignment_a, _child, _parent = _setup_two_projects(client, admin_token, org_id)
+    standard, project_a, project_b, assignment_a, _child, _parent = _setup_two_projects(client, admin_token, org_id)
 
     org_resp = client.get(f"{_base(org_id)}/outstanding-required-actions", headers=auth_headers(admin_token))
     assert org_resp.status_code == 200, org_resp.text
@@ -142,6 +148,8 @@ def test_org_outstanding_required_actions_covers_every_project(client, admin_tok
         by_project[row["project_id"]] = by_project.get(row["project_id"], 0) + 1
     assert by_project == {project_a["id"]: 2, project_b["id"]: 2}
     assert all(row["project_name"] in (project_a["name"], project_b["name"]) for row in org_rows)
+    assert all(row["standard_id"] == standard["id"] for row in org_rows)
+    assert all(row["standard_version_id"] == assignment_a["standard_version_id"] for row in org_rows)
 
     # Project-level listing (new in Phase 14, alongside the org one above)
     # returns just that project's own two rows.

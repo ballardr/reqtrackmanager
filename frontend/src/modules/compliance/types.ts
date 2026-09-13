@@ -485,6 +485,8 @@ export interface ProjectComplianceStatus {
 
 export interface NonCompliantRequirement {
   project_compliance_id: string;
+  standard_id: string;
+  standard_version_id: string;
   standard_reference: string;
   standard_name: string;
   version_label: string;
@@ -500,6 +502,8 @@ export interface NonCompliantRequirement {
 
 export interface PendingApproval {
   project_compliance_id: string;
+  standard_id: string;
+  standard_version_id: string;
   standard_reference: string;
   standard_name: string;
   version_label: string;
@@ -562,7 +566,14 @@ export interface ComplianceAuditEvent {
 
 export interface ComplianceReview {
   id: string;
+  /** Resolved owning standard (Phase 40) regardless of whether this review
+   * is scoped directly to a standard or through one project's assignment —
+   * see `schemas.py::ComplianceReviewOut`'s own docstring. */
   standard_id: string | null;
+  standard_version_id: string | null;
+  standard_reference: string | null;
+  standard_name: string | null;
+  version_label: string | null;
   project_compliance_id: string | null;
   frequency_label: string;
   recurrence_days: number | null;
@@ -598,6 +609,8 @@ export interface OutstandingRequiredAction {
   project_id: string;
   project_name: string;
   project_compliance_id: string;
+  standard_id: string;
+  standard_version_id: string;
   standard_reference: string;
   standard_name: string;
   version_label: string;
