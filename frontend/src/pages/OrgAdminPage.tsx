@@ -1978,6 +1978,7 @@ export function OrgAdminPage() {
       <ResourceMenu
         title={org.name}
         subtitle={strings.orgAdmin.adminSubtitle(orgLabelCap)}
+        titleAdornment={orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
         ariaLabel={strings.orgAdmin.sectionsNav}
         groups={orgAdminGroups}
         active={activeGroup}

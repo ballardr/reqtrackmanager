@@ -120,6 +120,38 @@ export const ShowsTitleAndSubtitle: Story = {
   },
 };
 
+/** Phase 37 — `titleAdornment` renders inline with the `<h1>` (e.g. an
+ * `EntitySwitcher` chevron) for a consumer whose title is rendered by
+ * `ResourceMenu` itself rather than a bespoke `<h1>` of its own. Omitted by
+ * every other story above, confirming it changes nothing when absent. */
+function TitleAdornmentDemo() {
+  const { group } = useParams<{ group?: string }>();
+  const active = GROUPS.find((g) => g.key === group)?.key ?? "overview";
+  return (
+    <ResourceMenu
+      title="Acme Corp"
+      subtitle="Organisation admin"
+      titleAdornment={<button type="button" aria-label="Switch organisation">▾</button>}
+      ariaLabel="Demo sections"
+      groups={GROUPS}
+      active={active}
+    >
+      {active === "overview" && <div className="card">Overview panel</div>}
+    </ResourceMenu>
+  );
+}
+
+export const RendersTitleAdornment: Story = {
+  render: () => <TitleAdornmentDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = canvas.getByRole("heading", { level: 1, name: "Acme Corp" });
+    const adornment = canvas.getByRole("button", { name: "Switch organisation" });
+    await expect(heading).toBeInTheDocument();
+    await expect(adornment).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "dark" } };
 

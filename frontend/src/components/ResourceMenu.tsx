@@ -47,6 +47,7 @@ export interface ResourceMenuGroupDef<K extends string> {
 export function ResourceMenu<K extends string>({
   title,
   subtitle,
+  titleAdornment,
   ariaLabel,
   groups,
   active,
@@ -61,6 +62,13 @@ export function ResourceMenu<K extends string>({
    * left no way to tell which one you were looking at. */
   title?: string;
   subtitle?: string;
+  /** Rendered immediately after the `<h1>`, on the same row — e.g. an
+   * `EntitySwitcher` chevron (docs/compliance-module-plan.md Phase 37) for
+   * a page whose title is rendered by this component rather than a bespoke
+   * `<h1>` of its own (which can just place the switcher next to its own
+   * heading directly, as `ProjectAdminPage.tsx` already does). Ignored
+   * when `title` is omitted. */
+  titleAdornment?: ReactNode;
   ariaLabel: string;
   groups: ResourceMenuGroupDef<K>[];
   active: K;
@@ -88,7 +96,10 @@ export function ResourceMenu<K extends string>({
     <div className="stack">
       {title && (
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <h1 style={{ margin: 0 }}>{title}</h1>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h1 style={{ margin: 0 }}>{title}</h1>
+            {titleAdornment}
+          </div>
           {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
         </div>
       )}

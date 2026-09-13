@@ -4744,3 +4744,25 @@ Files changed — Frontend stories: `frontend/src/modules/compliance/OrgComplian
 Files changed — Playwright: `tests/playwright/tests/modules/compliance/org-compliance-view.spec.ts`.
 
 Files changed — Docs: `docs/ux-style-guide.md` (Phase 36 grid-of-`StatCard` addendum), `docs/compliance-module-plan.md` (Status table, "Next phase to pick up", Phase 36 notes), `docs/decisions.md` (this entry).
+
+## Compliance module plan, Phase 37: Entity quick-switch applied to Org Settings
+
+First phase of the fifth human-review round (`docs/compliance-module-plan.md` Phases 37-41) — implements exactly the spec recorded there. **Decided by: User.**
+
+**Confirmed gap, already flagged as deferred.** Phase 28's own completion notes recorded that `OrgAdminPage.tsx`'s two degraded-state headers (a server admin hitting a disabled org, or one they aren't a member of) got the entity quick-switch chevron, but the page's normal admin header did not, because it renders its title through `ResourceMenu`'s own `title` prop rather than a bespoke `<h1>` of its own — there was no attachment point without either duplicating `ResourceMenu`'s title rendering or plumbing a new prop through it for one caller. Those notes explicitly deferred this "until a future review specifically asks for it" — this round is that ask. `ProjectAdminPage.tsx` was checked and needs no change: it already renders its own `<h1>` + `EntitySwitcher` above `ResourceMenu` and calls `ResourceMenu` itself with no `title` prop, so the gap is specific to `OrgAdminPage.tsx`, not a `ResourceMenu` consumer pattern in general.
+
+**Fix.** Added a generic `titleAdornment?: ReactNode` prop to `ResourceMenu` (`components/ResourceMenu.tsx`), rendered in a flex row alongside its own `<h1>` — a component-level slot rather than an org-specific one, so any future `ResourceMenu` consumer with the same "chevron next to my title" need can reuse it without another plumbing change. Wired at `OrgAdminPage.tsx`'s normal-header `<ResourceMenu title={org.name} .../>` call site with `titleAdornment={orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}` — the identical loader already used verbatim at the two degraded-header call sites, so no new loader, endpoint, or fetch was needed.
+
+**Docs.** Added a "Attachment point when the page's title isn't a bespoke `<h1>`" addendum to `docs/ux-style-guide.md`'s "Pattern: entity quick-switch" section, documenting the new `ResourceMenu.titleAdornment` slot as the attachment point for a `ResourceMenu`-driven header.
+
+**Tests.** Frontend: `ResourceMenu.stories.tsx` gained `RendersTitleAdornment` (asserts the adornment renders alongside the `<h1>`; every other existing story in the file omits the prop, confirming it changes nothing when absent). `OrgAdminPage.stories.tsx`'s shared `mockOrgAdminApis` helper gained an `orgs` override mocking `GET /api/v1/orgs?mine=true` (defaulted to `[]` rather than left unmocked, since this endpoint is now genuinely called on every render of the page's normal header, not just by a story that opts in) and a new `EntitySwitcherOffersOtherOrgs` story exercising the popover end-to-end, mirroring the existing `DisabledOrgEntitySwitcherOffersOtherOrgs` story's shape for the degraded-header case. Playwright: `entity-quick-switch.spec.ts` gained a second test, "switches organisations from Org Settings' admin header via the chevron popover," navigating via `/orgs` (the admin-target `OrgListPage`) rather than `/org-overview`, otherwise mirroring the existing Organisation Overview test exactly.
+
+**Verification.** `tsc -b` and `eslint` clean on every touched file. Frontend: `vitest run --project=storybook` on `ResourceMenu.stories.tsx` (10/10) and `OrgAdminPage.stories.tsx` (69/69), then a full run of the whole Storybook suite (111 files, 886/886) — no regressions from the `ResourceMenu` markup change (the `<h1>` is now wrapped in an additional flex row alongside `titleAdornment`) at any other consumer (`OrgOverviewPage.tsx`, `ProjectAdminPage.tsx`, `PreferencesPage.tsx`, `ServerManagementPage.tsx`, `ComplianceSettingsPage.tsx`). Rebuilt and recreated the `tests/container` frontend (and, incidentally, backend) images, then ran live: `entity-quick-switch.spec.ts` (2/2) plus a wider sweep of Org Admin-adjacent specs (`org-admin-manage-users-modal`, `org-admin-modules`, `org-admin-nav-link`, `org-admin-project-statuses-and-link-types`, `org-rename-and-test-email`, `org-overview` — 11/11) — no regressions.
+
+Files changed — Frontend: `frontend/src/components/ResourceMenu.tsx`, `frontend/src/pages/OrgAdminPage.tsx`.
+
+Files changed — Frontend stories: `frontend/src/components/ResourceMenu.stories.tsx`, `frontend/src/pages/OrgAdminPage.stories.tsx`.
+
+Files changed — Playwright: `tests/playwright/tests/e2e-workflows/entity-quick-switch.spec.ts`.
+
+Files changed — Docs: `docs/ux-style-guide.md` (entity quick-switch `titleAdornment` addendum), `docs/compliance-module-plan.md` (Status table, "Next phase to pick up", Phase 37 notes), `docs/decisions.md` (this entry).

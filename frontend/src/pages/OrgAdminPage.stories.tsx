@@ -43,6 +43,12 @@ function mockOrgAdminApis(overrides: {
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
+  /** Phase 37 — the normal admin header's `EntitySwitcher` sibling-org
+   * list (`GET /api/v1/orgs?mine=true`). Defaults to empty rather than
+   * left unmocked: unlike the other overrides above, this endpoint is
+   * now genuinely called on every render of this page's normal header,
+   * not just by stories that opt in to exercising it. */
+  orgs?: Organization[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -51,6 +57,7 @@ function mockOrgAdminApis(overrides: {
   const orgGroups = overrides.groups ?? groups;
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
+    if (path === "/api/v1/orgs?mine=true") return overrides.orgs ?? [];
     if (path.includes("/project-statuses")) return statuses;
     if (path.includes("/link-types")) return types;
     // Phase A's org-only pending-invites list (follow-up UX batch).
@@ -875,6 +882,25 @@ export const DisabledOrgEntitySwitcherOffersOtherOrgs: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("This organisation is disabled.")).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch organisation" });
+    await expect(within(dialog).getByRole("link", { name: "Globex Corporation" })).toHaveAttribute(
+      "href",
+      "/orgs/org-2/admin"
+    );
+  },
+};
+
+/** Phase 37 — the same entity quick-switch chevron, now also on the normal
+ * (non-degraded) admin header, whose title renders via `ResourceMenu`'s
+ * own `titleAdornment` slot rather than a bespoke `<h1>`. */
+export const EntitySwitcherOffersOtherOrgs: Story = {
+  beforeEach: () => mockOrgAdminApis({ orgs: [org, { ...org, id: "org-2", name: "Globex Corporation" }] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
 
     const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
     await userEvent.click(trigger);
