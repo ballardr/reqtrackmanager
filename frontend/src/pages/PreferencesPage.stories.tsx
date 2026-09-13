@@ -44,7 +44,7 @@ function mockPreferencesApis(userId: string, opts: { pats?: PersonalAccessToken[
     if (path.includes("/me/pats")) return opts.pats ?? [];
     if (path === "/api/v1/orgs") return [org];
     if (path.includes("/auth/me/memberships")) return myMemberships;
-    if (path.includes("/users")) return [{ user_id: userId, email: "alex@example.com", display_name: "Alex Morgan", is_active: true, is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false }] satisfies OrgUser[];
+    if (path.includes("/users")) return [{ user_id: userId, email: "alex@example.com", display_name: "Alex Morgan", is_active: true, is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [] }] satisfies OrgUser[];
     throw new Error(`unmocked path: ${path}`);
   });
 }

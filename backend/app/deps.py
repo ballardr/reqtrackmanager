@@ -21,7 +21,7 @@ from app.database import get_db
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
 from app.models.user import User
-from app.security import PAT_PREFIX, decode_access_token, hash_pat
+from app.security import PAT_PREFIX, decode_access_token, decode_module_frame_token, hash_pat
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 settings = get_settings()
@@ -158,6 +158,66 @@ def get_current_user(
             inactive/archived.
     """
     return _resolve_user_from_token(token, db, request)
+
+
+def get_current_user_or_module_frame(module_key: str):
+    """FastAPI dependency factory accepting either a normal session/PAT
+    bearer token (delegates entirely to `_resolve_user_from_token`, exactly
+    like `get_current_user`) or a short-lived Tier B `<ModuleFrame>` JWT
+    (`app.security.create_module_frame_token`, compliance-module-plan.md
+    Phase 3) scoped to exactly `module_key`.
+
+    Used only by `app.services.rbac`'s module-gating dependencies
+    (`require_org_module_enabled`, `require_project_module_enabled`,
+    `require_module_role`) in place of a plain `Depends(get_current_user)`
+    — every other endpoint in the app keeps using `get_current_user`
+    directly, which rejects a module-frame token outright (wrong `purpose`,
+    same as it already rejects a 2FA challenge token), so a module-frame
+    token is mechanically unusable against any endpoint other than the
+    specific module's own, no matter what module code might attempt.
+
+    A module-frame token resolving here does **not** itself confirm the
+    request's `organization_id`/`project_id` path parameter matches the
+    token's own scope — only that its `module_key` claim matches this
+    dependency's `module_key`, and that it names a real active user. The
+    caller (one of the three `rbac.py` dependencies above) is responsible
+    for the org/project match itself, via `request.state.module_frame_scope`
+    and `rbac._enforce_module_frame_scope` — kept as two separate steps so
+    a bug in one dependency's own org/project check can't silently widen
+    every other module-gated endpoint's scope enforcement along with it.
+
+    Args:
+        module_key: The module this dependency accepts a module-frame token
+            for — any token minted for a different module is rejected.
+
+    Returns:
+        A dependency resolving to the authenticated, active `User`.
+
+    Raises:
+        HTTPException: 401 if no token, a module-frame token for a
+            different module, or otherwise invalid/expired; the same cases
+            `get_current_user` already raises 401 for, for a normal token.
+    """
+
+    def _dependency(
+        request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    ) -> User:
+        if token and not token.startswith(PAT_PREFIX):
+            frame_claims = decode_module_frame_token(token)
+            if frame_claims is not None:
+                if frame_claims.get("module_key") != module_key:
+                    raise _UNAUTHORIZED
+                user = db.get(User, UUID(frame_claims["user_id"]))
+                if user is None or not user.is_active or user.is_archived:
+                    raise _UNAUTHORIZED
+                request.state.module_frame_scope = {
+                    "organization_id": frame_claims.get("organization_id"),
+                    "project_id": frame_claims.get("project_id"),
+                }
+                return user
+        return _resolve_user_from_token(token, db, request)
+
+    return _dependency
 
 
 def get_current_user_header_or_query(

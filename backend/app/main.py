@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.metrics import http_request_duration_seconds, http_requests_total
 from app.migrations import run_migrations
+from app.modules.registry import get_module_registry, sync_module_role_definitions
 from app.routers import (
     action_types,
     actions,
@@ -56,15 +57,23 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Applies pending migrations, runs the server-admin bootstrap, captures
-    the event loop for pub/sub, and starts the disk-usage monitor (I-M-11)
-    — every process start self-heals the schema rather than requiring a
-    manual migration step first."""
+    """Applies pending migrations, runs the server-admin bootstrap, syncs
+    the module-contributed RBAC role registry mirror (module system
+    Phase 2), captures the event loop for pub/sub, and starts the
+    disk-usage monitor (I-M-11) — every process start self-heals the
+    schema rather than requiring a manual migration step first."""
     run_migrations()
     pubsub.set_event_loop(asyncio.get_event_loop())
     db = SessionLocal()
     try:
         run_bootstrap(db)
+        # Module system Phase 2: keeps `module_role_definitions` caught up
+        # with whatever the live registry currently declares, the same
+        # "self-heal at every process start" pattern `run_bootstrap` itself
+        # follows. See `sync_module_role_definitions`'s own docstring for
+        # why this never deletes a row for a module/role no longer
+        # registered.
+        sync_module_role_definitions(db)
     finally:
         db.close()
     disk_monitor_task = asyncio.create_task(run_disk_monitor_loop())
@@ -151,12 +160,24 @@ async def security_headers_middleware(request: Request, call_next):
     against this specific SPA's actual script/style sources to avoid
     silently breaking it, so it's left as a documented follow-up
     (docs/deployment.md) rather than shipped unverified here.
+
+    `frame-src` is the exception, added for the modular feature system's
+    Tier B remote modules (compliance-module-plan.md Phase 3): unlike
+    `frame-ancestors` (who may frame *this app* — always `'none'`), `frame-
+    src` governs what *this app* may embed in its own `<ModuleFrame>`
+    iframe, so it is built from `Settings.module_frame_allowed_origins`
+    every request (cheap — `get_settings()` is `lru_cache`d) rather than
+    hardcoded, and defaults to `'none'` (no origin allowlisted) exactly
+    like every other module-system opt-in in this codebase (`ALLOW_
+    EXTERNAL_MODULES`, `MCP_WRITES_ENABLED`).
     """
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    frame_src_origins = get_settings().module_frame_allowed_origin_list
+    frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
+    response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
     return response
 
 
@@ -208,3 +229,30 @@ if settings.websocket_enabled:
     # or don't want persistent socket connections can disable it entirely
     # via WEBSOCKET_ENABLED=false rather than it always being mounted.
     app.include_router(ws.router)
+
+# --- Module system (compliance-module-plan.md Phase 1) ---------------------
+# Mounts every registered module's own router(s), if it has any. Building the
+# registry here (via `get_module_registry`, which internally caches) is
+# also what produces this run's "every loaded module logged at startup"
+# operational record (see `app.modules.registry`'s module docstring) — no
+# separate lifespan-hook logging is needed for that. A module contributes up
+# to three routers — `get_router()` (org-scoped, `/api/v1/orgs/
+# {organization_id}/modules/<key>/...`), an optional `get_project_router()`
+# (project-scoped, `/api/v1/projects/{project_id}/modules/<key>/...`, since
+# Phase 7), and, since Phase 18, an optional `get_global_router()` (no
+# org/project id in its path root at all — `/api/v1/<key>/...`, for an
+# endpoint like compliance's `nav-visibility` that aggregates across every
+# org the caller belongs to, or one that resolves its own org from some
+# other id, like `standards/{standard_id}`) — all three mounted the same
+# way here. A module's own router(s) apply their own `require_org_module_
+# enabled`/`require_project_module_enabled`/`require_module_role`/`require_
+# org_access_and_module_enabled` gating internally; there is no second gate
+# applied at this mount-loop level.
+for _module_definition in get_module_registry().values():
+    for _module_router in (
+        _module_definition.get_router(),
+        _module_definition.get_project_router() if _module_definition.get_project_router is not None else None,
+        _module_definition.get_global_router() if _module_definition.get_global_router is not None else None,
+    ):
+        if _module_router is not None:
+            app.include_router(_module_router)

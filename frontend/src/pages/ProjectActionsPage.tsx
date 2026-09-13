@@ -7,7 +7,8 @@ import type { ActionTypeDefinition, OrgUser, Project, RequirementAction, Require
 import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
-import { cycleSort, SortableHeader, type SortState } from "../components/SortableHeader";
+import { SortableHeader } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";

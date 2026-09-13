@@ -89,5 +89,32 @@ export const NoOrganisations: Story = {
   },
 };
 
+const withOrgOverviewRoutes: Decorator = (Story) => (
+  <MemoryRouter initialEntries={["/org-overview"]}>
+    <Routes>
+      <Route path="/org-overview" element={<Story />} />
+      <Route path="/orgs/:id/overview" element={<div>Org overview page</div>} />
+    </Routes>
+  </MemoryRouter>
+);
+
+/** `target="overview"` (compliance-module-plan.md Phase 19) — `/org-overview`
+ * reuses this same single-org/multi-org auto-redirect convention, targeting
+ * `/orgs/:id/overview` instead of the default `/orgs/:id/admin`. */
+export const SingleOrganisationRedirectsToOverview: Story = {
+  args: { target: "overview" },
+  decorators: [withOrgOverviewRoutes],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [org({ id: "org-1", name: "Acme Corp" })];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Org overview page")).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...MultipleOrganisations, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...MultipleOrganisations, globals: { theme: "dark" } };

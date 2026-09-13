@@ -22,6 +22,7 @@ import type {
 } from "../api/types";
 import { REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
+import { AssigneePicker } from "../components/AssigneePicker";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -36,7 +37,9 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
+import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
+import { getInstalledModule } from "../modules/registry";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -144,6 +147,23 @@ export function RequirementDetailPage() {
   const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
   const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
   const [linkToRemove, setLinkToRemove] = useState<RequirementLink | null>(null);
+  // Extra module-contributed link sections (compliance-module-plan.md
+  // Phase 34) — e.g. Compliance's own linked-compliance-requirements list,
+  // rendered inside this same Links card below the core-to-core links.
+  // This page renders whatever each currently-enabled module's own
+  // `requirementDetailSections` hands it and never imports a specific
+  // module's entity itself, mirroring `ProjectOverviewPage.tsx`'s identical
+  // `projectOverviewTiles` convention.
+  const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
+  const contributedLinkSections =
+    projectId && requirementId && organizationId
+      ? enabledModules.flatMap((entry) =>
+          (getInstalledModule(entry.module_key)?.requirementDetailSections ?? []).map((section) => ({
+            key: `${entry.module_key}:${section.key}`,
+            node: section.render({ projectId, requirementId, organizationId }),
+          }))
+        )
+      : [];
 
   // --- Linked requirement actions --------------------------------------
   // Same conversion as the links above: "link existing" is a one-field
@@ -969,6 +989,9 @@ export function RequirementDetailPage() {
             onCancel={() => setLinkToRemove(null)}
           />
         )}
+        {contributedLinkSections.map(({ key, node }) => (
+          <div key={key}>{node}</div>
+        ))}
       </div>
 
       <div className="card stack">
@@ -1106,20 +1129,16 @@ export function RequirementDetailPage() {
                 ))}
               </select>
             </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
+            <div className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.assignee}
-              <select
-                className="input" aria-label={strings.actions.assignee}
-                value={newActionAssigneeId} onChange={(e) => setNewActionAssigneeId(e.target.value)}
-              >
-                <option value="">{strings.reviews.unassigned}</option>
-                {orgUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {u.display_name} ({u.email})
-                  </option>
-                ))}
-              </select>
-            </label>
+              <AssigneePicker
+                orgUsers={orgUsers}
+                organizationId={organizationId ?? undefined}
+                assigneeId={newActionAssigneeId}
+                onChange={setNewActionAssigneeId}
+                ariaLabel={strings.actions.assignee}
+              />
+            </div>
             <label className="stack" style={{ gap: "0.25rem" }}>
               {strings.actions.dueDate}
               <input

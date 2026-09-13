@@ -1,0 +1,192 @@
+/**
+ * Module: modules/compliance/VersionWorkspace
+ *
+ * The drill-down view for one `ComplianceStandardVersion` — status,
+ * publish/retire actions (§4's lifecycle), a "Compare versions" entry point
+ * into `VersionDiffModal` (§27), and the version's own requirement tree
+ * (`RequirementTree.tsx`, §5/§6). Rendered full-width in place of the
+ * Standards tab's list (not a `SidePanel`, whose 420px max-width is too
+ * narrow for a usable tree editor — see this component's own "why not a
+ * SidePanel" note in docs/compliance-module-plan.md's Phase 12 notes) —
+ * a "drill into the content column, keep a Back control" shape, the same
+ * one `RequirementsPage`'s own detail view already uses elsewhere in this
+ * app for a similarly content-heavy child view.
+ *
+ * Phase 24 adds an always-editable "Version summary" field (distinct from
+ * `change_note`, which describes what changed *relative to the previous
+ * version*, not this version's own current standing) — editable
+ * regardless of the version's own status, unlike everything else here,
+ * which is `isDraft`-gated. The backend enforces the stage-dependent RBAC
+ * (`standards_contributor` while `DRAFT`, `standards_manager`-or-override
+ * once published/retired) — this component doesn't attempt to compute that
+ * client-side, matching this module's own established convention of
+ * always showing an action and surfacing a 403 via toast rather than
+ * pre-computing permissions in the UI (see e.g. Publish/Retire above,
+ * unconditionally shown regardless of the caller's actual role).
+ *
+ * Phase 29b adds the entity quick-switch chevron (Phase 28's
+ * `EntitySwitcher`) next to the version heading, so a user already
+ * viewing one version can jump straight to a sibling without returning to
+ * the flat "Versions" list first. Its sibling list is simply this
+ * component's own `versions` prop — no new fetch, since `StandardNavSection`
+ * /`StandardVersionsSection` already load it for the same standard.
+ */
+import { useEffect, useState } from "react";
+
+import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
+import { toErrorMessage, useToast } from "../../context/ToastContext";
+import * as complianceApi from "./api";
+import { RequirementTree } from "./RequirementTree";
+import { VersionDiffModal } from "./VersionDiffModal";
+import {
+  COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
+  type ComplianceActionType,
+  type ComplianceStandard,
+  type ComplianceStandardVersion,
+} from "./types";
+
+interface Props {
+  orgId: string;
+  standard: ComplianceStandard;
+  version: ComplianceStandardVersion;
+  versions: ComplianceStandardVersion[];
+  actionTypes: ComplianceActionType[];
+  onBack: () => void;
+  onVersionChanged: (updated: ComplianceStandardVersion) => void;
+}
+
+export function VersionWorkspace({ orgId, standard, version, versions, actionTypes, onBack, onVersionChanged }: Props) {
+  const { showToast } = useToast();
+  const [confirming, setConfirming] = useState<"publish" | "retire" | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+  const [summary, setSummary] = useState(version.summary);
+  const [savingSummary, setSavingSummary] = useState(false);
+
+  useEffect(() => {
+    setSummary(version.summary);
+  }, [version.id, version.summary]);
+
+  async function handleSaveSummary() {
+    setSavingSummary(true);
+    try {
+      const updated = await complianceApi.updateStandardVersion(orgId, standard.id, version.id, summary);
+      showToast("Version summary updated.");
+      onVersionChanged(updated);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not update version summary."), "error");
+    } finally {
+      setSavingSummary(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!confirming) return;
+    try {
+      const updated =
+        confirming === "publish"
+          ? await complianceApi.publishStandardVersion(orgId, standard.id, version.id)
+          : await complianceApi.retireStandardVersion(orgId, standard.id, version.id);
+      showToast(confirming === "publish" ? "Version published." : "Version retired.");
+      onVersionChanged(updated);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not update version status."), "error");
+    } finally {
+      setConfirming(null);
+    }
+  }
+
+  const isDraft = version.status === "draft";
+
+  async function loadVersionSwitcherOptions(): Promise<EntitySwitcherOption[]> {
+    return versions.map((v) => ({
+      id: v.id,
+      label: v.version_label,
+      href: `/standards/${standard.id}/versions/${v.id}`,
+    }));
+  }
+
+  return (
+    <div className="stack">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <div className="stack" style={{ gap: "0.1rem" }}>
+          <button className="btn" onClick={onBack} style={{ alignSelf: "flex-start" }}>
+            ← Back to {standard.name}
+          </button>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h3 style={{ margin: 0 }}>
+              {standard.reference} — {version.version_label}
+            </h3>
+            <EntitySwitcher label="Switch version" currentId={version.id} loadOptions={loadVersionSwitcherOptions} />
+          </div>
+          <span className="text-muted">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]}</span>
+        </div>
+        <div className="row">
+          <button className="btn" disabled={versions.length < 2} onClick={() => setShowDiff(true)}>
+            Compare versions
+          </button>
+          {version.status === "draft" && (
+            <button className="btn btn-primary" onClick={() => setConfirming("publish")}>
+              Publish
+            </button>
+          )}
+          {version.status !== "retired" && (
+            <button className="btn btn-danger" onClick={() => setConfirming("retire")}>
+              Retire
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!isDraft && (
+        <p className="text-muted" style={{ margin: 0 }}>
+          This version is {COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status].toLowerCase()} — its requirements
+          and required actions are immutable. Create a new version to make changes.
+        </p>
+      )}
+
+      <div className="card stack" style={{ gap: "0.4rem" }}>
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span>Version summary</span>
+          <AutoGrowTextarea
+            value={summary}
+            onChange={setSummary}
+            placeholder="This version's current standing — e.g. note that a retired version is deprecated."
+          />
+        </label>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn btn-primary" disabled={summary === version.summary || savingSummary} onClick={handleSaveSummary}>
+            {savingSummary ? "Saving…" : "Save summary"}
+          </button>
+        </div>
+      </div>
+
+      <RequirementTree
+        orgId={orgId}
+        standardId={standard.id}
+        versionId={version.id}
+        isDraft={isDraft}
+        isPublished={version.status === "published"}
+        actionTypes={actionTypes}
+      />
+
+      {confirming && (
+        <ConfirmDialog
+          title={confirming === "publish" ? "Publish this version?" : "Retire this version?"}
+          message={
+            confirming === "publish"
+              ? "Once published, this version's requirements become immutable — further changes require a new version."
+              : "A retired version can no longer be assigned to new projects. Projects already assigned to it are unaffected."
+          }
+          confirmLabel={confirming === "publish" ? "Publish" : "Retire"}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+      {showDiff && (
+        <VersionDiffModal orgId={orgId} standardId={standard.id} fromVersionId={version.id} versions={versions} onClose={() => setShowDiff(false)} />
+      )}
+    </div>
+  );
+}

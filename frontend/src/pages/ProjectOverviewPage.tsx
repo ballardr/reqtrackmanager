@@ -1,15 +1,20 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
 import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { EntitySwitcher } from "../components/EntitySwitcher";
+import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { getInstalledModule } from "../modules/registry";
+import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -34,6 +39,23 @@ export function ProjectOverviewPage() {
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Extra module-contributed summary tiles (module boundary cleanup,
+  // 2026-09-08) — e.g. Compliance's own per-standard status tiles (Phase
+  // 17d), only shown once this project's org has the module enabled. This
+  // core page renders whatever each currently-enabled module's own
+  // `projectOverviewTiles` hands it and never imports a specific module
+  // itself; a module deciding it has nothing to show yet (e.g. no standards
+  // assigned) is that module's own `render` returning nothing, not
+  // something this page checks for.
+  const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
+  const contributedTiles = projectId
+    ? enabledModules.flatMap((entry) =>
+        (getInstalledModule(entry.module_key)?.projectOverviewTiles ?? []).map((tile) => ({
+          key: `${entry.module_key}:${tile.key}`,
+          node: tile.render({ projectId }),
+        }))
+      )
+    : [];
 
   useEffect(() => {
     if (!projectId) return;
@@ -106,7 +128,14 @@ export function ProjectOverviewPage() {
       )}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h1 style={{ margin: 0 }}>{project.name}</h1>
+            <EntitySwitcher
+              label="Switch project"
+              currentId={project.id}
+              loadOptions={() => loadProjectSwitcherOptions("overview")}
+            />
+          </div>
           <p className="text-muted">{project.summary}</p>
           <ProjectHierarchyLabels project={hierarchySummary} />
         </div>
@@ -116,13 +145,10 @@ export function ProjectOverviewPage() {
       </div>
       <div className="grid grid-metrics">
         {tiles.map(([label, value, to]) => (
-          <Link
-            key={label} to={to} className="card stack"
-            style={{ alignItems: "center", textAlign: "center", textDecoration: "none", color: "inherit" }}
-          >
-            <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>{value}</div>
-            <div className="text-muted">{label}</div>
-          </Link>
+          <MetricTile key={label} label={label} value={value} to={to} />
+        ))}
+        {contributedTiles.map((t) => (
+          <Fragment key={t.key}>{t.node}</Fragment>
         ))}
       </div>
 

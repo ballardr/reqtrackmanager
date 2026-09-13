@@ -17,6 +17,8 @@ from app.models.change_request import (
 from app.models.custom_field import CustomFieldDefinition
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
+from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
     Organization,
@@ -54,6 +56,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_action import RequirementAction, RequirementActionLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.server_role import UserServerRole
 from app.models.user import User
 
 __all__ = [
@@ -105,5 +108,11 @@ __all__ = [
     "RequirementActionLink",
     "RequirementReview",
     "RequirementVersion",
+    "UserServerRole",
+    "OrganizationModuleEntitlement",
+    "OrganizationModuleEnablement",
+    "GroupModuleRole",
+    "ModuleRoleDefinitionRow",
+    "UserModuleRole",
     "User",
 ]

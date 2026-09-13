@@ -8,11 +8,11 @@ import { UserAutocomplete } from "./UserAutocomplete";
 const localUsers: OrgUser[] = [
   {
     user_id: "u1", email: "alex.morgan@example.com", display_name: "Alex Morgan", is_active: true,
-    is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false,
+    is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
   },
   {
     user_id: "u2", email: "jamie.lee@example.com", display_name: "Jamie Lee", is_active: true,
-    is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false,
+    is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
   },
 ];
 

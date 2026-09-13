@@ -514,6 +514,288 @@ def create_report_template(headers: dict, org_id: str, *, name: str, accent_colo
     return r.json()
 
 
+# --- Compliance Module helpers (docs/compliance-module-plan.md Phase 15) -
+
+
+def create_compliance_standard(
+    headers: dict, org_id: str, *, reference: str, name: str, description: str = "",
+    issuing_organisation: str | None = None, owner_id: str | None = None,
+    initial_version_label: str = "1.0", initial_version_effective_date: str | None = None,
+    initial_version_change_note: str = "",
+) -> dict:
+    """Creates a standard together with its mandatory first version (§2/§4)
+    in one request — the standard's `POST .../standards` endpoint now
+    always creates version 1 alongside the standard itself, matching the
+    combined create-standard-with-first-version frontend flow. Use
+    `list_compliance_versions` to fetch that first version's id rather than
+    a separate `create_compliance_version` call, which would create a
+    redundant second version."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards",
+        json={"reference": reference, "name": name, "description": description,
+              "issuing_organisation": issuing_organisation, "owner_id": owner_id,
+              "initial_version_label": initial_version_label,
+              "initial_version_effective_date": initial_version_effective_date,
+              "initial_version_change_note": initial_version_change_note},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_compliance_versions(headers: dict, org_id: str, standard_id: str) -> list[dict]:
+    r = httpx.get(f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions", headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_version(headers: dict, org_id: str, standard_id: str, *, version_label: str = "1.0", change_note: str = "") -> dict:
+    """Creates an additional (second, third, ...) version of an
+    already-existing standard. Not used for a standard's first version —
+    that one is created alongside the standard itself by
+    `create_compliance_standard` (see its own docstring)."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions",
+        json={"version_label": version_label, "change_note": change_note}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_requirement(
+    headers: dict, org_id: str, standard_id: str, version_id: str, *, name: str, reference: str | None = None,
+    description: str = "", reasoning: str = "", parent_requirement_id: str | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements",
+        json={"name": name, "reference": reference, "description": description, "reasoning": reasoning,
+              "parent_requirement_id": parent_requirement_id},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_required_action(
+    headers: dict, org_id: str, standard_id: str, version_id: str, requirement_id: str, action_type_id: str, *,
+    name: str, description: str = "", is_mandatory: bool = True,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements/"
+        f"{requirement_id}/required-actions",
+        json={"action_type_id": action_type_id, "name": name, "description": description, "is_mandatory": is_mandatory},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def publish_compliance_version(headers: dict, org_id: str, standard_id: str, version_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/publish",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def update_compliance_version_summary(headers: dict, org_id: str, standard_id: str, version_id: str, summary: str) -> dict:
+    """Phase 24: a version's own current-standing `summary` — editable at
+    any lifecycle stage, `standards_manager`-or-override only once
+    published/retired."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}",
+        json={"summary": summary}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def clarify_compliance_requirement(
+    headers: dict, org_id: str, standard_id: str, version_id: str, requirement_id: str, *,
+    name: str, reference: str | None = None, description: str = "", reasoning: str = "", clarification_note: str,
+) -> dict:
+    """Phase 24: a non-substantive correction to a requirement already on a
+    `PUBLISHED` version — `standards_manager`-or-override only."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/versions/{version_id}/requirements/"
+        f"{requirement_id}/clarify",
+        json={"name": name, "reference": reference, "description": description, "reasoning": reasoning,
+              "clarification_note": clarification_note},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def assign_compliance_standard(headers: dict, org_id: str, project_id: str, standard_id: str, version_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/projects/{project_id}/project-compliance",
+        json={"standard_id": standard_id, "standard_version_id": version_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def grant_compliance_officer(headers: dict, project_id: str, user_id: str) -> None:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/members/{user_id}/module-roles",
+        json={"module_key": "compliance", "role_key": "compliance_officer"}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def grant_standard_role(headers: dict, org_id: str, standard_id: str, user_id: str, role_key: str) -> None:
+    """Grants a direct, standard-scoped `standards_manager`/`standards_
+    contributor` role (compliance-module-plan.md Phase 22) — distinct from
+    `grant_compliance_officer`'s project-scoped grant above; a demo user can
+    hold both at once (a project's assessor and a specific standard's own
+    working-group contributor are unrelated capabilities)."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/members/{user_id}/roles",
+        json={"role_key": role_key}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def update_standard_applicability_default(headers: dict, org_id: str, standard_id: str, applicability_default: str) -> dict:
+    """Phase 20: switches a standard between `opt_in` (default) and
+    `applies_to_all_projects`. Switching to the latter immediately
+    reconciles a real `ProjectCompliance` row into existence for every
+    current, non-archived, non-excluded project in the organisation
+    against the standard's latest published version — so this must be
+    called after the standard has a published version and after any
+    exclusions are already in place (`exclude_project_from_standard_
+    default`), not before."""
+    r = httpx.patch(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/applicability-default",
+        json={"applicability_default": applicability_default}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def exclude_project_from_standard_default(headers: dict, org_id: str, standard_id: str, project_id: str, *, reason: str) -> dict:
+    """Phase 20: excepts `project_id` out of a standard's `applies_to_all_
+    projects` default. `reason` is mandatory. Call before flipping the
+    standard's applicability default so reconciliation skips this project
+    from the start, rather than assigning and then re-archiving it."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards/{standard_id}/exclusions",
+        json={"project_id": project_id, "reason": reason}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_compliance_requirements(headers: dict, project_id: str, project_compliance_id: str) -> list[dict]:
+    r = httpx.get(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def update_compliance_assessment(
+    headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, *,
+    compliance_status: str, justification: str = "", notes: str = "",
+) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/assessment",
+        json={"compliance_status": compliance_status, "justification": justification, "notes": notes},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def submit_compliance_for_approval(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/submit-for-approval",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def approve_compliance_requirement(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, *, note: str = "") -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/approve",
+        json={"decision_note": note}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_required_action_assessments(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str) -> list[dict]:
+    r = httpx.get(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def update_required_action_assessment(
+    headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str, *,
+    assignee_id: str | None = None, due_date: str | None = None, notes: str = "",
+) -> dict:
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments/{assessment_id}",
+        json={"assignee_id": assignee_id, "due_date": due_date, "notes": notes}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def complete_required_action_assessment(headers: dict, project_id: str, project_compliance_id: str, pcr_id: str, assessment_id: str) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/requirements/"
+        f"{pcr_id}/required-action-assessments/{assessment_id}/complete",
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_evidence(
+    headers: dict, project_id: str, *, title: str, issuing_organisation: str | None = None,
+    issued_date: str | None = None, expiry_date: str | None = None, notes: str = "",
+    pcr_ids: list[str] | None = None, assessment_ids: list[str] | None = None,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/evidence",
+        json={
+            "title": title, "issuing_organisation": issuing_organisation, "issued_date": issued_date,
+            "expiry_date": expiry_date, "notes": notes,
+            "project_compliance_requirement_ids": pcr_ids or [], "required_action_assessment_ids": assessment_ids or [],
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_compliance_review(
+    headers: dict, project_id: str, project_compliance_id: str, *, frequency_label: str, next_due_date: str,
+    recurrence_days: int | None = None, owner_id: str | None = None, notes: str = "",
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/compliance/project-compliance/{project_compliance_id}/reviews",
+        json={"frequency_label": frequency_label, "next_due_date": next_due_date, "recurrence_days": recurrence_days,
+              "owner_id": owner_id, "notes": notes},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # --- Demo content --------------------------------------------------------
 
 DRONE_REQUIREMENTS = [
@@ -975,6 +1257,259 @@ def main() -> None:
     )
     submit_change_request(h_pm, cloud["id"], audit_cr["id"])
 
+    print("Seeding Compliance Module data on Falcon-3 Inspection Drone...")
+    # A standard built around the same Part 107/flight-logging regulatory
+    # themes DRONE_REQUIREMENTS already narrates (remote_id_req, flight_log_req
+    # above) — a compliance standard is a distinct, organisation-level
+    # resource (§31: "A Compliance Standard is not a Project"), not another
+    # requirement, but reusing the same narrative keeps the demo coherent.
+    # "Document Review"/"Test" now ship as every organisation's default
+    # compliance action types (Phase 17c) rather than needing to be created
+    # here by hand — look them up instead of `create_compliance_action_type`,
+    # mirroring how `drone_action_types`/`cloud_action_types` above already
+    # look up the generic per-project defaults rather than recreating them.
+    compliance_action_types = {
+        t["name"]: t
+        for t in httpx.get(f"{BASE}/orgs/{org['id']}/modules/compliance/action-types", headers=h_pm, timeout=30).json()
+    }
+    review_action_type = compliance_action_types["Document Review"]
+    test_action_type = compliance_action_types["Test"]
+    airworthiness_standard = create_compliance_standard(
+        h_pm, org["id"], reference="ASA-1", name="Aerospace Safety & Airworthiness Standard",
+        description="Solstice's internal airworthiness and regulatory-compliance standard for commercial "
+        "drone platforms, incorporating FAA Part 107 remote-ID obligations.",
+        issuing_organisation="Solstice Compliance Board", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
+    )
+    airworthiness_version = list_compliance_versions(h_pm, org["id"], airworthiness_standard["id"])[0]
+    remote_id_section = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Remote Identification", reference="1",
+        description="Requirements ensuring continued compliance with FAA Part 107 remote-ID obligations.",
+    )
+    remote_id_compliance_req = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Broadcast Part 107 remote identification per FAA rule text", reference="1.1",
+        reasoning="Non-negotiable for the fleet to remain airworthy past the compliance deadline.",
+        parent_requirement_id=remote_id_section["id"],
+    )
+    remote_id_action = create_compliance_required_action(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        remote_id_compliance_req["id"], review_action_type["id"],
+        name="Review broadcast module against FAA rule text",
+        description="Line-by-line review of the broadcast module against the published rule text.",
+    )
+    logging_compliance_req = create_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        name="Flight Data Logging", reference="2",
+        reasoning="Investigators expect a retrievable flight log independent of the telemetry uplink.",
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        logging_compliance_req["id"], test_action_type["id"],
+        name="Verify flight log retrieval from non-volatile storage on the updated firmware",
+    )
+    # Phase 22: demo_engineer also holds this standard's own `standards_
+    # contributor` role — its own working-group grant, distinct from her
+    # project-scoped `compliance_officer` grant below (demonstrated before
+    # publishing, since a contributor may only edit a still-draft version).
+    grant_standard_role(h_pm, org["id"], airworthiness_standard["id"], demo_engineer["user_id"], "standards_contributor")
+    publish_compliance_version(h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"])
+    # Phase 24: demonstrate the always-editable version summary and a
+    # post-publish clarification — both `standards_manager`-or-override
+    # only (demo_admin, via her org admin override) once a version is no
+    # longer a draft.
+    update_compliance_version_summary(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"],
+        "Current release; supersedes no earlier version. Remote-ID broadcast wording clarified post-publish.",
+    )
+    remote_id_compliance_req = clarify_compliance_requirement(
+        h_pm, org["id"], airworthiness_standard["id"], airworthiness_version["id"], remote_id_compliance_req["id"],
+        name="Broadcast Part 107 remote identification per the FAA rule text published in 14 CFR 89",
+        reference=remote_id_compliance_req["reference"],
+        reasoning=remote_id_compliance_req["reasoning"],
+        clarification_note="Added the specific CFR citation for clarity; the underlying obligation is unchanged.",
+    )
+
+    drone_compliance = assign_compliance_standard(h_pm, org["id"], drone["id"], airworthiness_standard["id"], airworthiness_version["id"])
+    grant_compliance_officer(h_pm, drone["id"], demo_engineer["user_id"])
+
+    compliance_pcrs = list_compliance_requirements(h_pm, drone["id"], drone_compliance["id"])
+    remote_id_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == remote_id_compliance_req["id"])
+    logging_pcr = next(p for p in compliance_pcrs if p["requirement_id"] == logging_compliance_req["id"])
+
+    print("  Assessing and approving the remote-ID compliance requirement...")
+    update_compliance_assessment(
+        h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"], compliance_status="compliant",
+        notes="Verified against current rule text in firmware rev 2.3.1 (see the linked action review).",
+    )
+    submit_compliance_for_approval(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"])
+    approve_compliance_requirement(
+        h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"],
+        note="Verified against FAA rule text; approved for continued operation.",
+    )
+    remote_id_assessments = list_required_action_assessments(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"])
+    remote_id_assessment = next(a for a in remote_id_assessments if a["required_action_id"] == remote_id_action["id"])
+    complete_required_action_assessment(h_pm, drone["id"], drone_compliance["id"], remote_id_pcr["id"], remote_id_assessment["id"])
+
+    print("  Flagging the flight-data-logging requirement Non-Compliant (outstanding action, demonstrates the gap)...")
+    update_compliance_assessment(
+        h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], compliance_status="non_compliant",
+        justification="New logging firmware not yet verified to retain logs across a hard power cycle.",
+    )
+    logging_assessments = list_required_action_assessments(h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"])
+    logging_assessment = logging_assessments[0]
+    update_required_action_assessment(
+        h_pm, drone["id"], drone_compliance["id"], logging_pcr["id"], logging_assessment["id"],
+        assignee_id=demo_engineer["user_id"], due_date=(date.today() + timedelta(days=14)).isoformat(),
+        notes="Blocked on the new logging firmware build.",
+    )
+
+    print("  Attaching compliance evidence and scheduling the annual review...")
+    create_compliance_evidence(
+        h_pm, drone["id"], title="Firmware 2.3.1 Remote-ID Review Report",
+        issuing_organisation="Solstice Compliance Team", issued_date=date.today().isoformat(),
+        expiry_date=(date.today() + timedelta(days=300)).isoformat(),
+        notes="Supports the remote-ID requirement's compliant assessment above.",
+        pcr_ids=[remote_id_pcr["id"]], assessment_ids=[remote_id_assessment["id"]],
+    )
+    create_compliance_review(
+        h_pm, drone["id"], drone_compliance["id"], frequency_label="Annual", recurrence_days=365,
+        next_due_date=(date.today() + timedelta(days=330)).isoformat(), owner_id=demo_admin["user_id"],
+        notes="Annual review of continued Part 107 remote-ID compliance.",
+    )
+
+    print("Seeding default reference standards (Phase 26) — EN 60529 and ISO/IEC 27001...")
+    # Realistic *labels* for demo purposes only, built around each real
+    # standard's own public section structure (IEC 60529's IP-Code digits,
+    # ISO 27001's Annex A control domains) — not a reproduction of either
+    # standard's actual copyrighted requirement text, mirroring how ASA-1
+    # above is already clearly an invented internal standard, not a real
+    # regulation.
+    ip_rating_standard = create_compliance_standard(
+        h_pm, org["id"], reference="EN 60529", name="EN 60529 — Degrees of Protection Provided by Enclosures (IP Code)",
+        description="Solstice's internal reference standard for enclosure ingress-protection ratings on "
+        "outdoor-operated hardware, based on the IEC/EN 60529 IP Code structure.",
+        issuing_organisation="International Electrotechnical Commission (IEC)", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
+    )
+    ip_rating_version = list_compliance_versions(h_pm, org["id"], ip_rating_standard["id"])[0]
+    solids_section = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="First Digit — Protection Against Solid Objects", reference="1",
+        description="Requirements covering the IP Code's first (solid-particle ingress) digit.",
+    )
+    dust_req = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve a minimum ingress rating of IP5X (dust-protected) for the primary electronics enclosure",
+        reference="1.1", reasoning="Coastal and desert inspection sites expose the airframe to fine dust and sand; "
+        "a dust-protected primary enclosure prevents particulate ingress into flight-critical electronics between "
+        "scheduled maintenance.", parent_requirement_id=solids_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"], dust_req["id"], test_action_type["id"],
+        name="Dust-chamber ingress test at IP5X",
+        description="Bench validation of the primary electronics enclosure in a dust chamber against the IP5X threshold.",
+    )
+    liquids_section = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Second Digit — Protection Against Water", reference="2",
+        description="Requirements covering the IP Code's second (liquid ingress) digit.",
+    )
+    splash_req = create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve a minimum ingress rating of IPX4 (splashing water) for the primary electronics enclosure",
+        reference="2.1", reasoning="Several contracted inspection sites operate in light rain conditions; IPX4 "
+        "keeps the airframe airworthy through a typical shift without grounding for weather.",
+        parent_requirement_id=liquids_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"], splash_req["id"], review_action_type["id"],
+        name="Review enclosure seal design against the IPX4 test method",
+    )
+    create_compliance_requirement(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        name="Achieve an IPX6K rating for connectors exposed during post-flight rinse-down maintenance",
+        reference="2.2", reasoning="Field crews rinse airframes with a pressure washer after dusty sites; "
+        "connectors not rated for powerful water jets have been a recurring source of post-maintenance "
+        "electrical faults.", parent_requirement_id=liquids_section["id"],
+    )
+    publish_compliance_version(h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"])
+    # Phase 24: an edited, always-editable version summary on the first
+    # published version.
+    update_compliance_version_summary(
+        h_pm, org["id"], ip_rating_standard["id"], ip_rating_version["id"],
+        "Current release, based on the IEC/EN 60529 IP Code structure. Description clarified post-publish to "
+        "note this standard covers the primary electronics enclosure and exposed connectors only, not the "
+        "full airframe.",
+    )
+
+    infosec_standard = create_compliance_standard(
+        h_pm, org["id"], reference="ISO/IEC 27001", name="ISO/IEC 27001 — Information Security Management System",
+        description="Solstice's internal reference standard for information-security management controls, "
+        "based on the ISO/IEC 27001 Annex A control-domain structure.",
+        issuing_organisation="International Organization for Standardization (ISO)", owner_id=demo_admin["user_id"],
+        initial_version_label="1.0", initial_version_change_note="Initial release.",
+    )
+    infosec_version = list_compliance_versions(h_pm, org["id"], infosec_standard["id"])[0]
+    org_controls_section = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Annex A.5 — Organizational Controls", reference="A.5",
+        description="Requirements covering Annex A's organizational-control domain.",
+    )
+    create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Maintain a documented information security policy approved by senior management", reference="A.5.1",
+        reasoning="A policy without documented senior-management approval carries no organisational weight when "
+        "it conflicts with a delivery deadline — approval is what makes it enforceable.",
+        parent_requirement_id=org_controls_section["id"],
+    )
+    tech_controls_section = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Annex A.8 — Technology Controls", reference="A.8",
+        description="Requirements covering Annex A's technology-control domain.",
+    )
+    mfa_req = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Enforce multi-factor authentication for all privileged system access", reference="A.8.5",
+        reasoning="Account takeover of a privileged account was the top risk flagged in the most recent "
+        "customer security review of the platform.", parent_requirement_id=tech_controls_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], mfa_req["id"], test_action_type["id"],
+        name="Verify MFA enforcement against every privileged role in the production identity provider",
+    )
+    encryption_req = create_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"],
+        name="Encrypt sensitive data at rest and in transit", reference="A.8.24",
+        reasoning="Flight telemetry can reveal customer site layouts and operating patterns; encryption at rest "
+        "and in transit is a standing commitment in the current data processing addendum template.",
+        parent_requirement_id=tech_controls_section["id"],
+    )
+    create_compliance_required_action(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], encryption_req["id"], review_action_type["id"],
+        name="Review current encryption configuration against the data processing addendum",
+    )
+    publish_compliance_version(h_pm, org["id"], infosec_standard["id"], infosec_version["id"])
+    # Phase 24: a post-publish clarification on an already-published
+    # requirement.
+    clarify_compliance_requirement(
+        h_pm, org["id"], infosec_standard["id"], infosec_version["id"], mfa_req["id"],
+        name="Enforce multi-factor authentication for all privileged system access, including break-glass accounts",
+        reference=mfa_req["reference"], reasoning=mfa_req["reasoning"],
+        clarification_note="Clarified to explicitly include break-glass/emergency-access accounts, which were "
+        "ambiguous under the original wording; the underlying obligation is unchanged.",
+    )
+    # Phase 20: exclude the avionics sub-project *before* flipping the
+    # standard to apply to all projects, so reconciliation skips it from
+    # the start rather than assigning and then re-archiving it.
+    exclude_project_from_standard_default(
+        h_pm, org["id"], infosec_standard["id"], avionics["id"],
+        reason="Internal avionics subsystem project with no independent customer data handling or external "
+        "network access; covered under the parent Falcon-3 project's own ISO/IEC 27001 assessment instead.",
+    )
+    update_standard_applicability_default(h_pm, org["id"], infosec_standard["id"], "applies_to_all_projects")
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -993,6 +1528,9 @@ def main() -> None:
     print(f"  Solstice Cloud Platform    ({len(cloud_reqs)} requirements, 1 approved + 1 pending change request, status: Proposed)")
     print("    - Its own 'Stakeholders' group is defined as Falcon-3's direct members"
           " (the project-referencing group mechanism, see docs/decisions.md)")
+    print("  Compliance standards: ASA-1 (assigned to Falcon-3 only), EN 60529 (opt-in, unassigned),"
+          " ISO/IEC 27001 (applies to all projects — auto-assigned to Falcon-3 and Solstice Cloud,"
+          " Falcon-3 Avionics Subsystem excepted)")
 
 
 if __name__ == "__main__":

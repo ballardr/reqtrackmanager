@@ -30,22 +30,12 @@ here has to be different.
 
 import uuid
 from contextlib import contextmanager
-from pathlib import Path
 
 from sqlalchemy import text
 
 from alembic import command
-from alembic.config import Config
 from app.database import engine
-from tests.conftest import auth_headers, create_org_user, create_project
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-
-
-def _alembic_config() -> Config:
-    cfg = Config(str(_BACKEND_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
-    return cfg
+from tests.conftest import auth_headers, build_alembic_config, create_org_user, create_project
 
 
 @contextmanager
@@ -56,11 +46,11 @@ def _downgraded_to_0021():
     failure — restoring the schema every other test in this suite expects.
     Any project/org/user setup needed by the caller must happen *before*
     entering this block — see the module docstring for why."""
-    command.downgrade(_alembic_config(), "0021")
+    command.downgrade(build_alembic_config(), "0021")
     try:
         yield
     finally:
-        command.upgrade(_alembic_config(), "head")
+        command.upgrade(build_alembic_config(), "head")
 
 
 def test_backfill_converts_existing_group_role_into_exactly_one_grant_row(client, admin_token, org_id):

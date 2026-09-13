@@ -14,7 +14,7 @@ const actionTypes: ActionTypeDefinition[] = [
 ];
 const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
-  is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false,
+  is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
 };
 const actions: RequirementAction[] = [
   buildRequirementAction({ id: "act1", unique_code: "ACT-001", title: "Review password reset flow", action_type_id: "at1", outcome_status: "pending" }),

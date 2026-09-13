@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, OrgAdvancedSettings, OrgGroup, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -18,7 +19,7 @@ const org: Organization = {
 const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
   is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: "2026-02-01T09:00:00Z",
-  is_2fa_enabled: true,
+  is_2fa_enabled: true, module_roles: [],
 };
 
 const advanced: OrgAdvancedSettings = {
@@ -41,6 +42,13 @@ function mockOrgAdminApis(overrides: {
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
+  modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
+  /** Phase 37 — the normal admin header's `EntitySwitcher` sibling-org
+   * list (`GET /api/v1/orgs?mine=true`). Defaults to empty rather than
+   * left unmocked: unlike the other overrides above, this endpoint is
+   * now genuinely called on every render of this page's normal header,
+   * not just by stories that opt in to exercising it. */
+  orgs?: Organization[];
 } = {}) {
   const statuses = overrides.projectStatuses ?? [buildProjectStatus({ id: "st1", name: "Proposed", sort_order: 0 }), buildProjectStatus({ id: "st2", name: "Active", sort_order: 1 })];
   const types = overrides.linkTypes ?? [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })];
@@ -49,6 +57,7 @@ function mockOrgAdminApis(overrides: {
   const orgGroups = overrides.groups ?? groups;
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
+    if (path === "/api/v1/orgs?mine=true") return overrides.orgs ?? [];
     if (path.includes("/project-statuses")) return statuses;
     if (path.includes("/link-types")) return types;
     // Phase A's org-only pending-invites list (follow-up UX batch).
@@ -60,6 +69,19 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return overrides.advanced ?? advanced;
     if (path.includes("/pats")) return overrides.pats ?? [];
+    // Module system Phase 1: fetched inside the same try/catch-403 block
+    // as `/advanced-settings` above — must be mocked here or every story
+    // that doesn't override it would otherwise throw on the "unmocked
+    // path" fallback below and fail `reload()` as a whole.
+    // Module system Phase 2: same "must be mocked or reload() throws"
+    // reasoning as `/modules` just above — fetched in the same block.
+    // Checked first since both `/modules` and `/module-roles` would
+    // otherwise need careful ordering; they don't actually collide
+    // (`"/module-roles".includes("/modules")` is false — no trailing "s"
+    // right after "module"), but checking the more specific path first
+    // keeps this robust against that changing.
+    if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
+    if (path.includes("/modules")) return overrides.modules ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -86,6 +108,47 @@ function mockOrgAdminApis(overrides: {
     }
     throw new Error(`unmocked getPage path: ${path}`);
   });
+}
+
+/**
+ * Module system follow-up (2026-09-07): a fixture module registered
+ * directly into the real `installedModules` (mirroring `App.stories.tsx`'s
+ * own `FIXTURE_MODULE_KEY` convention for the equivalent Tier A routing
+ * proof), contributing one `orgAdminSections` entry — proves the generic
+ * merge-and-render mechanism `OrgAdminPage.tsx` now uses works for a module
+ * other than Compliance, the same way `test_module_registry.py`'s
+ * `fake_module` fixture proves the backend registry without depending on a
+ * real module's own behaviour. Registered once, at module scope: nothing
+ * renders it unless a story's own `mockOrgAdminApis({ modules: [...] })`
+ * explicitly reports this key as enabled (see `moduleAdminSections`'s own
+ * enablement filter in `OrgAdminPage.tsx`), so its permanent presence here
+ * causes no cross-story interference — the same reasoning `App.stories.tsx`
+ * already documents for its own permanently-pushed fixture. `routes` is
+ * deliberately omitted (optional since this same follow-up), proving a
+ * module can contribute an org-admin section with no project-scoped UI of
+ * its own.
+ */
+const FIXTURE_ORG_MODULE_KEY = "fake_org_admin_fixture_module";
+const FIXTURE_ORG_ADMIN_SECTION_KEY = "fixture-admin-section";
+
+installedModules.push({
+  key: FIXTURE_ORG_MODULE_KEY,
+  orgAdminSections: [
+    {
+      key: FIXTURE_ORG_ADMIN_SECTION_KEY,
+      label: "Fixture admin section",
+      render: ({ orgId }) => <div>Fixture admin section content for org {orgId}</div>,
+    },
+  ],
+});
+
+function fixtureOrgModule(overrides: Partial<OrgModule> = {}): OrgModule {
+  return {
+    module_key: FIXTURE_ORG_MODULE_KEY, name: "Fixture Org Module",
+    description: "A fixture module used only by this story file's own org-admin-section assertions.",
+    version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
+    frontend_manifest: null, ...overrides,
+  };
 }
 
 const meta: Meta<typeof OrgAdminPage> = {
@@ -233,7 +296,7 @@ export const NewUserModalRoleSelect: Story = {
 const secondOrgUser: OrgUser = {
   user_id: "user-2", email: "jordan@example.com", display_name: "Jordan Lee", is_active: true,
   is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null,
-  is_2fa_enabled: false,
+  is_2fa_enabled: false, module_roles: [],
 };
 
 export const UsersSectionGrantAndRevokeRole: Story = {
@@ -253,7 +316,10 @@ export const UsersSectionGrantAndRevokeRole: Story = {
     const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     await userEvent.click(within(alexRoles).getByRole("checkbox", { name: "Grant Project creator to Alex Morgan" }));
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, { role: "project_creator" })
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/roles`, {
+        user_id: "user-1",
+        role: "project_creator",
+      })
     );
 
     // secondOrgUser (not the logged-in user) holds "project_creator" —
@@ -264,6 +330,65 @@ export const UsersSectionGrantAndRevokeRole: Story = {
     await userEvent.click(within(jordanRoles).getByRole("checkbox", { name: "Revoke Project creator from Jordan Lee" }));
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/roles/project_creator`)
+    );
+  },
+};
+
+/** Module system Phase 2: the Users table's Roles dropdown merges in
+ * org-scoped module-contributed role options alongside the three fixed
+ * `OrgRole` ones — label is `"<role name> (<module name>)"` (the plan's
+ * own worked example), resolved from the already-fetched `modules` list.
+ * Jordan holds one grant (checked, revoke path); Alex doesn't hold the
+ * other (unchecked, grant path). Every other story on this page implicitly
+ * covers the opposite, real-world-default "zero available module roles"
+ * case (`mockOrgAdminApis`'s `moduleRoles` override simply isn't passed,
+ * so it defaults to `[]`) — that's the actual current state of a
+ * deployment with no module registered yet (no module has any roles until
+ * Phase 5). */
+export const UsersSectionModuleRoleGrantAndRevoke: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      users: [orgUser, { ...secondOrgUser, module_roles: [{ module_key: "compliance", role_key: "compliance_manager" }] }],
+      modules: [
+        {
+          module_key: "compliance", name: "Compliance", description: "Compliance tracking.", version: "1.0.0",
+          implemented: true, entitled: true, enabled: true, default_enabled: true, frontend_manifest: null,
+        },
+      ],
+      moduleRoles: [
+        { module_key: "compliance", role_key: "compliance_manager", name: "Compliance Manager", description: "Manages standards." },
+        { module_key: "compliance", role_key: "compliance_officer", name: "Compliance Officer", description: "Assesses projects." },
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await expect(within(alexRoles).getByText("Compliance Manager (Compliance)")).toBeInTheDocument();
+    await userEvent.click(
+      within(alexRoles).getByRole("checkbox", { name: "Grant Compliance Officer (Compliance) to Alex Morgan" })
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-1/module-roles`, {
+        module_key: "compliance", role_key: "compliance_officer",
+      })
+    );
+
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's roles" }));
+    const jordanRoles = within(document.body).getByRole("group", { name: "Jordan Lee's roles" });
+    await userEvent.click(
+      within(jordanRoles).getByRole("checkbox", { name: "Revoke Compliance Manager (Compliance) from Jordan Lee" })
+    );
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/users/user-2/module-roles/compliance/compliance_manager`
+      )
     );
   },
 };
@@ -737,6 +862,53 @@ export const DisabledOrgServerAdminCanReEnable: Story = {
     await waitFor(() => expect(canvas.getByText("This organisation is disabled.")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Enable" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/enable`));
+  },
+};
+
+/** Phase 28 — the entity quick-switch chevron is also an escape hatch off
+ * this degraded, dead-end page: a server admin stuck here (this org is
+ * disabled) can still jump straight to a different, working org, via the
+ * exact same `?mine=true` sibling-org list Organisation Overview uses. */
+export const DisabledOrgEntitySwitcherOffersOtherOrgs: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-2", is_server_admin: true }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === `/api/v1/orgs/${ORG_ID}`) return org;
+      if (path === "/api/v1/orgs?mine=true") return [org, { ...org, id: "org-2", name: "Globex Corporation" }];
+      throw new ApiError(403, "This organisation is disabled.");
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("This organisation is disabled.")).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch organisation" });
+    await expect(within(dialog).getByRole("link", { name: "Globex Corporation" })).toHaveAttribute(
+      "href",
+      "/orgs/org-2/admin"
+    );
+  },
+};
+
+/** Phase 37 — the same entity quick-switch chevron, now also on the normal
+ * (non-degraded) admin header, whose title renders via `ResourceMenu`'s
+ * own `titleAdornment` slot rather than a bespoke `<h1>`. */
+export const EntitySwitcherOffersOtherOrgs: Story = {
+  beforeEach: () => mockOrgAdminApis({ orgs: [org, { ...org, id: "org-2", name: "Globex Corporation" }] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+
+    const trigger = await canvas.findByRole("button", { name: "Switch organisation" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch organisation" });
+    await expect(within(dialog).getByRole("link", { name: "Globex Corporation" })).toHaveAttribute(
+      "href",
+      "/orgs/org-2/admin"
+    );
   },
 };
 
@@ -1446,6 +1618,14 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
     if (path === "/api/v1/projects/proj-1/effective-members") return effectiveMembers;
     if (path === "/api/v1/projects/proj-1/pending-invites") return pendingInvites;
+    // Module system Phase 2: `openManageUsers` fetches this alongside
+    // effective-members/pending-invites — must be mocked or that
+    // `Promise.all` rejects and the modal never opens. No story here
+    // exercises a non-empty module-role option list (that's covered by
+    // `ProjectMembersTable.stories.tsx`'s own `ModuleRolesAvailable` story
+    // instead); this modal's own stories only need the real-world-default
+    // empty case to not break.
+    if (path === "/api/v1/projects/proj-1/module-roles") return [];
     if (path.includes("/project-statuses")) return [];
     if (path.includes("/link-types")) return [];
     // Phase A's org-only pending-invites list (follow-up UX batch) — no
@@ -1458,6 +1638,14 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
+    // Module system Phase 2: the org-scoped page-level `reload()` also
+    // fetches this — must be mocked here too (this function fully
+    // replaces `mockOrgAdminApis`'s own `api.get` mock via a second
+    // `spyOn`, not layers on top of it), or that unrelated fetch rejects
+    // as an unhandled promise. The project-scoped one for the modal
+    // itself is handled by its own exact-match branch above.
+    if (path.includes("/module-roles")) return [];
+    if (path.includes("/modules")) return [];
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/access")) return { org_groups: [], projects: [] };
@@ -1639,6 +1827,142 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
       )
     );
     await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Module system Phase 1 (compliance-module-plan.md): the new "Modules"
+ * top-level group. A deployment with no modules registered yet (the true
+ * state today — no first-party module exists until Phase 5) shows the
+ * empty state rather than an empty table. */
+export const ModulesSectionEmptyState: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() =>
+      expect(canvas.getByText("No modules are registered on this deployment yet.")).toBeInTheDocument()
+    );
+  },
+};
+
+const entitledEnabledModule: OrgModule = {
+  module_key: "fake_module", name: "Fake Module", description: "A fixture module used only by this story.",
+  version: "0.1.0", implemented: true, entitled: true, enabled: true, default_enabled: true,
+  frontend_manifest: null,
+};
+
+/** An entitled, implemented module renders with an active toggle — toggling
+ * it off calls `PUT .../modules/{key}` and patches local state from the
+ * response, with a toast confirming the change (feedback-on-every-mutation). */
+export const ModulesSectionToggleEntitledModule: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ modules: [entitledEnabledModule] });
+    spyOn(api, "put").mockResolvedValue({ ...entitledEnabledModule, enabled: false });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module" });
+    await expect(toggle).toBeChecked();
+    await expect(toggle).toBeEnabled();
+
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/fake_module`, { enabled: false })
+    );
+    await expect(within(document.body).getByText("Fake Module disabled")).toBeInTheDocument();
+  },
+};
+
+/** Non-entitled modules are shown greyed out with an explanatory note
+ * rather than hidden entirely (plan requirement — visibility helps future
+ * upsell), and the toggle itself stays disabled so an org admin can't
+ * self-enable a module their organisation isn't entitled to. */
+export const ModulesSectionNonEntitledModuleIsGreyedOut: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [{ ...entitledEnabledModule, entitled: false, enabled: false }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(
+      canvas.getByText("Not available on this organisation's current plan. Contact your server administrator to request access.")
+    ).toBeInTheDocument();
+    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+  },
+};
+
+/** A registered-but-not-yet-implemented module (`implemented: false`, the
+ * state every module will be in before Phase 5) also renders with a
+ * disabled toggle and its own explanatory note, distinct from the
+ * non-entitled case above. */
+export const ModulesSectionNotYetImplementedModuleIsDisabled: Story = {
+  beforeEach: () =>
+    mockOrgAdminApis({
+      modules: [{ ...entitledEnabledModule, implemented: false, enabled: false }],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
+
+    await expect(canvas.getByText("Not yet available in this version of the application.")).toBeInTheDocument();
+    await expect(canvas.getByRole("switch", { name: "Enable Fake Module" })).toBeDisabled();
+  },
+};
+
+/** Module system follow-up (2026-09-07): a currently-*enabled* installed
+ * module's own `orgAdminSections` entry renders as a real `ResourceMenu`
+ * group, alongside the ten fixed core groups, and its `render({ orgId })`
+ * receives this org's real id — proving the generic mechanism
+ * `OrgAdminPage.tsx` now uses (no hardcoded `activeGroup === "..."` block
+ * or static import needed for this fixture module, unlike the pre-follow-up
+ * Compliance-specific approach this replaced). */
+export const ModuleContributedOrgAdminSectionRendersWhenEnabled: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [fixtureOrgModule()] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Fixture admin section" }));
+    await waitFor(() =>
+      expect(canvas.getByText(`Fixture admin section content for org ${ORG_ID}`)).toBeInTheDocument()
+    );
+  },
+};
+
+/** The other half of the same proof, and the actual bug this follow-up
+ * fixes: a module-contributed org-admin section must disappear from the
+ * nav the moment this org's own module-enablement toggle turns it off —
+ * before this follow-up, `"compliance"`/`"compliance-overview"` were
+ * unconditional, hardcoded `orgAdminGroups` entries that stayed visible
+ * even when Compliance was disabled for the org. Here the fixture module is
+ * reported entitled but *not* enabled (the Modules section's own
+ * "toggled off" state), and its section must not appear in the nav at
+ * all. */
+export const ModuleContributedOrgAdminSectionHiddenWhenModuleDisabled: Story = {
+  beforeEach: () => mockOrgAdminApis({ modules: [fixtureOrgModule({ enabled: false })] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("link", { name: "Fixture admin section" })).not.toBeInTheDocument();
+  },
+};
+
+/** Same disappearance, for the case a module isn't reported at all (e.g. an
+ * older backend that predates this module's registration, or the fixture
+ * simply absent from `GET /orgs/{id}/modules`'s response) — not just the
+ * "present but disabled" case above. */
+export const ModuleContributedOrgAdminSectionHiddenWhenModuleNotReported: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("link", { name: "Fixture admin section" })).not.toBeInTheDocument();
   },
 };
 

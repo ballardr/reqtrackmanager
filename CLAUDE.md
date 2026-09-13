@@ -101,11 +101,19 @@ def calculate_total(items: list[Item]) -> Decimal:
 - Any enum, status, or role value rendered to a user — a dropdown/filter `<select>` option, a table cell, a badge — must go through its existing label map (e.g. `REQUIREMENT_STATUS_LABEL`, `CHANGE_REQUEST_STATUS_LABEL`, `PROJECT_ROLE_LABEL` in `frontend/src/api/types.ts`), never the raw backend enum string (`in_review`, `project_administrator`). When adding a new enum value, add its label to the same map at the same time, not inline wherever it's first rendered. This has been missed repeatedly, including on pages where a sibling element used the correct label map two lines away for the same value — see the style guide's Principle 12.
 - This does not change the authority of [docs/requirements.md](docs/requirements.md); the style guide governs UI *pattern/structure* choices, not product scope.
 
+## Modular Feature System Boundary
+
+- This project's modular feature system (`docs/compliance-module-plan.md` phases 0-4, `docs/modules.md`) exists specifically so core files never need per-module edits — see that plan's own "Design history" section for the repeated correction that got it there. A **core file** (anything outside `frontend/src/modules/<key>/` or `backend/app/modules/<key>/` — e.g. `frontend/src/App.tsx`, `frontend/src/components/Layout.tsx`, `frontend/src/pages/OrgAdminPage.tsx`/`ProjectAdminPage.tsx`, `backend/app/main.py`) must never `import` a symbol from a specific module's own directory. The only files allowed to import from `modules/<key>/` are that module's own files, plus the generic module-loading infrastructure (`frontend/src/modules/registry.ts`, `backend/app/modules/registry.py`).
+- If a core file needs to render or call something a module contributes — a nav-rail entry, a settings panel, a router, an RBAC role, an MCP tool, a bundle-export hook, a shared context/provider — extend the module's declarative registration schema instead of importing directly: `TierAModuleDefinition` (`frontend/src/modules/types.ts`) on the frontend, `ModuleDefinition` (`backend/app/modules/registry.py`) on the backend. Follow the render-prop/callback convention those types already use (`orgAdminSections[].render`, `routes`, `get_router()`, `get_project_router()`, `get_global_router()`, `resolve_file_owner_project_id`) rather than inventing a one-off import as a shortcut.
+- If the existing schema has no field for what you need (a new nav-rail item, a new kind of workspace section, a new provider), add a new generic field to `TierAModuleDefinition`/`ModuleDefinition` and have the core file consume it generically for every module — do not special-case the one module you're currently working on inside the core file.
+- This has already happened once (compliance-module-plan.md Phase 18: `Layout.tsx` imported a compliance-specific context directly and hardcoded a compliance-only URL pattern/nav label instead of going through the registration mechanism) — treat this as a known, specific failure mode to check for on every module-touching change, not just a one-time reminder.
+
 ## Documentation and Decision Governance
 
 - The requirements document at [docs/requirements.md](docs/requirements.md) is fully authoritative and must not be changed by the agent. All decisions should be made in compliance with the requirements laid out in this document.
 - The architecture document at [docs/solution-architecture.md](docs/solution-architecture.md) should be updated when there are architectural changes.
 - The decisions log at [docs/decisions.md](docs/decisions.md) should be used to record architectural and implementation decisions.
+- Every new decision recorded from now on — in `docs/decisions.md`, in `docs/compliance-module-plan.md`'s "Open decisions" list and individual phase specs, or in any comparable plan/decisions doc added later — must say who made it: **Decided by: User** (an explicit instruction, or the user's answer to a clarifying question) or **Decided by: Agent** (the implementing session's own judgment call, absent explicit direction). This exists because a "settled" decision an agent made on its own is not the same weight as one the user actually gave, and a later session needs to know which is which before treating either as fixed — an agent decision can be revisited on its own judgment where a user decision needs the user's sign-off to change. This applies going forward only; do not spend effort retroactively re-tagging existing entries.
 
 ## README Requirements
 
@@ -137,6 +145,7 @@ When making significant changes, update the README to include:
 - Every backend change must come with a test that verifies the behaviour matches the request and pins it against future deviation/regression.
 - `backend/scripts/seed_demo_data.py` (a small, realistic manual-demo dataset) and `backend/scripts/seed_e2e_dataset.py` (the fixed persona/org/project dataset the Playwright suite is written against) must be kept in sync with the current schema and feature set. Whenever a change adds/renames/removes a model field, table, enum value, or a whole feature area, check whether either script needs a corresponding update — new fields should be populated with a sensible demo value rather than left at a default that hides the feature, and a removed/renamed field or relationship must not be left referencing something that no longer exists. Treat a script that fails to run, or that no longer demonstrates a feature it used to, as a bug the same as a failing test.
 - Tests (Playwright specs and backend pytest alike) must not depend on state left behind by another test, or by an earlier run of themselves, having already run — each test must pass whether it runs alone, first, last, or repeated back-to-back against the same database, not only as part of one specific full-suite ordering starting from a freshly seeded database. A spec that deletes/renames a named seed fixture (e.g. an action type called "Review") and then asserts that exact seeded name exists on a later run is non-idempotent — prefer creating and cleaning up the spec's own dynamically-named fixtures over mutating shared named seed data, or otherwise make the spec tolerant of already-mutated state. If you find a non-idempotent test while working on anything in this repo, fix it so it can be run standalone or out of order, per the general fix-don't-defer rule above — do not just note it and move on.
+- Never run more than one `pytest` invocation against this repo's backend at the same time (including one left running in the background while you start another in the foreground, or two agents/sessions each running their own). All backend tests share one on-host/container test database, and two concurrent runs reliably wedge each other — spurious `ERROR`s and failures across unrelated test files, not a real regression — costing a full re-run to even tell the difference. Run pytest invocations strictly one at a time, and wait for one to fully finish (check backgrounded output, don't just fire another) before starting the next.
 
 ## Frontend Dependency Changes
 
@@ -161,12 +170,16 @@ When making significant changes, update the README to include:
 - Finish the work, verify it, and hand it back described and ready to commit — the user commits it themselves. If the work is urgent (e.g. a failing PR check), say so and let them decide the timing, rather than committing to save a round trip.
 - This applies regardless of how confident the fix is or how many times committing has been fine before in this session — each commit is the user's call, every time, not something a prior "yes" in the conversation extends to.
 
-## graphify
+## Critical Thinking & Challenge
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+Do not blindly agree with the user. Treat their assumptions, proposals, and conclusions as hypotheses to evaluate. Actively look for flaws, risks, trade-offs, failure modes, missing information, and better alternatives.
 
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+If you disagree, say so clearly and near the top of the response. Give uncomfortable truths when they are relevant. Explain your reasoning and distinguish facts, assumptions, uncertainty, and judgement.
+
+When the user pushes back, reconsider your reasoning but do not capitulate without genuinely new information or a valid flaw in your position. If you change your mind, explain why.
+
+Think beyond the immediate request. Consider the underlying problem, future requirements, adjacent use cases, maintainability, and opportunities for simple, reusable designs. For example, when adding configuration, consider whether a general key/value or structured configuration is more appropriate than a single-purpose setting.
+
+Think outside the box and suggest materially better approaches when you see them, but do not over-engineer for hypothetical needs. Keep future-proofing proportional to likely value.
+
+Optimise for truth, correctness, robustness, and good decisions—not agreement or simply satisfying the literal request.

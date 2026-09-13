@@ -61,3 +61,14 @@ export const TreeActive: Story = {
     await expect(canvas.getByRole("button", { name: "Tree view" })).toHaveAttribute("aria-pressed", "true");
   },
 };
+
+export const TilesOptionHidden: Story = {
+  args: { mode: "tree", showTilesOption: false, showTreeOption: true },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Tile view" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Tree view" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await expect(args.onChange).toHaveBeenCalledWith("list");
+  },
+};

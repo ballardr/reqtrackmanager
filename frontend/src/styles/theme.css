@@ -303,8 +303,77 @@ textarea.input {
   gap: 1rem;
 }
 
+/* Track minimum (220px) must match `StatCard`'s own inline `minWidth: 220`
+   (components/StatCard.tsx) — `MetricTile` (components/MetricTile.tsx) sets
+   no minWidth of its own, so it just gets a slightly roomier column, but a
+   track minimum *smaller* than an item's own minimum content width made
+   `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
+   overlapping neighbouring tiles at moderate viewport widths (Phase 27a —
+   confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
+   grid once a module contributes headline tiles). */
 .grid-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* `StatBar` (components/StatBar.tsx, Phase 27b) — a compact, table-like row
+   of labelled numbers for a page's top-level, always-visible stats header
+   (currently: `OrgOverviewPage.tsx` only). One shared border/background for
+   the whole row rather than repeating `.card`'s full chrome per tile, since
+   a small set of numbers meant to be scanned at a glance doesn't need that
+   much weight per value. Deliberately distinct from `.grid.grid-metrics`
+   (`StatCard`/`MetricTile`), which stays correct for grouped/paged stat
+   blocks elsewhere (docs/ux-style-guide.md's "Pattern: project-like
+   drill-down entities" addendum) — see that document for which of the two
+   shapes applies where. */
+.stat-bar {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 1.1rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.stat-bar-item:first-child {
+  border-left: none;
+}
+
+.stat-bar-item dt,
+.stat-bar-item dd {
+  margin: 0;
+}
+
+.stat-bar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.stat-bar-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .stat-bar {
+    flex-direction: column;
+  }
+  .stat-bar-item {
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+  .stat-bar-item:first-child {
+    border-top: none;
+  }
 }
 
 .stack {
@@ -520,11 +589,88 @@ textarea.input {
   color: var(--color-primary-contrast) !important;
 }
 
+/* Joins a disclosure toggle to its own nav-rail link into one shared
+   hover/active surface (compliance-module-plan.md Phase 29d —
+   StandardNavSection.tsx's expandable "Versions" row). The background
+   moves to this wrapping row rather than the inner link, so hovering
+   anywhere in the row — including the toggle's own area — highlights the
+   whole thing as one control, even though the link and the toggle stay
+   two separately focusable/clickable elements underneath. */
+.nav-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+}
+
+.nav-link-row:hover {
+  background: var(--color-surface-alt);
+}
+
+.nav-link-row.active {
+  background: var(--color-primary);
+}
+
+.nav-link-row-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.nav-link-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nav-link-row.active .nav-link-row-link,
+.nav-link-row.active .nav-link-row-toggle {
+  color: var(--color-primary-contrast) !important;
+}
+
 /* Icon-only collapsed rail state: hide link labels, centre the icons,
    shrink the rail's own width (set inline via style, since it's driven by
    a JS-held boolean rather than a pure-CSS breakpoint). */
 .nav-rail-icons .nav-label {
   display: none;
+}
+
+/* `EntitySwitcher`'s chevron trigger (compliance-module-plan.md Phase 35b)
+   — the same "no separately bordered chip" fix `.nav-link-row-toggle`
+   above already applies to the expandable nav-rail disclosure toggle
+   (Phase 29d), given to the entity quick-switch chevron itself since it
+   has no wrapping row of its own to inherit a shared hover surface from
+   (it sits directly beside a page's plain `<h1>` text, owned by each
+   caller, not by this component). Borderless and transparent at rest so
+   it reads as part of the adjacent entity name rather than a bolted-on
+   control; a hover/focus background gives it the same affordance any
+   other icon-only button in the app has. */
+.entity-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.entity-switcher-trigger:hover,
+.entity-switcher-trigger:focus-visible {
+  background: var(--color-surface-alt);
 }
 
 .nav-rail-icons .nav-link {
@@ -608,6 +754,40 @@ th:has(> .th-sort) {
 .th-sort:hover,
 .th-sort:focus-visible {
   color: var(--color-primary);
+}
+
+/* Borderless expand/collapse control that fills its own table cell — for a
+   plain disclosure toggle whose label and chevron are one single clickable
+   unit (unlike `.nav-link-row-toggle`, which sits beside a separately
+   navigable link). Mirrors `.th-sort` immediately above (zero the cell's
+   own padding, let the button re-add the same padding so it lines up with
+   a plain cell next to it), but with a hover *background* rather than a
+   text-colour change, since this control's whole row is the click target,
+   not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
+   (compliance-module-plan.md Phase 39a) — the third instance of "no
+   bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
+   toggle` (Phase 29d) and `.entity-switcher-trigger` (Phase 35b); see
+   docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
+td:has(> .disclosure-toggle) {
+  padding: 0;
+}
+.disclosure-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.disclosure-toggle:hover {
+  background: var(--color-surface-alt);
 }
 
 /* `DirectoryTable`'s row-opening first-column control — a real <button>

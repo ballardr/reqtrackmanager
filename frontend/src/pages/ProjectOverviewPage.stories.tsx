@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, within } from "storybook/test";
+import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, ProjectMetrics } from "../api/types";
@@ -44,6 +44,11 @@ export const Dashboard: Story = {
       // render (see `WithHierarchy` below for the populated case).
       if (path.endsWith("/ancestors")) return [];
       if (path.endsWith("/children")) return [];
+      // No module enabled for this fixture's org — no module-contributed
+      // tiles (see `ComplianceProjectOverviewTiles.stories.tsx` for the
+      // Compliance module's own populated case, extracted from this page's
+      // stories during the module boundary cleanup, 2026-09-08).
+      if (path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });
   },
@@ -81,6 +86,7 @@ export const WithHierarchy: Story = {
           buildProjectListItem({ id: "child-2", name: "Atlas Web", parent_project_id: "project-1" }),
         ];
       }
+      if (path.endsWith("/enabled-modules")) return [];
       return buildProject({
         id: "project-1", name: "Atlas Core", summary: "Core platform requirements.",
         parent_project_id: "parent-1", parent_project_name: "Atlas Platform",
@@ -116,6 +122,40 @@ export const LoadError: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("You do not have access to this project.")).toBeInTheDocument();
+  },
+};
+
+/** Phase 28 — with more than one project to switch between, a chevron next
+ * to the project name opens a popover listing the others as plain links
+ * to their own Project Overview page. */
+export const EntitySwitcherOffersSiblingProjects: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/metrics")) return metrics;
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors")) return [];
+      if (path.endsWith("/children")) return [];
+      if (path.endsWith("/enabled-modules")) return [];
+      if (path === "/api/v1/projects?archived=false") {
+        return [
+          buildProjectListItem({ id: "project-1", name: "Atlas Platform" }),
+          buildProjectListItem({ id: "project-2", name: "Solstice Programme" }),
+        ];
+      }
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
+
+    const trigger = await canvas.findByRole("button", { name: "Switch project" });
+    await userEvent.click(trigger);
+    const dialog = within(document.body).getByRole("dialog", { name: "Switch project" });
+    await expect(within(dialog).getByRole("link", { name: "Solstice Programme" })).toHaveAttribute(
+      "href",
+      "/projects/project-2"
+    );
   },
 };
 

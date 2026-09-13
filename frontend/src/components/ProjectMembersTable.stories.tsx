@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
-import type { EffectiveMember, PendingInvite } from "../api/types";
+import type { EffectiveMember, ModuleRoleDefinition, PendingInvite } from "../api/types";
 import { ProjectMembersTable } from "./ProjectMembersTable";
 
 const MEMBERS: EffectiveMember[] = [
@@ -17,6 +17,7 @@ const MEMBERS: EffectiveMember[] = [
         via_mode: null, via_group_id: null, via_group_name: null,
       },
     ],
+    module_roles: [],
   },
   {
     user_id: "u-priya",
@@ -32,6 +33,7 @@ const MEMBERS: EffectiveMember[] = [
         via_mode: null, via_group_id: "g-reviewers", via_group_name: "Reviewers",
       },
     ],
+    module_roles: [],
   },
   {
     user_id: "u-jordan",
@@ -48,6 +50,7 @@ const MEMBERS: EffectiveMember[] = [
         via_mode: "mirror_all", via_group_id: null, via_group_name: null,
       },
     ],
+    module_roles: [],
   },
   {
     user_id: "u-morgan",
@@ -63,6 +66,7 @@ const MEMBERS: EffectiveMember[] = [
         via_mode: null, via_group_id: "og-engineering", via_group_name: "Engineering",
       },
     ],
+    module_roles: [],
   },
 ];
 
@@ -143,6 +147,7 @@ export const AtScalePaginated: Story = {
           via_mode: null, via_group_id: null, via_group_name: null,
         },
       ],
+      module_roles: [],
     })),
   },
   play: async ({ canvasElement }) => {
@@ -345,6 +350,43 @@ export const ActionsMenuHiddenWhenNoEligibleAction: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("button", { name: "Priya Shah's actions" })).not.toBeInTheDocument();
+  },
+};
+
+/** Module system Phase 2: `availableModuleRoles` merges module-contributed
+ * role options into the same Role `MultiSelectDropdown` as the four core
+ * `ProjectRole` options — Alex holds one (checked) and not the other
+ * (unchecked), and neither is ever disabled the way a group/inherited-
+ * sourced core-role option would be, since module roles are direct-grant-
+ * only with no inheritance concept (see the component's own docstring).
+ * Every other story on this page implicitly covers the opposite,
+ * real-world-default case — `availableModuleRoles` simply isn't passed, so
+ * it defaults to `[]` and the dropdown shows only the four core roles,
+ * unchanged from before this phase (no module has any roles registered
+ * until Phase 5). */
+const MODULE_ROLES: ModuleRoleDefinition[] = [
+  { module_key: "compliance", role_key: "compliance_officer", name: "Compliance Officer", description: "Manages this project's compliance assessments." },
+  { module_key: "compliance", role_key: "evidence_reviewer", name: "Evidence Reviewer", description: "Reviews submitted compliance evidence." },
+];
+
+export const ModuleRolesAvailable: Story = {
+  args: {
+    invites: [],
+    members: [{ ...MEMBERS[0], module_roles: [{ module_key: "compliance", role_key: "compliance_officer" }] }],
+    availableModuleRoles: MODULE_ROLES,
+    onToggleModuleRole: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const group = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await expect(within(group).getByText("Compliance Officer")).toBeInTheDocument();
+    const checked = within(group).getByRole("checkbox", { name: /Revoke Compliance Officer/ });
+    await expect(checked).not.toBeDisabled();
+    const unchecked = within(group).getByRole("checkbox", { name: /Grant Evidence Reviewer/ });
+    await expect(unchecked).not.toBeDisabled();
+    await userEvent.click(unchecked);
+    await expect(args.onToggleModuleRole).toHaveBeenCalledWith("u-alex", "compliance", "evidence_reviewer", true);
   },
 };
 

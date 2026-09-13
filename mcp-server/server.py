@@ -38,6 +38,15 @@ Responsibilities:
   PM-privileged caller to approve something) to enforce a product policy
   it was never meant to express. See docs/decisions.md's "MCP server write
   mode" entry.
+- Registers module-contributed tools declaratively (compliance-module-plan.md
+  Phase 4): a backend module (e.g. a future Compliance module) can declare
+  its own tools, which this server discovers by fetching `GET /api/v1/
+  system/modules/mcp-tools` (lazily, authenticated with whatever session's
+  token is on hand, cached in-process) and registers as plain proxy calls
+  through the same `_call_backend` helper every hand-written tool above
+  uses — no module code ever runs inside this process. See docs/modules.md's
+  "Module-contributed MCP tools" section and this file's own "Module-
+  contributed tools" section below.
 
 Design decision — pass-through auth, not a service account: an earlier
 design considered giving this server its own fixed backend credential
@@ -56,17 +65,25 @@ this project already uses in its seed scripts).
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
+import logging
 import os
+import time
 import uuid
+from dataclasses import dataclass
 from urllib.parse import quote
 
 import httpx
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.middleware import Middleware
+from fastmcp.tools import Tool, ToolResult
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, PlainTextResponse
+
+logger = logging.getLogger(__name__)
 
 REQTRACK_API_URL = os.environ.get("REQTRACK_API_URL", "http://backend:8000").rstrip("/")
 # Distinct from REQTRACK_API_URL above: that one is this server's own
@@ -735,6 +752,241 @@ if MCP_WRITES_ENABLED:
         }
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
         return response.json()
+
+
+# --- Module-contributed tools (compliance-module-plan.md Phase 4) ----------
+#
+# A module (e.g. a future Compliance module) can declare its own MCP tools
+# declaratively — see docs/modules.md's "Module-contributed MCP tools"
+# section for the full design writeup. This server never runs a module's
+# own code: every declarative tool is a plain proxy call through the same
+# `_call_backend` helper every hand-written tool above already uses, built
+# from a manifest this server fetches from the backend's own
+# `GET /api/v1/system/modules/mcp-tools`. That manifest has already been
+# through the backend's own mechanical verification (module-key name
+# prefixing, path-prefix enforcement, `mutates` derived from HTTP method,
+# approval-action exclusion sourced from the resolved route's own metadata)
+# — this server trusts it exactly as much as it trusts any other backend
+# response, no more.
+#
+# The manifest is fetched **lazily and authenticated**, never at an
+# unauthenticated process-boot call: whichever connecting session's own
+# already-presented bearer token first triggers a refresh within
+# `MODULE_TOOLS_REFRESH_SECONDS` is used, and the result is cached
+# in-process and reused across every session until the next refresh.
+
+MODULE_TOOLS_MANIFEST_PATH = "/api/v1/system/modules/mcp-tools"
+MODULE_TOOLS_REFRESH_SECONDS = float(os.environ.get("MODULE_TOOLS_REFRESH_SECONDS", "600"))
+
+
+@dataclass(frozen=True)
+class _ModuleToolParam:
+    name: str
+    type: str
+    required: bool
+    description: str
+    location: str  # "path" | "query" | "body" — the backend manifest's "in" key.
+
+
+@dataclass(frozen=True)
+class _ModuleToolSpec:
+    """One module-contributed tool, parsed from the backend's manifest
+    response. `name` here is already the module-key-prefixed name the
+    backend computed (e.g. `"compliance_list_standards"`) — this server
+    never re-derives or re-prefixes it."""
+
+    name: str
+    description: str
+    method: str
+    path_template: str
+    mutates: bool
+    params: tuple[_ModuleToolParam, ...] = ()
+
+
+def _json_schema_for_params(params: tuple[_ModuleToolParam, ...]) -> dict:
+    """Builds the MCP tool `inputSchema` for a declarative module tool from
+    its manifest-declared params — a straightforward JSON Schema object,
+    since real validation happens at the backend endpoint this tool proxies
+    to (the same single source of truth every other request already goes
+    through), not here."""
+    properties = {param.name: {"type": param.type, "description": param.description} for param in params}
+    required = [param.name for param in params if param.required]
+    return {"type": "object", "properties": properties, "required": required}
+
+
+class _DeclarativeModuleTool(Tool):
+    """A single module-contributed MCP tool, backed entirely by one
+    `_call_backend` proxy call built from its `_ModuleToolSpec` — the
+    module-system analogue of every hand-written tool above, except the
+    request shape comes from a manifest fetched from the backend instead of
+    being written by hand in this file."""
+
+    spec: _ModuleToolSpec
+
+    async def run(self, arguments: dict) -> ToolResult:
+        path = self.spec.path_template
+        query: dict = {}
+        body: dict = {}
+        for param in self.spec.params:
+            value = arguments.get(param.name)
+            if value is None:
+                if param.required:
+                    raise ValueError(f"Missing required argument {param.name!r} for tool {self.name!r}.")
+                continue
+            if param.location == "path":
+                # URL-encoded, not trusted as a bare path segment — the same
+                # reasoning `_get_org_login_info` above already documents:
+                # this server has no way to know ahead of time which params
+                # are UUIDs and which aren't, so every path-location value is
+                # encoded regardless, closing off path-segment injection
+                # (e.g. a value containing "/" or "..") by construction.
+                path = path.replace("{" + param.name + "}", quote(str(value), safe=""))
+            elif param.location == "query":
+                query[param.name] = value
+            else:
+                body[param.name] = value
+        response = await _call_backend(self.spec.method, path, params=query or None, json=body or None)
+        return ToolResult(content=response.json())
+
+
+def _register_declarative_tool(spec: _ModuleToolSpec) -> None:
+    """Builds and registers one `_DeclarativeModuleTool` from `spec` —
+    `mcp.add_tool` replaces an already-registered tool of the same name in
+    place (logging a warning), so this is also how a changed tool spec gets
+    re-applied on a later manifest refresh."""
+    mcp.add_tool(
+        _DeclarativeModuleTool(
+            name=spec.name, description=spec.description,
+            parameters=_json_schema_for_params(spec.params), spec=spec,
+        )
+    )
+
+
+def _parse_module_tool_manifest(entries: list[dict]) -> list[_ModuleToolSpec]:
+    """Parses the backend manifest's JSON entries into `_ModuleToolSpec`s,
+    skipping (and logging) any single malformed entry rather than aborting
+    the whole refresh — the same per-item tolerance `app.modules.registry.
+    build_mcp_tool_manifest` already applies on the backend side to a
+    single malformed param."""
+    specs: list[_ModuleToolSpec] = []
+    for entry in entries:
+        try:
+            params = tuple(
+                _ModuleToolParam(
+                    name=p["name"], type=p["type"], required=bool(p["required"]),
+                    description=p.get("description", ""), location=p["in"],
+                )
+                for p in entry.get("params", [])
+            )
+            specs.append(
+                _ModuleToolSpec(
+                    name=entry["name"], description=entry["description"], method=entry["method"],
+                    path_template=entry["path_template"], mutates=bool(entry["mutates"]), params=params,
+                )
+            )
+        except (KeyError, TypeError):
+            logger.warning("Skipping malformed module-tool manifest entry: %r", entry)
+            continue
+    return specs
+
+
+_module_tools_lock = asyncio.Lock()
+_module_tools_last_refresh = 0.0
+_registered_module_tools: dict[str, _ModuleToolSpec] = {}
+
+
+async def _fetch_module_tool_manifest(auth_headers: dict[str, str]) -> list[_ModuleToolSpec] | None:
+    """Fetches and parses the backend's module-contributed MCP tool
+    manifest using `auth_headers` (some connecting session's own
+    already-presented bearer token). Returns `None` on any failure —
+    network error, non-2xx response, or a body that isn't the expected
+    JSON list — so a transient backend problem degrades to "keep whatever
+    tools are already registered" rather than tearing down a working tool
+    set on one bad refresh."""
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            response = await client.get(f"{REQTRACK_API_URL}{MODULE_TOOLS_MANIFEST_PATH}", headers=auth_headers)
+        response.raise_for_status()
+        entries = response.json()
+        if not isinstance(entries, list):
+            raise ValueError("Expected the module-tools manifest to be a JSON list.")
+    except (httpx.HTTPError, ValueError):
+        return None
+    return _parse_module_tool_manifest(entries)
+
+
+def _apply_module_tool_manifest(specs: list[_ModuleToolSpec]) -> None:
+    """Diffs `specs` (filtered to what this server is actually allowed to
+    register in its current write-mode configuration) against the
+    currently-registered declarative tools and applies exactly the
+    add/remove calls needed.
+
+    Deliberately never blindly re-registers an unchanged tool: FastMCP logs
+    a warning every time an already-registered tool name is re-added, which
+    would otherwise spam this server's logs every refresh cycle for every
+    module tool that hasn't changed, defeating the point of a level-appropriate
+    log line for the (rare) case a tool's spec genuinely did change.
+    """
+    desired = {spec.name: spec for spec in specs if not spec.mutates or MCP_WRITES_ENABLED}
+
+    for name in list(_registered_module_tools):
+        if name not in desired:
+            mcp.local_provider.remove_tool(name)
+            del _registered_module_tools[name]
+
+    for name, spec in desired.items():
+        if _registered_module_tools.get(name) == spec:
+            continue
+        _register_declarative_tool(spec)
+        _registered_module_tools[name] = spec
+
+
+async def _maybe_refresh_module_tools() -> None:
+    """Refreshes the module-tool manifest at most once per
+    `MODULE_TOOLS_REFRESH_SECONDS`, using whichever connecting session's own
+    already-presented bearer token happens to trigger the refresh — see
+    this section's own header comment for why this is deliberately not an
+    unauthenticated boot-time fetch.
+
+    Safe to call from any request path: a connection presenting no token at
+    all (or a backend that's momentarily unreachable) simply skips this
+    cycle's refresh rather than failing the caller's own unrelated tool
+    call — the next connection that does present a token, or the next
+    refresh window, tries again.
+    """
+    global _module_tools_last_refresh
+    if time.monotonic() - _module_tools_last_refresh < MODULE_TOOLS_REFRESH_SECONDS:
+        return
+    async with _module_tools_lock:
+        if time.monotonic() - _module_tools_last_refresh < MODULE_TOOLS_REFRESH_SECONDS:
+            return  # another connection already refreshed while we waited for the lock
+        try:
+            headers = _forward_auth_header()
+        except AuthenticationRequiredError:
+            return
+        specs = await _fetch_module_tool_manifest(headers)
+        if specs is None:
+            return
+        _apply_module_tool_manifest(specs)
+        _module_tools_last_refresh = time.monotonic()
+
+
+class ModuleToolsRefreshMiddleware(Middleware):
+    """Triggers a module-tool manifest refresh before listing or calling
+    tools, so a newly-enabled module's tools become visible within one
+    refresh window without this server needing to restart — see
+    `_maybe_refresh_module_tools`."""
+
+    async def on_list_tools(self, context, call_next):
+        await _maybe_refresh_module_tools()
+        return await call_next(context)
+
+    async def on_call_tool(self, context, call_next):
+        await _maybe_refresh_module_tools()
+        return await call_next(context)
+
+
+mcp.add_middleware(ModuleToolsRefreshMiddleware())
 
 
 _PAGE_STYLE = """

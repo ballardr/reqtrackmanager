@@ -14,22 +14,49 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import ExternalUserPolicy, OrgRole
-from app.models.file import FileAsset, RequirementFile
+from app.models.file import FileAsset, RequirementActionFile, RequirementFile
+from app.models.module import OrganizationModuleEnablement
+from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, ReportTemplate, UserOrgRole
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.project_status import ProjectStatusDefinition
-from app.models.requirement import RequirementLink
+from app.models.requirement import Requirement, RequirementLink
+from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.modules.registry import (
+    get_frontend_manifest,
+    get_module_registry,
+    is_module_enabled,
+    is_module_entitled,
+    list_enabled_module_roles,
+    run_on_org_created_hooks,
+    run_org_group_member_removal_hooks,
+)
+
+# `_accessible_project_ids` (Phase 19's overview-stats endpoint reuses the
+# exact same project-visibility computation `GET /projects` already uses,
+# rather than duplicating it here) — this codebase already has precedent
+# for importing an underscore-prefixed helper across a module boundary
+# (`routers/projects.py` itself imports `_direct_project_member_ids_base`/
+# `_descendant_org_group_ids` from `services/rbac.py`); `docs/compliance-
+# module-plan.md` Phase 19's own spec offers "move it to a shared service
+# (or import it)" as the two options and this repo has no existing
+# convention of one router importing from another, but moving ~150 lines of
+# heavily-documented, actively-relied-on RBAC logic out of `projects.py`
+# for one new read-only endpoint is a disproportionate risk for this
+# change — importing it is the lower-risk option the plan explicitly
+# sanctions.
+from app.routers.projects import _accessible_project_ids
 from app.schemas.email import TestEmailRequest
 from app.schemas.file import FileAssetOut
 from app.schemas.link_type import LinkTypeCreate, LinkTypeOut, LinkTypeUpdate
@@ -38,6 +65,11 @@ from app.schemas.org import (
     DisplayNameLockUpdate,
     ExternalUserMatch,
     MergeConflictOut,
+    ModuleFrameTokenOut,
+    ModuleFrontendManifestOut,
+    ModuleRoleAssign,
+    ModuleRoleDefinitionOut,
+    ModuleRoleGrantOut,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrganizationCreate,
@@ -53,6 +85,9 @@ from app.schemas.org import (
     OrgLoginInfoOut,
     OrgMergePreviewResult,
     OrgMergeResult,
+    OrgModuleEnablementUpdate,
+    OrgModuleOut,
+    OrgOverviewStatsOut,
     OrgPendingInviteCreate,
     OrgPendingInviteOut,
     OrgProjectSummaryOut,
@@ -75,7 +110,7 @@ from app.schemas.pat import BulkRevokeResult, OrgPersonalAccessTokenOut
 from app.schemas.project import MoveDirection
 from app.schemas.project_status import ProjectStatusCreate, ProjectStatusOut, ProjectStatusUpdate
 from app.schemas.report import OrgReportDefaults
-from app.security import generate_scim_token, hash_password
+from app.security import create_module_frame_token, generate_scim_token, hash_password
 from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.definitions import (
@@ -99,6 +134,7 @@ from app.services.rbac import (
     get_effective_project_managers,
     get_effective_project_roles,
     require_org_admin_or_server_admin,
+    require_org_module_enabled_dynamic,
     require_org_role,
     require_server_admin,
     would_create_org_group_cycle,
@@ -120,6 +156,12 @@ def create_organization(
     db.flush()
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    # Generic module-contributed org-creation seeding (e.g. Compliance's
+    # `seed_compliance_action_types`) — this core router never imports a
+    # specific module; see `ModuleDefinition.on_org_created`'s own docstring
+    # for why org-creation time, not a module-enable hook, is where this
+    # has to run.
+    run_on_org_created_hooks(db, org.id)
     log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
     db.commit()
     db.refresh(org)
@@ -595,6 +637,28 @@ def list_org_users(
                 is_2fa_enabled=user.is_2fa_enabled if is_admin else False,
             )
         by_user[user.id].roles.append(role)
+
+    # Module system Phase 2: attach each returned user's org-scoped
+    # module-contributed role grants, filtered to currently-*enabled*
+    # modules only (`list_enabled_module_roles`) — a grant for a
+    # since-disabled module is simply omitted here, never deleted from
+    # `user_module_roles` (see `ModuleRoleGrantOut`'s own docstring for the
+    # full "filter, don't delete" rationale). Computed once per request,
+    # not once per user, since it only depends on `organization_id`.
+    enabled_org_role_keys = {
+        (module_key, role.role_key) for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    }
+    if by_user and enabled_org_role_keys:
+        module_role_rows = db.execute(
+            select(UserModuleRole.user_id, UserModuleRole.module_key, UserModuleRole.role_key).where(
+                UserModuleRole.organization_id == organization_id,
+                UserModuleRole.project_id.is_(None),
+                UserModuleRole.user_id.in_(by_user.keys()),
+            )
+        ).all()
+        for user_id, module_key, role_key in module_role_rows:
+            if (module_key, role_key) in enabled_org_role_keys:
+                by_user[user_id].module_roles.append(ModuleRoleGrantOut(module_key=module_key, role_key=role_key))
 
     results = list(by_user.values())
     if is_active is not None:
@@ -1100,6 +1164,134 @@ def revoke_org_role(
         db.commit()
 
 
+# --- Module-contributed roles (module system Phase 2) -----------------------
+
+
+@router.get("/{organization_id}/module-roles", response_model=list[ModuleRoleDefinitionOut])
+def list_org_module_roles(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """Lists the org-scoped module-contributed roles currently available to
+    grant in this organisation — i.e. declared by a module that is
+    currently effectively enabled here (module system Phase 2). Same
+    "any org member can see what role options exist" gate as `list_org_
+    users` (C-A-13's own filters are the only part of that endpoint
+    actually restricted to admins; the option list itself isn't
+    sensitive), since this is exactly what the frontend's Roles dropdown
+    needs to render its option list alongside the fixed `OrgRole` values.
+    """
+    return [
+        ModuleRoleDefinitionOut(module_key=module_key, role_key=role.role_key, name=role.name, description=role.description)
+        for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    ]
+
+
+@router.post("/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+def assign_org_module_role(
+    organization_id: UUID,
+    user_id: UUID,
+    payload: ModuleRoleAssign,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Grants an org-scoped module-contributed role to a user (module
+    system Phase 2) — the module-role counterpart to `assign_org_role`,
+    same `ORG_ADMIN`-only gate (an org admin already implicitly holds
+    every org-scoped module role via `require_module_role`'s own override,
+    so it's consistent that org admin is also who explicitly grants/
+    revokes the row).
+
+    400s if `(payload.module_key, payload.role_key)` doesn't name a real
+    `scope="org"` role of a *currently-enabled* module for this
+    organisation — this is what naturally makes a disabled module's roles
+    ungrantable, and also catches a typo'd role key, using the same
+    `list_enabled_module_roles` lookup `list_org_module_roles` above
+    exposes as the frontend's own option list.
+    """
+    target = db.get(User, user_id)
+    if target is not None and target.is_banned:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
+        )
+    valid = any(
+        module_key == payload.module_key and role.role_key == payload.role_key
+        for module_key, role in list_enabled_module_roles(db, organization_id, "org")
+    )
+    if not valid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This module role does not exist, is not org-scoped, or its module is not currently enabled for this organisation.",
+        )
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == payload.module_key,
+            UserModuleRole.role_key == payload.role_key,
+            UserModuleRole.organization_id == organization_id,
+            UserModuleRole.project_id.is_(None),
+        )
+    )
+    if existing is None:
+        db.add(
+            UserModuleRole(
+                user_id=user_id, module_key=payload.module_key, role_key=payload.role_key,
+                organization_id=organization_id, granted_by=current_user.id,
+            )
+        )
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, organization_id=organization_id,
+            detail={"module_key": payload.module_key, "role_key": payload.role_key},
+        )
+        granted_user = db.get(User, user_id)
+        if granted_user is not None:
+            notify(
+                db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
+                title="Organisation permission granted",
+                body=f"You were granted the '{payload.role_key}' role in an organisation.",
+                actor_id=current_user.id,
+            )
+        db.commit()
+
+
+@router.delete(
+    "/{organization_id}/users/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
+)
+def revoke_org_module_role(
+    organization_id: UUID,
+    user_id: UUID,
+    module_key: str,
+    role_key: str,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Revokes an org-scoped module-contributed role grant — `assign_org_
+    module_role`'s counterpart, same no-op-if-absent shape as `revoke_org_
+    role`. Unlike `revoke_org_role`, no self-targeting guard is needed: an
+    org can never reach "zero admins" through a module-role revoke, since
+    module roles carry no admin-tier significance of their own (an
+    `ORG_ADMIN` retains full access to every org-scoped module role
+    regardless of this table's contents — see `require_module_role`)."""
+    existing = db.scalar(
+        select(UserModuleRole).where(
+            UserModuleRole.user_id == user_id,
+            UserModuleRole.module_key == module_key,
+            UserModuleRole.role_key == role_key,
+            UserModuleRole.organization_id == organization_id,
+            UserModuleRole.project_id.is_(None),
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_module_role", entity_id=user_id, action="revoked", actor_id=current_user.id,
+            organization_id=organization_id, detail={"module_key": module_key, "role_key": role_key},
+        )
+        db.commit()
+
+
 @router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
 def leave_organization(
     organization_id: UUID,
@@ -1520,6 +1712,130 @@ def create_org_group(
     )
 
 
+@router.get("/{organization_id}/overview-stats", response_model=OrgOverviewStatsOut)
+def get_org_overview_stats(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """The "Organisation Overview" page's stats header (compliance-module-
+    plan.md Phase 19): project count, requirement count, org member count,
+    and total uploaded file size.
+
+    Gated the same way `list_org_users` is (`ORG_ADMIN`/`PROJECT_CREATOR`/
+    `MEMBER` — i.e. any real role in this org) rather than
+    `require_org_admin_or_server_admin`: I-M-05 is explicit that the server
+    admin role "does not give access to data within organisations," and
+    `require_org_admin_or_server_admin`'s own docstring restricts that
+    dependency to the one documented carve-out (creating an org's initial
+    user) — a server admin with no genuine role in this org still gets 403
+    here, same as anyone else. `is_full_org_total` below only ever applies
+    *after* that gate has already been passed.
+
+    Per `docs/decisions.md`'s "Compliance module, human review follow-ups"
+    entry ("a user can't see the number of all projects if they themselves
+    can't see them all... an org admin is the exception and should see the
+    raw proper totals"): an org admin, or a server admin who already holds
+    some role in this org, sees the organisation's real, unfiltered totals;
+    everyone else sees counts scoped to `_accessible_project_ids` (the same
+    visibility computation `GET /projects` uses — direct/group/org-wide
+    roles plus hierarchical inheritance). Member count is never scoped —
+    `list_org_users`'s own permission already lets any caller who reaches
+    this endpoint at all see the full member directory, so scoping it
+    further here would only invent a restriction nothing else enforces.
+    """
+    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
+    sees_full_totals = current_user.is_server_admin or OrgRole.ORG_ADMIN in org_roles
+
+    member_count = db.scalar(
+        select(func.count(func.distinct(User.id)))
+        .select_from(User)
+        .join(UserOrgRole, UserOrgRole.user_id == User.id)
+        .where(UserOrgRole.organization_id == organization_id, User.is_archived.is_(False))
+    ) or 0
+
+    if sees_full_totals:
+        project_count = db.scalar(
+            select(func.count()).select_from(Project).where(Project.organization_id == organization_id)
+        ) or 0
+        requirement_count = db.scalar(
+            select(func.count())
+            .select_from(Requirement)
+            .join(Project, Project.id == Requirement.project_id)
+            .where(Project.organization_id == organization_id)
+        ) or 0
+        total_file_size_bytes = db.scalar(
+            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
+                FileAsset.organization_id == organization_id
+            )
+        ) or 0
+    else:
+        accessible_ids = _accessible_project_ids(db, current_user.id)
+        org_project_ids = set(
+            db.scalars(
+                select(Project.id).where(
+                    Project.organization_id == organization_id, Project.id.in_(accessible_ids)
+                )
+            ).all()
+        ) if accessible_ids else set()
+        project_count = len(org_project_ids)
+        requirement_count = (
+            db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id.in_(org_project_ids)))
+            if org_project_ids
+            else 0
+        ) or 0
+
+        # Distinct files this member can account for: this org's own shared
+        # resources (`is_org_resource`, visible to any member regardless of
+        # per-project access — same as `GET /{organization_id}/resources`)
+        # plus files attached to a requirement/action within their
+        # accessible-project set. A file could match both a requirement
+        # attachment and (if it's also an org resource) the first clause —
+        # `union()` de-duplicates by file id so it's never double-counted.
+        #
+        # Known, deliberate gap: `CommentFile` (a file attached to a
+        # `ReviewComment`, C-M-02's discussion-thread attachment path) is
+        # NOT included here. `ReviewComment.target_id` is polymorphic
+        # (`ReviewTargetType.REQUIREMENT`/`ACTION`/`CHANGE_REQUEST`, no FK),
+        # so resolving it back to a project id for scoping would need a
+        # three-way branch per target type — a disproportionate amount of
+        # complexity for what these comment-thread attachments actually
+        # weigh, versus the admin branch above (a plain per-org sum, which
+        # *does* include every `CommentFile`'s underlying `FileAsset`
+        # regardless of type). This makes a scoped member's own total a
+        # strict undercount, never an over-exposure — the safe direction
+        # for a visibility boundary — but it is a real, known accuracy gap:
+        # revisit if comment attachments turn out to matter for this figure.
+        org_resource_file_ids = select(FileAsset.id.label("file_id")).where(
+            FileAsset.organization_id == organization_id, FileAsset.is_org_resource.is_(True)
+        )
+        if org_project_ids:
+            requirement_ids = select(Requirement.id).where(Requirement.project_id.in_(org_project_ids))
+            action_ids = select(RequirementAction.id).where(RequirementAction.project_id.in_(org_project_ids))
+            file_ids_via_requirement = select(RequirementFile.file_id).where(
+                RequirementFile.requirement_id.in_(requirement_ids)
+            )
+            file_ids_via_action = select(RequirementActionFile.file_id).where(
+                RequirementActionFile.action_id.in_(action_ids)
+            )
+            distinct_file_ids = org_resource_file_ids.union(file_ids_via_requirement, file_ids_via_action).subquery()
+        else:
+            distinct_file_ids = org_resource_file_ids.subquery()
+        total_file_size_bytes = db.scalar(
+            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
+                FileAsset.id.in_(select(distinct_file_ids.c.file_id))
+            )
+        ) or 0
+
+    return OrgOverviewStatsOut(
+        project_count=project_count,
+        requirement_count=requirement_count,
+        member_count=member_count,
+        total_file_size_bytes=total_file_size_bytes,
+        is_full_org_total=sees_full_totals,
+    )
+
+
 @router.get("/{organization_id}/projects", response_model=list[OrgProjectSummaryOut])
 def list_org_projects(
     organization_id: UUID,
@@ -1784,8 +2100,24 @@ def remove_org_group_member(
 ):
     """Removes a member from an organisation group — `member_id` is matched
     against either a user member or a nested-group member (whichever it
-    is), same generic-id convention as `remove_project_group_member`."""
+    is), same generic-id convention as `remove_project_group_member`.
+
+    Phase 22 (docs/compliance-module-plan.md): when `member_id` names a
+    genuine *user* member (never a nested-group member — a module-owned
+    floor concept is about real people, not group structure), every
+    registered module gets a chance to block this specific removal via
+    `run_org_group_member_removal_hooks` (e.g. Compliance's own "this group
+    is a standard's last fallback compliance-manager coverage" check) —
+    core code deciding to ask, without importing any specific module's own
+    models, per the Modular Feature System Boundary."""
     _get_org_group_in_org(db, organization_id, group_id)
+    is_user_member = db.scalar(
+        select(OrgGroupMember.id).where(OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == member_id)
+    ) is not None
+    if is_user_member:
+        block_message = run_org_group_member_removal_hooks(db, group_id, member_id)
+        if block_message is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, block_message)
     db.execute(
         OrgGroupMember.__table__.delete().where(
             OrgGroupMember.org_group_id == group_id,
@@ -2061,6 +2393,122 @@ def update_advanced_settings(
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
     )
+
+
+# --- Modules (module system Phase 1) -----------------------------------------
+
+
+@router.get("/{organization_id}/modules", response_model=list[OrgModuleOut])
+def list_org_modules(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module with this organisation's effective
+    entitlement/enablement state (module system Phase 1).
+
+    Non-entitled modules are included, not filtered out: the Modules admin
+    UI shows them greyed out with an explanatory note rather than hiding
+    them entirely (visibility helps future upsell; the toggle itself stays
+    disabled) — the frontend does the graying, this endpoint just reports
+    the truth.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    result: list[OrgModuleOut] = []
+    for definition in get_module_registry().values():
+        entitled = is_module_entitled(db, organization_id, definition.key)
+        enabled = is_module_enabled(db, organization_id, definition.key)
+        manifest = get_frontend_manifest(definition.key)
+        result.append(
+            OrgModuleOut(
+                module_key=definition.key, name=definition.name, description=definition.description,
+                version=definition.version, implemented=definition.implemented,
+                entitled=entitled, enabled=enabled, default_enabled=definition.default_enabled,
+                frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+            )
+        )
+    return result
+
+
+@router.put("/{organization_id}/modules/{module_key}", response_model=OrgModuleOut)
+def update_org_module_enablement(
+    organization_id: UUID, module_key: str, payload: OrgModuleEnablementUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets this organisation's own explicit enable/disable choice for one
+    module (module system Phase 1) — the org-tier "day-to-day switch"
+    among modules the organisation is entitled to.
+
+    404s on an unregistered `module_key`, matching how every other
+    org-scoped resource lookup in this router responds to a bogus id.
+    403s with a clear message if the organisation isn't entitled to the
+    module at all: an org admin cannot self-enable a non-entitled module
+    by toggling this endpoint — entitlement is a server-tier lever
+    (`PUT /system/orgs/{organization_id}/module-entitlements/{module_key}`),
+    strictly above what this endpoint can touch.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    if not is_module_entitled(db, organization_id, module_key):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This module is not entitled for this organisation.")
+
+    row = db.scalar(
+        select(OrganizationModuleEnablement).where(
+            OrganizationModuleEnablement.organization_id == organization_id,
+            OrganizationModuleEnablement.module_key == module_key,
+        )
+    )
+    if row is None:
+        row = OrganizationModuleEnablement(organization_id=organization_id, module_key=module_key)
+        db.add(row)
+    row.enabled = payload.enabled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
+        action="module.enablement_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": module_key, "enabled": payload.enabled},
+    )
+    db.commit()
+    db.refresh(row)
+    manifest = get_frontend_manifest(definition.key)
+    return OrgModuleOut(
+        module_key=definition.key, name=definition.name, description=definition.description,
+        version=definition.version, implemented=definition.implemented,
+        entitled=True, enabled=row.enabled, default_enabled=definition.default_enabled,
+        frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+    )
+
+
+@router.post("/{organization_id}/modules/{module_key}/frame-token", response_model=ModuleFrameTokenOut)
+def create_org_module_frame_token(
+    organization_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_org_module_enabled_dynamic),
+) -> ModuleFrameTokenOut:
+    """Mints a short-lived Tier B `<ModuleFrame>` token scoped to
+    `(module_key, organization_id, current_user)` (module system Phase 3).
+
+    Requires `module_key` to be a real, currently-*enabled* module for this
+    organisation (`require_org_module_enabled_dynamic` — 404 otherwise,
+    matching every other module-gated endpoint's "disabled/non-entitled is
+    indistinguishable from not existing" behaviour) and a real session/PAT
+    (never another module-frame token — see that dependency's docstring).
+    The returned token is what the frontend's Host UI Bridge hands to the
+    module's own sandboxed iframe via the `init` message, in place of the
+    caller's real session token — see `app.security.create_module_frame_
+    token`'s docstring for exactly what it can and cannot be used for.
+    """
+    token = create_module_frame_token(
+        module_key=module_key, organization_id=str(organization_id), user_id=str(current_user.id)
+    )
+    return ModuleFrameTokenOut(token=token, expires_in_minutes=15)
 
 
 @router.post("/{organization_id}/test-email", status_code=status.HTTP_204_NO_CONTENT)

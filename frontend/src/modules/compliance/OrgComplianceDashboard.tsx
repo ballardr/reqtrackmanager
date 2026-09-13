@@ -1,0 +1,273 @@
+/**
+ * Module: modules/compliance/OrgComplianceDashboard
+ *
+ * §23's "Compliance Dashboard" — the org-wide summary widgets, each backed
+ * by real per-project/per-requirement data (never a bare, unexplained
+ * number) so every widget satisfies §23's own explicit "should provide
+ * drill-down capability rather than only showing aggregate numbers": each
+ * count is followed by the actual list of affected projects/items it
+ * counts, linking to that project's Compliance page the same way
+ * `OrgComplianceStandardsPanel`/`OrgComplianceOutstandingPanel` do.
+ *
+ * Built entirely from the Phase 14 org-wide endpoints already fetched for
+ * this panel's sibling tabs — no widget-specific backend endpoint beyond
+ * `recent-activity` (which has no other consumer) was needed; "Standards
+ * with the most outstanding issues" is computed client-side by tallying
+ * the non-compliant/pending-approval/outstanding-action rows per standard,
+ * the same client-side-aggregation-over-a-flat-listing precedent
+ * `OrgComplianceStandardsPanel`/Phase 12's `buildRequirementTree` both use.
+ * The four headline numbers (active standards / projects subject to
+ * compliance / overall compliance / non-compliant projects) are computed
+ * via `orgComplianceSummary.ts::computeOrgComplianceHeadline`, shared with
+ * `ComplianceOrgOverviewTiles.tsx`'s `OrgOverviewPage.tsx` header tiles
+ * (Phase 25b) so both surfaces report the exact same numbers from the same
+ * rows rather than two independent copies of the same computation — and the
+ * `statusRows` those numbers are computed from come from the shared
+ * `useOrgComplianceStatus` hook rather than this component's own fetch, so
+ * the two surfaces (which mount at the same time, since this Dashboard
+ * group is `OrgOverviewPage.tsx`'s default `orgOverviewSections` entry)
+ * share one request instead of firing the identical one twice.
+ *
+ * The "Download PDF report"/"Download CSV report" actions (Phase 15, §29)
+ * hit `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}` directly via
+ * `api.getForBlob` + `downloadBlob` — see `ProjectCompliancePage.tsx`'s own
+ * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
+ * established fetch-a-blob-and-save-it idiom rather than a new one. Phase
+ * 25b moved them from two permanently-visible adjacent buttons (Principle
+ * 11's "two blocks competing for the same job," the exact shape the CSV
+ * wizard's own Export/Download-template pair already had) behind one
+ * "Export" `Popover` trigger, mirroring `CsvImportWizard.tsx`'s identical
+ * fix; Phase 43 extracted that trigger into the shared `ReportExportButton`
+ * once three more panels needed the identical shape — see that component's
+ * own docstring — and moved `ProjectCompliancePage.tsx`'s own still-two-
+ * button layout onto it in the same change.
+ *
+ * The nine `StatCard`s below (four headline + five detail) render as one
+ * single `.grid.grid-metrics` grid (Phase 25c) rather than three separately
+ * `flex-wrap`-ped rows of uneven size (4/5) — a consistent column count
+ * across breakpoints regardless of how many cards happen to fit a given
+ * row width.
+ *
+ * Phase 36: the top grid's `StatCard`s no longer embed a variable-length
+ * `<ProjectList>` as `children` — a long list in one card was making that
+ * whole grid row taller than its neighbours even though CSS Grid's default
+ * `stretch` equalises heights within a row (see `docs/ux-style-guide.md`'s
+ * Phase 36 addendum to the Phase 27b/25c rule). Every card that used to
+ * carry a project list is now a plain-number `MetricTile` (the established
+ * "stat tile → click navigates to a filtered view" idiom, `docs/ux-style-
+ * guide.md`'s Phase 23 note) linking through to the same data on a real
+ * `ResourceMenu` group — "Compliance by standard" (pivoted by project via
+ * `?groupBy=project`, optionally pre-filtered by `?state=`) for the
+ * standards-status-derived counts, or "Outstanding compliance items"
+ * (pre-filtered by `?category=`/`?validity=`) for the rest — rather than an
+ * unbounded list awkwardly embedded in a stat tile. The second block's
+ * three "detail" cards also dropped their `alignItems: "flex-start"` (which
+ * opted out of the row's default `stretch`) and had their own list lengths
+ * bounded, for the same height-variance reason.
+ *
+ * Phase 38: Phase 36's own removal of `alignItems: "flex-start"` from the
+ * detail-card row didn't actually achieve `stretch` — `.row`
+ * (`styles/theme.css`) sets `align-items: center` itself, so cards of
+ * different content heights rendered vertically centred relative to one
+ * another rather than top-aligned. That row now sets `alignItems:
+ * "flex-start"` explicitly rather than relying on `.row`'s own default
+ * (see `docs/ux-style-guide.md`'s Phase 38 addendum). "Recently changed
+ * compliance assessments" also moved out of that row into its own
+ * full-width `.card` below it, per direct user feedback that it should
+ * take up a full row rather than share one with the other two detail
+ * cards.
+ */
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { api } from "../../api/client";
+import { activityActionLabel } from "../../api/types";
+import { MetricTile } from "../../components/MetricTile";
+import { ReportExportButton } from "../../components/ReportExportButton";
+import { Spinner } from "../../components/Spinner";
+import { StatCard } from "../../components/StatCard";
+import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { downloadBlob } from "../../utils/download";
+import * as complianceApi from "./api";
+import { computeOrgComplianceHeadline, distinctProjects } from "./orgComplianceSummary";
+import {
+  COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
+  type ComplianceRecentActivity,
+  type OrgExpiringEvidence,
+  type OrgNonCompliantRequirement,
+  type OrgPendingApproval,
+  type OrgReviewDue,
+  type OutstandingRequiredAction,
+} from "./types";
+import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
+
+interface DashboardData {
+  nonCompliant: OrgNonCompliantRequirement[];
+  pending: OrgPendingApproval[];
+  outstandingActions: OutstandingRequiredAction[];
+  expiringEvidence: OrgExpiringEvidence[];
+  reviewsDue: OrgReviewDue[];
+  reviewsIncludingUpcoming: OrgReviewDue[];
+  recentActivity: ComplianceRecentActivity[];
+}
+
+export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
+  const { showToast } = useToast();
+  const statusRows = useOrgComplianceStatus(orgId);
+  const [data, setData] = useState<DashboardData | null>(null);
+
+  async function downloadReport(kind: "pdf" | "csv") {
+    try {
+      const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports/${kind}`);
+      downloadBlob(blob, `organisation-compliance-report.${kind}`);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not generate the organisation compliance report."), "error");
+    }
+  }
+
+  useEffect(() => {
+    Promise.all([
+      complianceApi.listOrgNonCompliantRequirements(orgId),
+      complianceApi.listOrgPendingApprovals(orgId),
+      complianceApi.listOrgOutstandingRequiredActions(orgId),
+      complianceApi.listOrgExpiringEvidence(orgId),
+      complianceApi.listOrgReviewsDue(orgId, false),
+      complianceApi.listOrgReviewsDue(orgId, true),
+      // Bounded to 5 (Phase 36), matching this card's sibling detail cards'
+      // own bounded length, rather than the 10 fetched pre-Phase-36 — a
+      // long list here was one of the two contributors to the second
+      // block's row-height variance (see this file's own Phase 36 note).
+      complianceApi.listOrgRecentActivity(orgId, 5),
+    ])
+      .then(([nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity]) => {
+        setData({ nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity });
+      })
+      .catch((err) => showToast(toErrorMessage(err, "Could not load the compliance dashboard."), "error"));
+  }, [orgId, showToast]);
+
+  if (data === null || statusRows === null) return <Spinner />;
+
+  const { nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity } = data;
+
+  const { activeStandardCount, overallCompliancePercentage, nonCompliantProjects } = computeOrgComplianceHeadline(statusRows);
+  const projectsSubjectToCompliance = distinctProjects(statusRows);
+  const outstandingActionProjects = distinctProjects(outstandingActions);
+  const expiredEvidenceProjects = distinctProjects(expiringEvidence.filter((e) => e.validity_state === "expired"));
+  const expiringSoonEvidenceProjects = distinctProjects(expiringEvidence.filter((e) => e.validity_state === "expiring_soon"));
+  const overdueReviewProjects = distinctProjects(reviewsDue);
+  const upcomingReviews = reviewsIncludingUpcoming
+    .filter((r) => r.review.schedule_state === "upcoming")
+    .sort((a, b) => a.review.next_due_date.localeCompare(b.review.next_due_date))
+    // Bounded to 5 (Phase 36) — see this file's own Phase 36 note.
+    .slice(0, 5);
+
+  const issuesByStandard = new Map<string, number>();
+  for (const row of [...nonCompliant, ...pending, ...outstandingActions]) {
+    issuesByStandard.set(row.standard_reference, (issuesByStandard.get(row.standard_reference) ?? 0) + 1);
+  }
+  const standardsWithMostIssues = [...issuesByStandard.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  return (
+    <div className="stack">
+      <div className="row" style={{ justifyContent: "flex-end" }}>
+        <ReportExportButton onDownload={downloadReport} />
+      </div>
+      <div className="grid grid-metrics">
+        <StatCard label="Active compliance standards" value={activeStandardCount} />
+        <MetricTile
+          label="Projects subject to compliance"
+          value={projectsSubjectToCompliance.length}
+          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project`}
+        />
+        <StatCard label="Overall compliance" value={Math.round(overallCompliancePercentage)}>
+          <span className="text-muted">%, weighted by applicable requirements</span>
+        </StatCard>
+        <MetricTile
+          label="Non-compliant projects"
+          value={nonCompliantProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project&state=non_compliant`}
+        />
+        <MetricTile
+          label="Projects with outstanding actions"
+          value={outstandingActionProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=actions`}
+        />
+        <MetricTile
+          label="Projects with expired evidence"
+          value={expiredEvidenceProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expired`}
+        />
+        <MetricTile
+          label="Projects with evidence approaching expiry"
+          value={expiringSoonEvidenceProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expiring_soon`}
+        />
+        <MetricTile
+          label="Projects with overdue compliance reviews"
+          value={overdueReviewProjects.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=reviews`}
+        />
+        <MetricTile
+          label="Assessments awaiting approval"
+          value={pending.length}
+          to={`/orgs/${orgId}/overview/compliance-outstanding?category=pending`}
+        />
+      </div>
+
+      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div className="card stack" style={{ flex: "1 1 260px" }}>
+          <h3 style={{ margin: 0 }}>Standards with the most outstanding issues</h3>
+          {standardsWithMostIssues.length === 0 ? (
+            <p className="text-muted" style={{ margin: 0 }}>None.</p>
+          ) : (
+            <ol style={{ margin: 0, paddingLeft: "1.2rem" }}>
+              {standardsWithMostIssues.map(([reference, count]) => (
+                <li key={reference}>
+                  {reference} — {count} issue{count === 1 ? "" : "s"}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+
+        <div className="card stack" style={{ flex: "1 1 260px" }}>
+          <h3 style={{ margin: 0 }}>Upcoming compliance deadlines/reviews</h3>
+          {upcomingReviews.length === 0 ? (
+            <p className="text-muted" style={{ margin: 0 }}>None.</p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {upcomingReviews.map((row) => (
+                <li key={`${row.project_id}-${row.review.id}`} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
+                  <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>
+                  {" — "}
+                  {row.review.frequency_label} — due {row.review.next_due_date}
+                  {row.review.schedule_state && (
+                    <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="card stack">
+        <h3 style={{ margin: 0 }}>Recently changed compliance assessments</h3>
+        {recentActivity.length === 0 ? (
+          <p className="text-muted" style={{ margin: 0 }}>None.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {recentActivity.map((event) => (
+              <li key={event.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
+                <Link to={`/projects/${event.project_id}/modules/compliance`}>{event.project_name}</Link>
+                {" — "}
+                {event.requirement_reference ? `${event.requirement_reference} — ` : ""}
+                {event.requirement_name} — {activityActionLabel(event.action)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}

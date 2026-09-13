@@ -195,6 +195,15 @@ export async function selectPreferencesGroup(page: Page, groupLabel: string): Pr
   await selectResourceMenuGroup(page, groupLabel);
 }
 
+/** `selectResourceMenuGroup` for `OrgOverviewPage`
+ * (`/orgs/:orgId/overview/:group?`, compliance-module-plan.md Phase 19) —
+ * a module-contributed group only, e.g. Compliance's relocated-from-
+ * `OrgAdminPage` "Compliance overview" (previously reached via
+ * `selectOrgAdminGroup`). */
+export async function selectOrgOverviewGroup(page: Page, groupLabel: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel);
+}
+
 /** `selectResourceMenuGroup` for `ProjectAdminPage`
  * (`/projects/:projectId/admin/:group?`, converted from `Tabs` — see
  * `docs/decisions.md`). */

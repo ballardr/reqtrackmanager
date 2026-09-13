@@ -52,7 +52,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -163,6 +163,12 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # See the root docker-compose.yml's frontend service for the full
+    # explanation — Tier C (Module Federation) frontend module support,
+    # module system follow-up, 2026-09-07. Uncomment to test a Tier C
+    # module against this dev/test stack.
+    # volumes:
+    #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 10s

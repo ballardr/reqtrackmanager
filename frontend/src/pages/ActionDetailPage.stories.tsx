@@ -25,7 +25,7 @@ const actionTypes: ActionTypeDefinition[] = [
 const requirement: Requirement = buildRequirement({ id: "req1", unique_code: "AUTH-LOG-001" });
 const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
-  is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false,
+  is_archived: false, roles: ["member"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
 };
 
 function mockActionDetailApis(action: RequirementAction) {

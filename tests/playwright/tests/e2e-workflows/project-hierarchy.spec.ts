@@ -324,87 +324,158 @@ test.describe("hierarchical (parent/child) projects", () => {
     const suffix = Date.now();
     const childName = `Relaxed Path Child ${suffix}`;
 
-    await test.step("projectMgrGamma (member-only, PM on Gamma-1 via direct role) creates a sub-project of Gamma-1", async () => {
-      await loginAs(page, PERSONAS.projectMgrGamma.email);
-      await openProjectByName(page, PROJECT_NAMES.gamma1);
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Add sub-project" }).click();
+    // This test permanently grants `projectMgrGamma` the org-wide "Project
+    // creator" role partway through (see the third step below) in order to
+    // prove the detach-guard's own success path — a role that, left
+    // ungranted, makes this exact persona "a plain project manager with no
+    // org-level role" for every *other* spec relying on that (e.g. the
+    // very next test in this file, which found this leak: it disables the
+    // relaxed child-creation toggle and expects `projectMgrGamma` to be
+    // blocked from creating a sub-project, which silently stopped being
+    // true once this grant went unrevoked). `finally` + its own `test.step`
+    // mirrors this file's existing cleanup-on-shared-fixture convention
+    // (see e.g. the org-group-nesting test above) — run this test alone,
+    // repeated, or before/after any other spec and the persona's roles end
+    // up exactly as this test found them either way.
+    try {
+      await test.step("projectMgrGamma (member-only, PM on Gamma-1 via direct role) creates a sub-project of Gamma-1", async () => {
+        await loginAs(page, PERSONAS.projectMgrGamma.email);
+        await openProjectByName(page, PROJECT_NAMES.gamma1);
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await page.getByRole("button", { name: "Add sub-project" }).click();
 
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      await dialog.getByLabel("Name", { exact: true }).fill(childName);
-      await dialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByRole("heading", { name: childName })).toBeVisible();
-    });
+        const dialog = page.getByRole("dialog", { name: "New project" });
+        await dialog.getByLabel("Name", { exact: true }).fill(childName);
+        await dialog.getByRole("button", { name: "Create", exact: true }).click();
+        await expect(page.getByRole("heading", { name: childName })).toBeVisible();
+      });
 
-    await test.step("that same user cannot detach it — the parent_required guard closes the create-then-detach bypass", async () => {
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await selectProjectAdminGroup(page, "Project settings");
-      await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
-      await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByText(/must remain nested under a parent/)).toBeVisible();
-    });
+      await test.step("that same user cannot detach it — the parent_required guard closes the create-then-detach bypass", async () => {
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await selectProjectAdminGroup(page, "Project settings");
+        await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
+        await page.getByRole("button", { name: "Save settings" }).click();
+        await expect(page.getByText(/must remain nested under a parent/)).toBeVisible();
+      });
 
-    await test.step("once granted org-level rights, the same detach succeeds", async () => {
-      await loginAs(page, PERSONAS.orgAdminGamma.email);
-      await page.goto("/orgs");
-      await selectOrgAdminGroup(page, "Users");
-      await ensureExpanded(page, "Organisation users");
-      const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
-      await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
-      await page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click();
+      await test.step("once granted org-level rights, the same detach succeeds", async () => {
+        await loginAs(page, PERSONAS.orgAdminGamma.email);
+        await page.goto("/orgs");
+        await selectOrgAdminGroup(page, "Users");
+        await ensureExpanded(page, "Organisation users");
+        const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
+        await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
+        // Waits for the grant's own `POST .../roles` response before the
+        // very next line navigates away (`loginAs` below immediately calls
+        // `page.goto("/login")`) — without this, a real, if intermittent,
+        // race exists: `page.goto` can abort an in-flight fetch the click's
+        // `onChange` handler kicked off but hadn't yet completed, so the
+        // grant silently never reaches the server despite the checkbox
+        // having visibly ticked. Mirrors the "turn the org toggle off" step
+        // above (`Promise.all([waitForResponse(...), click()])`), which
+        // already gets this right for the advanced-settings PUT.
+        await Promise.all([
+          page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "POST"),
+          page.getByRole("checkbox", { name: `Grant Project creator to ${PERSONAS.projectMgrGamma.name}` }).click(),
+        ]);
 
-      await loginAs(page, PERSONAS.projectMgrGamma.email);
-      await openProjectByName(page, childName);
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await selectProjectAdminGroup(page, "Project settings");
-      await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
-      await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByText(/must remain nested under a parent/)).toHaveCount(0);
-      await expect(page.getByLabel("Parent project")).toHaveValue("");
-    });
+        await loginAs(page, PERSONAS.projectMgrGamma.email);
+        await openProjectByName(page, childName);
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await selectProjectAdminGroup(page, "Project settings");
+        await page.getByLabel("Parent project").selectOption({ label: "None (top-level project)" });
+        await page.getByRole("button", { name: "Save settings" }).click();
+        await expect(page.getByText(/must remain nested under a parent/)).toHaveCount(0);
+        await expect(page.getByLabel("Parent project")).toHaveValue("");
+      });
+    } finally {
+      // Only revoke if the grant step actually ran and stuck — an earlier
+      // step in the `try` above may have failed *before* ever reaching the
+      // grant, and this cleanup step throwing in that case would replace
+      // (mask) the real, original failure with this one instead (plain
+      // JS `try`/`finally` semantics: an exception thrown from `finally`
+      // supersedes one already in flight from `try`), hiding the actual
+      // bug from whoever reads the test failure.
+      await test.step("clean up: revoke the 'Project creator' grant if it was made, so later/other runs of this shared persona aren't affected", async () => {
+        await loginAs(page, PERSONAS.orgAdminGamma.email);
+        await page.goto("/orgs");
+        await selectOrgAdminGroup(page, "Users");
+        await ensureExpanded(page, "Organisation users");
+        const row = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.email });
+        await row.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` }).click();
+        const revokeCheckbox = page.getByRole("checkbox", {
+          name: `Revoke Project creator from ${PERSONAS.projectMgrGamma.name}`,
+        });
+        if (await revokeCheckbox.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await Promise.all([
+            page.waitForResponse((r) => r.url().includes("/roles") && r.request().method() === "DELETE"),
+            revokeCheckbox.click(),
+          ]);
+        }
+      });
+    }
   });
 
   test("an org admin can disable the relaxed child-creation path, blocking a plain project manager's 'Add sub-project'", async ({
     page,
   }) => {
-    await test.step("turn the org toggle off", async () => {
-      await loginAs(page, PERSONAS.orgAdminGamma.email);
-      await page.goto("/orgs");
-      await selectOrgAdminGroup(page, "Security");
-      await ensureExpanded(page, "Security");
-      const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
-      await expect(toggle).toBeChecked();
-      await toggle.click();
-      await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save security settings" }).click(),
-      ]);
-    });
+    // This test flips a shared, org-wide toggle off partway through and
+    // must always flip it back — every other test in this file (and this
+    // persona's own default "plain project manager" status) depends on it
+    // starting `true`. `finally` here (rather than a bare fourth
+    // `test.step`, which this test originally used) means the toggle gets
+    // restored even if the middle assertion below fails for some unrelated
+    // reason — found the hard way: an earlier failure in the middle step
+    // left this toggle stuck `false` in this environment, which then broke
+    // the *other*, unrelated test in this file that assumes relaxed
+    // creation is on by default (per this repo's standing "tests must not
+    // depend on state left behind by another test" rule).
+    try {
+      await test.step("turn the org toggle off", async () => {
+        await loginAs(page, PERSONAS.orgAdminGamma.email);
+        await page.goto("/orgs");
+        await selectOrgAdminGroup(page, "Security");
+        await ensureExpanded(page, "Security");
+        const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
+        await expect(toggle).toBeChecked();
+        await toggle.click();
+        await Promise.all([
+          page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
+          page.getByRole("button", { name: "Save security settings" }).click(),
+        ]);
+      });
 
-    await test.step("the plain project manager's 'Add sub-project' now fails", async () => {
-      await loginAs(page, PERSONAS.projectMgrGamma.email);
-      await openProjectByName(page, PROJECT_NAMES.gamma1);
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByRole("button", { name: "Add sub-project" }).click();
+      await test.step("the plain project manager's 'Add sub-project' now fails", async () => {
+        await loginAs(page, PERSONAS.projectMgrGamma.email);
+        await openProjectByName(page, PROJECT_NAMES.gamma1);
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await page.getByRole("button", { name: "Add sub-project" }).click();
 
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      await dialog.getByLabel("Name", { exact: true }).fill(`Blocked Sub-Project ${Date.now()}`);
-      await dialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(dialog.getByText("Only org admins or project creators may create projects.")).toBeVisible();
-    });
-
-    await test.step("restore the toggle so later/other runs aren't affected", async () => {
-      await loginAs(page, PERSONAS.orgAdminGamma.email);
-      await page.goto("/orgs");
-      await selectOrgAdminGroup(page, "Security");
-      await ensureExpanded(page, "Security");
-      const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
-      await expect(toggle).not.toBeChecked();
-      await toggle.click();
-      await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save security settings" }).click(),
-      ]);
-    });
+        const dialog = page.getByRole("dialog", { name: "New project" });
+        await dialog.getByLabel("Name", { exact: true }).fill(`Blocked Sub-Project ${Date.now()}`);
+        await dialog.getByRole("button", { name: "Create", exact: true }).click();
+        await expect(dialog.getByText("Only org admins or project creators may create projects.")).toBeVisible();
+      });
+    } finally {
+      // Only flip back if it's actually still off — mirrors the previous
+      // test's own cleanup-step guard: if "turn the org toggle off" itself
+      // never got to click Save (e.g. it failed on the initial `toBeChecked`
+      // assertion because a *previous* run already left this toggle off),
+      // clicking here would flip it the wrong way instead of restoring it.
+      await test.step("restore the toggle if it's currently off, so later/other runs aren't affected", async () => {
+        await loginAs(page, PERSONAS.orgAdminGamma.email);
+        await page.goto("/orgs");
+        await selectOrgAdminGroup(page, "Security");
+        await ensureExpanded(page, "Security");
+        const toggle = page.getByRole("switch", { name: /Allow \S+ managers to create sub-\S+s/ });
+        if (!(await toggle.isChecked())) {
+          await toggle.click();
+          await Promise.all([
+            page.waitForResponse((r) => r.url().includes("/advanced-settings") && r.request().method() === "PUT"),
+            page.getByRole("button", { name: "Save security settings" }).click(),
+          ]);
+        }
+      });
+    }
   });
 });

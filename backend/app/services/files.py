@@ -41,7 +41,7 @@ def _safe_key_component(filename: str) -> str:
     in the filename remain real traversal operators, letting the resolved
     path pop back out of the uploading organisation's own key prefix and
     into another organisation's — a cross-tenant storage write, even though
-    `LocalFileStorageBackend._path_for`'s own confinement check (staying
+    `LocalFileStorageBackend`'s own confinement check (staying
     inside the shared `storage_local_dir` root) still passes.
 
     Keeping only the final path segment (discarding directory components

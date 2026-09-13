@@ -120,5 +120,91 @@ export const ShowsTitleAndSubtitle: Story = {
   },
 };
 
+/** Phase 37 — `titleAdornment` renders inline with the `<h1>` (e.g. an
+ * `EntitySwitcher` chevron) for a consumer whose title is rendered by
+ * `ResourceMenu` itself rather than a bespoke `<h1>` of its own. Omitted by
+ * every other story above, confirming it changes nothing when absent. */
+function TitleAdornmentDemo() {
+  const { group } = useParams<{ group?: string }>();
+  const active = GROUPS.find((g) => g.key === group)?.key ?? "overview";
+  return (
+    <ResourceMenu
+      title="Acme Corp"
+      subtitle="Organisation admin"
+      titleAdornment={<button type="button" aria-label="Switch organisation">▾</button>}
+      ariaLabel="Demo sections"
+      groups={GROUPS}
+      active={active}
+    >
+      {active === "overview" && <div className="card">Overview panel</div>}
+    </ResourceMenu>
+  );
+}
+
+export const RendersTitleAdornment: Story = {
+  render: () => <TitleAdornmentDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = canvas.getByRole("heading", { level: 1, name: "Acme Corp" });
+    const adornment = canvas.getByRole("button", { name: "Switch organisation" });
+    await expect(heading).toBeInTheDocument();
+    await expect(adornment).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "dark" } };
+
+/** Phase 27c — `groups.length <= 1` skips the menu strip (`<nav>`/`<ul>` of
+ * group links) entirely and renders `children` directly, rather than
+ * showing a single link that's always already active. Covers both the
+ * one-group case (a caller with only its own always-present group, e.g.
+ * `OrgOverviewPage.tsx` with no module contributing a section) and the
+ * zero-group case. */
+const SINGLE_GROUP: ResourceMenuGroupDef<"only"> = { key: "only", label: "Only group", href: "/single/only" };
+
+function SingleGroupDemo() {
+  return (
+    <ResourceMenu ariaLabel="Single-group demo" groups={[SINGLE_GROUP]} active="only">
+      <div className="card">Only group's content, rendered with no menu chrome around it.</div>
+    </ResourceMenu>
+  );
+}
+
+export const HidesMenuChromeWithOneGroup: Story = {
+  render: () => <SingleGroupDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Only group's content, rendered with no menu chrome around it.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Only group" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("navigation")).not.toBeInTheDocument();
+  },
+};
+
+const NO_GROUPS: ResourceMenuGroupDef<string>[] = [];
+
+function NoGroupsDemo() {
+  return (
+    <ResourceMenu ariaLabel="No-groups demo" groups={NO_GROUPS} active="none">
+      <div className="card">Content with no groups at all.</div>
+    </ResourceMenu>
+  );
+}
+
+export const HidesMenuChromeWithZeroGroups: Story = {
+  render: () => <NoGroupsDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Content with no groups at all.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("navigation")).not.toBeInTheDocument();
+  },
+};
+
+/** Baseline: with more than one group, the menu chrome renders as before. */
+export const ShowsMenuChromeWithManyGroups: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("navigation", { name: "Demo sections" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "People" })).toBeInTheDocument();
+  },
+};

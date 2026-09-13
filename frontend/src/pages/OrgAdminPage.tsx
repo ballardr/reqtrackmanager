@@ -15,8 +15,10 @@ import type {
   LinkTypeDefinition,
   MaterializeResult,
   MergeConflict,
+  ModuleRoleDefinition,
   OrgAdvancedSettings,
   OrgGroup,
+  OrgModule,
   OrgMergePreviewResult,
   OrgMergeResult,
   OrgPendingInvite,
@@ -46,6 +48,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
@@ -58,10 +61,13 @@ import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
-import { cycleSort, type SortState } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
+import { useFederatedModules } from "../hooks/useFederatedModules";
+import { installedModules } from "../modules/registry";
+import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 
@@ -85,25 +91,19 @@ import { defaultResolutions } from "../utils/mergeConflicts";
  * test email), and "security" (2FA/self-signup/external-user policy, plus
  * Personal Access Tokens — see `docs/decisions.md` for the SCIM placement
  * call).
+ *
+ * Module system follow-up (2026-09-07, see `docs/decisions.md`'s "Module
+ * system follow-up: dynamic org-admin panel registration" entry): this used
+ * to also hardcode two more literals, `"compliance"`/`"compliance-overview"`
+ * — Phase 12/14's own groups, hand-mounted here since Phase 3's routing/
+ * nav-discovery mechanism is project-scoped only (see Phase 12's notes in
+ * `docs/compliance-module-plan.md`). Every *installed and enabled* module's
+ * own `orgAdminSections` (`modules/types.ts`) now contributes its own
+ * group(s) dynamically instead (built into `orgAdminGroups` below), so this
+ * type only names the ten groups genuinely fixed at this file's own compile
+ * time.
  */
-type OrgAdminGroupKey =
-  | "overview"
-  | "users"
-  | "groups"
-  | "projects-workflow"
-  | "branding-defaults"
-  | "templates-reports"
-  | "oauth-sso"
-  | "email"
-  | "security";
-
-/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
- * — a real user or a not-yet-accepted org-only invite, merged client-side.
- * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
- * (Phase D) later applied one level down, for a project's own members. */
-type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
-
-const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
+const CORE_ORG_ADMIN_GROUP_KEYS = [
   "overview",
   "users",
   "groups",
@@ -113,7 +113,37 @@ const ORG_ADMIN_GROUP_KEYS: OrgAdminGroupKey[] = [
   "oauth-sso",
   "email",
   "security",
-];
+  "modules",
+] as const;
+type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
+
+/**
+ * Widened from the closed `CoreOrgAdminGroupKey` literal union to `string`
+ * — a module-contributed `orgAdminSections` entry's `key` isn't known at
+ * this file's compile time, so a closed union can no longer describe every
+ * value `activeGroup` can actually take. **Tradeoff, spelled out per this
+ * repo's CLAUDE.md rather than left implicit**: TypeScript's "this
+ * comparison appears to be unintentional" check (which used to catch a typo
+ * like `activeGroup === "userz"` in one of the ten `activeGroup === "..."`
+ * blocks below, since `"userz"` wasn't assignable to the old closed union)
+ * no longer fires for any of those ten comparisons either, because the type
+ * now overlaps with every string. Accepted because the alternative —
+ * keeping the union closed — means hardcoding every installed module's own
+ * group keys back into this file, which is exactly the per-module
+ * `OrgAdminPage.tsx` edit this follow-up removes. `CoreOrgAdminGroupKey`
+ * itself stays a real closed literal type, so `CORE_ORG_ADMIN_GROUP_KEYS`'s
+ * own declaration (and anything else that intentionally types a value as
+ * `CoreOrgAdminGroupKey` rather than the wider `OrgAdminGroupKey`) still
+ * gets full typo protection — only the ten render-block comparisons against
+ * `activeGroup` lose it.
+ */
+type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
+
+/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
+ * — a real user or a not-yet-accepted org-only invite, merged client-side.
+ * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
+ * (Phase D) later applied one level down, for a project's own members. */
+type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 /**
  * Organisation administration: users (C-U-01), groups (C-U-08), shared
@@ -236,6 +266,39 @@ export function OrgAdminPage() {
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
+  // Module system Phase 1 (compliance-module-plan.md): the org's own
+  // enable/disable choice among modules it's entitled to. Fetched inside
+  // the same try/catch-403-and-hide-section block as `advanced` above
+  // (non-admins simply don't see the section) — `[]` before that resolves,
+  // which also correctly renders as "no modules" for a deployment with
+  // none registered yet (there are zero implemented modules until Phase 5).
+  const [modules, setModules] = useState<OrgModule[]>([]);
+  // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
+  // module effectively enabled for this org whose manifest is `"federated"`
+  // has no build-time `installedModules` entry to fall back on — its own
+  // `TierAModuleDefinition` must be loaded at runtime before
+  // `moduleAdminSections` (below) can find it there. Called unconditionally,
+  // right after `modules` itself is declared (a hook can't be called after
+  // this component's own early-return guards further down, e.g. `if (!org)
+  // return <Spinner />`) — filtered to *effectively enabled* modules only,
+  // so a disabled-but-installed Tier C module's remote code is never
+  // fetched just because it's greyed-out-visible on the Modules admin
+  // panel. See `useFederatedModules`'s own docstring and `frontend/src/
+  // modules/federatedLoader.ts` for the full mechanism.
+  useFederatedModules(modules.filter((m) => m.enabled));
+  // Module system Phase 2: org-scoped module-contributed role definitions
+  // currently available to grant in this org, fed into the Users table's
+  // Roles column `MultiSelectDropdown` alongside the three fixed `OrgRole`
+  // options. Fetched in the same block as `modules` above (both non-admin-
+  // hidden, both need this org's own module registry state) — `[]` before
+  // that resolves, which also correctly renders as "no module roles" for a
+  // deployment with none registered yet (no module has any roles until
+  // Phase 5).
+  const [availableOrgModuleRoles, setAvailableOrgModuleRoles] = useState<ModuleRoleDefinition[]>([]);
+  // Same, but project-scoped — for the "manage users" modal's own
+  // `ProjectMembersTable`, keyed by whichever project that modal currently
+  // has open (see `openManageUsers` below).
+  const [manageUsersAvailableModuleRoles, setManageUsersAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
   // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
@@ -519,6 +582,8 @@ export function OrgAdminPage() {
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
+      setModules(await api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`));
+      setAvailableOrgModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/orgs/${orgId}/module-roles`));
     } catch (err) {
       // Non-admins can't read advanced settings (403) — the section is simply hidden for them.
       if (!(err instanceof ApiError && err.status === 403)) throw err;
@@ -741,10 +806,16 @@ export function OrgAdminPage() {
   async function openManageUsers(project: OrgProjectSummary) {
     setManageUsersProjectId(project.id);
     setManageUsersProjectName(project.name);
-    const [members, invites] = await Promise.all([
+    const [members, invites, moduleRoles] = await Promise.all([
       api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
       api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
+      // Module system Phase 2: this project's own available project-scoped
+      // module roles — fetched fresh per open, same as `members`/`invites`
+      // above, since a different project can have a different owning org
+      // (and therefore a different set of currently-enabled modules).
+      api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${project.id}/module-roles`),
     ]);
+    setManageUsersAvailableModuleRoles(moduleRoles);
     setManageUsersMembers(members);
     setManageUsersInvites(invites);
   }
@@ -754,6 +825,7 @@ export function OrgAdminPage() {
     setManageUsersProjectName("");
     setManageUsersMembers([]);
     setManageUsersInvites([]);
+    setManageUsersAvailableModuleRoles([]);
     setManageUsersAddMemberModalOpen(false);
   }
 
@@ -773,6 +845,27 @@ export function OrgAdminPage() {
         await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
       } else {
         await api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`);
+      }
+      await reloadManageUsersMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2),
+   * scoped to `manageUsersProjectId` — same "re-fetch just effective-
+   * members" treatment `toggleManageUsersRole` above uses. */
+  async function toggleManageUsersModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
+    if (!manageUsersProjectId) return;
+    try {
+      if (grant) {
+        await api.post(`/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles`, {
+          module_key: moduleKey, role_key: roleKey,
+        });
+      } else {
+        await api.delete(
+          `/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles/${moduleKey}/${roleKey}`
+        );
       }
       await reloadManageUsersMembers();
     } catch (err) {
@@ -1051,7 +1144,7 @@ export function OrgAdminPage() {
   // there's nothing else on the page a full reload would need to refresh.
   async function grantOrgRole(u: OrgUser, role: OrgRole) {
     try {
-      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { role });
+      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/roles`, { user_id: u.user_id, role });
       setUsers((prev) =>
         prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: [...x.roles, role] } : x))
       );
@@ -1068,6 +1161,59 @@ export function OrgAdminPage() {
         prev.map((x) => (x.user_id === u.user_id ? { ...x, roles: x.roles.filter((r) => r !== role) } : x))
       );
       showToast(strings.orgAdmin.roleRevoked);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // Module system Phase 2: same single-row local-state patch as
+  // `grantOrgRole`/`revokeOrgRole` above, for the same reasoning (a
+  // single grant/revoke only ever changes this one row's own module-role
+  // set, so a full `reload()` would refresh nothing else it needs).
+  async function grantModuleRole(u: OrgUser, moduleKey: string, roleKey: string) {
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/users/${u.user_id}/module-roles`, {
+        module_key: moduleKey, role_key: roleKey,
+      });
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, module_roles: [...x.module_roles, { module_key: moduleKey, role_key: roleKey }] }
+            : x
+        )
+      );
+      showToast(strings.orgAdmin.roleGranted);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeModuleRole(u: OrgUser, moduleKey: string, roleKey: string) {
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/users/${u.user_id}/module-roles/${moduleKey}/${roleKey}`);
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, module_roles: x.module_roles.filter((g) => !(g.module_key === moduleKey && g.role_key === roleKey)) }
+            : x
+        )
+      );
+      showToast(strings.orgAdmin.roleRevoked);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  // Module system Phase 1: immediate PUT + local-state patch, same shape
+  // as `grantOrgRole`/`revokeOrgRole` above — a single toggle only ever
+  // changes this one module's own row, so there's nothing else on the page
+  // a full `reload()` would need to refresh, and a toast gives the
+  // feedback-on-every-mutation the style guide requires.
+  async function toggleModuleEnabled(moduleKey: string, enabled: boolean) {
+    try {
+      const updated = await api.put<OrgModule>(`/api/v1/orgs/${orgId}/modules/${moduleKey}`, { enabled });
+      setModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
+      showToast(enabled ? strings.orgAdmin.moduleEnabledToast(updated.name) : strings.orgAdmin.moduleDisabledToast(updated.name));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -1469,7 +1615,13 @@ export function OrgAdminPage() {
     // pre-existing role.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+          {/* Phase 28: an escape hatch off a dead-end degraded org page —
+              this org is disabled, but a server admin can still jump
+              straight to a different (working) one. */}
+          {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
+        </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.disabled}</h2>
           <p className="text-muted">{loadError}</p>
@@ -1509,7 +1661,13 @@ export function OrgAdminPage() {
     // from this page at all.
     return (
       <div className="stack">
-        <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
+          {/* Phase 28: same escape hatch as the disabled-org case above —
+              a server admin isn't a member here, but can still jump
+              straight to a different org they already administer. */}
+          {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
+        </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle(orgLabel)}</h2>
           <p className="text-muted">{strings.orgAdmin.notAMemberHint}</p>
@@ -1556,9 +1714,37 @@ export function OrgAdminPage() {
   // the round trip instead of only after a 422.
   const selfSignupConflict = allowSelfSignup && ssoOnly;
 
-  const activeGroup: OrgAdminGroupKey = ORG_ADMIN_GROUP_KEYS.includes(groupParam as OrgAdminGroupKey)
-    ? (groupParam as OrgAdminGroupKey)
-    : "overview";
+  // Module system follow-up (2026-09-07): every *enabled* installed
+  // module's own `orgAdminSections` (`modules/types.ts`), flattened — the
+  // dynamic tail merged onto the ten fixed core groups below. Filtered by
+  // this org's actual module-enablement (`modules`, fetched by `reload()`
+  // above from `GET /orgs/{id}/modules` the same way the Modules group
+  // itself renders) rather than merely "is this module installed at all,"
+  // so disabling a module for this org correctly removes its nav entries —
+  // the bug this follow-up fixes: the two hardcoded Compliance groups used
+  // to render unconditionally regardless of that org's own enablement
+  // toggle.
+  const enabledModuleKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
+  const coreGroupKeys: readonly string[] = CORE_ORG_ADMIN_GROUP_KEYS;
+  const moduleAdminSections = installedModules
+    .filter((m) => enabledModuleKeys.has(m.key))
+    .flatMap((m) => m.orgAdminSections ?? [])
+    // Defensive: a module whose own section `key` collides with one of the
+    // ten fixed core groups above (or, in principle, with another module's
+    // section — not checked here since two modules colliding with each
+    // other is no worse than either alone colliding with a core group) is
+    // dropped rather than silently shadowing/duplicating a core group in
+    // the nav. Shouldn't happen for a reviewed first-party module, but
+    // costs nothing to guard against, unlike a core group silently
+    // becoming unreachable.
+    .filter((section) => {
+      if (coreGroupKeys.includes(section.key)) {
+        console.error(`Module-contributed org-admin section "${section.key}" collides with a core group key; ignoring it.`);
+        return false;
+      }
+      return true;
+    });
+
   const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
     { key: "users", label: strings.orgAdmin.groupUsers, href: `/orgs/${orgId}/admin/users` },
@@ -1569,7 +1755,16 @@ export function OrgAdminPage() {
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
+    { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
+    ...moduleAdminSections.map((section) => ({
+      key: section.key,
+      label: section.label,
+      href: `/orgs/${orgId}/admin/${section.key}`,
+    })),
   ];
+  const activeGroup: OrgAdminGroupKey = orgAdminGroups.some((g) => g.key === groupParam)
+    ? (groupParam as OrgAdminGroupKey)
+    : "overview";
 
   // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
   // org-only invites are merged client-side into the same `DirectoryTable`
@@ -1589,6 +1784,16 @@ export function OrgAdminPage() {
     ...filteredOrgInvites.map((invite): UsersRow => ({ kind: "invited", invite })),
     ...users.map((u): UsersRow => ({ kind: "user", user: u })),
   ];
+  // Module system Phase 2: resolves a module role definition's own
+  // `module_key` to that module's display `name` (from the already-fetched
+  // `modules` list), for the Roles column option label "<role name>
+  // (<module name>)" — falls back to the raw key only if `modules` hasn't
+  // resolved yet or somehow doesn't include it (shouldn't happen in
+  // practice, since a role is only ever "available" for a module that's
+  // both registered and currently enabled).
+  function moduleDisplayNameFor(moduleKey: string): string {
+    return modules.find((m) => m.module_key === moduleKey)?.name ?? moduleKey;
+  }
   const usersColumns: DirectoryColumn<UsersRow>[] = [
     {
       key: "email", label: strings.orgAdmin.email, sortable: true,
@@ -1615,27 +1820,51 @@ export function OrgAdminPage() {
           <MultiSelectDropdown
             triggerLabel={strings.orgAdmin.rolesFor(u.display_name)}
             emptyLabel={strings.orgAdmin.noRoles}
-            options={(["member", "project_creator", "org_admin"] as const).map((role) => {
-              const checked = u.roles.includes(role);
-              // A user can never revoke their own org role via this
-              // control — mirrors the backend's self-targeting block
-              // on the revoke endpoint (an org can never reach zero
-              // admins through here, by construction). Granting a
-              // role to oneself is still allowed, matching the
-              // backend, so only the "uncheck" direction is disabled.
-              const disabled = checked && u.user_id === user?.id;
-              return {
-                value: role,
-                label: ORG_ROLE_LABEL[role],
-                checked,
-                disabled,
-                title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
-                optionLabel: checked
-                  ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
-                  : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
-                onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
-              };
-            })}
+            options={[
+              ...(["member", "project_creator", "org_admin"] as const).map((role) => {
+                const checked = u.roles.includes(role);
+                // A user can never revoke their own org role via this
+                // control — mirrors the backend's self-targeting block
+                // on the revoke endpoint (an org can never reach zero
+                // admins through here, by construction). Granting a
+                // role to oneself is still allowed, matching the
+                // backend, so only the "uncheck" direction is disabled.
+                const disabled = checked && u.user_id === user?.id;
+                return {
+                  value: role,
+                  label: ORG_ROLE_LABEL[role],
+                  checked,
+                  disabled,
+                  title: disabled ? strings.orgAdmin.cannotChangeOwnRole : undefined,
+                  optionLabel: checked
+                    ? strings.orgAdmin.revokeRole(ORG_ROLE_LABEL[role], u.display_name)
+                    : strings.orgAdmin.grantRole(ORG_ROLE_LABEL[role], u.display_name),
+                  onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
+                };
+              }),
+              // Module system Phase 2: merged in alongside the three core
+              // roles above — same dropdown, never disabled (module roles
+              // carry no "own row" self-targeting restriction the way
+              // ORG_ADMIN does). Label renders the role definition's own
+              // `name` directly (already human-readable API data, not a
+              // raw closed-enum wire value), plus the owning module's
+              // display name for context, per the plan's own worked
+              // example ("Compliance Officer (Compliance)").
+              ...availableOrgModuleRoles.map((d) => {
+                const checked = u.module_roles.some((g) => g.module_key === d.module_key && g.role_key === d.role_key);
+                const label = `${d.name} (${moduleDisplayNameFor(d.module_key)})`;
+                return {
+                  value: `${d.module_key}:${d.role_key}`,
+                  label,
+                  checked,
+                  optionLabel: checked
+                    ? strings.orgAdmin.revokeRole(label, u.display_name)
+                    : strings.orgAdmin.grantRole(label, u.display_name),
+                  onToggle: () =>
+                    checked ? revokeModuleRole(u, d.module_key, d.role_key) : grantModuleRole(u, d.module_key, d.role_key),
+                };
+              }),
+            ]}
           />
         );
       },
@@ -1749,6 +1978,7 @@ export function OrgAdminPage() {
       <ResourceMenu
         title={org.name}
         subtitle={strings.orgAdmin.adminSubtitle(orgLabelCap)}
+        titleAdornment={orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
         ariaLabel={strings.orgAdmin.sectionsNav}
         groups={orgAdminGroups}
         active={activeGroup}
@@ -2504,6 +2734,8 @@ export function OrgAdminPage() {
                   onRemoveAllAccess={removeAllManageUsersMemberAccess}
                   onConvertToDirect={convertManageUsersMemberToDirect}
                   ariaLabel={strings.orgAdmin.manageUsers}
+                  availableModuleRoles={manageUsersAvailableModuleRoles}
+                  onToggleModuleRole={toggleManageUsersModuleRole}
                 />
               </Modal>
             )}
@@ -3183,6 +3415,77 @@ export function OrgAdminPage() {
             )}
           </div>
         )}
+
+        {activeGroup === "modules" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.modules" title={strings.orgAdmin.modulesTitle}>
+              <p className="text-muted">{strings.orgAdmin.modulesDescription}</p>
+              {modules.length === 0 ? (
+                <p className="text-muted">{strings.orgAdmin.modulesEmpty}</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{strings.orgAdmin.name}</th>
+                      <th></th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modules.map((m) => {
+                      // Non-entitled (or not-yet-implemented) modules are
+                      // shown greyed out with an explanatory note rather
+                      // than hidden entirely (plan requirement — visibility
+                      // helps future upsell); the toggle itself stays
+                      // disabled either way.
+                      const disabled = !m.entitled || !m.implemented;
+                      const hint = !m.entitled
+                        ? strings.orgAdmin.moduleNotEntitledHint
+                        : !m.implemented
+                          ? strings.orgAdmin.moduleNotImplementedHint
+                          : null;
+                      return (
+                        <tr key={m.module_key} style={!m.entitled ? { opacity: 0.55 } : undefined}>
+                          <td>
+                            <div className="stack" style={{ gap: 0 }}>
+                              <strong>{m.name}</strong>
+                              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{m.description}</span>
+                              {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+                            </div>
+                          </td>
+                          <td className="text-muted" style={{ fontSize: "0.8rem" }}>{m.version}</td>
+                          <td>
+                            <ToggleSwitch
+                              checked={m.enabled}
+                              disabled={disabled}
+                              label={strings.orgAdmin.moduleToggleLabel(m.name)}
+                              onChange={(next) => toggleModuleEnabled(m.module_key, next)}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {/* Module system follow-up (2026-09-07): one generic lookup replaces
+            what used to be one hardcoded `activeGroup === "..."` render
+            block per module-contributed org-admin section (previously
+            `"compliance"` → `ComplianceAdminPanel`, `"compliance-overview"`
+            → `OrgCompliancePanel`, each with its own static top-of-file
+            import). A future installed module's own `orgAdminSections`
+            entry needs no corresponding edit here at all. */}
+        {moduleAdminSections
+          .filter((section) => section.key === activeGroup)
+          .map((section) => (
+            <div className="stack" key={section.key}>
+              {section.render({ orgId: org.id })}
+            </div>
+          ))}
       </ResourceMenu>
 
       {confirmRemoveUser && (

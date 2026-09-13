@@ -44,6 +44,22 @@ function mockLayoutApis() {
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
+    // `useProjectEnabledModules` (module system Phase 3) — Layout's nav
+    // rail calls this whenever a project route is active, independently of
+    // whether any module is actually registered; found as a real,
+    // pre-existing gap (an unhandled promise rejection during the full
+    // Storybook suite) while verifying Phase 13's own changes here — fixed
+    // in passing rather than left, per this repo's "fix, don't defer" rule.
+    if (path.endsWith("/enabled-modules")) return [];
+    // Compliance's own `globalNavItems` contribution (compliance-module-
+    // plan.md Phase 18, `ComplianceGlobalNavLink.tsx`) fetches this
+    // unconditionally whenever a user is logged in, via `Layout.tsx`'s
+    // generic module-nav-item mechanism — not something Layout.tsx itself
+    // knows or cares about, but this mock intercepts every `api.get` call
+    // during the story regardless of which module made it. `false` keeps
+    // every existing story's nav-rail assertions unaffected; visibility
+    // itself is covered by `ComplianceGlobalNavLink.stories.tsx` instead.
+    if (path === "/api/v1/compliance/nav-visibility") return { visible: false };
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
 }

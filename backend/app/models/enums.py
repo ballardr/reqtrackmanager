@@ -18,6 +18,47 @@ class OrgRole(str, enum.Enum):
     MEMBER = "member"
 
 
+class ServerRole(str, enum.Enum):
+    """Server-tier (cross-tenant) permission roles, additive to
+    `User.is_server_admin` (compliance-module-plan.md Phase 0).
+
+    SERVER_ADMIN mirrors the existing `User.is_server_admin` boolean's
+    power level for composition purposes (e.g. `services.rbac.
+    require_server_role`'s "is_server_admin implies every server role"
+    check) but is never itself written as a `UserServerRole` row —
+    `is_server_admin` remains the sole source of truth for that tier, left
+    completely untouched by this enum's introduction (docs/decisions.md,
+    "Compliance Module + Modular Feature System" entry). Only
+    MODULE_ADMINISTRATOR is ever actually granted via `UserServerRole`.
+
+    MODULE_ADMINISTRATOR: narrower than SERVER_ADMIN — manages module
+    entitlements/enablement (the module system built out in later phases)
+    without the full cross-tenant power `is_server_admin` implies. Grantable
+    only by an existing SERVER_ADMIN (standard privilege-escalation-safe
+    pattern: a narrower role can never grant itself or others a role).
+    """
+
+    SERVER_ADMIN = "server_admin"
+    MODULE_ADMINISTRATOR = "module_administrator"
+
+
+class ModuleEntitlementPolicy(str, enum.Enum):
+    """Deployment-wide default for whether an organisation is entitled to a
+    module absent an explicit `organization_module_entitlements` override
+    row (`ServerSettings.default_module_entitlement_policy`,
+    compliance-module-plan.md Phase 0/1).
+
+    OPEN: every module is entitled by default — the right default for a
+        self-hosted/open-source deployment with no licensing tiers.
+    CLOSED: no module is entitled by default — a future commercial/SaaS
+        posture of the same codebase can flip this and grant entitlements
+        explicitly per organisation instead.
+    """
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
 class ProjectRole(str, enum.Enum):
     """Project-level permission roles (C-U-03)."""
 

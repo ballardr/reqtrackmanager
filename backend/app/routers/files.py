@@ -18,6 +18,13 @@ file id, so it is unified here with context-sensitive authorization:
   comment attachments (on either a requirement or a change request's
   discussion thread), require project view access to whichever project the
   attachment's requirement/action/change request belongs to.
+- A module-owned attachment (e.g. Compliance evidence, compliance-module-
+  plan.md Phase 8) is resolved to its owning project via `app.modules.
+  registry.resolve_module_file_project_id` — a generic hook every module
+  can implement, so this core, module-agnostic router never needs to
+  import a specific module's own file-link table directly (the same
+  "core code shouldn't need much modification per module" goal the rest
+  of the modular feature system already serves for HTTP endpoints).
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ from app.models.organization import Organization, ServerSettings
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
+from app.modules.registry import resolve_module_file_project_id
 from app.services.files import read_file
 from app.services.rbac import (
     _project_organization_id,
@@ -158,6 +166,13 @@ def download_file(
                         elif comment is not None and comment.target_type == ReviewTargetType.CHANGE_REQUEST:
                             cr = db.get(ChangeRequest, comment.target_id)
                             project_id = cr.project_id if cr is not None else None
+                        if project_id is None:
+                            # Not a core attachment type either — try every
+                            # registered module's own file-ownership hook
+                            # (e.g. Compliance evidence, Phase 8) before
+                            # giving up. Generic by design: this router
+                            # never imports a specific module's models.
+                            project_id = resolve_module_file_project_id(db, file_id)
                 if project_id is not None:
                     check_pat_scope_for_project(request, db, project_id)
                     organization_id = _project_organization_id(db, project_id)

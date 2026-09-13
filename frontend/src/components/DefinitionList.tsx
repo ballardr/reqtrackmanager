@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { t } from "../i18n/strings";
@@ -37,6 +37,18 @@ export interface DefinitionListProps<T extends { id: string }> {
   onDelete: (id: string, reassignToId?: string) => Promise<void>;
   deleteLabel: string;
   addLabel: string;
+  /**
+   * Optional per-row slot rendered between the text field(s) and the
+   * reorder/delete buttons — for a field this component's own text-only
+   * `fields` contract can't express (e.g. a boolean toggle). Added for the
+   * Compliance Module's mapping-relationship-type vocabulary
+   * (`implies_equivalence`, docs/compliance-module-plan.md Phase 12) rather
+   * than bolting a boolean-specific field type onto `DefinitionListField`
+   * itself — a generic escape hatch here benefits any future "definition"
+   * entity with one extra non-text attribute, not just this one caller.
+   * Omit for the common all-text case (every pre-existing call site).
+   */
+  renderExtra?: (item: T) => ReactNode;
 }
 
 /**
@@ -57,6 +69,7 @@ export function DefinitionList<T extends { id: string }>({
   onDelete,
   deleteLabel,
   addLabel,
+  renderExtra,
 }: DefinitionListProps<T>) {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [newDraft, setNewDraft] = useState<Record<string, string>>(() =>
@@ -156,6 +169,7 @@ export function DefinitionList<T extends { id: string }>({
                 )}
               </div>
               <div className="row">
+                {renderExtra?.(item)}
                 <button
                   className="btn"
                   disabled={idx === 0}

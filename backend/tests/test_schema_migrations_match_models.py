@@ -13,8 +13,13 @@ time this test runs, comparing the live migrated schema against
 `Base.metadata` is exactly Alembic's own autogenerate diff — the same
 check `alembic revision --autogenerate` uses to decide whether a new
 migration is needed. A nonempty diff here means a model field was
-added/changed/removed without a matching migration in
-backend/alembic/versions/.
+added/changed/removed without a matching migration in either
+backend/alembic/versions/ (core) or a first-party module's own
+`migrations_dir` (e.g. backend/app/modules/compliance/migrations/,
+compliance-module-plan.md Phase 11 follow-up) — `app.modules.registry.
+configure_alembic_version_locations` merges both into the one chain this
+test's own `_schema` fixture (conftest.py) migrates against, so a drift in
+either location is caught identically here.
 """
 
 from alembic.autogenerate import compare_metadata
@@ -32,7 +37,8 @@ def test_models_and_migrations_have_not_drifted():
         f"{diff}\n\n"
         "This means a model field (or table/index) was added, changed, or "
         "removed without a matching Alembic migration under "
-        "backend/alembic/versions/ — see change-management-and-secure-"
+        "backend/alembic/versions/ (or the owning first-party module's own "
+        "migrations_dir) — see change-management-and-secure-"
         "development-policy.md. Add a migration for the diff above (an "
         "`IF NOT EXISTS`/`IF EXISTS` one, per the pattern in 0002 onward, "
         "since a fresh database's `create_all()` may already have the "

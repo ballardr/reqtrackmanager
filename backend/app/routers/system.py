@@ -4,15 +4,24 @@ Module: routers.system
 System management endpoints that are not scoped to any single organisation
 (I-M-06): granting or revoking the server admin role itself on another
 user, the system-wide user access-review directory (C-A-13), platform-wide
-UI branding defaults, and the server-wide public self-signup mode. Most of
-this router is server-admin only; the branding GET and `GET /signup-config`
-are exceptions — both entirely unauthenticated, since the plain `/login`
-page and the signup form itself both need them before any session exists.
+UI branding defaults, the server-wide public self-signup mode, and (module
+system Phase 0, docs/compliance-module-plan.md) server-tier role grants
+(`UserServerRole`) plus the deployment-wide default module entitlement
+policy. Most of this router is server-admin only; the branding GET and
+`GET /signup-config` are exceptions — both entirely unauthenticated, since
+the plain `/login` page and the signup form itself both need them before
+any session exists. The module-entitlement-policy endpoints and server-role
+grant/revoke are the one place this router's gating isn't uniformly
+`require_server_admin`: entitlement-policy read/write also accepts the new
+narrower `MODULE_ADMINISTRATOR` role (`require_server_role`), while
+granting/revoking that role itself stays server-admin-only (a narrower role
+can never grant itself or others a role).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -23,9 +32,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import SignupMode
+from app.models.enums import ModuleEntitlementPolicy, ServerRole, SignupMode
+from app.models.module import OrganizationModuleEntitlement
 from app.models.organization import Organization, OrgGroup, UserOrgRole
+from app.models.server_role import UserServerRole
 from app.models.user import User
+from app.modules.registry import build_mcp_tool_manifest, get_module_registry, is_module_entitled
 from app.schemas.branding import ServerSettingsOut, ServerSettingsUpdate
 from app.schemas.email import TestEmailRequest
 from app.schemas.pat import BulkRevokeResult
@@ -37,7 +49,7 @@ from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
 from app.services.files import upload_file
 from app.services.pats import revoke_matching
-from app.services.rbac import get_user_org_group_ids, require_server_admin
+from app.services.rbac import get_user_org_group_ids, require_server_admin, require_server_role
 from app.version import APP_VERSION, BUILD_DATE, GIT_SHA
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
@@ -101,10 +113,98 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
+    is_module_administrator: bool
     has_org_membership: bool
     organization_count: int
     organization_names: list[str]
     group_names: list[str]
+
+
+class ServerRoleAssign(BaseModel):
+    """Payload for granting/revoking a server-tier role (module system
+    Phase 0) via `POST /users/{user_id}/server-roles`.
+
+    Attributes:
+        role: The server role to grant. `ServerRole.SERVER_ADMIN` is
+            rejected here (400) — that tier is granted exclusively via
+            `PUT /users/{user_id}/server-admin`'s `is_server_admin` boolean,
+            never as a `UserServerRole` row (see `ServerRole`'s docstring).
+    """
+
+    role: ServerRole
+
+
+class ModuleEntitlementPolicyOut(BaseModel):
+    model_config = {"from_attributes": True}
+
+    default_module_entitlement_policy: ModuleEntitlementPolicy
+
+
+class ModuleEntitlementPolicyUpdate(BaseModel):
+    default_module_entitlement_policy: ModuleEntitlementPolicy
+
+
+class ModuleOut(BaseModel):
+    """A registered module's static description (module system Phase 1) —
+    "what modules exist," with no per-organisation data. See
+    `OrgModuleEntitlementOut` for the per-organisation entitlement view."""
+
+    module_key: str
+    name: str
+    description: str
+    version: str
+    default_enabled: bool
+    implemented: bool
+
+
+class OrgModuleEntitlementOut(BaseModel):
+    """One module's entitlement state for a specific organisation, as seen
+    by a `MODULE_ADMINISTRATOR`/`SERVER_ADMIN` (module system Phase 1).
+
+    Attributes:
+        module_key: The module's registry key.
+        name: The module's display name.
+        entitled: The *effective* entitlement (an explicit override row's
+            value, or the deployment's default policy if none exists).
+        has_override: Whether an explicit `OrganizationModuleEntitlement`
+            row exists for this organisation/module pair.
+        default_policy_used: The inverse of `has_override` — `True` when
+            `entitled` was derived from `ServerSettings.
+            default_module_entitlement_policy` rather than an explicit row.
+    """
+
+    module_key: str
+    name: str
+    entitled: bool
+    has_override: bool
+    default_policy_used: bool
+
+
+class OrgModuleEntitlementUpdate(BaseModel):
+    """Sets an explicit server-tier entitlement override for one
+    organisation/module pair (module system Phase 1)."""
+
+    entitled: bool
+
+
+class ModuleMcpToolOut(BaseModel):
+    """One module-contributed `mcp-server/` tool (module system Phase 4) —
+    the wire shape of `app.modules.registry.ResolvedMcpTool`. Every field
+    here has already been through `build_mcp_tool_manifest`'s mechanical
+    verification; see that function's docstring for what that means.
+    `params` is passed through as plain dicts (`{"name", "type", "required",
+    "in", "description"}` per entry) rather than a nested model — the same
+    loosely-typed, declaration-shaped design `McpToolDefinition.params`
+    itself uses, since these values are display/JSON-Schema hints for the
+    calling AI assistant, not something this endpoint needs to validate
+    further."""
+
+    name: str
+    description: str
+    method: str
+    path_template: str
+    mutates: bool
+    params: list[dict[str, Any]]
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)
@@ -154,6 +254,67 @@ def set_server_admin(
         actor_id=current_user.id,
     )
     db.commit()
+
+
+@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT)
+def grant_server_role(
+    user_id: UUID,
+    payload: ServerRoleAssign,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Grants a server-tier role (module system Phase 0) to a user.
+
+    Server-admin only (`require_server_admin`, no `MODULE_ADMINISTRATOR`
+    fallback) — a narrower role can never grant itself or others a role,
+    the same privilege-escalation-safe pattern `assign_org_role` follows
+    for `ORG_ADMIN`.
+
+    Raises:
+        HTTPException: 404 if `user_id` doesn't exist; 400 if `payload.role`
+            is `SERVER_ADMIN` (granted exclusively via the `is_server_admin`
+            boolean and its own endpoint above, never as a row here).
+    """
+    if payload.role == ServerRole.SERVER_ADMIN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Server admin is granted via PUT /users/{user_id}/server-admin, not this endpoint.",
+        )
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    existing = db.scalar(
+        select(UserServerRole).where(UserServerRole.user_id == user_id, UserServerRole.role == payload.role)
+    )
+    if existing is None:
+        db.add(UserServerRole(user_id=user_id, role=payload.role, granted_by=current_user.id))
+        log_event(
+            db, entity_type="user_server_role", entity_id=user_id, action="granted",
+            actor_id=current_user.id, detail={"role": payload.role.value},
+        )
+        db.commit()
+
+
+@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_server_role(
+    user_id: UUID,
+    role: ServerRole,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Revokes a server-tier role (module system Phase 0) from a user.
+    No-op if the user doesn't currently hold `role`. Server-admin only —
+    see `grant_server_role`."""
+    existing = db.scalar(
+        select(UserServerRole).where(UserServerRole.user_id == user_id, UserServerRole.role == role)
+    )
+    if existing is not None:
+        db.delete(existing)
+        log_event(
+            db, entity_type="user_server_role", entity_id=user_id, action="revoked",
+            actor_id=current_user.id, detail={"role": role.value},
+        )
+        db.commit()
 
 
 @router.get("/users", response_model=list[SystemUserOut])
@@ -252,6 +413,15 @@ def list_system_users(
     if limit is not None:
         users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
+    module_admin_ids: set[UUID] = set()
+    if user_ids:
+        module_admin_ids = set(
+            db.scalars(
+                select(UserServerRole.user_id).where(
+                    UserServerRole.user_id.in_(user_ids), UserServerRole.role == ServerRole.MODULE_ADMINISTRATOR
+                )
+            ).all()
+        )
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:
         for user_id, organization_id in db.execute(
@@ -285,7 +455,8 @@ def list_system_users(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, has_org_membership=u.id in org_ids_by_user,
+            is_server_admin=u.is_server_admin, is_module_administrator=u.id in module_admin_ids,
+            has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
             group_names=group_names_by_user.get(u.id, []),
@@ -573,6 +744,191 @@ async def upload_branding_login_background(
     db.commit()
     db.refresh(settings)
     return settings
+
+
+# --- Module entitlement policy (module system Phase 0/1) --------------------
+
+
+@router.get("/module-entitlement-policy", response_model=ModuleEntitlementPolicyOut)
+def get_module_entitlement_policy(
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Returns the deployment-wide default module entitlement policy
+    (`ServerSettings.default_module_entitlement_policy`) — the value
+    Phase 1's entitlement resolution falls back to when an organisation has
+    no explicit `organization_module_entitlements` override row.
+
+    Gated the same as the PUT below (`SERVER_ADMIN` or
+    `MODULE_ADMINISTRATOR`), unlike `/branding`'s unauthenticated GET: this
+    has no unauthenticated consumer, so it stays behind the same admin gate
+    as any other module-management setting.
+    """
+    return get_server_settings(db)
+
+
+@router.put("/module-entitlement-policy", response_model=ModuleEntitlementPolicyOut)
+def update_module_entitlement_policy(
+    payload: ModuleEntitlementPolicyUpdate,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Sets the deployment-wide default module entitlement policy.
+    `SERVER_ADMIN` or `MODULE_ADMINISTRATOR` may call this — the one
+    genuinely per-deployment lever Phase 0 introduces alongside the new
+    role itself."""
+    server_settings = get_server_settings(db)
+    server_settings.default_module_entitlement_policy = payload.default_module_entitlement_policy
+    log_event(
+        db, entity_type="system", entity_id="platform", action="module_entitlement_policy_updated",
+        actor_id=current_user.id, detail={"default_module_entitlement_policy": payload.default_module_entitlement_policy.value},
+    )
+    db.commit()
+    db.refresh(server_settings)
+    return server_settings
+
+
+# --- Module registry & entitlement (module system Phase 1) ------------------
+
+
+@router.get("/modules", response_model=list[ModuleOut])
+def list_modules(
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+):
+    """Returns every module in the registry — "what modules exist," with
+    no per-organisation entitlement/enablement data (see
+    `list_org_module_entitlements` below for that). Gated the same as the
+    entitlement-policy endpoints above."""
+    return [
+        ModuleOut(
+            module_key=definition.key, name=definition.name, description=definition.description,
+            version=definition.version, default_enabled=definition.default_enabled,
+            implemented=definition.implemented,
+        )
+        for definition in get_module_registry().values()
+    ]
+
+
+@router.get("/orgs/{organization_id}/module-entitlements", response_model=list[OrgModuleEntitlementOut])
+def list_org_module_entitlements(
+    organization_id: UUID,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module combined with `organization_id`'s
+    current effective and explicit entitlement state — the server-tier
+    licensing/plan view (module system Phase 1)."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+
+    overrides = {
+        row.module_key: row
+        for row in db.scalars(
+            select(OrganizationModuleEntitlement).where(
+                OrganizationModuleEntitlement.organization_id == organization_id
+            )
+        )
+    }
+    result: list[OrgModuleEntitlementOut] = []
+    for definition in get_module_registry().values():
+        override = overrides.get(definition.key)
+        entitled = is_module_entitled(db, organization_id, definition.key)
+        result.append(
+            OrgModuleEntitlementOut(
+                module_key=definition.key, name=definition.name, entitled=entitled,
+                has_override=override is not None, default_policy_used=override is None,
+            )
+        )
+    return result
+
+
+@router.put(
+    "/orgs/{organization_id}/module-entitlements/{module_key}", response_model=OrgModuleEntitlementOut
+)
+def update_org_module_entitlement(
+    organization_id: UUID, module_key: str, payload: OrgModuleEntitlementUpdate,
+    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    db: Session = Depends(get_db),
+):
+    """Sets an explicit server-tier entitlement override for one
+    organisation/module pair (module system Phase 1).
+
+    Turning entitlement off does NOT cascade-delete any existing
+    `OrganizationModuleEnablement` row for this org/module — that's
+    intentional, not a missed cleanup: `is_module_enabled`'s effective
+    formula already ANDs entitlement with enablement, so a stale
+    `enabled=True` enablement row under a revoked entitlement is inert and
+    presents no confusing effective state. A future reader should not "fix"
+    this by adding a cascade delete.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    row = db.scalar(
+        select(OrganizationModuleEntitlement).where(
+            OrganizationModuleEntitlement.organization_id == organization_id,
+            OrganizationModuleEntitlement.module_key == module_key,
+        )
+    )
+    if row is None:
+        row = OrganizationModuleEntitlement(organization_id=organization_id, module_key=module_key)
+        db.add(row)
+    row.entitled = payload.entitled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
+        action="module.entitlement_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": module_key, "entitled": payload.entitled},
+    )
+    db.commit()
+    db.refresh(row)
+    return OrgModuleEntitlementOut(
+        module_key=definition.key, name=definition.name, entitled=row.entitled,
+        has_override=True, default_policy_used=False,
+    )
+
+
+# --- Module-contributed MCP tools (module system Phase 4) -------------------
+
+
+@router.get("/modules/mcp-tools", response_model=list[ModuleMcpToolOut])
+def list_module_mcp_tools(current_user: User = Depends(get_current_user)):
+    """Returns the manifest of every module-contributed `mcp-server/` tool
+    across the live module registry (compliance-module-plan.md Phase 4) —
+    what `mcp-server` fetches (lazily, on a caller's own already-presented
+    token, cached in-process for a refresh window) to register declarative
+    tools that proxy to a module's own REST endpoints.
+
+    Gated by plain `get_current_user` — normal bearer-token authentication,
+    deliberately with **no exemption**, per this phase's own hardening pass
+    (docs/compliance-module-plan.md's "SOC2 / Security Planning" section):
+    this must never become an unauthenticated boot-time call, even though
+    the manifest itself carries no organisation-specific data. Per-call
+    access to whatever a listed tool actually proxies to is still fully
+    enforced by that endpoint's own `require_org_module_enabled`/
+    `require_project_module_enabled`/`require_module_role` dependency —
+    a tool being listed here has never implied a given caller can use it,
+    exactly like `list_projects` in `mcp-server` already works today.
+
+    Every entry has already been through `build_mcp_tool_manifest`'s
+    mechanical verification — `mutates` is derived from HTTP method, never
+    module-declared; any tool whose `path_template` fell outside its
+    declaring module's own router, or that resolved to a route marked as an
+    approval action, has already been excluded. This endpoint does no
+    further filtering of its own.
+    """
+    return [
+        ModuleMcpToolOut(
+            name=tool.name, description=tool.description, method=tool.method,
+            path_template=tool.path_template, mutates=tool.mutates, params=tool.params,
+        )
+        for tool in build_mcp_tool_manifest()
+    ]
 
 
 # --- Public self-signup mode -------------------------------------------------

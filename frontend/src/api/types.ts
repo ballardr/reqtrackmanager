@@ -7,6 +7,13 @@
 
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
+// Module system (compliance-module-plan.md Phase 0). `server_admin` mirrors
+// `User.is_server_admin` for display purposes only — see `ServerRole`'s
+// backend docstring — it is never granted/revoked through the
+// `/server-roles` endpoints this type also describes, only through the
+// existing `/server-admin` boolean endpoint.
+export type ServerRole = "server_admin" | "module_administrator";
+export type ModuleEntitlementPolicy = "open" | "closed";
 export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
 // Hierarchical projects: forward (parent -> child) RBAC-cascade mode — see
 // backend/app/models/enums.py::ProjectRoleInheritanceMode and
@@ -55,6 +62,11 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   completed: "Completed",
   failed: "Failed",
 };
+// Compliance module enums/label maps (Phase 5/6/12) live in this module's
+// own `frontend/src/modules/compliance/types.ts`, not here — see that
+// file's own docstring for why a module's enum is that module's own display
+// concern rather than a core one, mirroring the backend's identical
+// `modules.compliance.labels` split from `app.services.labels`.
 
 // Sentence-cased per the Australian Government Style Manual's "minimal
 // capitalisation" rule — see docs/decisions.md. Every raw enum value
@@ -71,6 +83,10 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   org_admin: "Org admin",
   project_creator: "Project creator",
   member: "Member",
+};
+export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
+  server_admin: "Server admin",
+  module_administrator: "Module administrator",
 };
 
 /**
@@ -197,7 +213,23 @@ export type NotificationType =
   | "password_changed"
   | "permission_granted"
   | "permission_revoked"
-  | "comment_added";
+  | "comment_added"
+  | "requirement_review_due"
+  | "stage_review_auto_approved"
+  | "compliance_required_action_due_soon"
+  | "compliance_required_action_overdue"
+  | "compliance_target_date_approaching"
+  | "compliance_target_date_exceeded"
+  | "compliance_approval_requested"
+  | "compliance_assessment_rejected"
+  | "compliance_approval_invalidated"
+  | "compliance_review_due"
+  | "compliance_review_overdue"
+  | "compliance_evidence_expiring_soon"
+  | "compliance_evidence_expired"
+  | "compliance_requirement_non_compliant"
+  | "compliance_standard_update_review_needed"
+  | "compliance_assignment_created";
 
 export interface Notification {
   id: string;
@@ -339,6 +371,33 @@ export interface ProjectFile {
   comment_id: string | null;
 }
 
+/** One available module-contributed role (module system Phase 2,
+ * `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+ * only roles of a currently effectively-enabled module are ever returned,
+ * so a role belonging to a disabled/non-entitled module simply isn't in
+ * this list. `name`/`description` are data returned by the API (set
+ * server-side by the module's own author), not a frontend-known closed
+ * enum — render `name` directly, do not build a `MODULE_ROLE_LABEL`-style
+ * lookup map for it (see `docs/ux-style-guide.md` Principle 12's label-map
+ * rule, which applies to raw *enum* values the frontend itself defines,
+ * not to already-human-readable API data like this). */
+export interface ModuleRoleDefinition {
+  module_key: string;
+  role_key: string;
+  name: string;
+  description: string;
+}
+
+/** One held `UserModuleRole` grant, as surfaced on `OrgUser.module_roles`/
+ * `EffectiveMember.module_roles` — deliberately minimal (just enough to
+ * match against a `ModuleRoleDefinition` option's `module_key`/`role_key`);
+ * the caller already has the matching `ModuleRoleDefinition` loaded to
+ * render `name`/`description` from. */
+export interface ModuleRoleGrant {
+  module_key: string;
+  role_key: string;
+}
+
 export interface OrgUser {
   user_id: string;
   email: string;
@@ -349,6 +408,10 @@ export interface OrgUser {
   display_name_locked: boolean;
   last_login_at: string | null;
   is_2fa_enabled: boolean;
+  /** This user's org-scoped module-contributed role grants, filtered to
+   * currently-enabled modules only (module system Phase 2) — a grant for
+   * a since-disabled module is simply omitted, not a sign it was revoked. */
+  module_roles: ModuleRoleGrant[];
 }
 
 /** A search result for an email not (yet) a member of the searched org —
@@ -418,6 +481,7 @@ export interface SystemUser {
   is_2fa_enabled: boolean;
   created_at: string;
   is_server_admin: boolean;
+  is_module_administrator: boolean;
   has_org_membership: boolean;
   organization_count: number;
   organization_names: string[];
@@ -604,6 +668,10 @@ export interface EffectiveMember {
   email: string;
   effective_role: ProjectRole;
   sources: MemberSourceProvenance[];
+  /** This user's project-scoped module-contributed role grants, filtered
+   * to currently-enabled modules only (module system Phase 2) — same
+   * "filter, don't delete" rule `OrgUser.module_roles` documents. */
+  module_roles: ModuleRoleGrant[];
 }
 
 export interface MaterializeResult {
@@ -735,6 +803,18 @@ export interface OrgProjectSummary {
   id: string;
   name: string;
   is_archived: boolean;
+}
+
+/** `pages/OrgOverviewPage.tsx`'s stats header (compliance-module-plan.md
+ * Phase 19). `is_full_org_total` distinguishes the two meanings the counts
+ * below can have — see `OrgOverviewStatsOut`'s own backend docstring
+ * (`backend/app/schemas/org.py`) for the full scoping rules. */
+export interface OrgOverviewStats {
+  project_count: number;
+  requirement_count: number;
+  member_count: number;
+  total_file_size_bytes: number;
+  is_full_org_total: boolean;
 }
 
 export interface ProjectGroup {
@@ -1128,6 +1208,64 @@ export interface OrgAdvancedSettings {
   auto_accept_email_domain: string | null;
   external_user_policy: ExternalUserPolicy;
   allow_relaxed_child_project_creation: boolean;
+}
+
+/** One module's state as seen by an org admin (module system Phase 1,
+ * `GET`/`PUT /orgs/{id}/modules[/{module_key}]`) — the registry's static
+ * description plus this organisation's own effective entitlement/
+ * enablement. `enabled` is already the *effective* value (entitled AND
+ * enabled) computed server-side; a non-entitled module is still included
+ * in the response rather than filtered out, so the Modules admin UI can
+ * grey it out with an explanatory note instead of hiding it entirely. */
+/** A module's frontend integration manifest (module system Phase 3,
+ * extended with Tier C/`"federated"` in a same-system follow-up, see
+ * `docs/decisions.md`'s "Module system follow-up: Tier C (Module
+ * Federation)" entries) — see backend `app.modules.registry.
+ * ModuleFrontendManifest`'s docstring for the full account.
+ * `tier === "installed"` (Tier A) means the module's route components ship
+ * compiled into this bundle, registered in `src/modules/registry.ts`;
+ * `tier === "remote"` (Tier B) means it's rendered via `<ModuleFrame>` at
+ * `frame_url`, which is always non-null for that tier; `tier === "federated"`
+ * (Tier C) means the module's own `TierAModuleDefinition` is loaded at
+ * runtime from `remote_entry_url`/`exposed_module` (see
+ * `src/modules/federatedLoader.ts`) rather than compiled into this bundle —
+ * `get_frontend_manifest` on the backend guarantees this tier only ever
+ * appears for a module discovered through the third-party pipeline, never a
+ * first-party one. */
+export interface ModuleFrontendManifest {
+  tier: "installed" | "remote" | "federated";
+  nav_label: string;
+  nav_path: string;
+  frame_url: string | null;
+  remote_entry_url: string | null;
+  exposed_module: string | null;
+}
+
+export interface OrgModule {
+  module_key: string;
+  name: string;
+  description: string;
+  version: string;
+  implemented: boolean;
+  entitled: boolean;
+  enabled: boolean;
+  default_enabled: boolean;
+  frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** One currently-enabled module, as returned by `GET /projects/{id}/enabled-
+ * modules` — the lean, nav-facing shape (module system Phase 3), unlike
+ * `OrgModule`'s org-admin bookkeeping view. */
+export interface ModuleNavEntry {
+  module_key: string;
+  name: string;
+  frontend_manifest: ModuleFrontendManifest | null;
+}
+
+/** A freshly-minted Tier B `<ModuleFrame>` token (module system Phase 3). */
+export interface ModuleFrameToken {
+  token: string;
+  expires_in_minutes: number;
 }
 
 export interface PersonalAccessTokenOrgRef {

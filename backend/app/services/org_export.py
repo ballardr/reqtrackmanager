@@ -2,10 +2,28 @@
 Module: services.org_export
 
 Exports an entire organisation — its settings, members/groups, report
-templates, org-owned files (logo, login background), and every one of its
-projects (full structure and history, reusing `services.project_export`) —
-as a single self-describing zip bundle, and imports such a bundle back in
-one of two ways:
+templates, org-owned files (logo, login background), every one of its
+projects (full structure and history, reusing `services.project_export`),
+and every registered module's own org-level bundle content (`app.modules.
+registry.get_all_module_org_bundle_hooks` — e.g. the Compliance module's
+standards/versions/requirements/vocabularies/mappings, folded in generically
+rather than this file importing any specific module directly) — as a single
+self-describing zip bundle, and imports such a bundle back in one of two
+ways:
+
+A module's own org-level bundle content is exported/imported entirely by
+that module's own `ModuleOrgBundleHooks` (`app.modules.registry`) — this
+file never constructs a module's own entity types, only calls its declared
+`export`/`import_`/`compute_merge_conflicts`/`summarize_merge` hooks and
+folds their results (a `dict` merged via `**` into `org_json`; conflict
+dicts extended onto this file's own `conflicts` list; summary counts merged
+into the returned/audit-logged summary) alongside the core sections this
+file still owns directly (settings, members, groups, report templates,
+projects). See `app.modules.compliance.export`'s own module docstring for
+why Compliance's own content belongs at the *organisation* level in a
+bundle, not per-project (§31's "A Compliance Standard is not a Project"),
+and how a project's own compliance *assessment* travels with `services.
+project_export`'s bundle instead via that module's `ModuleProjectBundleHooks`.
 
 - `import_org_bundle`: creates a brand-new organisation. For backup,
   offboarding, and cross-instance migration (as opposed to
@@ -93,6 +111,7 @@ from app.models.file import FileAsset
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
+from app.modules.registry import get_all_module_org_bundle_hooks
 from app.services.audit import log_event
 from app.services.bundle_common import (
     BundleImportWarnings,
@@ -115,8 +134,11 @@ from app.services.rbac import would_create_org_group_cycle
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
 
-# Valid `resolutions` values `merge_org_bundle` accepts for each conflict
-# kind `detect_merge_conflicts` can report — see both functions' docstrings.
+# Valid `resolutions` values `merge_org_bundle` accepts for each core
+# conflict kind `detect_merge_conflicts` can report — see both functions'
+# docstrings. A registered module's own conflict kinds (e.g. Compliance's
+# `"compliance_standard"`) declare their own valid values via `ModuleOrgBundleHooks.
+# merge_resolution_choices` instead, merged in at the two call sites below.
 _PROJECT_RESOLUTIONS = {"skip", "import_as_copy"}
 _REPORT_TEMPLATE_RESOLUTIONS = {"keep_existing", "use_import"}
 
@@ -155,6 +177,10 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         }
         for t in report_templates
     ]
+
+    module_bundle_json: dict[str, Any] = {}
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        module_bundle_json.update(hooks.export(db, org))
 
     member_rows = list(
         db.execute(select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id))
@@ -216,6 +242,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "login_background_content_type": background_asset.content_type if background_asset else None,
         "default_template_project_ref": project_ref_by_id.get(org.default_template_project_id),
         "report_templates": report_templates_json, "members": members_json, "org_groups": org_groups_json,
+        **module_bundle_json,
     }
 
     manifest = {
@@ -627,6 +654,8 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
 
     template_ref = data.get("default_template_project_ref")
@@ -665,23 +694,31 @@ def _compute_merge_conflicts(
         existing = existing_templates_by_name.get(t["name"].strip().lower())
         if existing is not None:
             conflicts.append({"id": f"report_template:{t['name']}", "kind": "report_template", "name": t["name"], "existing_id": str(existing.id)})
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.compute_merge_conflicts is not None:
+            conflicts.extend(hooks.compute_merge_conflicts(db, target_org, data))
     return conflicts
 
 
 def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: bytes) -> list[dict[str, Any]]:
-    """Parses an org bundle and reports which of its projects and report
-    templates collide by name with something `target_org` already has,
-    without writing anything — the preview step before `merge_org_bundle`.
+    """Parses an org bundle and reports which of its projects, report
+    templates, and any registered module's own org-level entities (e.g.
+    Compliance's standards, via its `ModuleOrgBundleHooks.compute_merge_
+    conflicts`) collide (by name/reference) with something `target_org`
+    already has, without writing anything — the preview step before
+    `merge_org_bundle`.
 
-    Users and org groups are never a conflict (see `_import_members`/
-    `_import_org_groups`'s docstrings: both are purely additive), so they
-    never appear here.
+    Users, org groups, and a module's own purely-additive-by-name content
+    (see `_import_members`/`_import_org_groups`'s docstrings, and
+    Compliance's own `export._import_compliance_vocab`) are never a
+    conflict, so they never appear here.
 
     Returns:
         A list of `{"id", "kind", "name", "existing_id"}` dicts. `id` is
         the exact key `merge_org_bundle`'s `resolutions` argument must
-        supply a resolution for; `kind` is `"project"` or
-        `"report_template"`.
+        supply a resolution for; `kind` is `"project"`, `"report_template"`,
+        or a registered module's own declared conflict kind (e.g.
+        Compliance's `"compliance_standard"`).
     """
     _, data, _, project_data_by_ref = _parse_org_bundle(zip_bytes)
     return _compute_merge_conflicts(db, target_org, data, project_data_by_ref)
@@ -721,15 +758,19 @@ def merge_org_bundle(
         target_org: The organisation being imported into.
         zip_bytes: The uploaded bundle's raw bytes.
         resolutions: Conflict id (`detect_merge_conflicts`'s `"id"` field)
-            -> `"skip"`/`"import_as_copy"` for a `"project"` conflict, or
-            `"keep_existing"`/`"use_import"` for a `"report_template"` one.
+            -> `"skip"`/`"import_as_copy"` for a `"project"` or
+            `"compliance_standard"` conflict, or `"keep_existing"`/
+            `"use_import"` for a `"report_template"` one.
         current_user: The org admin performing the import.
 
     Returns:
         Human-readable warnings (same shape as `import_org_bundle`'s), and
         a summary of what happened: `projects_imported`,
         `projects_skipped`, `report_templates_imported`,
-        `report_templates_overwritten`.
+        `report_templates_overwritten`, plus whatever each registered
+        module's own `ModuleOrgBundleHooks.summarize_merge` contributes
+        (e.g. Compliance's `compliance_standards_imported`/`compliance_
+        standards_skipped`).
 
     Raises:
         HTTPException: 400 if the bundle is invalid or newer than this
@@ -743,10 +784,12 @@ def merge_org_bundle(
     missing = [c["id"] for c in conflicts if c["id"] not in resolutions]
     if missing:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Missing a resolution for: {', '.join(missing)}.")
-    invalid = [
-        c["id"] for c in conflicts
-        if resolutions[c["id"]] not in (_PROJECT_RESOLUTIONS if c["kind"] == "project" else _REPORT_TEMPLATE_RESOLUTIONS)
-    ]
+    _resolution_choices_by_kind: dict[str, set[str] | frozenset[str]] = {
+        "project": _PROJECT_RESOLUTIONS, "report_template": _REPORT_TEMPLATE_RESOLUTIONS,
+    }
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        _resolution_choices_by_kind.update(hooks.merge_resolution_choices)
+    invalid = [c["id"] for c in conflicts if resolutions[c["id"]] not in _resolution_choices_by_kind[c["kind"]]]
     if invalid:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid resolution value for: {', '.join(invalid)}.")
 
@@ -755,6 +798,8 @@ def merge_org_bundle(
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     _import_report_templates(db, target_org, data, current_user, resolutions=resolutions)
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        hooks.import_(db, target_org, data, users, warnings, resolutions)
     project_id_by_ref = _import_projects(
         db, target_org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=resolutions,
     )
@@ -769,6 +814,9 @@ def merge_org_bundle(
         ),
         "report_templates_overwritten": sum(1 for c in template_conflicts if resolutions[c["id"]] == "use_import"),
     }
+    for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.summarize_merge is not None:
+            summary.update(hooks.summarize_merge(data, conflicts, resolutions))
     log_event(
         db, entity_type="organization", entity_id=target_org.id, action="merged_from_bundle", actor_id=current_user.id,
         organization_id=target_org.id,

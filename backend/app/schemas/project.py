@@ -22,6 +22,12 @@ from app.models.enums import (
     StageStatus,
 )
 
+# Module system Phase 2's grant-marker shape is defined in `schemas.org`
+# (see `ModuleRoleGrantOut`'s own docstring for why), imported here rather
+# than duplicated — the reverse direction of the existing `orgs.py`
+# importing `MoveDirection` from this very module.
+from app.schemas.org import ModuleRoleGrantOut
+
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
 TERMINOLOGY_KEYS = {"project", "stage", "component", "category", "requirement", "change_request"}
@@ -261,6 +267,11 @@ class EffectiveMemberOut(BaseModel):
     email: str
     effective_role: ProjectRole
     sources: list[MemberSourceProvenanceOut]
+    # Module system Phase 2: this user's project-scoped module-contributed
+    # role grants, filtered to currently-enabled modules only — same
+    # "filter, don't delete a since-disabled module's grant" rule
+    # `OrgUserOut.module_roles` documents; see that field's docstring.
+    module_roles: list[ModuleRoleGrantOut] = []
 
 
 class MaterializeResultOut(BaseModel):

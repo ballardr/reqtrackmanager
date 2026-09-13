@@ -37,6 +37,20 @@ const en = {
       comment_added: "New comment on a followed item",
       requirement_review_due: "{Requirement} review due",
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
+      compliance_required_action_due_soon: "Compliance required action due soon",
+      compliance_required_action_overdue: "Compliance required action overdue",
+      compliance_target_date_approaching: "Compliance target date approaching",
+      compliance_target_date_exceeded: "Compliance target date exceeded",
+      compliance_approval_requested: "Compliance approval requested",
+      compliance_assessment_rejected: "Compliance assessment rejected",
+      compliance_approval_invalidated: "Compliance approval invalidated",
+      compliance_review_due: "Compliance review due",
+      compliance_review_overdue: "Compliance review overdue",
+      compliance_evidence_expiring_soon: "Compliance evidence expiring soon",
+      compliance_evidence_expired: "Compliance evidence expired",
+      compliance_requirement_non_compliant: "Compliance requirement is Non-Compliant",
+      compliance_standard_update_review_needed: "Compliance standard updated — review needed",
+      compliance_assignment_created: "New compliance assignment",
     },
   },
   login: {
@@ -95,6 +109,7 @@ const en = {
     signOut: "Sign out",
     myReviews: "My reviews due",
     myOrganizations: (orgPlural: string) => `My ${orgPlural.toLowerCase()}`,
+    orgOverview: (orgCap: string) => `${orgCap} overview`,
     favourites: "Favourites",
     serverManagement: "Server management",
     help: "Help",
@@ -775,6 +790,35 @@ const en = {
     groupOauthSso: "OAuth/SSO",
     groupEmail: "Email",
     groupSecurity: "Security",
+    // Module system Phase 1 (compliance-module-plan.md) — a new top-level
+    // group rather than folded into "Security", since it's a distinct
+    // day-to-day admin surface (enabling/disabling optional feature
+    // modules) rather than an authentication/access-policy setting.
+    groupModules: "Modules",
+    // Compliance module Phase 12 (compliance-module-plan.md) — the org-
+    // level Compliance Manager surface (standards/versions/requirements/
+    // required actions/mapping vocabulary), a new top-level group rather
+    // than nested under "Modules" (that group is the generic enable/
+    // disable toggle table any module gets, not a home for a specific
+    // module's own content).
+    groupCompliance: "Compliance",
+    // Compliance module Phase 14 (compliance-module-plan.md) — the org-
+    // wide compliance dashboard/reporting surface (§22/§23), separate flat
+    // top-level groups from "Compliance" above (standards management)
+    // rather than a fourth tab on that group's panel — the style guide's
+    // own "split into more flat groups, don't nest" addendum, since these
+    // are different jobs for a different (if overlapping) audience.
+    // Originally one combined "Compliance overview" group with its own
+    // internal `Tabs` (Dashboard / Compliance by standard / Outstanding);
+    // Phase 25b applied the same addendum a second time, one level deeper —
+    // that inner `Tabs` was itself a second, redundant navigation
+    // mechanism nested inside the `ResourceMenu` group's own left-hand
+    // menu, so the three tabs became three flat top-level
+    // `orgOverviewSections` entries instead (`ResourceMenu → Tabs →
+    // content`, three deep, collapsed to `ResourceMenu → content`, two).
+    groupComplianceDashboard: "Compliance dashboard",
+    groupComplianceByStandard: "Compliance by standard",
+    groupComplianceOutstanding: "Outstanding compliance items",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
@@ -941,6 +985,16 @@ const en = {
     // (see `pats` below) rather than getting a heading of its own.
     smtpEmailTitle: "SMTP & email",
     securityTitle: "Security",
+    // Module system Phase 1: the org admin's "Modules" section (enable/
+    // disable a feature module among those the org is entitled to).
+    modulesTitle: "Modules",
+    modulesDescription: "Enable or disable optional feature modules for this organisation. A module greyed out below isn't available on your current plan.",
+    modulesEmpty: "No modules are registered on this deployment yet.",
+    moduleNotEntitledHint: "Not available on this organisation's current plan. Contact your server administrator to request access.",
+    moduleNotImplementedHint: "Not yet available in this version of the application.",
+    moduleEnabledToast: (name: string) => `${name} enabled`,
+    moduleDisabledToast: (name: string) => `${name} disabled`,
+    moduleToggleLabel: (name: string) => `Enable ${name}`,
     smtpHost: "SMTP host",
     smtpPort: "SMTP port",
     smtpUsername: "SMTP username",
@@ -1103,7 +1157,6 @@ const en = {
     includeDeactivated: "Include deactivated accounts",
     deactivated: "Deactivated",
     bannedBadge: "Banned",
-    serverAdminBadge: "Server admin",
     usersActionsFor: (name: string) => `${name}'s actions`,
     deactivate: "Deactivate",
     reactivate: "Reactivate",
@@ -1125,6 +1178,22 @@ const en = {
     revokeServerAdminTitle: "Revoke server admin from this user?",
     revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
     revokedServerAdminToast: "Server admin revoked",
+    // Module system Phase 0 (docs/compliance-module-plan.md): "Server roles"
+    // MultiSelectDropdown column, mirroring Org Admin's own roles column
+    // string shapes (rolesFor/noRoles/grantRole/revokeRole).
+    serverRoles: "Server roles",
+    serverRolesFor: (name: string) => `${name}'s server roles`,
+    noServerRoles: "No server roles",
+    grantServerRole: (role: string, name: string) => `Grant ${role} to ${name}`,
+    revokeServerRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
+    grantModuleAdministrator: "Grant module administrator",
+    revokeModuleAdministrator: "Revoke module administrator",
+    grantModuleAdministratorTitle: "Grant module administrator to this user?",
+    grantModuleAdministratorConfirm: "They will be able to manage module entitlements and enablement across the deployment.",
+    grantedModuleAdministratorToast: "Module administrator granted",
+    revokeModuleAdministratorTitle: "Revoke module administrator from this user?",
+    revokeModuleAdministratorConfirm: "They will lose access to module management immediately.",
+    revokedModuleAdministratorToast: "Module administrator revoked",
     patRevokeAll: "Revoke all Personal Access Tokens platform-wide",
     patRevokeAllHint: (orgPlural: string) => `Incident-response action: revokes every non-revoked Personal Access Token in the deployment, regardless of who owns it or which ${orgPlural.toLowerCase()}(s) it's scoped to.`,
     patRevokeAllTitle: "Revoke every Personal Access Token on the entire platform?",

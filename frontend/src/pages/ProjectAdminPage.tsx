@@ -13,6 +13,7 @@ import type {
   CustomFieldType,
   EffectiveMember,
   MaterializeResult,
+  ModuleRoleDefinition,
   OrgGroup,
   OrgUser,
   PendingInvite,
@@ -34,6 +35,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
+import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
@@ -43,12 +45,13 @@ import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SidePanel } from "../components/SidePanel";
-import { cycleSort, type SortState } from "../components/SortableHeader";
+import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
@@ -213,6 +216,13 @@ export function ProjectAdminPage() {
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
   const [materializing, setMaterializing] = useState(false);
+  // Module system Phase 2: project-scoped module-contributed role
+  // definitions currently available to grant on this project, fed into
+  // `ProjectMembersTable`'s Role column alongside the four core
+  // `ProjectRole` options. `[]` before `reload()`'s own fetch resolves,
+  // which also correctly renders as "no module roles" for a deployment
+  // with none registered yet (no module has any roles until Phase 5).
+  const [availableModuleRoles, setAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
 
   // --- Members section (Phase D, follow-up UX batch, 2026-08-31) --------
   // `ProjectMembersTable`'s two data sources — effective members (with
@@ -380,6 +390,10 @@ export function ProjectAdminPage() {
     setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
     await reloadEffectiveMembers();
     await reloadPendingInvites();
+    // Module system Phase 2 — same "fetched alongside the rest of this
+    // page's own reload()" treatment every other Members-section data
+    // source above gets.
+    setAvailableModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`));
   }
 
   async function reloadEffectiveMembers() {
@@ -866,6 +880,25 @@ export function ProjectAdminPage() {
     }
   }
 
+  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2)
+   * — same "re-fetch just effective-members" treatment `toggleProjectMemberRole`
+   * above uses, always freely callable (no purelyDirect-style guard,
+   * since module roles are direct-grant-only). */
+  async function toggleProjectMemberModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
+    try {
+      if (grant) {
+        await api.post(`/api/v1/projects/${projectId}/members/${userId}/module-roles`, {
+          module_key: moduleKey, role_key: roleKey,
+        });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/members/${userId}/module-roles/${moduleKey}/${roleKey}`);
+      }
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   /** Grants a brand-new direct role — the Members section's own
    * `addControl` (an existing-org-member `UserAutocomplete` result; the
    * external-invite branch reuses `addExternalMember` below unchanged,
@@ -1108,7 +1141,14 @@ export function ProjectAdminPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <h1 style={{ margin: 0 }}>{project.name}</h1>
+          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+            <h1 style={{ margin: 0 }}>{project.name}</h1>
+            <EntitySwitcher
+              label="Switch project"
+              currentId={project.id}
+              loadOptions={() => loadProjectSwitcherOptions("admin")}
+            />
+          </div>
           <p className="text-muted" style={{ margin: 0 }}>{strings.nav.admin}</p>
         </div>
         {/* "Add sub-project" (decision 8, docs/decisions.md) — the
@@ -1910,6 +1950,8 @@ export function ProjectAdminPage() {
               onRemoveAllAccess={removeAllProjectMemberAccess}
               onConvertToDirect={convertProjectMemberToDirect}
               ariaLabel={strings.admin.membersNav}
+              availableModuleRoles={availableModuleRoles}
+              onToggleModuleRole={toggleProjectMemberModuleRole}
             />
           )}
           {externalAddResult && (

@@ -130,6 +130,63 @@ class Settings(BaseSettings):
             server admin already has direct database access regardless;
             deployments that want the stricter, count-only view for this
             specific screen can set this to `false`.
+        allow_external_modules: Deployment-level opt-in for the modular
+            feature system's third-party discovery sources
+            (`app.modules.registry`'s Python entry-point scan and
+            `extra_modules_path` directory scan, compliance-module-plan.md
+            Phase 1). Off by default, mirroring `MCP_WRITES_ENABLED`'s
+            existing off-by-default precedent in this codebase: a plugin-
+            loading mechanism that auto-imports and runs third-party code
+            pip-installed (or dropped on disk) into the deployment's own
+            process is a genuinely new code-loading trust boundary, and
+            `docs/soc2/trust-services-criteria-mapping.md`'s CC6.8 row
+            already documents an open gap ("no automated dependency/
+            container vulnerability scanning exists") — a plugin system
+            that runs arbitrary discovered code makes that pre-existing gap
+            materially riskier, so it must not ship silently on-by-default.
+            When `False`, the registry contains only the static, in-repo,
+            normally-code-reviewed `INSTALLED_MODULES` list; the entry-point
+            and path scans are not even performed (not merely filtered
+            afterward — see `app.modules.registry.build_registry`). A
+            deployment operator who explicitly wants third-party modules
+            turns this on knowingly, per the due-diligence expectation
+            recorded in `docs/soc2/policies/
+            vendor-and-subprocessor-management-policy.md`.
+
+            Also gates `app.modules.registry.apply_external_module_
+            migrations` (module system follow-up, 2026-09-05): when `True`,
+            a discovered external module's own declared `migrations_
+            import_path` is imported and its `run_migrations(connection)`
+            applied automatically, once at startup — the same opt-in that
+            already permits loading and running that module's code at all
+            now also covers applying its own database schema changes,
+            rather than requiring the operator to additionally hand-run a
+            migration out of band. Never applies to an `INSTALLED_MODULES`
+            (first-party) module regardless of this setting — first-party
+            schema changes always go through a reviewed PR into `backend/
+            alembic/versions/`.
+        extra_modules_path: Optional local directory scanned for third-party
+            modules (each an immediate subdirectory containing a
+            `module.py` with a module-level `MODULE_DEFINITION`) when
+            `allow_external_modules` is `True` — for a self-hosted operator
+            adding a custom module without publishing a package. Has no
+            effect at all while `allow_external_modules` is `False` (its
+            default), same rationale as that flag's docstring.
+        module_frame_allowed_origins: Comma-separated list of origins the
+            frontend is allowed to embed a Tier B remote module in a
+            sandboxed `<ModuleFrame>` iframe (`Content-Security-Policy:
+            frame-src`, compliance-module-plan.md Phase 3). Empty by
+            default — `frame-src 'none'` is sent until a deployment operator
+            explicitly lists a trusted module origin, mirroring `cors_
+            origins`' own comma-separated-list shape but for the opposite
+            direction (what this app is allowed to frame, not who is
+            allowed to frame this app — see `main.py`'s security-headers
+            middleware). A registered module's own declared `frame_url`
+            (`app.modules.registry.ModuleFrontendManifest`) must resolve to
+            an origin in this list or `get_frontend_manifest` rejects it
+            (logs and returns `None`) — mechanically enforced, not trusted
+            from the module's own declaration, mirroring Phase 4's
+            path-prefix enforcement for MCP tools.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -179,11 +236,21 @@ class Settings(BaseSettings):
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
     access_review_show_org_names: bool = True
+    allow_external_modules: bool = False
+    extra_modules_path: str | None = None
+    module_frame_allowed_origins: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
         """Returns the configured CORS origins as a list of strings."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def module_frame_allowed_origin_list(self) -> list[str]:
+        """Returns the configured Tier B module-frame origin allowlist as a
+        list of strings — empty by default, so `frame-src 'none'` is what
+        ships until an operator opts a specific origin in."""
+        return [origin.strip() for origin in self.module_frame_allowed_origins.split(",") if origin.strip()]
 
     @property
     def geoip_lookup_exclude_networks(self) -> list:

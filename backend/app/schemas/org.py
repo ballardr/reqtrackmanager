@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
 from app.schemas.report import ReportChapter
@@ -117,7 +117,24 @@ class OrgMergePreviewResult(BaseModel):
 class OrgMergeResult(BaseModel):
     """Outcome of `POST /orgs/{id}/import/merge` — human-readable warnings
     (same shape as `OrgImportResult`'s) plus counts of what happened to
-    each conflicting/non-conflicting project and report template."""
+    each conflicting/non-conflicting project and report template.
+
+    `extra="allow"` is required, not cosmetic: `services.org_export.
+    merge_org_bundle`'s own docstring documents its returned `summary` dict
+    as carrying "whatever each registered module's own `ModuleOrgBundleHooks.
+    summarize_merge` contributes" (e.g. Compliance's `compliance_standards_
+    imported`/`compliance_standards_skipped`), and the router endpoint
+    constructs this model via `OrgMergeResult(warnings=warnings, **summary)`
+    — without `extra="allow"`, Pydantic silently drops any key not declared
+    as a field below, so a module's own merge counts would validate fine
+    (no 500) but never actually reach the API response, contradicting that
+    docstring. Found via `test_compliance_export_import.py`'s own merge
+    tests, which is exactly why this module system's "core code shouldn't
+    need much modification per module" goal (`ModuleOrgBundleHooks`'s own
+    docstring) failed here — a module's summary silently needs a change to
+    this core schema too, unlike `summary`'s own dict, which needed none."""
+
+    model_config = ConfigDict(extra="allow")
 
     warnings: list[str] = []
     projects_imported: int
@@ -190,6 +207,135 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_relaxed_child_project_creation: bool = True
 
 
+class ModuleFrontendManifestOut(BaseModel):
+    """Wire shape of `app.modules.registry.ModuleFrontendManifest` (module
+    system Phase 3, extended with Tier C/`"federated"` in a same-system
+    follow-up) — see that dataclass's docstring for what each field means.
+    Only ever constructed from `app.modules.registry.get_frontend_manifest`'s
+    return value, never a raw `ModuleDefinition.frontend_manifest`, so a
+    Tier B entry whose `frame_url` origin isn't allowlisted, or a Tier C
+    entry declared by a first-party module, never reaches the frontend at
+    all (that function returns `None` for either, and the containing
+    `OrgModuleOut.frontend_manifest`/`ModuleNavEntryOut.frontend_manifest` is
+    simply omitted)."""
+
+    tier: str
+    nav_label: str
+    nav_path: str
+    frame_url: str | None = None
+    remote_entry_url: str | None = None
+    exposed_module: str | None = None
+
+
+class OrgModuleOut(BaseModel):
+    """A single module's state as seen by an org admin (module system
+    Phase 1) — combines the registry's static description with this
+    organisation's own effective entitlement/enablement, computed by
+    `app.modules.registry.is_module_entitled`/`is_module_enabled`.
+
+    Non-entitled modules are included in this response, not filtered out:
+    per the plan, the org admin's Modules UI shows them greyed out with an
+    explanatory note rather than hiding them entirely — the frontend does
+    the graying, not this schema/endpoint.
+    """
+
+    module_key: str
+    name: str
+    description: str
+    version: str
+    implemented: bool
+    entitled: bool
+    enabled: bool
+    default_enabled: bool
+    frontend_manifest: ModuleFrontendManifestOut | None = None
+
+
+class ModuleNavEntryOut(BaseModel):
+    """One currently-*enabled* module's nav-facing summary (module system
+    Phase 3, `GET /projects/{id}/enabled-modules`) — unlike `OrgModuleOut`
+    (an org-admin bookkeeping view that deliberately includes non-entitled/
+    disabled modules, greyed out), this is the lean, read-only shape any
+    project member uses to render module nav entries/routes, so a
+    disabled/non-entitled module is simply absent rather than included in
+    some disabled state a plain nav rail has no use for."""
+
+    module_key: str
+    name: str
+    frontend_manifest: ModuleFrontendManifestOut | None = None
+
+
+class ModuleFrameTokenOut(BaseModel):
+    """A freshly-minted Tier B `<ModuleFrame>` token (module system Phase
+    3, `POST /orgs/{id}/modules/{module_key}/frame-token` / `POST
+    /projects/{id}/modules/{module_key}/frame-token`) — see `app.security.
+    create_module_frame_token`'s docstring for what it's scoped to and why."""
+
+    token: str
+    expires_in_minutes: int
+
+
+class OrgModuleEnablementUpdate(BaseModel):
+    """Sets an organisation's own explicit enable/disable choice for one
+    module. Rejected (403) by the endpoint if the organisation isn't
+    entitled to the module at all — see `routers.orgs.
+    update_org_module_enablement`."""
+
+    enabled: bool
+
+
+class ModuleRoleDefinitionOut(BaseModel):
+    """One available module-contributed role (module system Phase 2,
+    `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+    only roles of a *currently effectively-enabled* module are ever
+    returned (`app.modules.registry.list_enabled_module_roles`), so a role
+    belonging to a disabled/non-entitled module simply doesn't appear
+    here, mirroring `OrgModuleOut`'s neighbouring "the frontend just
+    renders what's returned" shape rather than the modules list's own
+    "included but greyed out" one — there is no partial/disabled state to
+    represent for a role option, only present-or-absent.
+
+    Defined once here rather than duplicated in `schemas/project.py`,
+    following the existing precedent of `orgs.py` importing a schema
+    defined in `schemas/project.py` (`MoveDirection`) for a shape needed
+    by more than one router — `routers/projects.py` imports this one from
+    here instead.
+    """
+
+    module_key: str
+    role_key: str
+    name: str
+    description: str
+
+
+class ModuleRoleGrantOut(BaseModel):
+    """One `UserModuleRole` grant, as surfaced on `OrgUserOut.module_roles`/
+    `EffectiveMemberOut.module_roles` (module system Phase 2) — deliberately
+    minimal (just enough for the frontend to match it against a
+    `ModuleRoleDefinitionOut` option's `module_key`/`role_key`), unlike
+    `ModuleRoleDefinitionOut` which also carries the display `name`/
+    `description` a *list of available roles* needs to render but a
+    *held-grant marker* on a user row does not (the frontend already has
+    the matching `ModuleRoleDefinitionOut` loaded to render from). See
+    `ModuleRoleDefinitionOut`'s own docstring for why this lives here
+    rather than in `schemas/project.py`.
+    """
+
+    module_key: str
+    role_key: str
+
+
+class ModuleRoleAssign(BaseModel):
+    """Body for `POST /orgs/{organization_id}/users/{user_id}/module-roles`
+    and `POST /projects/{project_id}/members/{user_id}/module-roles` — the
+    affected user is always the `{user_id}` path parameter (mirroring
+    `assign_org_role`'s own "URL, not body, is authoritative" convention),
+    so unlike `OrgRoleAssign`/`UserProjectRoleAssign` this body carries no
+    `user_id` field at all."""
+
+    module_key: str
+    role_key: str
+
+
 class OrgUserCreate(BaseModel):
     """Creates a brand-new user directly within an organisation."""
 
@@ -209,6 +355,12 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
+    # Module system Phase 2: this user's org-scoped module-contributed role
+    # grants, filtered to currently-enabled modules only (see
+    # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s
+    # population of this field) — a grant for a since-disabled module is
+    # simply omitted here, not deleted from `user_module_roles`.
+    module_roles: list[ModuleRoleGrantOut] = []
 
 
 class OrgPendingInviteCreate(BaseModel):
@@ -354,6 +506,35 @@ class OrgProjectSummaryOut(BaseModel):
     id: UUID
     name: str
     is_archived: bool
+
+
+class OrgOverviewStatsOut(BaseModel):
+    """The "Organisation Overview" page's stats header (compliance-module-
+    plan.md Phase 19) — project/requirement/member counts and total
+    uploaded file size.
+
+    `is_full_org_total` tells the frontend which of the two meanings the
+    numbers above have: an org admin or server admin gets the organisation's
+    real, unfiltered totals; anyone else gets counts scoped to what they can
+    actually see (`_accessible_project_ids`, the same visibility computation
+    `GET /projects` already uses), per the product decision recorded in
+    `docs/decisions.md`'s "Compliance module, human review follow-ups"
+    entry — "a user can't see the number of all projects if they themselves
+    can't see them all." Member count is never scoped (see that same entry):
+    any caller who can reach this endpoint at all already has permission to
+    browse the full member directory (`GET /{organization_id}/users`).
+
+    Known gap (see `get_org_overview_stats`'s own docstring for the full
+    reasoning): a scoped (non-admin) caller's `total_file_size_bytes`
+    excludes discussion-comment attachments (`CommentFile`) — a strict
+    undercount, never an over-exposure.
+    """
+
+    project_count: int
+    requirement_count: int
+    member_count: int
+    total_file_size_bytes: int
+    is_full_org_total: bool
 
 
 class DisplayNameLockUpdate(BaseModel):
