@@ -60,6 +60,25 @@ has no natural place for them anyway and nothing in §29 requires every
 listed field to appear in *both* export formats, only that reports overall
 be *capable* of including them.
 
+Report cell layout (Phase 42, docs/compliance-module-plan.md): the PDF's
+main requirement table (both report kinds) renders each requirement as one
+narrative cell — title always shown, then any of reasoning/description/
+clarification/justification/notes present, each on its own bold-prefixed
+line — via `_narrative_requirement_paragraph`, rather than one column per
+field. This mirrors `docs/requirements.md`'s own table convention (title,
+`**Reasoning:**`, `**Clarification:**`, all in one cell) rather than a
+spreadsheet-style layout, since a PDF report is read by a person for
+context, not machine-parsed the way the CSV export or the standard-
+definition JSON export (Phase 21) are. This replaced a real bug where the
+PDF's "Requirement" column was built from `_requirement_path`'s breadcrumb,
+which silently drops a requirement's own title whenever it also has a
+section reference (a `reference` won at every level, leaf included) — see
+`_requirement_path`'s own docstring for the full account. The CSV export is
+deliberately unaffected: it keeps one column per field for downstream
+spreadsheet/pivot use, since a CSV cell has no rich-text/bold-prefix concept
+and was never affected by the title-loss bug (it already carries the
+requirement's title as its own separate column).
+
 Security note (data classification, `docs/soc2/policies/
 data-classification-and-confidentiality-policy.md`): every field surfaced
 here (requirement text, justifications/notes, evidence titles/metadata,
@@ -183,21 +202,55 @@ def _ordered_requirements(requirements: list[ComplianceRequirement]) -> list[Com
     return ordered
 
 
-def _requirement_path(requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]) -> str:
-    """Builds a breadcrumb ("3 > 3.2 > 3.2.1 Equipment shall...") from a
-    requirement up through its ancestors, using each row's `reference` where
-    set and its `name` otherwise. Cycle-safe (a malformed tree can never
-    infinite-loop this), though `parent_requirement_id` cannot actually form
-    a cycle in practice — enforced structurally the same way `Project.
-    parent_project_id`'s own hierarchy is (see that field's own docstring)."""
+def _requirement_ancestor_breadcrumb(
+    requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]
+) -> str:
+    """Builds a breadcrumb ("3 > 3.2") of `requirement`'s ancestors *only*,
+    excluding `requirement` itself — the brief section-context line
+    `_narrative_requirement_paragraph` (Phase 42) prints above a
+    requirement's own title, so a report reader sees which section a
+    requirement lives under without the leaf's own reference/name being
+    printed twice. Uses each ancestor's `reference` where set and `name`
+    otherwise, same as `_requirement_path` below (which this function is
+    itself the ancestor-only half of). Cycle-safe the same way that
+    function documents, for the same reason.
+    """
     parts: list[str] = []
-    seen: set[uuid.UUID] = set()
-    current: ComplianceRequirement | None = requirement
+    seen: set[uuid.UUID] = {requirement.id}
+    current: ComplianceRequirement | None = (
+        by_id.get(requirement.parent_requirement_id) if requirement.parent_requirement_id else None
+    )
     while current is not None and current.id not in seen:
         seen.add(current.id)
         parts.append(current.reference or current.name)
         current = by_id.get(current.parent_requirement_id) if current.parent_requirement_id else None
     return " > ".join(reversed(parts))
+
+
+def _requirement_path(requirement: ComplianceRequirement, by_id: dict[uuid.UUID, ComplianceRequirement]) -> str:
+    """Builds a breadcrumb ("3 > 3.2 > 3.2.1") from a requirement up through
+    its ancestors, using each row's `reference` where set and its `name`
+    otherwise for *every* segment, including the leaf itself — this is the
+    CSV export's "Requirement path" column, a compact machine-oriented
+    locator, not the human-facing report cell. Cycle-safe (a malformed tree
+    can never infinite-loop this), though `parent_requirement_id` cannot
+    actually form a cycle in practice — enforced structurally the same way
+    `Project.parent_project_id`'s own hierarchy is (see that field's own
+    docstring).
+
+    Deliberately *not* used for the PDF's own "Requirement" column
+    (`_narrative_requirement_paragraph` below) — Phase 42 fixed a real bug
+    where that column used to call this function directly, which silently
+    drops a requirement's own `name` (its title) whenever it also has a
+    `reference`, since a `reference` wins over `name` at every level
+    including the leaf's. A CSV row always carries `requirement_name` as
+    its own separate column, so this function's leaf-drops-title behaviour
+    never lost the title there — only the PDF, which had no other column
+    carrying it, was actually affected.
+    """
+    leaf = requirement.reference or requirement.name
+    ancestors = _requirement_ancestor_breadcrumb(requirement, by_id)
+    return f"{ancestors} > {leaf}" if ancestors else leaf
 
 
 # --- Project-level report ---------------------------------------------------------
@@ -208,7 +261,17 @@ class ComplianceReportRequirementRow:
     """One requirement's project-specific assessment, under one assigned
     standard version — the main row of both the project- and (implicitly,
     via §29's "project compliance assessments") org-level compliance
-    reports' primary table."""
+    reports' primary table.
+
+    `ancestor_path`/`requirement_reasoning`/`requirement_description`/
+    `requirement_clarification` are Phase 42's own addition, feeding
+    `_narrative_requirement_paragraph`'s single-cell report layout — they
+    default to `""` so `_requirement_report_row_from_out` (the org report's
+    non-compliant/pending-approval appendix adapter, built from an already-
+    narrower `NonCompliantRequirementOut`/`PendingApprovalOut` response
+    schema with no reasoning/description/clarification fields of its own)
+    doesn't need to change to keep constructing this dataclass.
+    """
 
     standard_reference: str
     standard_name: str
@@ -227,6 +290,10 @@ class ComplianceReportRequirementRow:
     decision_note: str
     required_actions_summary: str
     evidence_titles: str
+    ancestor_path: str = ""
+    requirement_reasoning: str = ""
+    requirement_description: str = ""
+    requirement_clarification: str = ""
 
 
 @dataclass
@@ -419,6 +486,9 @@ def collect_project_compliance_report(
                 approval_decided_at=_fmt_datetime(pcr.approval_decided_at),
                 approval_decided_by_email=approver_emails.get(pcr.approval_decided_by, ""),
                 decision_note=pcr.decision_note, required_actions_summary=actions_summary, evidence_titles=evidence_titles,
+                ancestor_path=_requirement_ancestor_breadcrumb(requirement, by_id),
+                requirement_reasoning=requirement.reasoning, requirement_description=requirement.description,
+                requirement_clarification=requirement.last_clarification_note,
             ))
 
         # Review history for this assignment: its own project-level reviews,
@@ -545,6 +615,56 @@ def _styled_table(data: list[list], col_widths: list[float]) -> Table:
     return table
 
 
+def _narrative_requirement_paragraph(row: ComplianceReportRequirementRow) -> Paragraph:
+    """Builds one requirement's report-table cell as a single narrative
+    block — title, then each present free-text field on its own bold-
+    prefixed line — mirroring `docs/requirements.md`'s own table convention
+    (one requirement per cell: its own text, then `**Reasoning:**`/
+    `**Clarification:**`, newline-separated in the same cell) rather than
+    one column per field (Phase 42; see this module's own docstring for the
+    full "why").
+
+    The requirement's own title (`requirement_reference` + `requirement_
+    name`, or just `requirement_name` when there's no reference) is always
+    the lead line, regardless of whether `requirement_reference` is set —
+    the specific bug Phase 42 fixes (the PDF's "Requirement" column used to
+    be built from `_requirement_path`, which drops a requirement's own name
+    whenever it has a reference; see that function's own docstring).
+    `ancestor_path`, when non-empty, prints above the title in italics as
+    brief section context (e.g. "4 > 4.1") without duplicating the leaf's
+    own label.
+
+    Every other field (`requirement_reasoning`/`requirement_description`/
+    `requirement_clarification`/`justification`/`notes`) prints only when
+    non-empty, in that order, so a requirement with nothing to say beyond
+    its title and status doesn't grow a stack of empty "X:" lines — the
+    same "present-if-non-empty" convention `_markdown_to_flowables`'s core-
+    report sibling in `app.services.reports` already uses for its own
+    optional sections.
+
+    Every interpolated field value is escaped via `_safe()` before being
+    embedded in the returned `Paragraph`'s markup — only the literal
+    `<b>`/`<br/>`/`<i>` structural tags this function itself adds are ever
+    left unescaped, for the identical SSRF/markup-injection reason this
+    module's own docstring documents for `_safe()`.
+    """
+    segments: list[str] = []
+    if row.ancestor_path:
+        segments.append(f"<i>{_safe(row.ancestor_path)}</i>")
+    title = f"{row.requirement_reference} {row.requirement_name}".strip() if row.requirement_reference else row.requirement_name
+    segments.append(f"<b>{_safe(title)}</b>")
+    for label, value in (
+        ("Reasoning", row.requirement_reasoning),
+        ("Description", row.requirement_description),
+        ("Clarification", row.requirement_clarification),
+        ("Justification", row.justification),
+        ("Notes", row.notes),
+    ):
+        if value:
+            segments.append(f"<b>{label}:</b> {_safe(value)}")
+    return Paragraph("<br/>".join(segments), _TABLE_CELL_STYLE)
+
+
 def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceReportData) -> bytes:
     """Builds a PDF compliance report for one project — suitable for
     internal review and external audit preparation alike (§29's explicit
@@ -571,22 +691,27 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
     if not data.requirement_rows:
         story.append(Paragraph("This project has no assigned compliance standards.", _styles["BodyText"]))
     else:
-        header = [
-            "Standard", "Requirement", "Applicability", "Status", "Approval", "Actions", "Evidence", "Justification/Notes",
-        ]
+        # "Requirement" is a Phase 42 narrative cell (title, then any of
+        # reasoning/description/clarification/justification/notes present)
+        # rather than a separate column per field — see
+        # `_narrative_requirement_paragraph`'s own docstring. There is no
+        # longer a standalone "Justification/Notes" column: those two
+        # fields now fold into the same narrative cell as the requirement
+        # they belong to, and the Requirement column's width absorbs what
+        # that column used to occupy (both tables' total width unchanged).
+        header = ["Standard", "Requirement", "Applicability", "Status", "Approval", "Actions", "Evidence"]
         rows = [header]
         for r in data.requirement_rows:
             rows.append([
                 _p(f"{r.standard_reference} v{r.version_label}"),
-                _p(f"{r.requirement_path}"),
+                _narrative_requirement_paragraph(r),
                 _p(f"{r.effective_applicability} ({r.applicability_source})" if r.applicability_source != "Explicit" else r.effective_applicability),
                 _p(r.compliance_status),
                 _p(r.approval_state),
                 _p(r.required_actions_summary),
                 _p(r.evidence_titles),
-                _p(" / ".join(x for x in (r.justification, r.notes) if x)),
             ])
-        story.append(_styled_table(rows, [2.5 * cm, 4 * cm, 2.3 * cm, 1.8 * cm, 1.8 * cm, 1.4 * cm, 2.7 * cm, 2.5 * cm]))
+        story.append(_styled_table(rows, [2.5 * cm, 6.5 * cm, 2.3 * cm, 1.8 * cm, 1.8 * cm, 1.4 * cm, 2.7 * cm]))
 
     if data.evidence_rows:
         story.append(PageBreak())
@@ -632,7 +757,7 @@ def generate_project_compliance_csv(data: ProjectComplianceReportData) -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow([
-        "Standard reference", "Standard name", "Version", "Requirement path", "Requirement reference", "Requirement name",
+        "Standard reference", "Standard name", "Version", "Requirement path", "Requirement reference", "Requirement title",
         "Applicability", "Applicability source", "Compliance status", "Justification", "Notes", "Approval state",
         "Approval decided at", "Approved/rejected by", "Decision note", "Required actions", "Evidence",
     ])
@@ -792,15 +917,21 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
             table_rows.append(cell_fn(project_name, item))
         story.append(_styled_table(table_rows, col_widths))
 
+    # Both appendices' "Requirement" column is the same Phase 42 narrative
+    # cell the main project report uses (`_narrative_requirement_paragraph`)
+    # — for "Non-Compliant Requirements" this also folds in the separate
+    # "Justification" column the two-column version used to carry, since
+    # `_requirement_report_row_from_out` already populates `justification`
+    # on these rows the same way the project report's own rows do.
     _appendix(
-        "Non-Compliant Requirements", data.non_compliant_rows, ["Project", "Standard", "Requirement", "Justification"],
-        lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _p(r.requirement_path), _p(r.justification)],
-        [3 * cm, 3 * cm, 5.5 * cm, 5.5 * cm],
+        "Non-Compliant Requirements", data.non_compliant_rows, ["Project", "Standard", "Requirement"],
+        lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _narrative_requirement_paragraph(r)],
+        [3 * cm, 3 * cm, 11 * cm],
     )
     _appendix(
         "Pending Approvals", data.pending_approval_rows, ["Project", "Standard", "Requirement", "Status"],
-        lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _p(r.requirement_path), _p(r.compliance_status)],
-        [3.5 * cm, 3.5 * cm, 5.5 * cm, 4.5 * cm],
+        lambda project_name, r: [_p(project_name), _p(f"{r.standard_reference} v{r.version_label}"), _narrative_requirement_paragraph(r), _p(r.compliance_status)],
+        [3 * cm, 3 * cm, 7 * cm, 4 * cm],
     )
     _appendix(
         "Expiring/Expired Evidence", data.expiring_evidence_rows, ["Project", "Title", "Expiry", "Validity"],
