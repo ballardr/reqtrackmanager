@@ -41,16 +41,18 @@ def upgrade() -> None:
             compliance_requirement_id UUID NOT NULL REFERENCES compliance_requirements(id) ON DELETE CASCADE,
             link_type_id UUID NOT NULL REFERENCES requirement_link_type_definitions(id),
             created_by UUID NOT NULL REFERENCES users(id),
-            UNIQUE (requirement_id, compliance_requirement_id, link_type_id)
+            CONSTRAINT uq_compliance_req_traceability_links_req_creq_type
+                UNIQUE (requirement_id, compliance_requirement_id, link_type_id)
         )
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_compliance_req_traceability_links_requirement_id "
+        "CREATE INDEX IF NOT EXISTS "
+        "ix_compliance_requirement_traceability_links_requirement_id "
         "ON compliance_requirement_traceability_links (requirement_id)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_compliance_req_traceability_links_compliance_requirement_id "
+        "CREATE INDEX IF NOT EXISTS ix_compliance_req_traceability_links_creq_id "
         "ON compliance_requirement_traceability_links (compliance_requirement_id)"
     )
 

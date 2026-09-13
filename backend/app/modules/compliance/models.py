@@ -1061,9 +1061,9 @@ class ComplianceRequiredActionAssessment(UUIDPKMixin, TimestampMixin, Base):
         # identifier limit — Postgres silently truncates it at DDL time,
         # which then never matches SQLAlchemy's own (untruncated) computed
         # name and permanently fails `test_schema_migrations_match_models.py`
-        # regardless of what the migration itself names it. No other
-        # table/column combination in this codebase is long enough to hit
-        # this limit (confirmed by inspecting every table's own indexes).
+        # regardless of what the migration itself names it (see
+        # `ComplianceRequirementTraceabilityLink.compliance_requirement_id`
+        # below for the same issue hit a second time).
         Index(
             "ix_required_action_assessments_pcr_id", "project_compliance_requirement_id"
         ),
@@ -1549,13 +1549,25 @@ class ComplianceRequirementTraceabilityLink(UUIDPKMixin, TimestampMixin, Base):
             "requirement_id", "compliance_requirement_id", "link_type_id",
             name="uq_compliance_req_traceability_links_req_creq_type",
         ),
+        # Explicit, shortened index name: `index=True`'s auto-generated
+        # `ix_compliance_requirement_traceability_links_compliance_
+        # requirement_id` is 70 characters, over Postgres's 63-byte
+        # identifier limit — Postgres silently truncates it at DDL time,
+        # which then never matches SQLAlchemy's own (untruncated) computed
+        # name and permanently fails `test_schema_migrations_match_models.py`
+        # regardless of what the migration itself names it (same issue as
+        # `ComplianceRequiredActionAssessment.project_compliance_requirement_id`
+        # above).
+        Index(
+            "ix_compliance_req_traceability_links_creq_id", "compliance_requirement_id"
+        ),
     )
 
     requirement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), index=True
     )
     compliance_requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE"), index=True
+        UUID(as_uuid=True), ForeignKey("compliance_requirements.id", ondelete="CASCADE")
     )
     link_type_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id")
