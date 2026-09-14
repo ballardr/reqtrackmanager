@@ -99,7 +99,22 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             `proposed_action_type_id` (create a new one and link it) is
             set, mutually exclusive — see
             `routers/change_requests.py::create_change_request`'s
-            validation.
+            validation. `proposed_action_link_id` is also REMOVE_ACTION's
+            only field (Platform review 2026-09, Phase 8) — which of the
+            requirement's already-linked actions to unlink on approval;
+            reusing the same column rather than adding a duplicate one,
+            since the two kinds never coexist on one version row.
+        proposed_link_target_requirement_id / proposed_link_type_id:
+            ADD_LINK-only (Platform review 2026-09, Phase 8) — the
+            requirement to link to and which org-defined link type, mirroring
+            `RequirementLinkCreate`'s own two fields.
+        proposed_link_id: REMOVE_LINK-only (Platform review 2026-09, Phase
+            8) — the existing `RequirementLink` row to remove on approval.
+            `ondelete="SET NULL"` since the link could in principle be
+            removed by some other path between submission and approval;
+            `decide_change_request` re-checks it still exists before acting,
+            the same defensive re-check `proposed_attachment_file_ids`/
+            `proposed_action_link_id` already get.
     """
 
     __tablename__ = "change_request_versions"
@@ -160,6 +175,17 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # ADD_LINK/REMOVE_LINK-only (Platform review 2026-09, Phase 8) — see
+    # this class's own docstring for what each field means per kind.
+    proposed_link_target_requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
+    )
+    proposed_link_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    proposed_link_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_links.id", ondelete="SET NULL"), nullable=True
+    )
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, default=list)
     reason: Mapped[str] = mapped_column(Text)
     # Values for this project's custom change-request attribute definitions

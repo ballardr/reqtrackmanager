@@ -46,8 +46,9 @@ from app.models.enums import (
 from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement
+from app.models.requirement import Requirement, RequirementLink
 from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.schemas.change_request import (
     CHANGEABLE_REQUIREMENT_FIELDS,
@@ -80,7 +81,13 @@ from app.services.rbac import (
     require_project_role,
     require_project_view,
 )
-from app.services.requirements import apply_new_version, create_requirement, get_current_version, is_locked
+from app.services.requirements import (
+    apply_new_version,
+    create_requirement,
+    get_current_version,
+    is_locked,
+    requires_change_request_for_links,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/change-requests", tags=["change-requests"])
 
@@ -141,6 +148,9 @@ def _to_out(db: Session, cr: ChangeRequest, version: ChangeRequestVersion, curre
         proposed_action_type_id=version.proposed_action_type_id,
         proposed_action_assignee_id=version.proposed_action_assignee_id,
         proposed_action_due_date=version.proposed_action_due_date,
+        proposed_link_target_requirement_id=version.proposed_link_target_requirement_id,
+        proposed_link_type_id=version.proposed_link_type_id,
+        proposed_link_id=version.proposed_link_id,
     )
 
 
@@ -271,6 +281,75 @@ def create_change_request(
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, "proposed_action_type_id must be an action type defined in this project."
                 )
+    elif payload.kind == ChangeRequestKind.REMOVE_ACTION:
+        # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own guard
+        # above, and is unconditional (no project/org opt-in): removing an
+        # already-linked action from a locked requirement always requires a
+        # change request, closing the asymmetry `unlink_action` used to have
+        # with the (already-gated) add side.
+        if payload.requirement_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to remove an action.")
+        requirement = db.get(Requirement, payload.requirement_id)
+        if requirement is None or requirement.project_id != project_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+        if not is_locked(get_current_version(db, requirement.id)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This requirement isn't approved yet — remove the action directly instead of via a change request.",
+            )
+        if payload.proposed_action_link_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_action_link_id is required to remove an action.")
+        action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
+        existing = db.scalar(
+            select(RequirementActionLink).where(
+                RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
+            )
+        )
+        if existing is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is not linked to this requirement.")
+    elif payload.kind in (ChangeRequestKind.ADD_LINK, ChangeRequestKind.REMOVE_LINK):
+        # Platform review 2026-09, Phase 8 — a project/org opt-in sibling of
+        # ADD_ACTION/REMOVE_ACTION above: only reachable once
+        # `services.requirements.requires_change_request_for_links` is true
+        # for this project (links otherwise stay ungated — see
+        # `RequirementLink`'s model docstring), *and* the target requirement
+        # is locked.
+        if payload.requirement_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to change a link.")
+        requirement = db.get(Requirement, payload.requirement_id)
+        if requirement is None or requirement.project_id != project_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
+        if not is_locked(get_current_version(db, requirement.id)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This requirement isn't approved yet — change its links directly instead of via a change request.",
+            )
+        if not requires_change_request_for_links(db, project):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This project doesn't require links to be changed via a change request — change it directly instead.",
+            )
+        if payload.kind == ChangeRequestKind.ADD_LINK:
+            if payload.proposed_link_target_requirement_id is None or payload.proposed_link_type_id is None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "proposed_link_target_requirement_id and proposed_link_type_id are required to add a link.",
+                )
+            target = db.get(Requirement, payload.proposed_link_target_requirement_id)
+            if target is None or target.project_id != project_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_target_requirement_id.")
+            link_type = db.get(RequirementLinkTypeDefinition, payload.proposed_link_type_id)
+            if link_type is None or link_type.organization_id != project.organization_id:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "proposed_link_type_id must be a link type defined in this project's organisation.",
+                )
+        else:
+            if payload.proposed_link_id is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_id is required to remove a link.")
+            link = db.get(RequirementLink, payload.proposed_link_id)
+            if link is None or requirement.id not in (link.source_requirement_id, link.target_requirement_id):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_id.")
     else:
         # NEW_REQUIREMENT ignores changed_fields entirely (there's no
         # existing version to diff against) but still needs the fields a
@@ -358,6 +437,9 @@ def create_change_request(
         proposed_action_type_id=payload.proposed_action_type_id,
         proposed_action_assignee_id=payload.proposed_action_assignee_id,
         proposed_action_due_date=payload.proposed_action_due_date,
+        proposed_link_target_requirement_id=payload.proposed_link_target_requirement_id,
+        proposed_link_type_id=payload.proposed_link_type_id,
+        proposed_link_id=payload.proposed_link_id,
     )
     db.add(version)
     log_event(db, entity_type="change_request", entity_id=cr.id, action="created",
@@ -710,6 +792,74 @@ def decide_change_request(
                             "via": "change_request", "change_request_id": str(cr.id),
                         },
                     )
+        elif cr.kind == ChangeRequestKind.REMOVE_ACTION:
+            # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own
+            # re-check above: the link could have already been removed
+            # directly (before this requirement was re-locked, say) between
+            # submission and approval, so re-verify rather than assume.
+            requirement = db.get(Requirement, cr.requirement_id)
+            existing = db.scalar(
+                select(RequirementActionLink).where(
+                    RequirementActionLink.requirement_id == requirement.id,
+                    RequirementActionLink.action_id == version.proposed_action_link_id,
+                )
+            )
+            if existing is not None:
+                log_event(
+                    db, entity_type="requirement_action_link", entity_id=existing.action_id, action="unlinked",
+                    actor_id=current_user.id, project_id=project_id,
+                    detail={
+                        "requirement_id": str(requirement.id), "action_id": str(existing.action_id),
+                        "via": "change_request", "change_request_id": str(cr.id),
+                    },
+                )
+                db.delete(existing)
+        elif cr.kind == ChangeRequestKind.ADD_LINK:
+            # Platform review 2026-09, Phase 8 — same re-check posture as
+            # ADD_ACTION/attachments above.
+            requirement = db.get(Requirement, cr.requirement_id)
+            target = db.get(Requirement, version.proposed_link_target_requirement_id)
+            link_type = db.get(RequirementLinkTypeDefinition, version.proposed_link_type_id)
+            if target is not None and target.project_id == project_id and link_type is not None:
+                existing = db.scalar(
+                    select(RequirementLink).where(
+                        RequirementLink.source_requirement_id == requirement.id,
+                        RequirementLink.target_requirement_id == target.id,
+                        RequirementLink.link_type_id == link_type.id,
+                    )
+                )
+                if existing is None:
+                    link = RequirementLink(
+                        source_requirement_id=requirement.id, target_requirement_id=target.id,
+                        link_type_id=link_type.id, created_by=cr.creator_id,
+                    )
+                    db.add(link)
+                    db.flush()
+                    log_event(
+                        db, entity_type="requirement_link", entity_id=link.id, action="created",
+                        actor_id=current_user.id, project_id=project_id,
+                        detail={
+                            "source_requirement_id": str(requirement.id), "target_requirement_id": str(target.id),
+                            "link_type_id": str(link_type.id),
+                            "via": "change_request", "change_request_id": str(cr.id),
+                        },
+                    )
+        elif cr.kind == ChangeRequestKind.REMOVE_LINK:
+            # Platform review 2026-09, Phase 8 — same re-check posture as
+            # ADD_LINK above: the link may already have been removed via
+            # some other path between submission and approval.
+            link = db.get(RequirementLink, version.proposed_link_id)
+            if link is not None:
+                log_event(
+                    db, entity_type="requirement_link", entity_id=link.id, action="deleted",
+                    actor_id=current_user.id, project_id=project_id,
+                    detail={
+                        "source_requirement_id": str(link.source_requirement_id),
+                        "target_requirement_id": str(link.target_requirement_id),
+                        "via": "change_request", "change_request_id": str(cr.id),
+                    },
+                )
+                db.delete(link)
         else:
             project = db.get(Project, project_id)
             component = db.get(ProjectComponent, version.proposed_component_id)

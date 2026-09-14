@@ -85,6 +85,8 @@ def clone_project(
     new_project = Project(
         organization_id=source.organization_id, name=name, summary=summary,
         allow_member_change_requests=source.allow_member_change_requests,
+        require_change_request_for_approved_links=source.require_change_request_for_approved_links,
+        exempt_from_org_link_lock=source.exempt_from_org_link_lock,
         terminology=dict(source.terminology),
         status_id=get_default_project_status_id(db, source.organization_id),
         parent_project_id=parent_project_id,

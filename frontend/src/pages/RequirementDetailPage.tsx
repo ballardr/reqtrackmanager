@@ -5,11 +5,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
+  Category,
   ChangeEntry,
   Comment,
+  Component,
   CustomFieldDefinition,
   FileAsset,
   LinkTypeDefinition,
+  Organization,
   OrgUser,
   Project,
   ProjectStage,
@@ -36,6 +39,7 @@ import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { Modal } from "../components/Modal";
 import { Popover } from "../components/Popover";
+import { RequirementLinkPickerModal } from "../components/RequirementLinkPickerModal";
 import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
 import { SubscribeButton } from "../components/SubscribeButton";
@@ -57,13 +61,21 @@ import { getInstalledModule } from "../modules/registry";
  * type's forward/reverse names applies), and an Actions card for
  * requirement actions (review/test/etc.) linked via `RequirementActionLink`.
  * Links aren't gated by `is_locked` — they're metadata about the
- * requirement, not its own governed content. Actions *are* now gated
- * (2026-08 UX audit roadmap item 514, a deliberate reversal of this page's
- * own former "actions are metadata too" stance): once locked, adding or
- * linking one requires an `ADD_ACTION` change request instead of the
- * direct endpoint, the same change-request-only-once-locked rule the
- * requirement's own fields already follow (`services.requirements.
- * LOCKED_STATUSES`) — see `docs/decisions.md` for the reasoning.
+ * requirement, not its own governed content, *by default* — a project (or
+ * an org-wide force, minus a per-project exemption) can opt into gating
+ * link add/remove too (platform review 2026-09, Phase 8:
+ * `Project.require_change_request_for_approved_links`/
+ * `Organization.force_require_change_request_for_approved_links`), routing
+ * through `ADD_LINK`/`REMOVE_LINK` change requests the same way actions
+ * already do. Actions *are* always gated once locked (2026-08 UX audit
+ * roadmap item 514, a deliberate reversal of this page's own former
+ * "actions are metadata too" stance, extended by Phase 8 to the remove
+ * side too — `unlink_action` had no lock check at all until then): once
+ * locked, adding, linking, or removing one requires an `ADD_ACTION`/
+ * `REMOVE_ACTION` change request instead of the direct endpoint, the same
+ * change-request-only-once-locked rule the requirement's own fields
+ * already follow (`services.requirements.LOCKED_STATUSES`) — see
+ * `docs/decisions.md` for the reasoning.
  */
 export function RequirementDetailPage() {
   const strings = useStrings();
@@ -139,21 +151,45 @@ export function RequirementDetailPage() {
   // right after it (org users, link types) succeed for this user.
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [showResourcePicker, setShowResourcePicker] = useState(false);
+  // Platform review 2026-09, Phase 8 — the project's own
+  // `require_change_request_for_approved_links` plus the org's
+  // `force_require_change_request_for_approved_links` (minus this
+  // project's `exempt_from_org_link_lock`) determine whether link
+  // add/remove is gated the same way actions already are. Best-effort: if
+  // the org fetch fails (e.g. this user has no org role at all, the same
+  // "org member directory isn't reachable" case the org users/link types
+  // fetch below already tolerates), `orgForceLinksLocked` just stays
+  // false rather than breaking the page.
+  const [project, setProject] = useState<Project | null>(null);
+  const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
 
   // --- Traceability links (C-G-09) ------------------------------------
-  // Create (`Popover`, one door per style guide Principle 3) and remove
-  // (`ConfirmDialog`, Tier 1) both converted from permanently-visible
-  // inline/immediate interactions in the 2026-08 UX audit's sixth pass —
-  // see docs/ux-audit-2026-08.md "Links and linked actions."
+  // Target-finding UI is a `Modal` with Search/Requirements/module-
+  // contributed tabs (platform-review-2026-09 Phase 7's
+  // `RequirementLinkPickerModal`) — replaces the old flat-`<select>`
+  // `Popover`, which stopped scaling once a project had many requirements.
+  // Remove still goes through `ConfirmDialog` (Tier 1), unchanged from the
+  // 2026-08 UX audit's sixth pass — see docs/ux-audit-2026-08.md "Links and
+  // linked actions."
   const [links, setLinks] = useState<RequirementLink[]>([]);
   const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
   const [projectRequirements, setProjectRequirements] = useState<Requirement[]>([]);
-  const [newLinkTargetId, setNewLinkTargetId] = useState("");
-  const [newLinkTypeId, setNewLinkTypeId] = useState("");
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
-  const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
+  const [components, setComponents] = useState<Component[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [linkPickerModalOpen, setLinkPickerModalOpen] = useState(false);
   const [linkToRemove, setLinkToRemove] = useState<RequirementLink | null>(null);
+  // Platform review 2026-09, Phase 8 — only rendered/required when
+  // `linksLockedForCR`, mirroring `addActionReason` below.
+  const [removeLinkReason, setRemoveLinkReason] = useState("");
+  // Bumped whenever any link involving this requirement changes — core-to-
+  // core (add/remove) or a module-contributed kind added via the picker
+  // modal's `requirementLinkPickerTabs` tabs. Passed into every
+  // `requirementDetailSections` render below as `refreshToken`, since a
+  // section that owns its own link list (e.g. Compliance's own linked-
+  // compliance-requirements list) is a different component instance than
+  // the picker modal and has no other way to learn a link was just added
+  // from it.
+  const [linksRefreshToken, setLinksRefreshToken] = useState(0);
   // Extra module-contributed link sections (compliance-module-plan.md
   // Phase 34) — e.g. Compliance's own linked-compliance-requirements list,
   // rendered inside this same Links card below the core-to-core links.
@@ -167,7 +203,26 @@ export function RequirementDetailPage() {
       ? enabledModules.flatMap((entry) =>
           (getInstalledModule(entry.module_key)?.requirementDetailSections ?? []).map((section) => ({
             key: `${entry.module_key}:${section.key}`,
-            node: section.render({ projectId, requirementId, organizationId }),
+            node: section.render({ projectId, requirementId, organizationId, refreshToken: linksRefreshToken }),
+          }))
+        )
+      : [];
+  // Extra tabs the currently-enabled modules contribute to the link-picker
+  // modal (`requirementLinkPickerTabs`, platform-review-2026-09 Phase 7) —
+  // e.g. Compliance's own standard -> version -> requirement cascade. Each
+  // tab's `onLinked` closes the modal and bumps `linksRefreshToken`; this
+  // page has no idea what kind of link a contributed tab just created.
+  function onModuleTabLinked() {
+    setLinkPickerModalOpen(false);
+    setLinksRefreshToken((t) => t + 1);
+  }
+  const contributedPickerTabs =
+    projectId && requirementId && organizationId
+      ? enabledModules.flatMap((entry) =>
+          (getInstalledModule(entry.module_key)?.requirementLinkPickerTabs ?? []).map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            node: tab.render({ projectId, requirementId, organizationId, onLinked: onModuleTabLinked }),
           }))
         )
       : [];
@@ -198,6 +253,10 @@ export function RequirementDetailPage() {
   const [addActionReason, setAddActionReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionToUnlink, setActionToUnlink] = useState<RequirementAction | null>(null);
+  // Platform review 2026-09, Phase 8 — only rendered/required once
+  // `requirement.is_locked` (unlinking an action is unconditionally gated
+  // once locked, unlike links above).
+  const [unlinkActionReason, setUnlinkActionReason] = useState("");
 
   function userDisplayName(userId: string | null): string {
     if (!userId) return strings.reviews.unassigned;
@@ -206,7 +265,7 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, act, lnks, actTypes, linkedActs, allActs, reqs] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, act, lnks, actTypes, linkedActs, allActs, reqs, comps, cats] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
@@ -219,6 +278,8 @@ export function RequirementDetailPage() {
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
       api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
+      api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
+      api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
     ]);
     setRequirement(req);
     setHistory(hist);
@@ -235,6 +296,8 @@ export function RequirementDetailPage() {
     setLinkedActions(linkedActs);
     setProjectActions(allActs);
     setProjectRequirements(reqs);
+    setComponents(comps);
+    setCategories(cats);
     if (!formDirtyRef.current) {
       setForm({
         name: req.name,
@@ -278,25 +341,42 @@ export function RequirementDetailPage() {
     showToast(strings.resourcePicker.attachedToast(fileIds.length));
   }
 
-  async function addLink() {
-    if (!newLinkTargetId || !newLinkTypeId) return;
-    setLinkError(null);
-    try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`, {
-        target_requirement_id: newLinkTargetId,
-        link_type_id: newLinkTypeId,
+  /** Platform review 2026-09, Phase 8 — once `linksLockedForCR`, submits an
+   * `add_link` change request instead of calling the direct endpoint (the
+   * same branch `linkExistingAction`/`createAndLinkAction` below already
+   * take for `add_action`). `reason` is required by the picker modal's own
+   * validation whenever `linksLocked` is true, so it's always non-empty
+   * here in that case. */
+  async function addLink(targetRequirementId: string, linkTypeId: string, reason?: string) {
+    if (linksLockedForCR) {
+      await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+        kind: "add_link", requirement_id: requirementId,
+        proposed_link_target_requirement_id: targetRequirementId, proposed_link_type_id: linkTypeId,
+        reason: reason ?? "",
       });
-      setNewLinkTargetId("");
-      setNewLinkTypeId("");
-      setAddLinkPopoverOpen(false);
-      reload();
-    } catch (err) {
-      setLinkError(err instanceof Error ? err.message : strings.common.error);
+      showToast(strings.changeRequests.created);
+    } else {
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/links`, {
+        target_requirement_id: targetRequirementId,
+        link_type_id: linkTypeId,
+      });
     }
+    setLinkPickerModalOpen(false);
+    setLinksRefreshToken((t) => t + 1);
+    reload();
   }
 
-  async function removeLink(linkId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/links/${linkId}`);
+  /** Same `linksLockedForCR` branch as `addLink` above, for `remove_link`. */
+  async function removeLink(linkId: string, reason?: string) {
+    if (linksLockedForCR) {
+      await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+        kind: "remove_link", requirement_id: requirementId,
+        proposed_link_id: linkId, reason: reason ?? "",
+      });
+      showToast(strings.changeRequests.created);
+    } else {
+      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/links/${linkId}`);
+    }
     reload();
   }
 
@@ -361,8 +441,20 @@ export function RequirementDetailPage() {
     }
   }
 
-  async function unlinkAction(actionId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/${actionId}`);
+  /** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+   * lock check at all, an asymmetry with the already-gated add side (item
+   * 514); unconditional across every project, unlike `removeLink` above
+   * which only gates when `linksLockedForCR`. */
+  async function unlinkAction(actionId: string, reason?: string) {
+    if (requirement?.is_locked) {
+      await api.post(`/api/v1/projects/${projectId}/change-requests`, {
+        kind: "remove_action", requirement_id: requirementId,
+        proposed_action_link_id: actionId, reason: reason ?? "",
+      });
+      showToast(strings.changeRequests.created);
+    } else {
+      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions/${actionId}`);
+    }
     reload();
   }
 
@@ -374,22 +466,46 @@ export function RequirementDetailPage() {
   useEffect(() => {
     if (!projectId) return;
     (async () => {
+      let proj: Project;
       try {
-        const project = await api.get<Project>(`/api/v1/projects/${projectId}`);
-        setOrganizationId(project.organization_id);
-        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${project.organization_id}/users`);
+        proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
+      } catch {
+        return;
+      }
+      setOrganizationId(proj.organization_id);
+      setProject(proj);
+      try {
+        const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${project.organization_id}/link-types`));
+        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`));
+        // Platform review 2026-09, Phase 8 — `OrganizationOut.
+        // force_require_change_request_for_approved_links` is readable by
+        // any org member (unlike most other org policy toggles), so this
+        // shares the same try/catch as the org-member-only calls above.
+        const org = await api.get<Organization>(`/api/v1/orgs/${proj.organization_id}`);
+        setOrgForceLinksLocked(org.force_require_change_request_for_approved_links);
       } catch {
         // Org member directory isn't reachable for this user (e.g. no org
         // role) — fall back to the plain user-ID input rather than break
         // the page. Link types are best-effort from the same call; the
         // Links card below already handles an empty `linkTypes` list by
         // simply having nothing to offer in its type picker.
+        // `orgForceLinksLocked` stays at its default (false) — see its
+        // own state comment.
         setReviewerPickerUnavailable(true);
       }
     })();
   }, [projectId]);
+
+  // Platform review 2026-09, Phase 8 — mirrors `services.requirements.
+  // requires_change_request_for_links`'s resolution exactly: the project's
+  // own opt-in always wins when set; otherwise the org's force applies
+  // unless this project is marked exempt.
+  const requiresCRForLinks = !!(
+    project?.require_change_request_for_approved_links ||
+    (orgForceLinksLocked && !project?.exempt_from_org_link_lock)
+  );
+  const linksLockedForCR = !!requirement?.is_locked && requiresCRForLinks;
 
   async function save() {
     if (!requirement) return;
@@ -911,57 +1027,24 @@ export function RequirementDetailPage() {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.links}</h2>
           <button
-            ref={addLinkTriggerRef}
             className="btn btn-primary"
             disabled={eligibleLinkTargets.length === 0}
             title={eligibleLinkTargets.length === 0 ? strings.requirements.noEligibleLinkTargets : undefined}
-            onClick={() => {
-              setLinkError(null);
-              setAddLinkPopoverOpen((o) => !o);
-            }}
+            onClick={() => setLinkPickerModalOpen(true)}
           >
             <Plus size={14} /> {strings.requirements.addLink}
           </button>
-          {addLinkPopoverOpen && (
-            <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.targetRequirement}
-                <select
-                  className="input" aria-label={strings.requirements.targetRequirement}
-                  value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
-                >
-                  <option value="">{strings.requirements.selectARequirementToLink}</option>
-                  {eligibleLinkTargets.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.unique_code} — {r.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.linkType}
-                <select
-                  className="input" aria-label={strings.requirements.linkType}
-                  value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
-                >
-                  <option value="">{strings.requirements.linkType}</option>
-                  {linkTypes.map((lt) => (
-                    <option key={lt.id} value={lt.id}>
-                      {lt.forward_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn" onClick={() => setAddLinkPopoverOpen(false)}>
-                  {strings.common.cancel}
-                </button>
-                <button className="btn btn-primary" onClick={addLink} disabled={!newLinkTargetId || !newLinkTypeId}>
-                  {strings.requirements.addLink}
-                </button>
-              </div>
-            </Popover>
+          {linkPickerModalOpen && (
+            <RequirementLinkPickerModal
+              eligibleTargets={eligibleLinkTargets}
+              components={components}
+              categories={categories}
+              linkTypes={linkTypes}
+              extraTabs={contributedPickerTabs}
+              linksLocked={linksLockedForCR}
+              onAddCoreLink={addLink}
+              onClose={() => setLinkPickerModalOpen(false)}
+            />
           )}
         </div>
         {links.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
@@ -987,7 +1070,10 @@ export function RequirementDetailPage() {
                 className="btn btn-danger"
                 title={strings.requirements.removeLink}
                 aria-label={strings.requirements.removeLink}
-                onClick={() => setLinkToRemove(link)}
+                onClick={() => {
+                  setRemoveLinkReason("");
+                  setLinkToRemove(link);
+                }}
               >
                 <Trash2 size={14} />
               </button>
@@ -995,13 +1081,30 @@ export function RequirementDetailPage() {
           ))}
         {linkToRemove && (
           <ConfirmDialog
-            title={strings.requirements.removeLinkTitle}
-            message={strings.requirements.removeLinkConfirm}
+            title={linksLockedForCR ? strings.requirements.removeLinkViaChangeRequestTitle : strings.requirements.removeLinkTitle}
+            message={
+              linksLockedForCR ? (
+                <span className="stack" style={{ gap: "0.5rem" }}>
+                  <span>{strings.requirements.removeLinkViaChangeRequestConfirm}</span>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.changeRequests.reason}
+                    <textarea
+                      className="input" rows={2} aria-label={strings.changeRequests.reason}
+                      value={removeLinkReason} onChange={(e) => setRemoveLinkReason(e.target.value)}
+                    />
+                  </label>
+                </span>
+              ) : (
+                strings.requirements.removeLinkConfirm
+              )
+            }
             confirmLabel={strings.requirements.removeLink}
+            confirmDisabled={linksLockedForCR && !removeLinkReason.trim()}
             onConfirm={async () => {
               const id = linkToRemove.id;
+              const reason = removeLinkReason;
               setLinkToRemove(null);
-              await removeLink(id);
+              await removeLink(id, reason);
             }}
             onCancel={() => setLinkToRemove(null)}
           />
@@ -1104,7 +1207,10 @@ export function RequirementDetailPage() {
               className="btn btn-danger"
               title={strings.requirements.unlinkAction}
               aria-label={strings.requirements.unlinkAction}
-              onClick={() => setActionToUnlink(a)}
+              onClick={() => {
+                setUnlinkActionReason("");
+                setActionToUnlink(a);
+              }}
             >
               <Trash2 size={14} />
             </button>
@@ -1112,13 +1218,30 @@ export function RequirementDetailPage() {
         ))}
         {actionToUnlink && (
           <ConfirmDialog
-            title={strings.requirements.unlinkActionTitle}
-            message={strings.requirements.unlinkActionConfirm}
+            title={requirement.is_locked ? strings.requirements.unlinkActionViaChangeRequestTitle : strings.requirements.unlinkActionTitle}
+            message={
+              requirement.is_locked ? (
+                <span className="stack" style={{ gap: "0.5rem" }}>
+                  <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
+                  <label className="stack" style={{ gap: "0.25rem" }}>
+                    {strings.changeRequests.reason}
+                    <textarea
+                      className="input" rows={2} aria-label={strings.changeRequests.reason}
+                      value={unlinkActionReason} onChange={(e) => setUnlinkActionReason(e.target.value)}
+                    />
+                  </label>
+                </span>
+              ) : (
+                strings.requirements.unlinkActionConfirm
+              )
+            }
             confirmLabel={strings.requirements.unlinkAction}
+            confirmDisabled={requirement.is_locked && !unlinkActionReason.trim()}
             onConfirm={async () => {
               const id = actionToUnlink.id;
+              const reason = unlinkActionReason;
               setActionToUnlink(null);
-              await unlinkAction(id);
+              await unlinkAction(id, reason);
             }}
             onCancel={() => setActionToUnlink(null)}
           />

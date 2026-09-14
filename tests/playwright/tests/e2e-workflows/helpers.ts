@@ -46,6 +46,15 @@ export const PROJECT_NAMES = {
    * configuration. */
   gamma3: "Gamma-3 Hierarchy Parent",
   gamma4: "Gamma-4 Hierarchy Child",
+  /** Platform review 2026-09, Phase 8 — dedicated to link-and-action-
+   * change-request-locking.spec.ts (see LINK_LOCK_PROJECT_NAME in
+   * backend/scripts/seed_e2e_dataset.py): `require_change_request_for_
+   * approved_links` is on; otherwise given components/categories only —
+   * that spec creates, links, and approves its own throwaway requirements
+   * each run rather than consuming a fixed seeded fixture (which
+   * unlink/remove/approve would make non-idempotent). No other spec may
+   * depend on this project's setting. */
+  epsilon1: "Epsilon-1 Link Lock Demo",
 } as const;
 
 /** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the

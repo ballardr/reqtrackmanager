@@ -14,6 +14,7 @@ const org: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  force_require_change_request_for_approved_links: false,
 };
 
 const orgUser: OrgUser = {
@@ -26,6 +27,7 @@ const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
   pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
+  force_require_change_request_for_approved_links: false,
 };
 
 const ssoConfig: OrgSsoConfig = {
@@ -1116,6 +1118,34 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
         expect.objectContaining({ allow_relaxed_child_project_creation: false })
+      )
+    );
+  },
+};
+
+/** Platform review 2026-09, Phase 8 — defaults off (permissive); an org
+ * admin turning it on forces every project's own
+ * `require_change_request_for_approved_links` unless that project is
+ * individually marked exempt (`ProjectAdminPage.stories.tsx`'s
+ * `OverviewTabForcedByOrgPolicy`). */
+export const AdvancedSettingsForceRequireChangeRequestForApprovedLinks: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    const toggle = await waitFor(() =>
+      canvas.getByRole("switch", { name: "Require a change request for link changes on approved requirements, org-wide" })
+    );
+    await expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await userEvent.click(canvas.getByRole("button", { name: "Save security settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ force_require_change_request_for_approved_links: true })
       )
     );
   },

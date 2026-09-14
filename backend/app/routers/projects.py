@@ -777,7 +777,9 @@ def list_projects(
                 id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
                 created_at=p.created_at, updated_at=p.updated_at,
                 is_archived=p.is_archived, is_template=p.is_template,
-                allow_member_change_requests=p.allow_member_change_requests, visibility=p.visibility,
+                allow_member_change_requests=p.allow_member_change_requests,
+                require_change_request_for_approved_links=p.require_change_request_for_approved_links,
+                exempt_from_org_link_lock=p.exempt_from_org_link_lock, visibility=p.visibility,
                 terminology=p.terminology, status_id=p.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
@@ -1033,6 +1035,10 @@ def update_project(
         project.summary = payload.summary
     if payload.allow_member_change_requests is not None:
         project.allow_member_change_requests = payload.allow_member_change_requests
+    if payload.require_change_request_for_approved_links is not None:
+        project.require_change_request_for_approved_links = payload.require_change_request_for_approved_links
+    if payload.exempt_from_org_link_lock is not None:
+        project.exempt_from_org_link_lock = payload.exempt_from_org_link_lock
     if payload.is_template is not None:
         project.is_template = payload.is_template
     if payload.can_be_parent is not None:
@@ -1246,7 +1252,9 @@ def get_project_children(
                 id=c.id, organization_id=c.organization_id, name=c.name, summary=c.summary,
                 created_at=c.created_at, updated_at=c.updated_at,
                 is_archived=c.is_archived, is_template=c.is_template,
-                allow_member_change_requests=c.allow_member_change_requests, visibility=c.visibility,
+                allow_member_change_requests=c.allow_member_change_requests,
+                require_change_request_for_approved_links=c.require_change_request_for_approved_links,
+                exempt_from_org_link_lock=c.exempt_from_org_link_lock, visibility=c.visibility,
                 terminology=c.terminology, status_id=c.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,

@@ -11,6 +11,7 @@ import type {
   ModuleRoleDefinition,
   OrgGroup,
   OrgGroupProjectRoleSummary,
+  Organization,
   PendingInvite,
   ProjectGroup,
   ProjectMemberSource,
@@ -64,14 +65,28 @@ function mockProjectAdminApis(
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
     moduleRoles?: ModuleRoleDefinition[];
+    // Platform review 2026-09, Phase 8 — the org's own
+    // `force_require_change_request_for_approved_links`, fetched via a bare
+    // `GET /orgs/{id}` alongside the other org-scoped calls below.
+    organization?: Organization;
   } = {}
 ) {
   const groupsForThisStory = overrides.groups ?? groups;
   const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
   const customFields = overrides.customFields ?? [];
   const project = overrides.project ?? buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
+  const organization: Organization = overrides.organization ?? {
+    id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
+    default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
+    disabled_at: null, accent_color_hex: null, header_title: null,
+    email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    force_require_change_request_for_approved_links: false,
+  };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
+    // Checked before the "/orgs/" + "/groups"/"/users" branches below,
+    // which this bare org-detail path doesn't match (no further segment).
+    if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
     if (path.includes("/stages")) return stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
@@ -184,6 +199,78 @@ export const OverviewTabSetOrgWideVisibility: Story = {
     );
   },
 };
+
+/** Platform review 2026-09, Phase 8 — the plain, unforced case: the
+ * project's own opt-in checkbox is enabled and starts unchecked (the
+ * permissive default), and no exemption checkbox is shown since the org
+ * isn't forcing anything. */
+export const OverviewTabRequireChangeRequestForLinks: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const checkbox = await waitFor(() =>
+      canvas.getByLabelText("Require a change request to add/remove links on approved requirements")
+    );
+    await expect(checkbox).toBeEnabled();
+    await expect(checkbox).not.toBeChecked();
+    await expect(canvas.queryByLabelText(/Exempt this project/)).not.toBeInTheDocument();
+
+    await userEvent.click(checkbox);
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ require_change_request_for_approved_links: true })
+      )
+    );
+  },
+};
+
+/** Once the organisation forces this policy, the project's own checkbox
+ * renders checked-and-disabled with an explanatory `title` (the same
+ * disabled+title convention `ProjectMembersTable.tsx` uses) and an
+ * "Exempt this project" checkbox appears as the only way out. */
+export const OverviewTabForcedByOrgPolicy: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ organization: { ...buildForcedOrg() } });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const checkbox = await waitFor(() =>
+      canvas.getByLabelText("Require a change request to add/remove links on approved requirements")
+    );
+    await expect(checkbox).toBeChecked();
+    await expect(checkbox).toBeDisabled();
+    const exemptCheckbox = canvas.getByLabelText(/Exempt this project/);
+    await expect(exemptCheckbox).not.toBeChecked();
+
+    await userEvent.click(exemptCheckbox);
+    await expect(checkbox).toBeEnabled();
+    await expect(checkbox).not.toBeChecked();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ exempt_from_org_link_lock: true })
+      )
+    );
+  },
+};
+
+function buildForcedOrg(): Organization {
+  return {
+    id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
+    default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
+    disabled_at: null, accent_color_hex: null, header_title: null,
+    email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    force_require_change_request_for_approved_links: true,
+  };
+}
 
 export const OverviewTabArchive: Story = {
   beforeEach: () => {

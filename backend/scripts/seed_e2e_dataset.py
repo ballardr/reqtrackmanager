@@ -147,6 +147,15 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
 TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
 TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
 
+# Platform review 2026-09, Phase 8: a project dedicated solely to the
+# require-change-request-for-links Playwright coverage, per this file's own
+# established "dedicated project, not a shared one" convention (see
+# TERMINOLOGY_PROJECT_NAME's own comment just above, and GAMMA3_NAME/
+# GAMMA4_NAME below) — Alpha-1's own already-fixed links/actions (below)
+# make it unsuitable for a project-level setting change, and Delta-1 is
+# explicitly reserved for terminology-override coverage alone.
+LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
+
 # Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
 # all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
 # Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
@@ -380,6 +389,25 @@ def main() -> None:
         "E2E seed project dedicated to the terminology-override Playwright spec.",
     )
     set_project_terminology(h_ab, delta1["id"], TERMINOLOGY_OVERRIDE)
+
+    print(f"Creating {LINK_LOCK_PROJECT_NAME!r} (link-lock fixture for link-and-action-change-request-locking"
+          ".spec.ts, Platform review 2026-09 Phase 8) — its own dedicated project, per this file's existing"
+          " convention (PROJECT_NAMES.delta1/gamma3/gamma4) of a project no other spec may depend on rather than"
+          " repurposing a shared one. Given components/categories only (no requirements of its own) — that spec"
+          " creates, links, and approves its own throwaway requirements dynamically each run (the same fix"
+          " `requirement-actions.spec.ts` already applied after discovering a *fixed* seeded link/action here"
+          " would make the spec non-idempotent: unlinking/removing/approving is one-way, so a second run against"
+          " the same database would find the seeded fixture already consumed).")
+    epsilon1 = create_project(
+        h_ab, alpha["id"], LINK_LOCK_PROJECT_NAME,
+        "E2E seed project dedicated to the link-lock (require-change-request-for-links) Playwright coverage.",
+    )
+    r = httpx.patch(
+        f"{BASE}/projects/{epsilon1['id']}", json={"require_change_request_for_approved_links": True},
+        headers=h_ab, timeout=30,
+    )
+    r.raise_for_status()
+    seed_project_content(h_ab, epsilon1, 0)
 
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")

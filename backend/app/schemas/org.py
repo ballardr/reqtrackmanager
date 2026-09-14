@@ -82,6 +82,13 @@ class OrganizationOut(BaseModel):
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
     email_footer_address: str | None = None
+    # Platform review 2026-09, Phase 8 — readable by any org member (unlike
+    # most other org policy toggles, which live behind
+    # `OrgAdvancedSettingsOut`/`ORG_ADMIN`) since a project manager who isn't
+    # an org admin still needs this to render their own project's settings
+    # correctly. See `Organization.force_require_change_request_for_approved_links`'s
+    # model docstring.
+    force_require_change_request_for_approved_links: bool = False
 
 
 class OrgImportResult(BaseModel):
@@ -191,6 +198,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     auto_accept_email_domain: str | None = None
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
     allow_relaxed_child_project_creation: bool = True
+    force_require_change_request_for_approved_links: bool = False
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -205,6 +213,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     auto_accept_email_domain: str | None = Field(default=None, max_length=255)
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
     allow_relaxed_child_project_creation: bool = True
+    force_require_change_request_for_approved_links: bool = False
 
 
 class ModuleFrontendManifestOut(BaseModel):

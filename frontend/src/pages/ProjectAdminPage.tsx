@@ -16,6 +16,7 @@ import type {
   ModuleRoleDefinition,
   OrgGroup,
   OrgGroupProjectRoleSummary,
+  Organization,
   OrgUser,
   PendingInvite,
   Project,
@@ -190,6 +191,17 @@ export function ProjectAdminPage() {
   const [settingsName, setSettingsName] = useState("");
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
+  // Platform review 2026-09, Phase 8 — see `Project.
+  // require_change_request_for_approved_links`/`exempt_from_org_link_lock`
+  // (backend model docstrings) and `Organization.
+  // force_require_change_request_for_approved_links` for the full
+  // resolution. `orgForceLinksLocked` is best-effort — if the org fetch
+  // fails (rare; project access already implies org membership per the
+  // comment on the org-scoped fetches in `reload()` below), it stays
+  // false and this project's own checkbox is simply never shown forced.
+  const [requireCrForLinks, setRequireCrForLinks] = useState(false);
+  const [exemptFromOrgLinkLock, setExemptFromOrgLinkLock] = useState(false);
+  const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
   const [isTemplate, setIsTemplate] = useState(false);
   const [visibility, setVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [statusId, setStatusId] = useState("");
@@ -355,6 +367,8 @@ export function ProjectAdminPage() {
       setSettingsName(p.name);
       setSettingsSummary(p.summary);
       setAllowMemberCr(p.allow_member_change_requests);
+      setRequireCrForLinks(p.require_change_request_for_approved_links);
+      setExemptFromOrgLinkLock(p.exempt_from_org_link_lock);
       setIsTemplate(p.is_template);
       setVisibility(p.visibility);
       setStatusId(p.status_id);
@@ -378,6 +392,13 @@ export function ProjectAdminPage() {
     // page at all.
     setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
     setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
+    // Platform review 2026-09, Phase 8 — readable by any org member (unlike
+    // most other org policy toggles), so this reuses the same "project
+    // access already implies org membership" reasoning the comment above
+    // gives for the unfiltered org users/groups calls.
+    setOrgForceLinksLocked(
+      (await api.get<Organization>(`/api/v1/orgs/${p.organization_id}`)).force_require_change_request_for_approved_links
+    );
     setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
     setOrgProjectStatuses(await api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`));
     if (!reportConfigDirtyRef.current) {
@@ -483,7 +504,17 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary,
-        allow_member_change_requests: allowMemberCr, is_template: isTemplate,
+        allow_member_change_requests: allowMemberCr,
+        // Platform review 2026-09, Phase 8 — `requireCrForLinks` always
+        // carries this project's own stored opt-in, even while the org
+        // force is active and the checkbox below renders checked-and-
+        // disabled (rendering it forced doesn't rewrite the underlying
+        // value — if the org later turns its force off, this project's own
+        // setting should still read back whatever it actually was, not a
+        // `true` baked in by a temporary org policy).
+        require_change_request_for_approved_links: requireCrForLinks,
+        exempt_from_org_link_lock: exemptFromOrgLinkLock,
+        is_template: isTemplate,
         visibility, status_id: statusId || null,
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
@@ -1284,6 +1315,46 @@ export function ProjectAdminPage() {
           />
           {strings.admin.allowMemberChangeRequests}
         </label>
+        {/* Platform review 2026-09, Phase 8. Forced checked+disabled (the
+            same disabled+`title` "why is this checked and I can't touch
+            it" convention `ProjectMembersTable.tsx` already establishes)
+            once the org's own force is active and this project isn't
+            exempt — see `exemptFromOrgLinkLock` below for the escape
+            hatch. */}
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
+            disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
+            title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setRequireCrForLinks(e.target.checked);
+            }}
+          />
+          {strings.admin.requireChangeRequestForApprovedLinks}
+        </label>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+          {orgForceLinksLocked && !exemptFromOrgLinkLock
+            ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
+            : strings.admin.requireChangeRequestForApprovedLinksHint}
+        </p>
+        {orgForceLinksLocked && (
+          <>
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={exemptFromOrgLinkLock}
+                onChange={(e) => {
+                  settingsDirtyRef.current = true;
+                  setExemptFromOrgLinkLock(e.target.checked);
+                }}
+              />
+              {strings.admin.exemptFromOrgLinkLock}
+            </label>
+            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.exemptFromOrgLinkLockHint}</p>
+          </>
+        )}
         <label className="row">
           <input
             type="checkbox"

@@ -160,15 +160,24 @@ class RequirementStatus(str, enum.Enum):
 
 class ChangeRequestKind(str, enum.Enum):
     """What a change request proposes: a new requirement, a modification to
-    an existing one, or (2026-08 UX audit roadmap item 514) adding an
-    action to a requirement once it's locked — mirrors the same
-    change-request-only-once-locked rule `MODIFY_REQUIREMENT` already
-    enforces (`services.requirements.LOCKED_STATUSES`), extended to actions
-    rather than inventing a separate mechanism."""
+    an existing one, (2026-08 UX audit roadmap item 514) adding an action to
+    a requirement once it's locked, or (Platform review 2026-09, Phase 8)
+    removing an action, or adding/removing a traceability link, once it's
+    locked and the project (or an org-wide force) requires it. All of the
+    action/link kinds mirror the same change-request-only-once-locked rule
+    `MODIFY_REQUIREMENT` already enforces (`services.requirements.
+    LOCKED_STATUSES`) rather than inventing a separate mechanism —
+    `REMOVE_ACTION`'s gate is unconditional (every project), while
+    `ADD_LINK`/`REMOVE_LINK` additionally require
+    `services.requirements.requires_change_request_for_links` to be true for
+    the project (links otherwise stay ungated by design)."""
 
     NEW_REQUIREMENT = "new_requirement"
     MODIFY_REQUIREMENT = "modify_requirement"
     ADD_ACTION = "add_action"
+    REMOVE_ACTION = "remove_action"
+    ADD_LINK = "add_link"
+    REMOVE_LINK = "remove_link"
 
 
 class ChangeRequestStatus(str, enum.Enum):

@@ -172,6 +172,7 @@ const ORG: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  force_require_change_request_for_approved_links: false,
 };
 const SIBLING_STANDARD: ComplianceStandard = {
   ...STANDARD, id: "std-2", reference: "EN-60529", name: "EN 60529", organization_id: ORG.id,

@@ -334,6 +334,11 @@ export function OrgAdminPage() {
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
   const [allowRelaxedChildProjectCreation, setAllowRelaxedChildProjectCreation] = useState(true);
+  // Platform review 2026-09, Phase 8 — org-wide force of `Project.
+  // require_change_request_for_approved_links`, minus a per-project
+  // `exempt_from_org_link_lock` opt-out. See `Organization`'s own field
+  // docstring for the full resolution.
+  const [forceRequireCrForLinks, setForceRequireCrForLinks] = useState(false);
   // Guards the advanced-settings form fields above against `reload()` —
   // called after every unrelated mutation on this page (e.g.
   // `toggleDisplayNameLock`) and not awaited by its caller, so it can
@@ -585,6 +590,7 @@ export function OrgAdminPage() {
         setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
         setExternalUserPolicy(a.external_user_policy);
         setAllowRelaxedChildProjectCreation(a.allow_relaxed_child_project_creation);
+        setForceRequireCrForLinks(a.force_require_change_request_for_approved_links);
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
@@ -766,6 +772,7 @@ export function OrgAdminPage() {
         auto_accept_email_domain: autoAcceptEmailDomain || null,
         external_user_policy: externalUserPolicy,
         allow_relaxed_child_project_creation: allowRelaxedChildProjectCreation,
+        force_require_change_request_for_approved_links: forceRequireCrForLinks,
       });
       setAdvanced(saved);
       setSmtpPassword("");
@@ -3365,6 +3372,22 @@ export function OrgAdminPage() {
                   <span className="stack" style={{ gap: 0 }}>
                     {strings.orgAdmin.allowRelaxedChildProjectCreation}
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowRelaxedChildProjectCreationHint}</span>
+                  </span>
+                </label>
+
+                {/* Platform review 2026-09, Phase 8 */}
+                <label className="row" style={{ gap: "0.6rem" }}>
+                  <ToggleSwitch
+                    checked={forceRequireCrForLinks}
+                    onChange={(next) => {
+                      advancedDirtyRef.current = true;
+                      setForceRequireCrForLinks(next);
+                    }}
+                    label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
+                  />
+                  <span className="stack" style={{ gap: 0 }}>
+                    {strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}</span>
                   </span>
                 </label>
 

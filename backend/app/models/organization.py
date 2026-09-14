@@ -142,6 +142,27 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             identical "org overrides, null means use the platform default"
             semantics to `accent_color_hex`/`header_title` above, resolved
             by `services/email_branding.py::resolve_email_branding`.
+        force_require_change_request_for_approved_links: Platform review
+            2026-09, Phase 8. When set, every project in this organisation
+            behaves as though its own
+            `Project.require_change_request_for_approved_links` were true
+            — adding/removing a traceability link on an already-approved
+            requirement requires a change request — *except* a project
+            individually marked `Project.exempt_from_org_link_lock`, the
+            one narrow, per-project escape hatch from this org-wide policy.
+            See `services.requirements.requires_change_request_for_links`
+            for the full resolution and `Project.
+            require_change_request_for_approved_links`'s own docstring for
+            the project-level half of this feature. Defaults to `False`,
+            matching this org model's existing `allow_relaxed_child_
+            project_creation`-style precedent for an opt-in, non-retroactive
+            policy toggle. Readable by any member of this organisation (on
+            `OrganizationOut`, not gated behind `OrgAdvancedSettingsOut`
+            like most other org policy toggles) since a project manager who
+            isn't an org admin still needs to know whether this force is
+            active in order to render their own project's settings
+            correctly — see docs/decisions.md's "Platform review 2026-09,
+            Phase 8" entry.
     """
 
     __tablename__ = "organizations"
@@ -219,6 +240,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    force_require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):

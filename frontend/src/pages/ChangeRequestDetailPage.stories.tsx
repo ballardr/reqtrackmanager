@@ -2,10 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ChangeRequestVoteTally, ProjectRole, Requirement, RequirementAction } from "../api/types";
+import type { ChangeRequestVoteTally, LinkTypeDefinition, ProjectRole, Requirement, RequirementAction, RequirementLink } from "../api/types";
 import {
   buildActionType,
   buildChangeRequest,
+  buildLinkType,
   buildProjectListItem,
   buildRequirement,
   buildRequirementAction,
@@ -28,7 +29,14 @@ const emptyTally: ChangeRequestVoteTally = { votes: [], approve_count: 0, reject
  * check itself. */
 function mockChangeRequestDetailApis(
   myRoles: ProjectRole[], crOverrides: Parameters<typeof buildChangeRequest>[0] = {},
-  extra: { linkedActionPreview?: RequirementAction; requirement?: Requirement } = {}
+  extra: {
+    linkedActionPreview?: RequirementAction;
+    requirement?: Requirement;
+    // Platform review 2026-09, Phase 8 — ADD_LINK/REMOVE_LINK preview data.
+    linkTypes?: LinkTypeDefinition[];
+    linkTargetPreview?: Requirement;
+    links?: RequirementLink[];
+  } = {}
 ) {
   const cr = buildChangeRequest({ id: CR_ID, project_id: PROJECT_ID, ...crOverrides });
   const actionTypes = [buildActionType({ id: "at1", name: "Review" })];
@@ -40,10 +48,13 @@ function mockChangeRequestDetailApis(
     if (path.endsWith("/activity")) return [];
     if (path.endsWith("/tasks")) return [];
     if (path.endsWith("/votes")) return emptyTally;
+    if (cr.requirement_id && path.endsWith(`/requirements/${cr.requirement_id}/links`)) return extra.links ?? [];
     if (path.endsWith(`/requirements/${cr.requirement_id}`)) return extra.requirement ?? null;
+    if (extra.linkTargetPreview && path.endsWith(`/requirements/${extra.linkTargetPreview.id}`)) return extra.linkTargetPreview;
     if (path.endsWith("/action-types")) return actionTypes;
     if (extra.linkedActionPreview && path.endsWith(`/actions/${extra.linkedActionPreview.id}`)) return extra.linkedActionPreview;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+    if (path.includes("/link-types")) return extra.linkTypes ?? [];
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
@@ -116,6 +127,82 @@ export const AddActionShowsLinkedActionPreview: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Linking existing action")).toBeInTheDocument());
     await expect(canvas.getByText("ACT-009 — Existing security review")).toBeInTheDocument();
+  },
+};
+
+/** REMOVE_ACTION (Platform review 2026-09, Phase 8 — closing the asymmetry
+ * `unlink_action` had with ADD_ACTION's already-gated add side) resolves
+ * the same way ADD_ACTION's link-existing preview does, and also hides
+ * Target/Level. */
+export const RemoveActionShowsLinkedActionPreview: Story = {
+  beforeEach: () => {
+    const action = buildRequirementAction({ id: "action-9", unique_code: "ACT-009", title: "Existing security review" });
+    mockChangeRequestDetailApis(
+      ["member"],
+      { kind: "remove_action", status: "submitted", proposed_action_link_id: "action-9", reason: "superseded by a new review" },
+      { linkedActionPreview: action }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Removing this action")).toBeInTheDocument());
+    await expect(canvas.getByText("ACT-009 — Existing security review")).toBeInTheDocument();
+    await expect(canvas.queryByText(/^Target:/)).not.toBeInTheDocument();
+  },
+};
+
+/** ADD_LINK (Platform review 2026-09, Phase 8 opt-in sibling of ADD_ACTION
+ * for `RequirementLink`) resolves the proposed target requirement and link
+ * type the same way ADD_ACTION resolves its own proposed content. */
+export const AddLinkShowsProposedLinkContent: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
+    const target = buildRequirement({ id: "requirement-2", unique_code: "AUTH-002", name: "Passwords expire after 90 days" });
+    const linkType = buildLinkType({ id: "lt1", forward_name: "Depends on" });
+    mockChangeRequestDetailApis(
+      ["member"],
+      {
+        kind: "add_link", status: "submitted", requirement_id: "requirement-1",
+        proposed_link_target_requirement_id: "requirement-2", proposed_link_type_id: "lt1",
+        reason: "found during traceability review",
+      },
+      { requirement, linkTargetPreview: target, linkTypes: [linkType] }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Proposed link")).toBeInTheDocument());
+    await expect(canvas.getByText("AUTH-002 — Passwords expire after 90 days")).toBeInTheDocument();
+    await expect(canvas.getByText("Depends on")).toBeInTheDocument();
+    await expect(canvas.queryByText(/^Target:/)).not.toBeInTheDocument();
+  },
+};
+
+/** REMOVE_LINK resolves the existing `RequirementLink` being removed via
+ * the same server-resolved `display_name`/other-requirement fields the
+ * Links card on `RequirementDetailPage.tsx` already uses. */
+export const RemoveLinkShowsExistingLinkPreview: Story = {
+  beforeEach: () => {
+    const requirement = buildRequirement({ id: "requirement-1", unique_code: "AUTH-001", name: "Users can reset their password" });
+    const link: RequirementLink = {
+      id: "link-1", source_requirement_id: "requirement-1", target_requirement_id: "requirement-2",
+      link_type_id: "lt1", direction: "outgoing", display_name: "Depends on",
+      other_requirement_id: "requirement-2", other_requirement_unique_code: "AUTH-002",
+      other_requirement_name: "Passwords expire after 90 days",
+    };
+    mockChangeRequestDetailApis(
+      ["member"],
+      {
+        kind: "remove_link", status: "submitted", requirement_id: "requirement-1",
+        proposed_link_id: "link-1", reason: "link was created in error",
+      },
+      { requirement, links: [link] }
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Removing this link")).toBeInTheDocument());
+    await expect(canvas.getByText("Depends on — AUTH-002 — Passwords expire after 90 days")).toBeInTheDocument();
   },
 };
 

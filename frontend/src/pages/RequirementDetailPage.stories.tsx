@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
+import type { ActionTypeDefinition, Category, Component, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, Requirement, RequirementAction, RequirementLink, RequirementVersionEntry } from "../api/types";
 import {
   buildActionType,
   buildComment,
@@ -43,6 +43,11 @@ function mockRequirementDetailApis(
     linkedActions?: RequirementAction[];
     projectActions?: RequirementAction[];
     otherRequirements?: Requirement[];
+    // Feed the "Requirements" browse tab of `RequirementLinkPickerModal`
+    // (platform-review-2026-09 Phase 7) — both default empty, matching
+    // `otherRequirements`'s own "no eligible targets" default.
+    components?: Component[];
+    categories?: Category[];
     history?: RequirementVersionEntry[];
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
@@ -60,6 +65,17 @@ function mockRequirementDetailApis(
     // does.
     complianceTraceabilityLinks?: unknown[];
     complianceStandards?: unknown[];
+    // Platform review 2026-09, Phase 8 — the org's own
+    // `force_require_change_request_for_approved_links`, fetched via a
+    // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
+    // matching the org-wide-permissive default.
+    orgForceLinksLocked?: boolean;
+    // This project's own `require_change_request_for_approved_links`/
+    // `exempt_from_org_link_lock`, folded into the same `GET
+    // /projects/{id}` fetch this page's `organizationId` already comes
+    // from — both default false.
+    requireCrForLinks?: boolean;
+    exemptFromOrgLinkLock?: boolean;
   } = {}
 ) {
   const requirement = buildRequirement({ id: REQUIREMENT_ID, project_id: PROJECT_ID, ...requirementOverrides });
@@ -80,7 +96,20 @@ function mockRequirementDetailApis(
     if (path.endsWith("/action-types")) return actionTypes;
     if (path.endsWith(`/projects/${PROJECT_ID}/actions`)) return extra.projectActions ?? [];
     if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return extra.otherRequirements ?? [];
-    if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
+    if (path.endsWith(`/projects/${PROJECT_ID}/components`)) return extra.components ?? [];
+    if (path.endsWith(`/projects/${PROJECT_ID}/categories`)) return extra.categories ?? [];
+    if (path.endsWith(`/projects/${PROJECT_ID}`)) {
+      return {
+        organization_id: "org-1",
+        require_change_request_for_approved_links: extra.requireCrForLinks ?? false,
+        exempt_from_org_link_lock: extra.exemptFromOrgLinkLock ?? false,
+      };
+    }
+    // Checked before the "/link-types"/"/users" branches below, which this
+    // bare org-detail path doesn't match (no further segment).
+    if (path.endsWith("/orgs/org-1")) {
+      return { force_require_change_request_for_approved_links: extra.orgForceLinksLocked ?? false };
+    }
     if (path.endsWith("/enabled-modules")) return extra.enabledModules ?? [];
     if (path.endsWith("/traceability-links")) return extra.complianceTraceabilityLinks ?? [];
     if (path.includes("/modules/compliance/standards")) return extra.complianceStandards ?? [];
@@ -378,10 +407,13 @@ export const LinksCardWithComplianceLink: Story = {
   },
 };
 
-/** "Add link" now opens a `Popover` (2026-08 UX audit, sixth pass: create
- * flows are a layer, not a permanently-visible inline row — style guide
- * Principle 3) anchored to the trigger button, rather than rendering the
- * target/type selects inline below the list at all times. */
+/** "Add link" now opens a `RequirementLinkPickerModal` (platform-review-
+ * 2026-09 Phase 7 — replaces the old flat-`<select>` `Popover`, which
+ * stopped scaling once a project had many requirements) with Search and
+ * Requirements tabs; a module-contributed Compliance tab is covered
+ * separately by `LinksCardWithComplianceLinkPickerTab` below. This story
+ * exercises the default-active Search tab — typing narrows the target
+ * select, matching the "search by code or name" ask. */
 export const AddLink: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {
@@ -392,22 +424,85 @@ export const AddLink: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Add link" })).toBeInTheDocument());
-    // Selects aren't in the document until the popover trigger opens it.
+    // Selects aren't in the document until the modal trigger opens it.
     await expect(canvas.queryByLabelText("Target requirement")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
 
-    const popover = within(document.body).getByRole("dialog", { name: "Add link" });
-    await userEvent.selectOptions(within(popover).getByLabelText("Target requirement"), "requirement-2");
-    await userEvent.selectOptions(within(popover).getByLabelText("Link type"), "lt1");
-    await userEvent.click(within(popover).getByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
+    await userEvent.type(within(modal).getByPlaceholderText("Search by code or name…"), "AUTH-LOG");
+    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
+    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
+    await userEvent.click(within(modal).getByRole("button", { name: "Add link" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`,
         { target_requirement_id: "requirement-2", link_type_id: "lt1" }
       )
     );
-    // A successful add closes the popover.
+    // A successful add closes the modal.
     await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Add link" })).not.toBeInTheDocument());
+  },
+};
+
+/** The Requirements tab cascades component -> category -> requirement
+ * (mirroring `RequirementsPage.tsx`'s own create-form cascade) rather than
+ * a flat/searched list — this is the phase's other built-in tab, alongside
+ * Search above. */
+export const AddLinkViaRequirementsBrowseTab: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      otherRequirements: [
+        buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication", component_id: "comp-1", category_id: "cat-1" }),
+      ],
+      components: [{ id: "comp-1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }],
+      categories: [{ id: "cat-1", project_id: PROJECT_ID, component_id: "comp-1", name: "Login", prefix: "LOG", sort_order: 0 }],
+    });
+    spyOn(api, "post").mockResolvedValue(buildComment());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
+    await userEvent.click(within(modal).getByRole("tab", { name: "Requirements" }));
+
+    await userEvent.selectOptions(within(modal).getByLabelText("Component"), "comp-1");
+    await userEvent.selectOptions(within(modal).getByLabelText("Category"), "cat-1");
+    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
+    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
+    await userEvent.click(within(modal).getByRole("button", { name: "Add link" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`,
+        { target_requirement_id: "requirement-2", link_type_id: "lt1" }
+      )
+    );
+  },
+};
+
+/** A module-contributed tab (Compliance's own cascading standard -> version
+ * -> requirement picker, `requirementLinkPickerTabs`) appears in the same
+ * modal only once that module is enabled for the project — this page has
+ * no notion of what a "compliance requirement" is and just renders
+ * whatever the module hands it, mirroring `LinksCardWithComplianceLink`'s
+ * own `requirementDetailSections` convention above. See
+ * `modules/compliance/ComplianceRequirementLinkPickerTab.stories.tsx` for
+ * that tab's own dedicated create-flow coverage — this story only pins
+ * that the tab actually appears inside this page's modal. */
+export const LinksCardWithComplianceLinkPickerTab: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], {}, {
+      // "Add link" is disabled with nothing eligible to core-link to — this
+      // story is about the Compliance tab appearing regardless, so one
+      // eligible core target keeps the trigger enabled.
+      otherRequirements: [buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication" })],
+      enabledModules: [{ module_key: "compliance", name: "Compliance", frontend_manifest: null }],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
+    await expect(within(modal).getByRole("tab", { name: "Compliance" })).toBeInTheDocument();
   },
 };
 
@@ -434,6 +529,83 @@ export const RemoveLinkConfirms: Story = {
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links/link1`)
     );
+  },
+};
+
+/** Platform review 2026-09, Phase 8 — once this project opts into
+ * `require_change_request_for_approved_links` (or an org-wide force
+ * applies, minus exemption) *and* the requirement is locked, adding a link
+ * requires a reason and submits an `ADD_LINK` change request instead of
+ * calling the direct endpoint — the same change-request-only-once-locked
+ * rule item 514 established for actions, extended here to links. */
+export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
+      otherRequirements: [buildRequirement({ id: "requirement-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication" })],
+      requireCrForLinks: true,
+    });
+    spyOn(api, "post").mockResolvedValue({});
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+    const modal = within(document.body).getByRole("dialog", { name: "Add link" });
+    await expect(within(modal).getByText(/requires a change request/i)).toBeInTheDocument();
+
+    await userEvent.selectOptions(within(modal).getByLabelText("Target requirement"), "requirement-2");
+    await userEvent.selectOptions(within(modal).getByLabelText("Link type"), "lt1");
+    const addButton = within(modal).getByRole("button", { name: "Add link" });
+    await expect(addButton).toBeDisabled();
+    await userEvent.type(within(modal).getByLabelText("Reason for change"), "traceability gap found during review");
+    await userEvent.click(addButton);
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/change-requests`,
+        expect.objectContaining({
+          kind: "add_link", requirement_id: REQUIREMENT_ID,
+          proposed_link_target_requirement_id: "requirement-2", proposed_link_type_id: "lt1",
+          reason: "traceability gap found during review",
+        })
+      )
+    );
+    expect(api.post).not.toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/links`, expect.anything()
+    );
+    await waitFor(() => expect(within(document.body).getByText("Change request created")).toBeInTheDocument());
+  },
+};
+
+/** Same `requireCrForLinks && is_locked` gate as `AddLinkRoutesThrough
+ * ChangeRequestOnceLinksLocked` above, for removing an existing link. */
+export const RemoveLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
+      links: [buildRequirementLink({ id: "link1", display_name: "Depends on", other_requirement_unique_code: "AUTH-LOG-002", other_requirement_name: "Users can enable two-factor authentication" })],
+      requireCrForLinks: true,
+    });
+    spyOn(api, "post").mockResolvedValue({});
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/AUTH-LOG-002/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Remove link" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove this link via change request?" });
+    const confirmButton = within(dialog).getByRole("button", { name: "Remove link" });
+    await expect(confirmButton).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText("Reason for change"), "link was created in error");
+    await expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/change-requests`,
+        expect.objectContaining({ kind: "remove_link", requirement_id: REQUIREMENT_ID, proposed_link_id: "link1", reason: "link was created in error" })
+      )
+    );
+    expect(api.delete).not.toHaveBeenCalled();
   },
 };
 
@@ -607,6 +779,42 @@ export const UnlinkActionConfirms: Story = {
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/actions/action-1`)
     );
+  },
+};
+
+/** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+ * lock check at all, an asymmetry with the already-gated add side (item
+ * 514); once the requirement is locked, unlinking requires a reason and
+ * submits a `REMOVE_ACTION` change request instead of calling `DELETE`
+ * directly. Unconditional across every project, unlike the link stories
+ * above which also require the project's own opt-in. */
+export const UnlinkActionRoutesThroughChangeRequestOnceLocked: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
+      linkedActions: [buildRequirementAction({ id: "action-1", unique_code: "ACT-001", title: "Review password reset flow", outcome_status: "completed" })],
+    });
+    spyOn(api, "post").mockResolvedValue({});
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/ACT-001/)).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Unlink" }));
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Unlink this action via change request?" });
+    const confirmButton = within(dialog).getByRole("button", { name: "Unlink" });
+    await expect(confirmButton).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText("Reason for change"), "superseded by a new review");
+    await expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/change-requests`,
+        expect.objectContaining({ kind: "remove_action", requirement_id: REQUIREMENT_ID, proposed_action_link_id: "action-1", reason: "superseded by a new review" })
+      )
+    );
+    expect(api.delete).not.toHaveBeenCalled();
   },
 };
 

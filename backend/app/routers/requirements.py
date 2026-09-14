@@ -84,6 +84,7 @@ from app.services.requirements import (
     get_current_version,
     get_keywords,
     is_locked,
+    requires_change_request_for_links,
     set_keywords,
     unarchive_requirement,
 )
@@ -998,13 +999,25 @@ def create_link(
     project_id: UUID, requirement_id: UUID, payload: RequirementLinkCreate,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Creates a traceability link between two requirements (C-G-09). Not
-    gated by either requirement's lock state — see `RequirementLink`'s
-    model docstring for why traceability metadata sits outside C-G-12's
-    change-log boundary."""
+    """Creates a traceability link between two requirements (C-G-09).
+
+    Not gated by either requirement's lock state by default — see
+    `RequirementLink`'s model docstring for why traceability metadata sits
+    outside C-G-12's change-log boundary. Platform review 2026-09, Phase 8
+    deliberately supersedes that default for a project (or org) that opts
+    in: once `requirement_id`'s current version is locked (approved) *and*
+    `services.requirements.requires_change_request_for_links` is true for
+    this project, adding a link must go through an `ADD_LINK` change
+    request instead — see `routers.change_requests.create_change_request`.
+    """
     _require_edit_role(db, current_user, project_id)
     project = db.get(Project, project_id)
-    _get_requirement_in_project(db, project_id, requirement_id)
+    requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)) and requires_change_request_for_links(db, project):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved and this project requires links to be added via a change request.",
+        )
     target = _get_requirement_in_project(db, project_id, payload.target_requirement_id)
     link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
     if link_type is None or link_type.organization_id != project.organization_id:
@@ -1046,9 +1059,21 @@ def delete_link(
 ):
     """Removes a traceability link. 404s unless `link_id`'s source or
     target is `requirement_id` — deletable from either end, not just the
-    end it was created from."""
+    end it was created from.
+
+    Same opt-in Platform review 2026-09, Phase 8 gate as `create_link`,
+    above — checked against `requirement_id` (the endpoint's own scoped
+    requirement), not whichever end the link's other requirement happens to
+    be in.
+    """
     _require_edit_role(db, current_user, project_id)
-    _get_requirement_in_project(db, project_id, requirement_id)
+    project = db.get(Project, project_id)
+    requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)) and requires_change_request_for_links(db, project):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved and this project requires links to be removed via a change request.",
+        )
     link = db.get(RequirementLink, link_id)
     if link is None or requirement_id not in (link.source_requirement_id, link.target_requirement_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
@@ -1458,9 +1483,24 @@ def unlink_action(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Unlinks an action from this requirement — never deletes the action
-    itself, which may still be linked from other requirements."""
+    itself, which may still be linked from other requirements.
+
+    Governed by the same creation-or-change-request-only rule as
+    `link_action`/`create_and_link_action`, above (C-G-12) — Platform
+    review 2026-09, Phase 8: this endpoint previously had no lock check at
+    all, an asymmetry with the *add* side (which has been gated since item
+    514) that let an action be silently unlinked from an approved
+    requirement with no review step. Unconditional across every project —
+    unlike the traceability-link gate below, this doesn't depend on any
+    project/org opt-in.
+    """
     _require_edit_role(db, current_user, project_id)
-    _get_requirement_in_project(db, project_id, requirement_id)
+    requirement = _get_requirement_in_project(db, project_id, requirement_id)
+    if is_locked(get_current_version(db, requirement.id)):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved; actions can only be removed via a change request.",
+        )
     link = db.scalar(
         select(RequirementActionLink).where(
             RequirementActionLink.requirement_id == requirement_id, RequirementActionLink.action_id == action_id

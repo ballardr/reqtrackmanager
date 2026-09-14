@@ -235,6 +235,21 @@ const en = {
     removeLinkTitle: "Remove this link?",
     removeLinkConfirm: "The link is removed from both {requirements}; the {requirement} itself is unaffected.",
     noLinks: "No links yet.",
+    linkPickerSearchTab: "Search",
+    linkPickerRequirementsTab: "{Requirements}",
+    linkPickerSearchPlaceholder: "Search by code or name…",
+    linkPickerNoMatches: "No matching {requirements}.",
+    // Platform review 2026-09, Phase 8 — shown in place of the plain
+    // add/remove-link flow once `is_locked && requiresChangeRequestForLinks`
+    // (project opt-in, or an org-wide force minus this project's own
+    // exemption): the Add link modal's Search/Requirements tabs and the
+    // remove-link confirm dialog both grow a "Reason for change" field and
+    // submit an `add_link`/`remove_link` change request instead of calling
+    // the direct endpoint. Mirrors item 514's identical ADD_ACTION pattern.
+    linkChangeRequestNotice: "This {requirement} is approved and this {project} requires a change request to add a link.",
+    removeLinkViaChangeRequestTitle: "Remove this link via change request?",
+    removeLinkViaChangeRequestConfirm:
+      "This {requirement} is approved and this {project} requires a change request to remove a link. The link is removed from both {requirements} once approved.",
     actionsSection: "Actions",
     linkExistingAction: "Link existing action",
     selectAnActionToLink: "Select an action…",
@@ -242,6 +257,13 @@ const en = {
     unlinkAction: "Unlink",
     unlinkActionTitle: "Unlink this action?",
     unlinkActionConfirm: "The action itself isn't affected — it just stops appearing on this {requirement}'s Actions card.",
+    // Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+    // lock check at all, an asymmetry with the already-gated add side
+    // (item 514); unconditional across every {project}, unlike the
+    // traceability-link strings above.
+    unlinkActionViaChangeRequestTitle: "Unlink this action via change request?",
+    unlinkActionViaChangeRequestConfirm:
+      "This {requirement} is approved — unlinking an action requires a change request. The action itself isn't affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
     noLinkedActions: "No actions linked yet.",
     attachments: "Attachments",
     subscribe: "Subscribe",
@@ -331,6 +353,12 @@ const en = {
     kindAddAction: "Add action",
     proposedAddAction: "Proposed action",
     proposedLinkAction: "Linking existing action",
+    // Platform review 2026-09, Phase 8 — REMOVE_ACTION/ADD_LINK/REMOVE_LINK
+    // change requests, rendered in `ChangeRequestDetailPage.tsx` the same
+    // way ADD_ACTION's two labels above are.
+    proposedRemoveAction: "Removing this action",
+    proposedAddLink: "Proposed link",
+    proposedRemoveLink: "Removing this link",
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
@@ -392,6 +420,21 @@ const en = {
     name: "Name",
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
+    // Platform review 2026-09, Phase 8. When the organisation's own
+    // `force_require_change_request_for_approved_links` is active and this
+    // {project} isn't exempt, this checkbox renders checked-and-disabled
+    // (the `disabled`+`title` "why is this checked and I can't touch it"
+    // convention `ProjectMembersTable.tsx` already establishes) with the
+    // Forced hint below explaining why, rather than silently ignoring the
+    // {project}'s own (irrelevant, in that case) stored value.
+    requireChangeRequestForApprovedLinks: "Require a change request to add/remove links on approved {requirements}",
+    requireChangeRequestForApprovedLinksHint:
+      "Once a {requirement} is approved, adding or removing a traceability link requires a change request instead of the direct action. Off by default — turn on for {projects} where links themselves need review once a {requirement} is locked.",
+    requireChangeRequestForApprovedLinksForcedByOrg:
+      "Required by this organisation's policy — see Org Admin's Advanced settings. Mark this {project} exempt below to opt it out.",
+    exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
+    exemptFromOrgLinkLockHint:
+      "This organisation requires every {project} to gate link changes on an approved {requirement} behind a change request. Checking this opts this {project} out, falling back to its own setting above.",
     isTemplate: "Usable as a {project} template",
     // Hierarchical projects (docs/decisions.md): opt-in eligibility gate —
     // other {projects}' managers can only select this one as a parent once
@@ -1081,6 +1124,14 @@ const en = {
     allowRelaxedChildProjectCreationHint:
       "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
     selfSignupSsoConflict: (org: string) => `Self-signup can't be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
+    // Platform review 2026-09, Phase 8 — org-wide force of
+    // `Project.require_change_request_for_approved_links`, minus a
+    // per-project `exempt_from_org_link_lock` opt-out. See `Organization`'s
+    // own field docstring (`frontend/src/api/types.ts`) for the full
+    // resolution.
+    forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, org-wide",
+    forceRequireChangeRequestForApprovedLinksHint:
+      "Applies to every {project} in this organisation, even one whose own setting is off — unless that {project} is individually marked exempt in its own Project Admin settings.",
     autoAcceptEmailDomain: "Accepted email domain",
     autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
     externalUserPolicy: "External users on projects",
@@ -1402,6 +1453,29 @@ const en = {
     noLinkedRequirements: "Not linked to any {requirement} yet.",
     completedAt: "Completed",
     created: "Action created",
+  },
+  // The Compliance module's own strings that live inside core's shared
+  // Links card / link-picker modal (`RequirementTraceabilityLinksSection
+  // .tsx`, `ComplianceRequirementLinkPickerTab.tsx` — platform-review-
+  // 2026-09 Phase 7). Added when a human review flagged this module
+  // hardcoding plain English inline instead of going through `t()`/
+  // `useStrings()` like every core page does — no other language could
+  // ever be added otherwise. This section covers only the two files this
+  // phase touches; the rest of the Compliance module (its org-level admin
+  // panels, the Standard workspace, etc.) still hardcodes strings the same
+  // way and was NOT migrated here — that's a much larger, separate body of
+  // work, flagged to the user rather than silently left alongside a
+  // half-fixed corner of the same problem.
+  compliance: {
+    requirementLinksTitle: "Compliance requirement links",
+    noRequirementLinksYet: "No compliance requirement links yet.",
+    removeLink: "Remove link",
+    removeLinkTitle: "Remove compliance link",
+    removeLinkConfirm: "Remove this traceability link? This does not affect either {requirement}'s own content.",
+    standard: "Standard",
+    version: "Version",
+    targetRequirement: "{Requirement}",
+    couldNotCreateLink: "Could not create link.",
   },
   // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
   // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a

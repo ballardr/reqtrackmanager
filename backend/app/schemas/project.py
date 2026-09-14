@@ -105,6 +105,11 @@ class ProjectOut(BaseModel):
     is_archived: bool = False
     is_template: bool = False
     allow_member_change_requests: bool = True
+    # Platform review 2026-09, Phase 8 — see `Project.
+    # require_change_request_for_approved_links`/`exempt_from_org_link_lock`
+    # model docstrings.
+    require_change_request_for_approved_links: bool = False
+    exempt_from_org_link_lock: bool = False
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
     status_id: UUID
@@ -155,6 +160,8 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     summary: str | None = None
     allow_member_change_requests: bool | None = None
+    require_change_request_for_approved_links: bool | None = None
+    exempt_from_org_link_lock: bool | None = None
     is_template: bool | None = None
     visibility: ProjectVisibility | None = None
     # Must belong to the project's own organisation (400 otherwise) — see

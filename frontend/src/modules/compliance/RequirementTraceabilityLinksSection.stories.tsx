@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
-import type { ComplianceRequirement, ComplianceRequirementTraceabilityLink, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import type { ComplianceRequirementTraceabilityLink } from "./types";
 
 /**
  * Compliance's contribution to `pages/RequirementDetailPage.tsx`'s own
@@ -15,11 +15,18 @@ import type { ComplianceRequirement, ComplianceRequirementTraceabilityLink, Comp
  * rather than integrating through the full `RequirementDetailPage`
  * (whose own stories deliberately keep `enabled-modules` returning `[]` —
  * see that file's own comment).
+ *
+ * Platform-review-2026-09 Phase 7 trimmed this component to list/remove
+ * only — the "add a link" picker now lives in
+ * `ComplianceRequirementLinkPickerTab.tsx` (its own story file), reached
+ * via the shared `RequirementLinkPickerModal` instead of a button on this
+ * section. See that file's stories for the cascading-picker/create flow
+ * this file's own `AddLink` story used to cover.
  */
 const meta: Meta<typeof RequirementTraceabilityLinksSection> = {
   title: "Modules/Compliance/RequirementTraceabilityLinksSection",
   component: RequirementTraceabilityLinksSection,
-  args: { projectId: "project-1", requirementId: "requirement-1", organizationId: "org-1" },
+  args: { projectId: "project-1", requirementId: "requirement-1", organizationId: "org-1", refreshToken: 0 },
   decorators: [withRouter("/projects/project-1/requirements/requirement-1"), withToast()],
 };
 export default meta;
@@ -37,8 +44,6 @@ export const Populated: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/traceability-links")) return [existingLink];
-      if (path.endsWith("/link-types")) return [];
-      if (path.includes("/modules/compliance/standards")) return [];
       throw new Error(`Unmocked path: ${path}`);
     });
   },
@@ -54,8 +59,6 @@ export const NoLinksYet: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/traceability-links")) return [];
-      if (path.endsWith("/link-types")) return [];
-      if (path.includes("/modules/compliance/standards")) return [];
       throw new Error(`Unmocked path: ${path}`);
     });
   },
@@ -65,69 +68,12 @@ export const NoLinksYet: Story = {
   },
 };
 
-// Exercises the cascading standard -> version -> requirement picker end to
-// end (`RequirementMappingsModal.tsx`'s own precedent for why this is
-// cascading selects rather than a type-ahead search) plus the core
-// `link-types` select, then confirms the newly created link renders.
-export const AddLink: Story = {
-  beforeEach: () => {
-    const standards: ComplianceStandard[] = [
-      {
-        id: "standard-1", organization_id: "org-1", reference: "ISO-27001", name: "Corporate Security Standard",
-        description: "", issuing_organisation: null, owner_id: "user-1", creator_id: "user-1", is_archived: false,
-        archived_at: null, archived_by: null, applicability_default: "opt_in", created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-01T00:00:00Z",
-      },
-    ];
-    const versions: ComplianceStandardVersion[] = [
-      {
-        id: "version-1", standard_id: "standard-1", version_number: 1, version_label: "2.0", status: "published",
-        effective_date: null, change_note: "", summary: "", created_by: "user-1", published_at: "2026-01-01T00:00:00Z",
-        published_by: "user-1", retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
-      },
-    ];
-    const requirements: ComplianceRequirement[] = [
-      {
-        id: "creq-1", standard_version_id: "version-1", parent_requirement_id: null, reference: "A.5.15",
-        name: "Logical access control", description: "", reasoning: "", sort_order: 0, created_by: "user-1",
-        clarification_count: 0, last_clarified_at: null, last_clarified_by: null, last_clarification_note: "",
-        created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
-      },
-    ];
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/traceability-links")) return [];
-      if (path.endsWith("/link-types")) return [{ id: "lt-1", organization_id: "org-1", forward_name: "Derives from", reverse_name: "Is the source of", sort_order: 0 }];
-      // More specific paths (versions/requirements) must be checked before
-      // the broader `/modules/compliance/standards` substring match below,
-      // since `/standards/standard-1/versions` also contains that substring.
-      if (path.endsWith("/standards/standard-1/versions")) return versions;
-      if (path.endsWith("/versions/version-1/requirements")) return requirements;
-      if (path.includes("/modules/compliance/standards")) return standards;
-      throw new Error(`Unmocked path: ${path}`);
-    });
-    spyOn(api, "post").mockResolvedValue(existingLink);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Add compliance link" }));
-
-    // Popover portals to `document.body`, outside `canvasElement`'s own
-    // subtree — same pattern as `RequirementDetailPage.stories.tsx`'s own
-    // "AddLink" story.
-    const popover = within(document.body).getByRole("dialog", { name: "Add compliance link" });
-    await userEvent.selectOptions(within(popover).getByLabelText("Standard"), "standard-1");
-    await userEvent.selectOptions(await within(popover).findByLabelText("Version"), "version-1");
-    await userEvent.selectOptions(await within(popover).findByLabelText("Requirement"), "creq-1");
-    await userEvent.selectOptions(within(popover).getByLabelText("Link type"), "lt-1");
-    await userEvent.click(within(popover).getByRole("button", { name: "Add link" }));
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        "/api/v1/projects/project-1/modules/compliance/requirements/requirement-1/traceability-links",
-        { compliance_requirement_id: "creq-1", link_type_id: "lt-1" }
-      )
-    );
-    // A successful add closes the popover (mirrors `RequirementDetailPage
-    // .stories.tsx`'s own "AddLink" story).
-    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Add compliance link" })).not.toBeInTheDocument());
-  },
-};
+// `refreshToken` bumping (the signal the shared picker modal sends after
+// adding a link from its own, separate component instance) must trigger a
+// re-fetch. A prop change mid-`play` isn't a natural fit for this file's
+// "mount once, mock, assert" story shape — the meaningful end-to-end proof
+// that adding a compliance link from the picker modal actually refreshes
+// this list is `tests/playwright/tests/modules/compliance/
+// requirement-traceability-links.spec.ts`, which drives the real add flow
+// through `RequirementDetailPage` and asserts the link appears here
+// afterwards without a page reload.
