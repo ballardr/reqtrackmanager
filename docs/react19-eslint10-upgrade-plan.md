@@ -8,14 +8,14 @@ This document is the persistent, session-resumable implementation plan for upgra
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-14 (Phase 1 complete; next session starts fresh at Phase 2 per the user's explicit instruction not to cascade into it this session).
+**Last updated:** 2026-09-14 (Phase 2 complete; next session starts fresh at Phase 3, per this plan's own discipline of not cascading into the next phase automatically).
 
-**Overall progress:** 1 / 5 phases complete.
+**Overall progress:** 2 / 5 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Vite 6 → 8.3.0 (Rolldown bundler swap) + `@vitejs/plugin-react` 4 → 5.2.0 | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 1" entry |
-| 2 | React 18 → 19.3.0 runtime bump (`react`/`react-dom`/`@types/react`/`@types/react-dom`) | [ ] Not started |
+| 2 | React 18 → 19.3.0 runtime bump (`react`/`react-dom`/`@types/react`/`@types/react-dom`) | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 2" entry |
 | 3 | ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration, batch A (core files) | [ ] Not started |
 | 4 | ESLint migration batch B (compliance module) + `react-hooks/refs` investigation | [ ] Not started |
 | 5 | Final sweep and close-out | [ ] Not started |
