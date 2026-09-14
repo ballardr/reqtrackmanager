@@ -891,7 +891,12 @@ def _parse_module_tool_manifest(entries: list[dict]) -> list[_ModuleToolSpec]:
 
 
 _module_tools_lock = asyncio.Lock()
-_module_tools_last_refresh = 0.0
+# `-inf` rather than `0.0`: `time.monotonic()` is relative to an arbitrary
+# reference point, not the epoch, and on some container runtimes reads
+# close to zero right after start — a `0.0` sentinel could then be *less*
+# than `MODULE_TOOLS_REFRESH_SECONDS` stale and wrongly skip the very first
+# refresh. `-inf` is always stale regardless of where the clock starts.
+_module_tools_last_refresh = float("-inf")
 _registered_module_tools: dict[str, _ModuleToolSpec] = {}
 
 

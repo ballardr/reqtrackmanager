@@ -5371,3 +5371,79 @@ Not yet run against a live CI job — this session cannot trigger a GitHub Actio
 ### Files changed
 
 `.github/workflows/ci.yml`, `tests/playwright/playwright.config.ts`, `tests/playwright/tests/e2e-workflows/project-hierarchy.spec.ts`, `tests/playwright/tests/modules/compliance/project-compliance-view.spec.ts`, `tests/playwright/tests/modules/compliance/standard-applicability-defaults.spec.ts`, `tests/playwright/tests/modules/compliance/compliance-standards-management.spec.ts`, `tests/playwright/tests/modules/compliance/compliance-clarification-and-version-summary.spec.ts`, `docs/decisions.md` (this entry).
+
+## MCP-server module-tools refresh: false-stale sentinel breaks fresh-container CI runs (PR #20, run 34820475735) (2026-09-14)
+
+The user reported the next CI run after the Phase 11 split (previous entry) still failing, on the newly-separated `e2e-tests` job. Log-diving (`gh api .../jobs/<id>/logs`, not just the annotations summary — the top-level GitHub UI/`gh run view` annotations only surfaced Playwright-artifact-upload noise, which was a downstream symptom, not the cause) found the job actually died three steps earlier, at "Run MCP server tests", before Playwright ever ran: `docker compose exec -T mcp-server python -m pytest -q` failed 2 of 36 tests in `mcp-server/tests/test_module_tools.py` (`test_maybe_refresh_module_tools_registers_tools_from_a_real_fetch`, `test_maybe_refresh_module_tools_does_not_refetch_within_the_refresh_window`), which cascaded into "no Playwright report file" annotations that looked like an E2E failure but weren't one.
+
+### Root cause
+
+Not a regression from this branch — `git diff main...HEAD -- mcp-server/` is empty; this branch has never touched `mcp-server/`. The bug is latent and was exposed by the Phase 11 job split's own `e2e-tests` job doing a full `docker compose up`/build of a fresh `mcp-server` container immediately before this step runs, rather than reusing a longer-lived one.
+
+`server.py`'s `_maybe_refresh_module_tools()` gates refreshing the module-tool manifest on `time.monotonic() - _module_tools_last_refresh < MODULE_TOOLS_REFRESH_SECONDS` (600s default), and both the module-level initial value and the test file's `_reset_module_tool_state` autouse fixture used `_module_tools_last_refresh = 0.0` to force a "long ago" refresh. `time.monotonic()` is relative to an arbitrary reference point, not the epoch — it is **not** guaranteed to already exceed 600 by the time a test runs. On this runner's fresh `mcp-server` container (started ~40s before the pytest step, per the job log's own container-lifecycle timestamps), `time.monotonic()` read small enough that `time.monotonic() - 0.0 < 600` was true, so `_maybe_refresh_module_tools()` silently no-op'd on what the test believed was a forced-stale clock — both failures are exactly this: the manifest fetch never happened (`_registered_module_tools` stayed `{}`, the mocked `AsyncClient` was never called). The identical `0.0` sentinel in production `server.py` (not just the test fixture) has the same latent bug: a freshly-started `mcp-server` process could silently skip its first module-tools refresh for up to 10 minutes if its container's monotonic clock happens to start near zero, with no error or log line — this is worse than a test-only issue since it would look like "the compliance module's MCP tools just aren't there yet" with no indication why.
+
+### Fix
+
+Changed the sentinel from `0.0` to `float("-inf")` in both places, since `time.monotonic() - (-inf)` is always `+inf`, which is unconditionally `>= MODULE_TOOLS_REFRESH_SECONDS` regardless of where the monotonic clock's reference point happens to sit — `server.py`'s module-level `_module_tools_last_refresh` initializer, and `test_module_tools.py`'s `_reset_module_tool_state` fixture (both its setup and teardown reset) plus the one assertion (`test_maybe_refresh_module_tools_skips_when_no_auth_header`) that checked the sentinel's exact value.
+
+### Verification
+
+Rebuilt and recreated only the `mcp-server` container against `tests/container/docker-compose.yml` (`docker compose build mcp-server && docker compose up -d --no-deps mcp-server`) — deliberately not reusing the pre-existing 4-hour-old container, to reproduce the same "freshly-started container, low monotonic clock" condition the CI failure needed. `docker compose exec -T mcp-server python -m pytest -q`: 36 passed (previously 2 failed in this exact fresh-container state). `docker compose exec -T mcp-server ruff check .`: clean.
+
+Not yet run against a live CI job — this session cannot trigger a GitHub Actions run itself, per the previous entry's own caveat. **Recommended next step: push this branch and confirm the `e2e-tests` job's "Run MCP server tests" step and the actual Playwright suite both pass.**
+
+### Files changed
+
+`mcp-server/server.py`, `mcp-server/tests/test_module_tools.py`, `docs/decisions.md` (this entry).
+
+## Dependabot + CodeQL alert sweep (2026-09-14)
+
+Requested as a review-and-fix pass across the repo's currently-open GitHub Dependabot alerts (3) and code-scanning alerts (2).
+
+### Dependency upgrades (3 Dependabot alerts, all closed)
+
+`frontend/package.json`/`package-lock.json`: `vitest` and its `@vitest/*` siblings (`@vitest/browser-playwright`, `@vitest/coverage-v8`) `^4.1.10` → `^4.1.11` (GHSA-82fw-gwwq-j7x9, path traversal/arbitrary file read via a redirect mock's unvalidated target path — dev-only dependency, exploitable only through a dev server's WebSocket, but fixed anyway per policy). `@vitest/mocker` (transitive, same advisory) picked up 4.1.11 as part of the same bump. `js-yaml` (transitive, pulled in as a dev-tooling dependency, GHSA-2883-xcg3-v3hh — `maxTotalMergeKeys` not counting empty-mapping merge sources, allowing CPU-exhaustion via crafted YAML) resolved to 4.3.2 as part of regenerating the lockfile from scratch (`rm package-lock.json && npm install`, then verified with `npm ci`) — a plain `npm install` against the existing lockfile hit an `ERESOLVE` conflict on `@vitest/browser-playwright`'s exact-version peer dependency on `vitest`, resolved by deleting and regenerating the lockfile rather than forcing past it. Verified with `npm run test-storybook` (the project's only `vitest`-backed suite — this app has no plain unit-test script, only Storybook interaction tests run under `vitest run --project=storybook`; needed `npx playwright install chromium` first, the local Chromium/headless-shell binary wasn't present): 115 files / 936 tests passed (one pre-existing unrelated unhandled-rejection warning from a story that intentionally exercises a load-error path, not a new failure).
+
+Incidentally found but **not** fixed this pass: `npm install`/`npm ci` both warn `eslint@9.39.5: This version is no longer supported` — latest is 10.10.0. Flagged to the user rather than silently taken on, since a major-version ESLint bump is a nontrivial, separately-scoped migration (flat-config/plugin-compat risk) well beyond this alert-sweep's blast radius, not a same-shape fix like the three alerts above. Decided by: Agent (the decision to flag rather than silently migrate; the user has not yet weighed in on whether/when to do the ESLint 10 migration itself).
+
+### Code-scanning alerts (2, `py/path-injection` against `backend/app/storage_backends/local.py`, both against `save()`)
+
+Third occurrence of the same underlying finding against this exact function — see the "local.py path traversal (3 alerts)" and "two long-open GitHub code-scanning alerts (#5/#6)" entries above. Both prior fixes rewrote the guard to literature-documented-safe idioms (`pathlib.Path.resolve()`+`is_relative_to()`, then `os.path.realpath()`+`str.startswith()`, the latter inlined directly into `save()` after discovering CodeQL doesn't credit a check performed inside a called helper as a barrier for the caller's later use of the returned value) and both were re-flagged on a later scan regardless.
+
+Asked the user how to handle a third occurrence: try another rewrite (possibly dismiss as a documented false positive if it doesn't stick), dismiss outright via the Security tab now, or leave it open. **Decided by: User** — explicitly chose "reshape/try and fix it again" over dismissing the alert via the GitHub UI, on the reasoning that changing the code changes CodeQL's alert fingerprint and gives a real chance of the finding actually clearing on the next scan, rather than just suppressing a still-technically-open finding.
+
+Rewrote `_confine()` and `save()` (kept duplicated between them, not refactored into one shared call — see the existing docstring's explanation for why `save()` can't just delegate to `_confine()`) with two changes from the previous attempt, on the working theory that `candidate.startswith(base + os.sep)` — a computed-expression argument, present in both prior "safe idiom" rewrites — was itself the reason CodeQL's guard-recognition wasn't matching, since it's a syntactic deviation from the literal `fullpath.startswith(base_path)` shape CodeQL's own rule documentation shows: (1) added a content-based rejection of `key` itself (empty, absolute, containing `\`, or any `""`/`"."`/`".."` path segment), checked directly against the raw string before any path is constructed from it at all, rather than only checking a path *derived* from `key`; (2) replaced `candidate.startswith(base + os.sep)` with `os.path.commonpath([base, candidate]) != base`, which needs no computed-expression argument and, as a side benefit, closes a sibling-directory prefix-collision edge case (`/data/store` vs `/data/store-evil`) that `startswith` alone doesn't distinguish without the `os.sep` suffix.
+
+This session cannot confirm whether the rewrite actually clears the CodeQL alert — GitHub's code-scanning analysis only reruns against a pushed commit via Actions, which this session doesn't trigger. **Recommended next step: push this branch and check `/security/code-scanning` once the analysis completes; if alerts #5/#8 (or their re-fingerprinted successors) are still open, the next attempt should stop guessing at guard shapes and go straight to a documented, justified inline `# codeql[py/path-injection]` suppression instead, per the false-positive case already established three times over in this file.**
+
+### Verification
+
+`pytest tests/test_local_storage_backend.py`: 6 passed, unchanged. `ruff check app/storage_backends/local.py`: clean. Live exploit-style check (not just the existing test suite) against a temp directory: `../../etc/passwd`, `../store-evil/x.txt` (sibling-directory collision), `org/../../store-evil/x.txt`, `/etc/passwd`, `org/..`, `..`, `.`, `org/./file.txt`, and a Windows-style `a\..\..\etc\passwd` were all rejected with `ValueError`; a legitimate multi-segment key (`org1/uuid_file.txt`) still round-tripped through `save`/`read` correctly.
+
+### Files changed
+
+`frontend/package.json`, `frontend/package-lock.json`, `backend/app/storage_backends/local.py`, `docs/decisions.md` (this entry).
+
+## ESLint 9→10 migration attempted: blocked on React 19's `useEffectEvent` (2026-09-14)
+
+Follow-up to the previous entry's flagged-but-deferred `eslint@9.39.5` deprecation warning, now picked up directly.
+
+### What was tried
+
+Bumped `eslint` and `@eslint/js` to `^10.10.0`/`^10.0.1`. `typescript-eslint@^8.65.0` and `eslint-plugin-react-refresh@^0.4.26` already support eslint 10 unchanged, but `eslint-plugin-react-hooks@^5.2.0` (the pinned version) does not — its peer range tops out at `^9.0.0`. The first version whose peer range includes `^10.0.0` is `7.1.1`, a two-major jump from 5.2.0.
+
+Bumping to `eslint-plugin-react-hooks@7.1.1` pulls in that package's now-mandatory `recommended` config (there is no less-strict preset; `recommended`, `recommended-latest`, and `flat` all ship the same rule set) — which bundles the React Compiler-derived rules, including `react-hooks/set-state-in-effect` and `react-hooks/refs`. Running lint under this config surfaced 76 new errors across ~45 files: 68 `set-state-in-effect` hits, almost all the codebase's standard `useEffect(() => { reload(); }, [deps])` data-fetch-on-mount/param-change pattern, and 8 `react-hooks/refs` hits in `ProjectAdminPage.tsx` that a spot-check found to be conservative false positives (flagging plain non-ref values passed alongside refs in scope).
+
+### Why this doesn't have a clean fix on this codebase's current React version
+
+Traced the rule's own source (`eslint-plugin-react-hooks/cjs/eslint-plugin-react-hooks.development.js`, `validateNoSetStateInEffects`/`getSetStateCall`) rather than guessing at a workaround: the rule's sanctioned escape hatch for calling setState-adjacent logic from an effect is `useEffectEvent` (see the special-cased `isUseEffectEventType` handling in `getSetStateCall`) — a hook that only exists in **React 19**. This project is on React `^18.3.1`. Without `useEffectEvent`, satisfying the rule for the fetch-on-effect pattern used throughout the app would mean either restructuring the primary data-fetching architecture across ~45 files into something else entirely, or inventing an ad hoc trick to fool the compiler's static trace — the latter being suppression in substance if not in form, which the project's own rules on not silencing warnings exist to prevent.
+
+Asked the user how to proceed given this: refactor anyway on React 18 (accepting the trick/large-rewrite tradeoff), scope a React 19 upgrade first, or disable just the two blocking rules with documented rationale. **Decided by: User** — chose to scope a React 19 upgrade first rather than either alternative, so `eslint`/`@eslint/js`/`eslint-plugin-react-hooks` were reverted to their prior pinned versions (`^9.39.5`/`^9.39.5`/`^5.2.0`) and the lockfile re-synced; `npm run lint` is clean again at the reverted versions.
+
+### Status / next step
+
+Still open: `npm install`/`npm ci` will keep warning `eslint@9.39.5 is no longer supported` until either (a) a React 18→19 upgrade lands and this migration is retried with `useEffectEvent` available, or (b) the user decides instead to disable `react-hooks/set-state-in-effect`/`react-hooks/refs` explicitly rather than wait on a React major-version migration. The React 19 upgrade itself has not been scoped yet (breaking changes, ecosystem package compat — `react-router-dom@7`, `recharts@3`, Storybook 10, `@vitejs/plugin-react`, `mermaid` — and blast radius across the app were not investigated in this pass) and is a separate, significant piece of work in its own right.
+
+### Files changed
+
+`frontend/package.json`, `frontend/package-lock.json`, `docs/decisions.md` (this entry).

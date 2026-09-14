@@ -30,17 +30,25 @@ class LocalFileStorageBackend:
         concatenated into a key — a prior version of that sanitization
         missed this and allowed a crafted filename to escape the
         uploading organisation's own key prefix while still passing the
-        check below (see docs/decisions.md's hardening review). The check
-        below remains as defense in depth, not the only guard.
+        check below (see docs/decisions.md's hardening review). The checks
+        below remain as defense in depth, not the only guard.
 
-        Resolves both sides with `os.path.realpath` (following symlinks)
-        and compares with a plain `startswith` — the exact confinement
-        idiom CodeQL's own py/path-injection guidance documents as safe.
+        This is the third shape tried for this guard (see docs/decisions.md,
+        "local.py path traversal"): first `pathlib.Path.resolve()` +
+        `is_relative_to()`, then `os.path.realpath()` + a plain
+        `str.startswith()` — CodeQL's py/path-injection kept re-flagging
+        `save`'s sink after each rewrite despite both matching literature-
+        documented-safe idioms. This version adds a content-based rejection
+        of `key` itself (before any path is built from it at all — not a
+        check on some path derived from it) alongside the confinement
+        check, and swaps the confinement comparison from
+        `startswith(base + os.sep)` to `os.path.commonpath(...)`, which
+        needs no computed-expression argument.
 
-        `save` (below) repeats this same check inline, immediately before
+        `save` (below) repeats these same checks inline, immediately before
         its own filesystem write, rather than relying solely on this
         method's internal guard: CodeQL's py/path-injection query
-        (github.com/.../security/code-scanning alerts #5/#6) flagged
+        (github.com/.../security/code-scanning alerts #5/#8) flagged
         `save`'s `path.parent.mkdir(...)`/`path.write_bytes(...)` even
         though this method already guards the exact same path — it does
         not treat a check performed inside a called helper as a sanitizing
@@ -52,18 +60,27 @@ class LocalFileStorageBackend:
         for no tool-verifiable benefit.
 
         Raises:
-            ValueError: If the resolved path escapes the base directory.
+            ValueError: If `key` contains a traversal/absolute-path segment,
+                or the resolved path escapes the base directory.
         """
+        if not key or os.path.isabs(key) or "\\" in key or any(
+            segment in ("", ".", "..") for segment in key.split("/")
+        ):
+            raise ValueError("Invalid storage key.")
         base = os.path.realpath(self._base_dir)
         candidate = os.path.realpath(os.path.join(base, key))
-        if candidate != base and not candidate.startswith(base + os.sep):
+        if os.path.commonpath([base, candidate]) != base:
             raise ValueError("Invalid storage key.")
         return candidate
 
     def save(self, key: str, data: bytes) -> None:
+        if not key or os.path.isabs(key) or "\\" in key or any(
+            segment in ("", ".", "..") for segment in key.split("/")
+        ):
+            raise ValueError("Invalid storage key.")
         base = os.path.realpath(self._base_dir)
         candidate = os.path.realpath(os.path.join(base, key))
-        if candidate != base and not candidate.startswith(base + os.sep):
+        if os.path.commonpath([base, candidate]) != base:
             raise ValueError("Invalid storage key.")
         path = Path(candidate)
         path.parent.mkdir(parents=True, exist_ok=True)

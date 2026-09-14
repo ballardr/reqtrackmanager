@@ -75,12 +75,12 @@ def _reset_module_tool_state():
     for name in list(srv._registered_module_tools):
         srv.mcp.local_provider.remove_tool(name)
     srv._registered_module_tools.clear()
-    srv._module_tools_last_refresh = 0.0
+    srv._module_tools_last_refresh = float("-inf")
     yield
     for name in list(srv._registered_module_tools):
         srv.mcp.local_provider.remove_tool(name)
     srv._registered_module_tools.clear()
-    srv._module_tools_last_refresh = 0.0
+    srv._module_tools_last_refresh = float("-inf")
 
 
 def _patched_manifest_response(entries):
@@ -193,7 +193,7 @@ async def test_maybe_refresh_module_tools_skips_when_no_auth_header(monkeypatch)
     monkeypatch.setattr(srv, "_forward_auth_header", lambda: (_ for _ in ()).throw(srv.AuthenticationRequiredError("no token")))
     await srv._maybe_refresh_module_tools()
     assert srv._registered_module_tools == {}
-    assert srv._module_tools_last_refresh == 0.0
+    assert srv._module_tools_last_refresh == float("-inf")
 
 
 @pytest.mark.asyncio
