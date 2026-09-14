@@ -44,6 +44,22 @@ const GLOBAL_STATE_SPECS = [
   // file's other tests (which assume relaxed creation is on), passing or
   // failing depending on interleaving. See docs/decisions.md.
   "e2e-workflows/project-hierarchy.spec.ts",
+  // Added after a further CI failure on PR #20 (run 34824179236): every
+  // test in this file reads/mutates "Default Organization"'s own SSO
+  // config (sso-config PUT, `oidc_required_group`, the "reqtrack-org-
+  // admins" group mapping) rather than a disposable fixture, and two of
+  // its tests ("a required-group gate blocks..."/"a user IN the required
+  // group...") explicitly rely on declaration order — "Playwright runs a
+  // file's tests in declaration order by default" — to have already
+  // enabled the required-group gate before "a user in a Keycloak group
+  // with no configured mapping..." runs expecting that gate to still be
+  // *off*. That ordering assumption only holds when the file itself runs
+  // serially; under `fullyParallel` a later test's `requireOrgAdminsGroup()`
+  // call can race ahead of/alongside the earlier one, so the "no configured
+  // mapping" test intermittently hits `not_provisioned` instead of a bare
+  // account with zero orgs. Same shared-org-setting class as the other
+  // entries in this list. See docs/decisions.md.
+  "e2e-workflows/sso.spec.ts",
 ];
 
 export default defineConfig({

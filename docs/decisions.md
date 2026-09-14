@@ -5447,3 +5447,27 @@ Still open: `npm install`/`npm ci` will keep warning `eslint@9.39.5 is no longer
 ### Files changed
 
 `frontend/package.json`, `frontend/package-lock.json`, `docs/decisions.md` (this entry).
+
+## Third CI failure on PR #20 (run 34824179236): `sso.spec.ts` missing from `GLOBAL_STATE_SPECS`, plus a PATCH-vs-reload race (2026-09-14)
+
+The user reported the next CI run after the previous two triage entries still failing, on the `e2e-tests` job's actual Playwright suite this time (the mcp-server and CodeQL/Dependabot issues from the prior two entries were unrelated and already fixed). **Decided by: User** to investigate and fix. Two distinct failures, both fixed directly since each is a one-line-shaped, well-understood cause — no design point needed the user's sign-off first.
+
+### Failure 1: `sso.spec.ts` races on "Default Organization"'s shared SSO config
+
+`tests/e2e-workflows/sso.spec.ts:123` ("a user in a Keycloak group with no configured mapping gets an account but no org role") failed on the initial attempt (`getByRole("link", { name: "Sign in with SSO" })` timed out) and on both CI retries (landed on `/oidc-complete?error=not_provisioned...` instead of `/projects`). All five tests in this file read/mutate the same shared "Default Organization" fixture's SSO config (`PUT .../sso-config`, the `oidc_required_group` field, the `reqtrack-org-admins` group mapping) rather than disposable fixtures of their own — exactly the shared-org-setting class `GLOBAL_STATE_SPECS` (`playwright.config.ts`) already exists to serialize, and the same class of bug as the `project-hierarchy.spec.ts` fix in the first PR #20 triage entry above. Two of this file's own tests ("a required-group gate blocks..."/"a user IN the required group...") explicitly comment that they rely on "Playwright runs a file's tests in declaration order by default" to have already turned the `oidc_required_group` gate on before the earlier "no configured mapping" test runs expecting that gate to still be off — an assumption that only holds under serial execution, not `fullyParallel`. This file was missed from `GLOBAL_STATE_SPECS` in every prior pass (Phase 1's original list, and the PR #20 triage entry that added `project-hierarchy.spec.ts` for the identical reason) because none of those passes were specifically re-auditing every spec file for this pattern, just fixing the ones a given failing run happened to surface.
+
+**Fix**: added `e2e-workflows/sso.spec.ts` to `GLOBAL_STATE_SPECS` in `playwright.config.ts`, forcing it back to serial, declaration-order execution the same way the other five entries in that list already are.
+
+### Failure 2: `project-admin-templates-and-reports.spec.ts`'s "mark Gamma-2 as usable as a project template" step
+
+`expect(locator).toBeChecked()` failed after a reload — the checkbox read back unchecked. Root cause: this step calls `.check()` then clicks "Save settings" then immediately `page.reload()`, without waiting for the save's own PATCH to land first — the exact race this same file's earlier "select it as Gamma-1's default report template" step already has a comment and fix for (a bare `.click()` races `saveSettings()`'s async `PATCH /api/v1/projects/{id}` against the immediate reload, which can win and read the pre-save state back). The mark-as-template step was added without the same guard.
+
+**Fix**: wrapped the "Save settings" click in `Promise.all([page.waitForResponse(...PATCH.../api/v1/projects/...), click])` before the reload, mirroring the existing pattern.
+
+### Verification
+
+Ran `npx playwright test e2e-workflows/sso.spec.ts e2e-workflows/project-admin-templates-and-reports.spec.ts` against the already-up `tests/container` stack (no backend/frontend rebuild needed — both fixes are test-file-only changes) — Playwright pulled in all five `global-state-mutators`-project files as dependencies automatically: **18/18 passed**, including both previously-failing tests, confirming neither fix broke anything else in that serialized group. Not yet run against a live CI job — this session cannot trigger a GitHub Actions run itself, per the prior two entries' own caveat. **Recommended next step: push this branch and confirm the `e2e-tests` job passes end to end.**
+
+### Files changed
+
+`tests/playwright/playwright.config.ts`, `tests/playwright/tests/e2e-workflows/project-admin-templates-and-reports.spec.ts`, `docs/decisions.md` (this entry).
