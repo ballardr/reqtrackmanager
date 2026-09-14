@@ -129,6 +129,28 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # Whether project "members" may submit change requests (C-U-13); defaults
     # to enabled per the requirement's clarification.
     allow_member_change_requests: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Platform review 2026-09, Phase 8: opt-in per-project requirement that
+    # adding/removing a `RequirementLink` (traceability link) on an
+    # already-approved requirement go through a change request
+    # (`ChangeRequestKind.ADD_LINK`/`REMOVE_LINK`) instead of the direct
+    # endpoint — see `services.requirements.requires_change_request_for_links`
+    # for the full resolution (this field, or an org-wide force, minus this
+    # project's own exemption). Defaults to `False`: links stay ungated by
+    # default, matching `RequirementLink`'s existing "traceability metadata
+    # isn't C-G-12 content" design and this repo's own
+    # `allow_member_change_requests` precedent for a permissive default that
+    # doesn't retroactively break every existing project.
+    require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Platform review 2026-09, Phase 8: escape hatch from
+    # `Organization.force_require_change_request_for_approved_links` — a
+    # project marked exempt here falls back to its own
+    # `require_change_request_for_approved_links` value even while the
+    # organisation's force-on policy is active for every other project in
+    # the org. Meaningless (never consulted) unless the org's force flag is
+    # set; defaults to `False` so a newly-created project is subject to an
+    # active org force like any other, until its own manager or an org admin
+    # deliberately opts it out.
+    exempt_from_org_link_lock: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether this project can be used as a template for new projects (C-E-05).
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether every org member automatically gets baseline view access

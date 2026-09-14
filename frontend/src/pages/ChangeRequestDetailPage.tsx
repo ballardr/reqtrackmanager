@@ -12,13 +12,20 @@ import type {
   ChangeRequestVoteChoice,
   ChangeRequestVoteTally,
   Comment,
+  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
   Requirement,
   RequirementAction,
+  RequirementLink,
 } from "../api/types";
-import { CHANGE_REQUEST_STATUS_LABEL, CHANGEABLE_FIELD_LABEL, REQUIREMENT_LEVEL_LABEL } from "../api/types";
+import {
+  CHANGE_REQUEST_STATUS_LABEL,
+  CHANGE_REQUEST_STATUS_TONE,
+  CHANGEABLE_FIELD_LABEL,
+  REQUIREMENT_LEVEL_LABEL,
+} from "../api/types";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { CommentThread } from "../components/CommentThread";
 import { Modal } from "../components/Modal";
@@ -59,12 +66,22 @@ export function ChangeRequestDetailPage() {
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
-  // ADD_ACTION-only (item 514) — the action type list to resolve
-  // `proposed_action_type_id` to a name, and (link-existing mode only) the
-  // action being linked, so a reviewer can see what they're actually
+  // ADD_ACTION/REMOVE_ACTION-only (item 514, extended by platform review
+  // 2026-09 Phase 8 to the remove side) — the action type list to resolve
+  // `proposed_action_type_id` to a name, and (link-existing/remove mode
+  // only) the action itself, so a reviewer can see what they're actually
   // approving rather than a bare id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
+  // ADD_LINK/REMOVE_LINK-only (Platform review 2026-09, Phase 8) — same
+  // "resolve the id to something a reviewer can actually read" purpose as
+  // the action fields above. `linkTargetPreview` is ADD_LINK's proposed
+  // target requirement; `linkPreview` is REMOVE_LINK's existing link (its
+  // `display_name`/other-requirement fields are already server-resolved
+  // the same way the Links card on `RequirementDetailPage.tsx` uses them).
+  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
+  const [linkTargetPreview, setLinkTargetPreview] = useState<Requirement | null>(null);
+  const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
 
   async function reload() {
     if (!projectId || !crId) return;
@@ -87,7 +104,7 @@ export function ChangeRequestDetailPage() {
     } else {
       setRequirement(null);
     }
-    if (crData.kind === "add_action") {
+    if (crData.kind === "add_action" || crData.kind === "remove_action") {
       setActionTypes(await api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`));
       setLinkedActionPreview(
         crData.proposed_action_link_id
@@ -98,11 +115,32 @@ export function ChangeRequestDetailPage() {
       setActionTypes([]);
       setLinkedActionPreview(null);
     }
+    if (crData.kind === "add_link" && crData.proposed_link_target_requirement_id) {
+      setLinkTargetPreview(
+        await api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${crData.proposed_link_target_requirement_id}`)
+      );
+    } else {
+      setLinkTargetPreview(null);
+    }
+    if (crData.kind === "remove_link" && crData.requirement_id) {
+      const links = await api.get<RequirementLink[]>(
+        `/api/v1/projects/${projectId}/requirements/${crData.requirement_id}/links`
+      );
+      setLinkPreview(links.find((l) => l.id === crData.proposed_link_id) ?? null);
+    } else {
+      setLinkPreview(null);
+    }
     try {
       const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
       setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`));
+      if (crData.kind === "add_link" || crData.kind === "remove_link") {
+        setLinkTypes(await api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${proj.organization_id}/link-types`));
+      } else {
+        setLinkTypes([]);
+      }
     } catch {
-      // No org role at all (rare) — reviewer names just fall back to raw ids.
+      // No org role at all (rare) — reviewer names/link type names just
+      // fall back to raw ids.
     }
   }
 
@@ -134,6 +172,10 @@ export function ChangeRequestDetailPage() {
 
   function actionTypeName(id: string | null) {
     return actionTypes.find((t) => t.id === id)?.name ?? "—";
+  }
+
+  function linkTypeName(id: string | null) {
+    return linkTypes.find((t) => t.id === id)?.forward_name ?? "—";
   }
 
   function targetLabel(): string {
@@ -248,8 +290,10 @@ export function ChangeRequestDetailPage() {
       <div className="stack">
       <div className="card stack">
         <div className="row">
-          <span className="badge">{CHANGE_REQUEST_STATUS_LABEL[cr.status]}</span>
-          {cr.kind !== "add_action" && (
+          <span className={`badge badge--${CHANGE_REQUEST_STATUS_TONE[cr.status]}`}>
+            {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+          </span>
+          {cr.kind !== "add_action" && cr.kind !== "remove_action" && cr.kind !== "add_link" && cr.kind !== "remove_link" && (
             <>
               <span className="badge">Target: {targetLabel()}</span>
               <span className="badge">Level: {levelLabel()}</span>
@@ -300,6 +344,37 @@ export function ChangeRequestDetailPage() {
                 )}
               </>
             )}
+          </div>
+        ) : cr.kind === "remove_action" ? (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <strong>{strings.changeRequests.proposedRemoveAction}</strong>
+            <p>
+              {linkedActionPreview
+                ? `${linkedActionPreview.unique_code} — ${linkedActionPreview.title}`
+                : cr.proposed_action_link_id}
+            </p>
+          </div>
+        ) : cr.kind === "add_link" ? (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <strong>{strings.changeRequests.proposedAddLink}</strong>
+            <p>
+              <strong>{strings.requirements.targetRequirement}:</strong>{" "}
+              {linkTargetPreview
+                ? `${linkTargetPreview.unique_code} — ${linkTargetPreview.name}`
+                : cr.proposed_link_target_requirement_id}
+            </p>
+            <p>
+              <strong>{strings.requirements.linkType}:</strong> {linkTypeName(cr.proposed_link_type_id)}
+            </p>
+          </div>
+        ) : cr.kind === "remove_link" ? (
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <strong>{strings.changeRequests.proposedRemoveLink}</strong>
+            <p>
+              {linkPreview
+                ? `${linkPreview.display_name} — ${linkPreview.other_requirement_unique_code} — ${linkPreview.other_requirement_name}`
+                : cr.proposed_link_id}
+            </p>
           </div>
         ) : (
           <div className="stack" style={{ gap: "0.5rem" }}>

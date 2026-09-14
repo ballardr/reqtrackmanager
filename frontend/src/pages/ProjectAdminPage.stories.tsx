@@ -10,6 +10,8 @@ import type {
   EffectiveMember,
   ModuleRoleDefinition,
   OrgGroup,
+  OrgGroupProjectRoleSummary,
+  Organization,
   PendingInvite,
   ProjectGroup,
   ProjectMemberSource,
@@ -59,17 +61,32 @@ function mockProjectAdminApis(
     memberSources?: ProjectMemberSource[];
     children?: ReturnType<typeof buildProjectListItem>[];
     effectiveMembers?: EffectiveMember[];
+    groupRoles?: OrgGroupProjectRoleSummary[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
     moduleRoles?: ModuleRoleDefinition[];
+    // Platform review 2026-09, Phase 8 — the org's own
+    // `force_require_change_request_for_approved_links`, fetched via a bare
+    // `GET /orgs/{id}` alongside the other org-scoped calls below.
+    organization?: Organization;
   } = {}
 ) {
   const groupsForThisStory = overrides.groups ?? groups;
   const actionTypes = overrides.actionTypes ?? [buildActionType({ id: "at1", name: "Review", sort_order: 0 }), buildActionType({ id: "at2", name: "Test", sort_order: 1 })];
   const customFields = overrides.customFields ?? [];
   const project = overrides.project ?? buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", status_id: "st1" });
+  const organization: Organization = overrides.organization ?? {
+    id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
+    default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
+    disabled_at: null, accent_color_hex: null, header_title: null,
+    email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    force_require_change_request_for_approved_links: false,
+  };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
+    // Checked before the "/orgs/" + "/groups"/"/users" branches below,
+    // which this bare org-detail path doesn't match (no further segment).
+    if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
     if (path.includes("/stages")) return stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
@@ -105,6 +122,13 @@ function mockProjectAdminApis(
     // Members section's own module-role fetch throws as unmocked and
     // rejects `reload()`'s own `Promise.all`.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
+    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // third data source — checked before the plain "/groups" check above
+    // doesn't apply here since "/group-roles" isn't a substring of
+    // "/groups" (the reverse isn't true either), so ordering doesn't matter,
+    // but this sits next to "/effective-members" for readability since both
+    // feed the same table.
+    if (path.includes("/group-roles")) return overrides.groupRoles ?? [];
     if (path.includes("/effective-members")) return overrides.effectiveMembers ?? [];
     if (path.includes(`/projects/${PROJECT_ID}/children`)) return overrides.children ?? [];
     if (path.startsWith("/api/v1/projects?")) return overrides.orgProjects ?? [];
@@ -175,6 +199,78 @@ export const OverviewTabSetOrgWideVisibility: Story = {
     );
   },
 };
+
+/** Platform review 2026-09, Phase 8 — the plain, unforced case: the
+ * project's own opt-in checkbox is enabled and starts unchecked (the
+ * permissive default), and no exemption checkbox is shown since the org
+ * isn't forcing anything. */
+export const OverviewTabRequireChangeRequestForLinks: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const checkbox = await waitFor(() =>
+      canvas.getByLabelText("Require a change request to add/remove links on approved requirements")
+    );
+    await expect(checkbox).toBeEnabled();
+    await expect(checkbox).not.toBeChecked();
+    await expect(canvas.queryByLabelText(/Exempt this project/)).not.toBeInTheDocument();
+
+    await userEvent.click(checkbox);
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ require_change_request_for_approved_links: true })
+      )
+    );
+  },
+};
+
+/** Once the organisation forces this policy, the project's own checkbox
+ * renders checked-and-disabled with an explanatory `title` (the same
+ * disabled+title convention `ProjectMembersTable.tsx` uses) and an
+ * "Exempt this project" checkbox appears as the only way out. */
+export const OverviewTabForcedByOrgPolicy: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ organization: { ...buildForcedOrg() } });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const checkbox = await waitFor(() =>
+      canvas.getByLabelText("Require a change request to add/remove links on approved requirements")
+    );
+    await expect(checkbox).toBeChecked();
+    await expect(checkbox).toBeDisabled();
+    const exemptCheckbox = canvas.getByLabelText(/Exempt this project/);
+    await expect(exemptCheckbox).not.toBeChecked();
+
+    await userEvent.click(exemptCheckbox);
+    await expect(checkbox).toBeEnabled();
+    await expect(checkbox).not.toBeChecked();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ exempt_from_org_link_lock: true })
+      )
+    );
+  },
+};
+
+function buildForcedOrg(): Organization {
+  return {
+    id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
+    default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
+    disabled_at: null, accent_color_hex: null, header_title: null,
+    email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    force_require_change_request_for_approved_links: true,
+  };
+}
 
 export const OverviewTabArchive: Story = {
   beforeEach: () => {
@@ -596,9 +692,20 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Members" }));
     await waitFor(() => expect(canvas.getByText("Priya Shah")).toBeInTheDocument());
-    await expect(canvas.getByText(/Inherited from 'Platform'/)).toBeInTheDocument();
+    // Source column shows a plain-language summary per row (platform review
+    // 2026-09 follow-up), not the always-visible provenance line this story
+    // originally asserted directly — Priya's sole source is
+    // `forward_inherited` (non-`direct_role`), so her cell reads "Group",
+    // and the actual "Inherited from 'Platform'" detail lives behind that
+    // cell's own click-to-open popover.
+    const priyaRow = canvas.getByText("Priya Shah").closest("tr")!;
+    await userEvent.click(within(priyaRow).getByRole("button", { name: "Group" }));
+    const detail = within(document.body).getByRole("dialog", { name: "Priya Shah's access sources" });
+    await expect(within(detail).getByText(/Inherited from 'Platform'/)).toBeInTheDocument();
+
     await expect(canvas.getByText("Sam Lee")).toBeInTheDocument();
-    await expect(canvas.getByText(/Direct/)).toBeInTheDocument();
+    const samRow = canvas.getByText("Sam Lee").closest("tr")!;
+    await expect(within(samRow).getByText("Direct")).toBeInTheDocument();
   },
 };
 
@@ -697,6 +804,60 @@ export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
     );
     // Closes the same way a user pick does.
     await expect(within(document.body).queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+ * direct `OrgGroupProjectRole` grant on this project (the mechanism the
+ * story above grants through) now renders as its own row in the Members
+ * table — badge, editable role dropdown, and a "Remove group" action —
+ * instead of being visible only through a member's own Source line
+ * (`MembersTabAddMemberAutocompleteMatchesGroup` above still exercises
+ * that grant flow itself; this covers what happens to the grant afterward). */
+export const MembersTabGroupRowRoleToggleAndRemove: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      groupRoles: [{ org_group_id: "og1", org_group_name: "Engineering", roles: ["stakeholder"] }],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Members" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Engineering's roles" })).toBeInTheDocument());
+
+    const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+    // Source cell just states "Direct" plainly (platform review 2026-09
+    // follow-up collapsed the old per-role provenance lines into one
+    // summary word/phrase per row) — see `ProjectMembersTable.stories.tsx`'s
+    // own `GroupRow` story for this cell's dedicated coverage.
+    await expect(within(row).getByText("Direct")).toBeInTheDocument();
+
+    // Granting a second role calls the same `POST .../group-roles` the
+    // "Add member" autocomplete's own grant flow uses.
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's roles" }));
+    const roleGroup = within(document.body).getByRole("group", { name: "Engineering's roles" });
+    await userEvent.click(within(roleGroup).getByRole("checkbox", { name: "Grant Member to Engineering" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/group-roles`,
+        { org_group_id: "og1", role: "member" },
+      )
+    );
+
+    // "Remove group" (Actions column) loops the per-role DELETE over every
+    // role the group currently holds, behind a Tier-1 ConfirmDialog.
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Engineering's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove group" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Remove Engineering from this project?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove group" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/group-roles/og1/stakeholder`)
+    );
+    await expect(within(document.body).getByText("Removed Engineering's access.")).toBeInTheDocument();
   },
 };
 

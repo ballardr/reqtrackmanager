@@ -1171,6 +1171,16 @@ def main() -> None:
     )
     assign_project_role(h_pm, cloud["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, cloud["id"], demo_stakeholder["user_id"], "stakeholder")
+    # Platform review 2026-09, Phase 8 — demonstrates the opt-in
+    # "require a change request to add/remove links on approved
+    # requirements" project setting (Project Admin settings), off a
+    # project with no direct-link seeding of its own so there's no
+    # ordering hazard with an earlier link created before this point.
+    r = httpx.patch(
+        f"{BASE}/projects/{cloud['id']}", json={"require_change_request_for_approved_links": True},
+        headers=h_pm, timeout=30,
+    )
+    r.raise_for_status()
 
     print("Demonstrating the generalized cross-project RBAC mechanisms (docs/decisions.md) — Falcon-3 and Solstice"
           " Cloud Platform are unrelated projects (no parent/child relationship), unlike Falcon-3/Avionics above...")

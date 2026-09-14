@@ -74,12 +74,20 @@ class ChangeRequestCreate(BaseModel):
     proposed_reviewer_id: UUID | None = None  # C-R-10
     # ADD_ACTION-only (item 514) — see `ChangeRequestVersion`'s docstring
     # for the mutually-exclusive link-existing-vs-create-new split.
+    # Also REMOVE_ACTION's only field (Platform review 2026-09, Phase 8):
+    # which already-linked action to unlink on approval.
     proposed_action_link_id: UUID | None = None
     proposed_action_title: str | None = None
     proposed_action_description: str | None = None
     proposed_action_type_id: UUID | None = None
     proposed_action_assignee_id: UUID | None = None
     proposed_action_due_date: date | None = None
+    # ADD_LINK-only (Platform review 2026-09, Phase 8) — see
+    # `ChangeRequestVersion`'s docstring.
+    proposed_link_target_requirement_id: UUID | None = None
+    proposed_link_type_id: UUID | None = None
+    # REMOVE_LINK-only (Platform review 2026-09, Phase 8).
+    proposed_link_id: UUID | None = None
 
 
 class ChangeRequestOut(BaseModel):
@@ -117,6 +125,9 @@ class ChangeRequestOut(BaseModel):
     proposed_action_type_id: UUID | None = None
     proposed_action_assignee_id: UUID | None = None
     proposed_action_due_date: date | None = None
+    proposed_link_target_requirement_id: UUID | None = None
+    proposed_link_type_id: UUID | None = None
+    proposed_link_id: UUID | None = None
 
 
 class ChangeRequestDecision(BaseModel):

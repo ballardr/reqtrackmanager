@@ -80,6 +80,8 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     is_archived: false,
     is_template: false,
     allow_member_change_requests: true,
+    require_change_request_for_approved_links: false,
+    exempt_from_org_link_lock: false,
     visibility: "only_specified",
     terminology: {},
     status_id: "status-1",
@@ -299,6 +301,9 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     proposed_action_type_id: null,
     proposed_action_assignee_id: null,
     proposed_action_due_date: null,
+    proposed_link_target_requirement_id: null,
+    proposed_link_type_id: null,
+    proposed_link_id: null,
     ...overrides,
   };
 }

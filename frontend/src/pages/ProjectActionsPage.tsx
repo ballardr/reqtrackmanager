@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { ActionTypeDefinition, OrgUser, Project, RequirementAction, RequirementActionOutcome } from "../api/types";
-import { REQUIREMENT_ACTION_OUTCOME_LABEL } from "../api/types";
+import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTION_OUTCOME_TONE } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { SortableHeader } from "../components/SortableHeader";
@@ -236,7 +236,11 @@ export function ProjectActionsPage() {
                 </thead>
                 <tbody>
                   {(sortedActions ?? actions).map((a) => (
-                    <tr key={a.id}>
+                    <tr
+                      key={a.id}
+                      className="entity-accent-row"
+                      style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action }}
+                    >
                       <td className="text-muted">{a.unique_code}</td>
                       <td>
                         <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.title}</Link>
@@ -244,7 +248,11 @@ export function ProjectActionsPage() {
                       </td>
                       <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
                       <td>
-                        <FilterBadge active={outcomeFilter === a.outcome_status} onClick={() => toggleOutcomeFilter(a.outcome_status)}>
+                        <FilterBadge
+                          active={outcomeFilter === a.outcome_status}
+                          tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}
+                          onClick={() => toggleOutcomeFilter(a.outcome_status)}
+                        >
                           {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
                         </FilterBadge>
                       </td>

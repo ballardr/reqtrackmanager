@@ -60,14 +60,26 @@ export function MultiSelectDropdown({
         ref={triggerRef}
         type="button"
         className="input row"
-        style={{ justifyContent: "space-between", cursor: "pointer" }}
+        style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
+        title={summary}
         aria-label={triggerLabel}
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <span>{summary}</span>
-        <ChevronDown size={14} />
+        {/* `.row`'s own `flex-wrap: wrap` (theme.css) let a long summary
+            (more roles checked) wrap onto a second line with just the
+            chevron on it, where `justify-content: space-between` left it
+            flush left instead of on the right — the chevron visibly
+            "moved" depending on how many roles were checked. Forcing
+            `nowrap` here and truncating the summary instead keeps the
+            chevron pinned to the same spot on every row regardless of
+            content length; the untruncated text is still available via
+            the `title` above and the opened list itself. */}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+          {summary}
+        </span>
+        <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>

@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { installedModules } from "../modules/registry";
@@ -32,6 +33,17 @@ import { Tooltip } from "./Tooltip";
  * shape, the same "module owns its own UI, core just mounts it" boundary
  * `orgAdminSections` already establishes for `OrgAdminPage.tsx`.
  */
+// Matches theme.css's `@media (max-width: 860px)` nav-rail breakpoint,
+// which force-collapses the rail to icon-only regardless of the user's own
+// `nav_rail_collapsed` preference (not enough room for a full-width rail
+// alongside content below this width). `NavRailLink`'s tooltip only makes
+// sense when the label text is actually hidden, so anything that decides
+// "is the rail showing icon-only right now" needs to account for this
+// CSS-only forced collapse too, not just the JS preference — otherwise a
+// user with the rail set to expanded gets no tooltips at all once the CSS
+// has forced their links down to icons (see `railIconOnly` below).
+const MOBILE_BREAKPOINT_PX = 860;
+
 export function NavRailLink({
   to, label, icon, exact = false, railCollapsed,
 }: { to: string; label: string; icon: ReactNode; exact?: boolean; railCollapsed: boolean }) {
@@ -54,11 +66,18 @@ export function NavRailLink({
  * is `position: fixed` against the true left edge, full viewport height
  * below the header, and stays on-screen while the content column scrolls
  * (rather than living inside the same centred/padded container as the
- * page content). `railCollapsed` shrinks it to icons-only, toggled from
- * the icon button pinned top-right of the rail (above the section links,
- * so it's reachable without scrolling past a long project section first)
- * — the header's hamburger button was removed as a pure duplicate of that
- * same control — and persisted via `useUiPreference` (`nav_rail_collapsed`)
+ * page content). `railCollapsed` shrinks it to icons-only, toggled from a
+ * small circular button (`.nav-rail-toggle`, theme.css) fixed to the
+ * viewport and centred on the rail/content divider, not part of the
+ * rail's own scrolling content, so it stays put regardless of rail scroll
+ * position or content length. Its `left` is set inline here from
+ * `railCollapsed` (`var(--nav-rail-width)` / `var(--nav-rail-width-
+ * collapsed)`, the same tokens `.app-content`'s own margin uses) rather
+ * than via a CSS sibling selector on `.nav-rail`, because the button
+ * renders inside `Tooltip`'s own wrapping span and so isn't actually a
+ * DOM sibling of `.nav-rail` — the header's hamburger button was removed
+ * as a pure duplicate of that same control — and persisted via
+ * `useUiPreference` (`nav_rail_collapsed`)
  * so it follows the user across devices the same way their theme/
  * landing-page choices already do.
  * `contentBoxed` (`useUiPreference("content_boxed", false)`) is a second,
@@ -89,6 +108,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const strings = useStrings();
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
+  const isNarrowViewport = useNarrowViewport(MOBILE_BREAKPOINT_PX);
+  // Whether the rail is actually rendering icon-only right now, whether that's
+  // by the user's own preference or because the viewport is too narrow for a
+  // full-width rail (see `MOBILE_BREAKPOINT_PX` above) — the value every
+  // nav-rail-link tooltip decision should use instead of the raw preference.
+  const railIconOnly = railCollapsed || isNarrowViewport;
   const [contentBoxed] = useUiPreference<boolean>("content_boxed", false);
   const branding = useBranding();
   const orgLabelPlural = useOrgLabelPlural();
@@ -177,32 +202,21 @@ function LayoutShell({ children }: { children: ReactNode }) {
       </header>
       {user && (
         <nav
-          className={`nav-rail stack ${railCollapsed ? "nav-rail-icons" : ""}`}
+          className={`nav-rail stack ${railIconOnly ? "nav-rail-icons" : ""}`}
           style={{ gap: "0.15rem" }}
         >
-          <div className="row nav-rail-toggle-row" style={{ justifyContent: "flex-end" }}>
-            <Tooltip label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}>
-              <button
-                className="btn"
-                onClick={() => setRailCollapsed(!railCollapsed)}
-                aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
-              >
-                {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-              </button>
-            </Tooltip>
-          </div>
           {projectId && (
             <>
               <div className="nav-section-label">{strings.nav.projectSectionLabel}</div>
-              <NavRailLink to={`/projects/${projectId}`} exact label={strings.nav.overview} icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/files`} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to={`/projects/${projectId}/admin`} label={strings.nav.admin} icon={<Settings size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to={`/projects/${projectId}`} exact label={strings.nav.overview} icon={<LayoutDashboard size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/requirements`} label={strings.nav.requirements} icon={<ListChecks size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/change-requests`} label={strings.nav.changeRequests} icon={<GitPullRequest size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/actions`} label={strings.nav.actions} icon={<CheckSquare size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/files`} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/reports`} label={strings.nav.reports} icon={<FileText size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/reviews-due`} label={strings.reviews.projectTitle} icon={<Clock size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/history`} label={strings.history.title} icon={<History size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to={`/projects/${projectId}/admin`} label={strings.nav.admin} icon={<Settings size={16} />} railCollapsed={railIconOnly} />
               {/* Module-contributed nav entries (compliance-module-plan.md
                   Phase 3) — one per currently-enabled module that declares a
                   frontend manifest, Tier A or Tier B alike; a module whose
@@ -216,7 +230,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
                     to={moduleEntry.frontend_manifest.nav_path}
                     label={moduleEntry.frontend_manifest.nav_label}
                     icon={<Wrench size={16} />}
-                    railCollapsed={railCollapsed}
+                    railCollapsed={railIconOnly}
                   />
                 ) : null
               )}
@@ -227,9 +241,9 @@ function LayoutShell({ children }: { children: ReactNode }) {
               pattern to "Project" above, not nested inside it. See this
               file's own `activeStandaloneWorkspace` computation above. */}
           {activeStandaloneWorkspace &&
-            activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed })}
+            activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
           <div className="nav-section-label">Global</div>
-          <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railCollapsed} />
+          <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
           {/* "Organisation Overview" (Phase 19) — a core, always-visible
               nav-rail link (unlike Phase 18's "Compliance Standards" tab
               below, this one carries general-purpose org stats every org
@@ -239,19 +253,19 @@ function LayoutShell({ children }: { children: ReactNode }) {
               follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
               single-org/multi-org auto-redirect convention as its entry
               point, the same way `/orgs` already does for org admin. */}
-          <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railCollapsed} />
+          <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
           {/* Module-contributed top-level nav links (Phase 18's "Compliance
               Standards" is the first one) — each item owns its own
               visibility and may render nothing at all; see this file's own
               `globalNavItems` computation above. */}
           {globalNavItems.map((item) => (
-            <Fragment key={item.key}>{item.render({ railCollapsed })}</Fragment>
+            <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
           ))}
           {hasFavourites && (
-            <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railCollapsed} />
+            <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
           )}
-          <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railCollapsed} />
-          <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railCollapsed} />
+          <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+          <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
           {/* The only path to org administration (U-P-02-adjacent IA gap
               found in the 2026-08 UX audit): /orgs already auto-redirects
               straight to a single org's admin page, or lists every org a
@@ -259,12 +273,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
               this, for anyone but a server admin drilling in through
               /server/organisations. See docs/ux-style-guide.md, "Pattern:
               wayfinding". */}
-          <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
+          <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
           {user.is_server_admin && (
             <>
               <div className="nav-section-label">Administration</div>
-              <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railCollapsed} />
-              <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railCollapsed} />
+              <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+              <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
             </>
           )}
           {/* Build identity — "a way to see the version and date of the
@@ -275,7 +289,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
               detail lives in `title` (plain hover text, not the shared
               `Tooltip`) since this is supplementary static text, not an
               interactive control needing an accessible name. */}
-          {!railCollapsed && (
+          {!railIconOnly && (
             <div
               className="text-muted"
               style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
@@ -287,6 +301,21 @@ function LayoutShell({ children }: { children: ReactNode }) {
             </div>
           )}
         </nav>
+      )}
+      {user && (
+        <Tooltip
+          label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
+          className="nav-rail-toggle-wrapper"
+          style={{ left: `var(${railCollapsed ? "--nav-rail-width-collapsed" : "--nav-rail-width"})` }}
+        >
+          <button
+            className="btn nav-rail-toggle"
+            onClick={() => setRailCollapsed(!railCollapsed)}
+            aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
+          >
+            {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </Tooltip>
       )}
       <main className={`app-content${contentBoxed ? " boxed" : ""}`}>
         {contentBoxed ? <div className="content-inner">{children}</div> : children}

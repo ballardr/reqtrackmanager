@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+
+const apiBaseUrl = "http://localhost:8000";
 
 /**
  * Job to be done: module system Phase 1 (docs/compliance-module-plan.md) —
@@ -18,10 +20,40 @@ import { loginAs, PERSONAS, selectOrgAdminGroup } from "./helpers";
  * (pre-Phase-5) until this session rebuilt it while verifying Phase 12's own
  * new e2e spec. This is that overdue revisit, not a Phase-12-specific
  * feature test.
+ *
+ * Uses a brand-new, disposable organisation + admin created via the API
+ * (mirroring org-admin-project-statuses-and-link-types.spec.ts), not the
+ * shared "E2E Gamma Labs" org/PERSONAS.orgAdminGamma this spec previously
+ * ran against — this spec's own toggle-off-then-back-on already restores
+ * Gamma's enablement state for *order* independence, but under real
+ * concurrency (Phase 1, docs/platform-review-2026-09-plan.md) another spec
+ * reading/writing Gamma (e.g. org-security-controls.spec.ts) could still
+ * observe the module disabled mid-window. A disposable org removes that
+ * collision entirely.
  */
 test.describe("org admin: Modules section", () => {
   test("shows the Compliance module, entitled and enabled by default, and its toggle works", async ({ page }) => {
-    await loginAs(page, PERSONAS.orgAdminGamma.email);
+    const suffix = Date.now();
+    const adminEmail = `e2e-modules-admin-${suffix}@example.com`;
+
+    const serverAdminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+      data: { email: "admin@example.com", password: "ChangeMe123!" },
+    });
+    const serverAdminToken = (await serverAdminLoginResp.json()).access_token;
+    const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+
+    const org = await (
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs`, {
+        headers: serverAdminHeaders,
+        data: { name: `E2E Modules Org ${suffix}` },
+      })
+    ).json();
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+      headers: serverAdminHeaders,
+      data: { email: adminEmail, display_name: "E2E Modules Admin", password: PASSWORD, role: "org_admin" },
+    });
+
+    await loginAs(page, adminEmail, PASSWORD);
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
 

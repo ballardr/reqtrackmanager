@@ -56,6 +56,8 @@ The resource-menu leaf is the enterprise-console shape the app's own header chro
 
 **Addendum (2026-09-09, Phase 27c): `ResourceMenu` hides its own menu-strip chrome when there's only one group.** `OrgOverviewPage.tsx`'s stats header used to sit pinned above a `ResourceMenu` that only rendered at all once a module contributed a section — an org with no such module saw a stats block with nothing structurally below it, and an org with one saw the stats block as a separate, non-optional block above the menu rather than the two reading as one page. The fix folds the stats header into the menu's own group set as a real, always-present "Overview" group (first, default-selected), so the whole page is one `ResourceMenu`-driven surface — and `ResourceMenu` itself (not any one caller) now skips rendering the `<nav>`/`<ul>` link-list chrome whenever `groups.length <= 1`, rendering `children` directly instead. A single-entry menu has nothing to switch between, so showing a link that's always already active was chrome with no function. This is a core, shared fix — every `ResourceMenu` consumer with the same "sometimes there's only one group" shape benefits, not just Organisation Overview.
 
+**Addendum (2026-09-14, platform review follow-up): `ResourceMenu` collapses its link list to a `<select>` below the app's mobile breakpoint.** The full-height `<nav>`/`<ul>` group list (up to 10 entries on Org Admin, the worst case) pushed the selected group's own content a page-and-a-half down on a phone-width viewport, forcing a scroll past the whole menu just to reach it — a real, reported regression on narrow windows, not a hypothetical. Below `MOBILE_BREAKPOINT_PX` (860px, matching the nav rail's and `FilterPanel`'s own breakpoint, via the same shared `useNarrowViewport` hook) `ResourceMenu` renders a single native `<select>` in place of the link list, collapsing the group list to one row; the content pane and the `title`/`subtitle` header are unaffected. This is a core, shared fix in `ResourceMenu` itself, not a per-page change — every current and future consumer (Org Admin, Project Admin, Server Admin, Preferences, Compliance Settings, Org Overview) gets it automatically. Applies only to `ResourceMenu`'s own link-list-of-groups shape; it isn't a general "lists become dropdowns on mobile" rule for every other vertical list in the app.
+
 ![Current: Org Admin as a flat list of 15 identically-weighted accordion sections, all collapsed. Proposed: the same page as a resource menu with 6 groups on the left and a content pane on the right, only the selected group's settings shown.](figures/ux-style-guide/settings-hierarchy.png)
 
 Mockups, not screenshots — illustrative of the shape, not the exact pixels. Applied to Org Admin's actual 15 flat sections:
@@ -210,6 +212,45 @@ Creating a brand-new entity (project, organisation, user, group, requirement) or
 What doesn't change: `SidePanel` keeps its one remaining job — the one the reading order actually assigns it — viewing an existing entity's full detail without leaving the list behind it (`Pattern: entity detail panel`, below). `Popover` is untouched, for a one- or two-field quick action (a rename-in-place, a single-select stage move) anchored to whatever triggered it.
 
 **Implementation dependency, resolved 2026-08-24:** `Modal.tsx` originally (`{ title, onClose, children }`, fixed `max-width: 560px`, no dedicated footer/action-button prop, caller supplies its own buttons in `children`) was built for its one then-current use — a read-only vote-comment viewer, plus `ConfirmDialog` built on top of it — and hadn't yet hosted a genuinely busy multi-field form. It now takes an optional `size?: "md" | "lg"` prop (`Modal.tsx`, `MODAL_MAX_WIDTH_PX`): `"md"` (the default, unchanged) keeps the original 560px for a small form or read-only viewer; `"lg"` widens to 900px for a busy multi-field form. First proven by the CSV import wizard's own column-mapping/preview step, which needs the extra width for its field/column-mapping/hint table (see [docs/ux-audit-2026-08.md](ux-audit-2026-08.md), roadmap item 506) — the caller passes `size="lg"`, everything else about the component (title, close button, focus trap, backdrop) is unchanged. A future flow reaching for `Modal` should check whether its own content is form-sized (`"md"`) or table/wizard-sized (`"lg"`) rather than assuming one width fits every case.
+
+## Pattern: Tabs
+
+*(New 2026-09-13 — Platform review 2026-09, Phase 3.)*
+
+`Tabs` (`frontend/src/components/Tabs.tsx`) must read as *navigation between views of the same object*, never as an action a user takes — so its visual language stays fully separate from `.btn`/`.btn-primary`, not a shared class reused with a different modifier. The active tab is marked by an underline (`.tabs-tab--active`: a 2px `border-bottom` in `--color-primary`, plus bold text) against a transparent background, sitting on a `.tabs-list` strip with its own single `border-bottom` — never a filled pill matching a button's shape.
+
+*Why:* `Tabs.tsx` literally rendered `` `btn ${active === tb.key ? "btn-primary" : ""}` `` on each tab button — not just similar styling by coincidence, the exact same CSS classes a primary button uses, so an active tab and a "Save" button were pixel-identical (same fill, border-radius, padding). This was the direct cause of a human review flagging "tabs and buttons look the same." Principle 4 ("one component per pattern") already prevented three hand-rolled tab bars from drifting apart from each other structurally; it didn't prevent the one shared component from borrowing another pattern's visual identity wholesale. A future pattern reusing an existing component's classes for convenience should check whether doing so also borrows that component's *meaning* ("this is clickable" is fine to share; "this is the primary action" is not, for something that is actually wayfinding).
+
+## Pattern: status colour
+
+*(New 2026-09-13 — Platform review 2026-09, Phase 4.)*
+
+A status/outcome badge's colour comes from a `BadgeTone` (`"muted" | "info" | "accent" | "danger"`, `frontend/src/api/types.ts`), applied as a `.badge--<tone>` CSS modifier (`theme.css`) on top of the plain `.badge` shape — never an inline colour at the call site, and never a fifth ad hoc tone. Every status/outcome enum rendered as a badge has a `*_TONE` map living next to its existing `*_LABEL` map — `REQUIREMENT_STATUS_TONE`, `CHANGE_REQUEST_STATUS_TONE`, `REQUIREMENT_ACTION_OUTCOME_TONE` today — so a new enum value added later is required to pick a tone at the same time it picks a label, the same discipline Principle 12 already established for labels themselves.
+
+```mermaid
+flowchart LR
+  A["draft / withdrawn / archived"] --> M["muted — --color-text-muted"]
+  B["reviewed / submitted / in_review / pending"] --> I["info — --color-info (aqua)"]
+  C["approved / completed"] --> G["accent — --color-accent (moss green)"]
+  D["rejected / failed"] --> R["danger — --color-danger"]
+```
+
+*Why `info` is its own token, not `--color-warning`:* `--color-warning` is reserved for things that actually need attention (an applicability override, an overdue review) — routine "awaiting a decision" states are not a warning, and overloading the same colour for both would make the genuine warnings harder to spot. `FilterBadge` (used for every clickable status filter chip) takes an optional `tone` prop for this; a plain `<span className="badge">` applies `badge--<tone>` directly. Badges that aren't a status/outcome at all (a target-stage filter, a role) stay untoned.
+
+## Pattern: entity-type accent
+
+*(New 2026-09-13 — Platform review 2026-09, Phase 4.)*
+
+A 3px coloured left-border (`.entity-accent-row` for a `<tr>`, `.entity-accent-card` for a card/div — `theme.css`) marks which top-level artefact kind a row or card represents, driven by `ENTITY_ACCENT_COLOR` (`frontend/src/api/types.ts`) and set via the `--entity-accent-color` custom property at each call site — never a one-off hex value. v1 covers the four kinds that exist today:
+
+| Kind | Token | Where it's applied |
+|---|---|---|
+| Requirement | `--color-entity-requirement` (indigo) | `RequirementsPage` rows/cards; `RequirementDetailPage`'s own requirement-link rows |
+| Action | `--color-entity-action` (teal) | `ProjectActionsPage` rows; `RequirementDetailPage`'s linked-actions rows |
+| Change Request | `--color-entity-change-request` (violet) | `ChangeRequestsPage` rows/cards |
+| Compliance | `--color-entity-compliance` (terracotta) | `RequirementTraceabilityLinksSection.tsx`'s compliance-requirement-link rows |
+
+The main payoff is a *mixed* list, not a homogeneous one — e.g. a requirement's own Links card shows requirement-to-requirement links directly above compliance-requirement links from the same card, and the accent is what lets a user tell which is which without reading the text. **This set is deliberately not pre-sized for the full future-modules roadmap** ([docs/future-modules-2026-09-overview.md](future-modules-2026-09-overview.md) envisions up to a dozen artefact kinds across ten modules) — hand-picking that many mutually distinguishable, colourblind-safe hues today, for entities that don't exist yet and whose actual list-row shape is unknown, would be designing against a guess. A future module that needs this adds one token + one `ENTITY_ACCENT_COLOR` entry when it actually ships; it does not redesign this mechanism.
 
 ## Pattern: action menu
 
@@ -507,6 +548,18 @@ flowchart TD
 
 Sortable columns are the obvious ones only — a name/title, a status, an ID/code, a created/modified date, a priority where one exists — never a column with no natural order (an actions column, a badge-only column). This used to note that Org Admin's Groups section and Project Admin's Groups tab were accordion-of-cards, not `<th>`-based columns, so this pattern simply didn't apply to them — both are real `DirectoryTable`s now (Phase B, 2026-08-31 follow-up UX batch), each with a sortable Name column and a Members count column that deliberately stays unsorted (no natural order for a bare count). Both list endpoints (`GET /orgs/{id}/groups`, `GET /projects/{id}/groups`) already page via `limit`/`offset`, so Name sort took the "backend `order` param, header click refetches" branch below rather than a client-side sort of only the loaded page — the same choice Org Admin's Users table made.
 
+## Pattern: tabbed picker modal
+
+*(New 2026-09-14 — Platform review 2026-09, Phase 7.)*
+
+A `Modal` whose body is the shared `Tabs` component (Pattern "Tabs," above), used when a picker needs more than one genuinely different way to find a target and needs real screen space to do it — more than the anchored, one/two-field `Popover` (Pattern "create panels, popovers, and one door for bulk") can hold, and not a fit for the two-pane `Modal` the "resource picker dialog" pattern already names (that shape is for browsing *sources*, not switching between unrelated *search strategies* for the same target type). Each tab is fully self-contained — its own state, its own submit action, its own "this succeeded, close and refresh" signal — the modal itself only hosts the tab strip and renders whichever tab is active.
+
+**Built** as `RequirementLinkPickerModal` (`frontend/src/components/RequirementLinkPickerModal.tsx`) — replaces the old flat, unsearched `<select>` `Popover` on a requirement's "Add link" button with a Search tab (plain text filter) and a Requirements tab (a cascading component → category → requirement browse, mirroring `RequirementsPage.tsx`'s own create-form cascade). A currently-enabled module can contribute further tabs of its own (`requirementLinkPickerTabs`, `frontend/src/modules/types.ts` — the same generic "module hands the parent a render function" shape `requirementDetailSections` already established, extended with an `onLinked()` callback so the modal can close and refresh without knowing what kind of link a contributed tab just created); Compliance's own standard → version → requirement cascade (`ComplianceRequirementLinkPickerTab.tsx`) is the first such tab.
+
+*Why every tab panel — built-in or contributed — is conditionally rendered, never "always mounted, hidden via the `hidden` attribute":* a contributed tab reasonably reuses core vocabulary (a "Link type" select, an "Add link" button) verbatim, since it's still creating a link of some kind. An inactive tab left mounted-but-hidden would leave a second element with that same accessible name sitting in the DOM, which `getByLabel`/`getByText`-style queries — unlike `getByRole`, which already excludes `hidden`-attribute elements from Playwright/testing-library's accessibility-tree matching — do not filter out by default, breaking on an ambiguous match the moment a different tab is active. Unmounting the inactive tab removes the whole ambiguity class rather than requiring every future tab author to remember to scope their queries defensively.
+
+**Also introduced alongside this pattern:** `LabeledSelect` (`frontend/src/components/LabeledSelect.tsx`) — the `<label><span>{label}</span><select className="input">…</select></label>` block every cascading picker in the app was hand-rolling separately (`RequirementMappingsModal.tsx`, the old "add compliance link" popover, this modal's own two new tabs). Use it for any future single-value entity picker/filter select rather than writing the markup a fifth time.
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
@@ -517,6 +570,11 @@ Sortable columns are the obvious ones only — a name/title, a status, an ID/cod
 | `--color-accent` | `#2f855a` (moss) | `#68d391` | Success/positive state |
 | `--color-danger` | `#c53030` | `#fc8181` | Destructive actions, errors |
 | `--color-warning` | `#b7791f` | `#f6c667` | Warnings |
+| `--color-info` | `#0e7490` (cyan) | `#67e8f9` | Status colour: "awaiting a decision" (Pattern: status colour) — deliberately not `--color-warning`, see that pattern |
+| `--color-entity-requirement` | `#3b5bdb` (indigo) | `#7c96f0` | Entity-type accent: Requirement (Pattern: entity-type accent) |
+| `--color-entity-action` | `#0f766e` (teal) | `#5eead4` | Entity-type accent: Action |
+| `--color-entity-change-request` | `#7c3aed` (violet) | `#c4b5fd` | Entity-type accent: Change Request |
+| `--color-entity-compliance` | `#c2410c` (terracotta) | `#fdba74` | Entity-type accent: Compliance |
 | `--color-bg` | `#eef1f5` | `#14181f` | Page background |
 | `--color-surface` | `#ffffff` | `#1c222c` | Card/panel background |
 | `--color-header-bg` | `#14161c` (fixed, both themes) | — | App-chrome header — deliberately theme-independent, see `docs/decisions.md` |
@@ -527,7 +585,7 @@ Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont,
 
 **Framework & primitives.** *(New 2026-08-24.)* React + TypeScript, built with Vite; routing via `react-router-dom`. No component library and no CSS-in-JS/Tailwind — styling is plain CSS custom properties plus a small, hand-rolled set of utility classes in `frontend/src/styles/theme.css`, applied directly via `className`, the same way `.badge` already does (Principle 10's own "one small reusable visual pattern" note). New UI should reach for these before adding an equivalent: `.card`/`.stack`/`.row`/`.grid`/`.side-grid` for layout, `.btn`/`.btn-primary`/`.btn-danger` for buttons, `.input` for form controls, `.badge` for status/type/role chips, `.container` for the page-width wrapper. `frontend/src/components/` holds the shared, higher-level components this whole document is about (`Modal`, `SidePanel`, `Popover`, `Tabs`, `ConfirmDialog`, `Toast`, `FilterPanel`, `FilterBadge`, `CollapsibleSection`, `ResourceMenu`, `DefinitionList`, `SortableHeader`, `ViewToggle`, `FileUploadTrigger`, `SplitButtonTrigger`, `AutoGrowTextarea`, `ActionMenu`) — a new page should compose from this set before reaching for a one-off.
 
-**App chrome.** *(New 2026-08-24.)* A fixed top bar (`.app-header`, deliberately theme-independent — see the colour token table above) plus a pinned, full-height left nav rail (`.nav-rail`, `Layout.tsx`) that stays on screen while page content scrolls. The rail always shows a global section, plus a project-scoped section once a project is selected; it collapses to icon-only via a toggle pinned above the links, persisted per-user (`useUiPreference("nav_rail_collapsed")`), and a separate, independent preference (`content_boxed`) controls whether page content fills the remaining width or stays capped at 1200px. App and API version strings are pinned at the bottom of the rail (see the seventh pass's [App/API version](ux-audit-2026-08.md#appapi-version-investigated-working-as-designed) finding for how they're populated). `BrandingProvider`/`TerminologyProvider` wrap everything below the header, so org branding and terminology overrides reach every page and nav label without prop-drilling.
+**App chrome.** *(New 2026-08-24; toggle position updated 2026-09-13, Platform Review Phase 2.)* A fixed top bar (`.app-header`, deliberately theme-independent — see the colour token table above) plus a pinned, full-height left nav rail (`.nav-rail`, `Layout.tsx`) that stays on screen while page content scrolls. The rail always shows a global section, plus a project-scoped section once a project is selected; it collapses to icon-only via a small circular button (`.nav-rail-toggle`, theme.css) fixed to the viewport and centred on the rail/content divider — a sibling of both `.nav-rail` and `.app-content`, not part of the rail's own scrolling content, so its position never moves with rail scroll or content length, and it tracks the same width tokens `.app-content`'s own left margin uses so it stays centred on the divider whether the rail is expanded or collapsed. The toggle is persisted per-user (`useUiPreference("nav_rail_collapsed")`), and a separate, independent preference (`content_boxed`) controls whether page content fills the remaining width or stays capped at 1200px. App and API version strings are pinned at the bottom of the rail (see the seventh pass's [App/API version](ux-audit-2026-08.md#appapi-version-investigated-working-as-designed) finding for how they're populated). `BrandingProvider`/`TerminologyProvider` wrap everything below the header, so org branding and terminology overrides reach every page and nav label without prop-drilling.
 
 **Icons.** *(Expanded 2026-08-24 — the previous version of this table named six icons; the app actually uses about fifty. Verified against every `lucide-react` import in `frontend/src`, not assumed.)* `lucide-react` throughout, no other icon set — grouped below by what each means, so a new icon for an existing meaning reuses the entry rather than introducing a synonym:
 
@@ -540,8 +598,9 @@ Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont,
 | Expand / collapse | `ChevronUp` / `ChevronDown` | Reserved for `CollapsibleSection`. `SplitButtonTrigger` also uses a `ChevronDown` for its secondary-options affordance (`Pattern: split-button trigger`) — a different job at a different location (beside a button, not inside an accordion header), not a collision, but worth remembering both exist. |
 | Close a dialog | `X` | `Modal.tsx`/`SidePanel.tsx`'s own close button — distinct from `Trash2` above; not used for delete anywhere anymore. |
 | Archive / restore | `Archive` / `ArchiveRestore` | |
-| View a record's full detail | `Eye` | Org Admin's "View access" panel trigger. |
+| View a record's full detail | `Eye` | Org Admin's "View access" panel trigger; also `ServerManagementPage.tsx`'s "View groups" `ActionMenu` item (Platform review 2026-09, Phase 5). |
 | Open an `ActionMenu` (kebab/⋯) | `MoreVertical` | See "Pattern: action menu" — first use is `OrgAdminPage.tsx`'s Overview group (rename + export). |
+| Assign / manage roles (an `ActionMenu` item opening a role-toggle modal, not the roles column itself) | `ShieldCheck` | First use: `ServerManagementPage.tsx`'s "Assign server roles" (Platform review 2026-09, Phase 5, moved off an always-visible dropdown column). Distinct from a plain `MultiSelectDropdown` roles column (no icon of its own, e.g. Org Admin's Users table), which stays inline rather than behind a menu. |
 | Favourite | `Star` | Filled when favourited, outline otherwise (`ProjectListPage.tsx`, `FavouritesPage.tsx`, and the nav-rail Favourites link itself). |
 | Lock / unlock | `Lock` / `Unlock` | Currently one specific use — Org Admin's per-user "display name locked" toggle — not yet a general "this record is locked" convention; if a future requirement/action lock-state indicator is added (see the seventh pass's actions/change-request gate findings), reuse this pair rather than inventing a new one. |
 | Attachment | `Paperclip` | |

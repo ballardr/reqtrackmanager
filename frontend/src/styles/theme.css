@@ -37,6 +37,19 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
+  /* Platform review 2026-09, Phase 4: "awaiting decision" status tone
+     (reviewed/submitted/in_review/pending), deliberately distinct from
+     --color-warning so routine in-progress states don't compete visually
+     with things that actually need attention (e.g. an applicability
+     override, an overdue review). See docs/decisions.md. */
+  --color-info: #0e7490;
+  /* Entity-type accent (Phase 4, item 2) — v1, 4 kinds. A future module
+     adds its own token here + one ENTITY_ACCENT_COLOR entry
+     (frontend/src/api/types.ts); it does not redesign this set. */
+  --color-entity-requirement: #3b5bdb;
+  --color-entity-action: #0f766e;
+  --color-entity-change-request: #7c3aed;
+  --color-entity-compliance: #c2410c;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -53,6 +66,11 @@
   --color-accent: #68d391;
   --color-danger: #fc8181;
   --color-warning: #f6c667;
+  --color-info: #67e8f9;
+  --color-entity-requirement: #7c96f0;
+  --color-entity-action: #5eead4;
+  --color-entity-change-request: #c4b5fd;
+  --color-entity-compliance: #fdba74;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
@@ -168,6 +186,46 @@ textarea {
   padding-right: 0.5rem;
 }
 
+/* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
+   the active tab used to be styled `.btn btn-primary`, making it
+   pixel-identical to a primary button (see docs/decisions.md, "Platform
+   review 2026-09, Phase 3"). An underline indicator reads as "the current
+   view of this object," not "an action to take," which a filled button
+   shape doesn't. */
+.tabs-list {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabs-tab {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.1rem;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabs-tab:hover {
+  color: var(--color-text);
+}
+
+.tabs-tab:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.tabs-tab--active {
+  color: var(--color-text);
+  font-weight: 600;
+  border-bottom-color: var(--color-primary);
+}
+
 /* Solid dark top bar (U-C-01 override): fixed chrome colour, not a themed
    surface, so it stays the same in light and dark theme. `.btn`/`.text-muted`
    need their own rule here because their base styles pull --color-surface/
@@ -212,6 +270,16 @@ textarea.input {
   padding: 0.5rem 0.6rem;
 }
 
+/* A native <select>'s own dropdown arrow (appearance: auto — this app
+   draws no custom chevron) renders inside its padding box, not in space
+   the browser reserves beyond it — the shared 0.6rem right padding above
+   left the arrow sitting almost flush against the border on every select
+   in the app. Extra right padding only, so the value text's own left
+   alignment is unaffected. */
+select.input {
+  padding-right: 2rem;
+}
+
 .badge {
   display: inline-block;
   border-radius: 999px;
@@ -219,6 +287,44 @@ textarea.input {
   font-size: 0.75rem;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
+}
+
+/* Platform review 2026-09, Phase 4 — status colour, applied as a modifier
+   on top of the plain `.badge` shape rather than a parallel badge
+   implementation. Text + border colour only (fill stays the neutral
+   --color-surface-alt) to keep this additive to the graphite palette
+   rather than a set of solid filled pills. Driven by the *_TONE maps next
+   to each status/outcome enum's *_LABEL map in api/types.ts — a status
+   should never get an inline one-off colour, only one of these 4 tones. */
+.badge--muted {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+.badge--info {
+  color: var(--color-info);
+  border-color: var(--color-info);
+}
+.badge--accent {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.badge--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* Entity-type accent (Phase 4, item 2): a left-border stripe applied to a
+   list row or card, coloured via the `--entity-accent-color` custom
+   property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
+   — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
+   (a border on `<tr>` itself is inconsistently painted across browsers
+   even with border-collapse); non-table rows/cards use border-left
+   directly via the `.entity-accent-card` variant. */
+.entity-accent-row {
+  box-shadow: inset 3px 0 0 0 var(--entity-accent-color, transparent);
+}
+.entity-accent-card {
+  border-left: 3px solid var(--entity-accent-color, transparent);
 }
 
 /* The unread-notification count needs to read as "something needs your
@@ -521,6 +627,47 @@ textarea.input {
   margin-left: var(--nav-rail-width-collapsed);
 }
 
+/* Collapse/expand toggle: a small circular button straddling the rail/
+   content divider, rather than living inside the rail's own scrolling
+   content — a fixed-position element whose vertical position never
+   moves with rail scroll or content length. `left` is set inline from
+   Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
+   the same two tokens .app-content's own margin above uses) rather than
+   via a `.nav-rail ~ .nav-rail-toggle` sibling selector, since the button
+   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span and so is not
+   actually a DOM sibling of `.nav-rail`, only a visual neighbour of one —
+   a sibling-combinator rule here would silently never match.
+
+   The fixed positioning itself lives on `.nav-rail-toggle-wrapper` (the
+   `Tooltip`-rendered `.tooltip-trigger` span, via its `className`/`style`
+   props — see Tooltip.tsx), not on the `.nav-rail-toggle` button inside
+   it. The button is `position: fixed` independent of its parent's layout
+   position, so if the *wrapper* were left as an ordinary in-flow span
+   (sized to fit an out-of-flow child, i.e. collapsing to a zero-size box
+   wherever the DOM puts it), `Tooltip`'s own measurement of that wrapper
+   would land nowhere near the button — this was a real bug: the bubble
+   showed up near the collapsed-rail position even while expanded, because
+   the collapsed-flow span happened to sit close to that edge. Putting the
+   fixed placement on the wrapper instead makes the measured element and
+   the visible button the same box. transform: translateX(-50%) is what
+   actually centres the button on that left value rather than sitting to
+   one side of it. */
+.nav-rail-toggle-wrapper {
+  position: fixed;
+  top: calc(var(--header-height) + 12px);
+  transform: translateX(-50%);
+  z-index: 11;
+  transition: left 0.15s ease;
+}
+
+.nav-rail-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
 /* Content-width preference (U-U-01-adjacent display preference, stored
    like nav-rail-collapsed): "boxed" caps and centres content at the same
    1200px the app used everywhere before this pass, for readability on
@@ -818,7 +965,7 @@ td:has(> .disclosure-toggle) {
      leaving it visible reads as a broken button rather than an
      unavailable one. Hide it rather than show a control that never
      changes the layout. */
-  .nav-rail-toggle-row {
+  .nav-rail-toggle-wrapper {
     display: none;
   }
   .nav-rail:not(.nav-rail-icons) {
@@ -871,11 +1018,12 @@ td:has(> .disclosure-toggle) {
   .side-grid > .filter-panel {
     order: -1;
   }
+  /* Below this same breakpoint ResourceMenu.tsx swaps its .resource-menu-nav
+     link list for a <select> entirely (own useNarrowViewport check), so
+     .resource-menu-nav itself never renders here — only stack the select
+     above the content pane. */
   .resource-menu {
     flex-direction: column;
-  }
-  .resource-menu-nav {
-    width: 100%;
   }
 }
 

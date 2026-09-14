@@ -46,7 +46,18 @@ export const REQUIREMENT_LEVEL_LABEL: Record<RequirementLevel, string> = {
   recommended: "Recommended",
   optional: "Optional",
 };
-export type ChangeRequestKind = "new_requirement" | "modify_requirement" | "add_action";
+/** Platform review 2026-09, Phase 8 added `remove_action` (closing the
+ * asymmetry `unlink_action` had with `add_action`'s already-gated add
+ * side) and `add_link`/`remove_link` (an opt-in sibling gate for
+ * `RequirementLink`, see `Project.require_change_request_for_approved_links`
+ * and `Organization.force_require_change_request_for_approved_links`). */
+export type ChangeRequestKind =
+  | "new_requirement"
+  | "modify_requirement"
+  | "add_action"
+  | "remove_action"
+  | "add_link"
+  | "remove_link";
 export type ChangeRequestStatus = "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn";
 export const CHANGE_REQUEST_STATUS_LABEL: Record<ChangeRequestStatus, string> = {
   draft: "Draft",
@@ -61,6 +72,55 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   pending: "Pending",
   completed: "Completed",
   failed: "Failed",
+};
+
+// Platform review 2026-09, Phase 4 (status colour). A `BadgeTone` is one of
+// only 4 values, each backed by a `.badge--<tone>` CSS modifier
+// (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
+// archived), info = awaiting a decision (in review/pending — deliberately
+// NOT --color-warning, which stays reserved for things that need
+// attention, not routine in-progress states), accent = a positive
+// terminal outcome (approved/completed), danger = a negative terminal
+// outcome (rejected/failed). Every status/outcome enum rendered as a
+// badge should have a *_TONE map here alongside its *_LABEL map, never an
+// inline colour at the call site.
+export type BadgeTone = "muted" | "info" | "accent" | "danger";
+export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
+  draft: "muted",
+  reviewed: "info",
+  approved: "accent",
+  archived: "muted",
+};
+export const CHANGE_REQUEST_STATUS_TONE: Record<ChangeRequestStatus, BadgeTone> = {
+  draft: "muted",
+  submitted: "info",
+  in_review: "info",
+  approved: "accent",
+  rejected: "danger",
+  withdrawn: "muted",
+};
+export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, BadgeTone> = {
+  pending: "info",
+  completed: "accent",
+  failed: "danger",
+};
+
+// Entity-type accent (Phase 4, item 2) — a left-border stripe/box-shadow
+// (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) applied
+// consistently wherever these kinds appear as a list row or card, so a
+// user scanning a mixed list (e.g. a requirement's own Links card, which
+// shows both requirement-to-requirement links and compliance-requirement
+// links side by side) can tell the entity kind apart at a glance. v1
+// covers the 4 entity kinds that exist today; a future module (see
+// docs/future-modules-2026-09-overview.md) adds its own token + entry
+// here when it actually ships, rather than this set trying to
+// pre-reserve colours for entity kinds that don't exist yet.
+export type EntityAccentKind = "requirement" | "action" | "change_request" | "compliance";
+export const ENTITY_ACCENT_COLOR: Record<EntityAccentKind, string> = {
+  requirement: "var(--color-entity-requirement)",
+  action: "var(--color-entity-action)",
+  change_request: "var(--color-entity-change-request)",
+  compliance: "var(--color-entity-compliance)",
 };
 // Compliance module enums/label maps (Phase 5/6/12) live in this module's
 // own `frontend/src/modules/compliance/types.ts`, not here — see that
@@ -289,6 +349,12 @@ export interface Organization {
   email_footer_company_name: string | null;
   email_footer_website: string | null;
   email_footer_address: string | null;
+  // Platform review 2026-09, Phase 8 — unlike most other org policy
+  // toggles (behind `OrgAdvancedSettings`/`ORG_ADMIN`), readable by any
+  // org member here: a project manager who isn't an org admin still needs
+  // to know whether this force is active to render their own project's
+  // settings correctly. See `Project.require_change_request_for_approved_links`.
+  force_require_change_request_for_approved_links: boolean;
 }
 
 export interface OrgImportResult {
@@ -530,6 +596,18 @@ export interface Project {
   is_archived: boolean;
   is_template: boolean;
   allow_member_change_requests: boolean;
+  // Platform review 2026-09, Phase 8 — opt-in per-project requirement that
+  // adding/removing a `RequirementLink` on an already-approved requirement
+  // go through a change request (`ChangeRequestKind` `add_link`/
+  // `remove_link`) instead of the direct endpoint. Effective value is
+  // `require_change_request_for_approved_links || (org.
+  // force_require_change_request_for_approved_links && !
+  // exempt_from_org_link_lock)` — see `Organization`'s own field below.
+  require_change_request_for_approved_links: boolean;
+  // Escape hatch from an org-wide `Organization.
+  // force_require_change_request_for_approved_links` — meaningless unless
+  // that org policy is active.
+  exempt_from_org_link_lock: boolean;
   visibility: "only_specified" | "org_wide";
   terminology: Record<string, string>;
   status_id: string;
@@ -638,11 +716,15 @@ export type MemberSourceProvenanceKind =
  * per-user members table would revoke the role for every other member of
  * that group too, which is a materially different, higher-blast-radius
  * action than what this predicate's current callers assume "direct and
- * revocable" means. A future group-row UI (tracked for a later PR) that
- * wants to offer a real toggle for this kind should use its own predicate
- * against the raw `"direct_org_group_role"` kind rather than extending this
- * one — conflating the two would make a per-user toggle silently do
- * group-wide damage. See docs/decisions.md's PR4 entry. */
+ * revocable" means. The group-row UI this comment used to describe as
+ * future work now exists (`ProjectMembersTable`'s `kind: "group"` row,
+ * Phase 6, docs/platform-review-2026-09-plan.md) — it does not extend this
+ * predicate or filter a user's own `sources` at all, since `GET
+ * /{project_id}/group-roles` (`OrgGroupProjectRoleSummary` below) already
+ * names exactly which roles each group holds directly, with no per-source
+ * `kind` check needed. Conflating a group's own row with a per-user toggle
+ * would make it silently do group-wide damage. See docs/decisions.md's PR4
+ * entry. */
 export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
   return kind === "direct_role";
 }
@@ -677,6 +759,20 @@ export interface EffectiveMember {
 export interface MaterializeResult {
   created: { user_id: string; role: string }[];
   skipped: { user_id: string; role: string }[];
+}
+
+/** One organisation group holding at least one direct `OrgGroupProjectRole`
+ * grant on a project (`GET /{project_id}/group-roles`) — the read
+ * counterpart to `POST`/`DELETE /{project_id}/group-roles/...` (PR4),
+ * added in Phase 6 (docs/platform-review-2026-09-plan.md) so
+ * `ProjectMembersTable` can render this group as its own row instead of
+ * only being visible through a member's `"direct_org_group_role"`
+ * provenance line. `roles` aggregates every role this one group holds
+ * directly on the project. */
+export interface OrgGroupProjectRoleSummary {
+  org_group_id: string;
+  org_group_name: string;
+  roles: ProjectRole[];
 }
 
 /** Org-definable project status (C-G-XX) — seeded with Proposed/Active/
@@ -1068,6 +1164,13 @@ export interface ChangeRequest {
   proposed_action_type_id: string | null;
   proposed_action_assignee_id: string | null;
   proposed_action_due_date: string | null;
+  /** ADD_LINK-only (Platform review 2026-09, Phase 8) — the target
+   * requirement and org link type to link to. */
+  proposed_link_target_requirement_id: string | null;
+  proposed_link_type_id: string | null;
+  /** REMOVE_LINK-only — the existing `RequirementLink` row to remove on
+   * approval. */
+  proposed_link_id: string | null;
 }
 
 export interface ChangeRequestTask {
@@ -1208,6 +1311,9 @@ export interface OrgAdvancedSettings {
   auto_accept_email_domain: string | null;
   external_user_policy: ExternalUserPolicy;
   allow_relaxed_child_project_creation: boolean;
+  // Platform review 2026-09, Phase 8 — see `Organization`'s own field of
+  // the same name for the full resolution.
+  force_require_change_request_for_approved_links: boolean;
 }
 
 /** One module's state as seen by an org admin (module system Phase 1,

@@ -82,6 +82,7 @@ from app.schemas.project import (
     MaterializeResultOut,
     MoveDirection,
     OrgGroupProjectRoleAssign,
+    OrgGroupProjectRoleSummaryOut,
     PendingInviteOut,
     ProjectAncestorOut,
     ProjectCreate,
@@ -776,7 +777,9 @@ def list_projects(
                 id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
                 created_at=p.created_at, updated_at=p.updated_at,
                 is_archived=p.is_archived, is_template=p.is_template,
-                allow_member_change_requests=p.allow_member_change_requests, visibility=p.visibility,
+                allow_member_change_requests=p.allow_member_change_requests,
+                require_change_request_for_approved_links=p.require_change_request_for_approved_links,
+                exempt_from_org_link_lock=p.exempt_from_org_link_lock, visibility=p.visibility,
                 terminology=p.terminology, status_id=p.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
@@ -1032,6 +1035,10 @@ def update_project(
         project.summary = payload.summary
     if payload.allow_member_change_requests is not None:
         project.allow_member_change_requests = payload.allow_member_change_requests
+    if payload.require_change_request_for_approved_links is not None:
+        project.require_change_request_for_approved_links = payload.require_change_request_for_approved_links
+    if payload.exempt_from_org_link_lock is not None:
+        project.exempt_from_org_link_lock = payload.exempt_from_org_link_lock
     if payload.is_template is not None:
         project.is_template = payload.is_template
     if payload.can_be_parent is not None:
@@ -1245,7 +1252,9 @@ def get_project_children(
                 id=c.id, organization_id=c.organization_id, name=c.name, summary=c.summary,
                 created_at=c.created_at, updated_at=c.updated_at,
                 is_archived=c.is_archived, is_template=c.is_template,
-                allow_member_change_requests=c.allow_member_change_requests, visibility=c.visibility,
+                allow_member_change_requests=c.allow_member_change_requests,
+                require_change_request_for_approved_links=c.require_change_request_for_approved_links,
+                exempt_from_org_link_lock=c.exempt_from_org_link_lock, visibility=c.visibility,
                 terminology=c.terminology, status_id=c.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
@@ -2909,6 +2918,42 @@ def assign_project_role(
                 project_id=project.id, actor_id=current_user.id,
             )
         db.commit()
+
+
+@router.get("/{project_id}/group-roles", response_model=list[OrgGroupProjectRoleSummaryOut])
+def list_group_project_roles(
+    project_id: UUID,
+    project: Project = Depends(require_project_manage),
+    db: Session = Depends(get_db),
+):
+    """Lists every organisation group holding at least one direct
+    `OrgGroupProjectRole` grant on this project — the read side PR4's
+    assign/revoke endpoints never got (Phase 6, docs/platform-review-2026-
+    09-plan.md). Before this endpoint, a group granted a role through the
+    Members section's add-control (`assign_group_project_role`) had no way
+    to be seen, edited, or removed again except by reaching into a
+    member's own per-role Source line (`direct_org_group_role` provenance)
+    or calling the DELETE endpoint by hand — this is what lets
+    `ProjectMembersTable`'s own group row exist at all.
+
+    `require_project_manage`-gated like `get_effective_members`, the
+    equivalent read for user rows, and like the assign/revoke endpoints
+    this is the read counterpart to.
+    """
+    rows = db.execute(
+        select(OrgGroupProjectRole.org_group_id, OrgGroupProjectRole.role, OrgGroup.name)
+        .join(OrgGroup, OrgGroup.id == OrgGroupProjectRole.org_group_id)
+        .where(OrgGroupProjectRole.project_id == project_id)
+        .order_by(OrgGroup.name)
+    ).all()
+    grouped: dict[UUID, OrgGroupProjectRoleSummaryOut] = {}
+    for org_group_id, role, org_group_name in rows:
+        entry = grouped.get(org_group_id)
+        if entry is None:
+            entry = OrgGroupProjectRoleSummaryOut(org_group_id=org_group_id, org_group_name=org_group_name, roles=[])
+            grouped[org_group_id] = entry
+        entry.roles.append(role)
+    return list(grouped.values())
 
 
 @router.post("/{project_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)

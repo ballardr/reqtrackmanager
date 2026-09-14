@@ -116,7 +116,15 @@ test.describe("org report templates and project report setup", () => {
       await page.getByText(PROJECT_NAMES.gamma2).click();
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await page.getByLabel("Usable as a project template").check();
-      await page.getByRole("button", { name: "Save settings" }).click();
+      // Same PUT-vs-reload race the "select it as Gamma-1's default report
+      // template" step above already guards against: a bare click() races
+      // saveSettings()'s PATCH against the immediate reload below, which
+      // can reload before the request reaches the server and read the
+      // pre-save (unchecked) state back.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes(`/api/v1/projects/`) && r.request().method() === "PATCH"),
+        page.getByRole("button", { name: "Save settings" }).click(),
+      ]);
       await page.reload();
       await expect(page.getByLabel("Usable as a project template")).toBeChecked();
 

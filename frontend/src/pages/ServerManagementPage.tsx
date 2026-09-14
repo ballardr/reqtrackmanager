@@ -1,4 +1,4 @@
-import { Ban, Upload, UserCheck, UserX } from "lucide-react";
+import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -11,7 +11,7 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
-import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
+import { Modal } from "../components/Modal";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { cycleSort, type SortState } from "../components/sortState";
@@ -60,6 +60,19 @@ function AccessReviewTab() {
   // "Confirmation and feedback rollout, precisely" list.
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
+  // Platform review 2026-09, Phase 5: the full groups list and the server-
+  // roles toggles both moved off the row (an unbounded joined string and an
+  // always-visible dropdown respectively) into modals opened from the row's
+  // `ActionMenu`. Tracked by id, not the `SystemUser` object itself, so the
+  // modal re-derives its content from the current `users` state below —
+  // otherwise a role toggle inside the modal would keep showing the
+  // pre-toggle checked state after `reload()` refreshes `users`.
+  const [viewGroupsUserId, setViewGroupsUserId] = useState<string | null>(null);
+  const [assignRolesUserId, setAssignRolesUserId] = useState<string | null>(null);
+  // Per-row "show all N" expansion for the Organisations column (mirrors
+  // Org Admin's "View access" panel `expandedAccessProjectIds` — see
+  // `docs/ux-style-guide.md`'s "Pattern: role display").
+  const [expandedOrgUserIds, setExpandedOrgUserIds] = useState<Set<string>>(new Set());
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
@@ -99,6 +112,18 @@ function AccessReviewTab() {
 
   function applySort(key: SystemUserSortKey) {
     setSort(cycleSort(sort, key));
+  }
+
+  function toggleExpandedOrgs(userId: string) {
+    setExpandedOrgUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
   }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
@@ -228,57 +253,54 @@ function AccessReviewTab() {
     { key: "email", label: strings.system.email, sortable: true, render: (u) => u.email },
     { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
     {
-      // Module system Phase 0 (docs/compliance-module-plan.md): server-tier
-      // roles rendered through the same `MultiSelectDropdown` + `DirectoryTable`
-      // combination `OrgAdminPage.tsx`'s Users table already established for
-      // org roles — settled during planning as the single most-corrected
-      // point across that plan's design history, not a bespoke grant/revoke
-      // pair. Unlike Org Admin's roles column, each toggle here goes through
-      // the existing Tier-1 `ConfirmDialog` this tab already used for
-      // grant/revoke server admin — granting cross-tenant power warrants the
-      // extra confirmation step even though granting an org role doesn't.
-      // Rendered for every row regardless of `has_org_membership` (I-M-08:
-      // a server admin can hold an organisation of their own) — incidentally
-      // fixes the previous `ActionMenu`-based grant/revoke, which had been
-      // wrongly scoped to org-less accounts only alongside deactivate/ban.
-      key: "server_roles", label: strings.system.serverRoles,
-      render: (u) => (
-        <MultiSelectDropdown
-          triggerLabel={strings.system.serverRolesFor(u.display_name)}
-          emptyLabel={strings.system.noServerRoles}
-          options={(["server_admin", "module_administrator"] as ServerRole[]).map((role) => {
-            const checked = role === "server_admin" ? u.is_server_admin : u.is_module_administrator;
-            const roleLabel = SERVER_ROLE_LABEL[role];
-            return {
-              value: role,
-              label: roleLabel,
-              checked,
-              optionLabel: checked
-                ? strings.system.revokeServerRole(roleLabel, u.display_name)
-                : strings.system.grantServerRole(roleLabel, u.display_name),
-              onToggle: () =>
-                role === "server_admin"
-                  ? (checked ? revokeServerAdmin(u.user_id) : grantServerAdmin(u.user_id))
-                  : (checked ? revokeModuleAdministrator(u.user_id) : grantModuleAdministrator(u.user_id)),
-            };
-          })}
-        />
-      ),
-    },
-    {
       // Comma-joined names have no natural order — not sortable, per style
-      // guide "Pattern: sortable column header".
+      // guide "Pattern: sortable column header". Platform review 2026-09,
+      // Phase 5: joining every org name unconditionally became unreadable
+      // for a user in many orgs — per the user's own ask, orgs stay inline
+      // (typically far fewer than groups) but gain a "show all N" toggle
+      // past 2, mirroring Org Admin's "View access" panel role-expansion
+      // pattern rather than moving to a modal like Groups below.
       key: "organizations", label: strings.system.organizations(orgLabelPlural),
-      render: (u) =>
-        u.organization_names.length > 0
-          ? u.organization_names.join(", ")
-          : u.organization_count > 0
+      render: (u) => {
+        if (u.organization_names.length === 0) {
+          return u.organization_count > 0
             ? strings.system.organizationCount(u.organization_count, orgLabel)
-            : strings.system.noOrganizations,
+            : strings.system.noOrganizations;
+        }
+        const expanded = expandedOrgUserIds.has(u.user_id);
+        const canExpand = u.organization_names.length > 2;
+        const shownNames = expanded || !canExpand ? u.organization_names : u.organization_names.slice(0, 2);
+        return (
+          <span className="row" style={{ gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+            <span>{shownNames.join(", ")}</span>
+            {canExpand && (
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                onClick={() => toggleExpandedOrgs(u.user_id)}
+              >
+                {expanded
+                  ? strings.system.showFewerOrganizations
+                  : strings.system.showAllOrganizations(u.organization_names.length)}
+              </button>
+            )}
+          </span>
+        );
+      },
     },
     {
+      // Platform review 2026-09, Phase 5: groups have no cap the way orgs
+      // effectively do, so instead of an inline "show all" toggle (which
+      // could still push the row very wide) the full list moved to a
+      // modal off this row's `ActionMenu` ("View groups") — this column
+      // now shows only a short summary.
       key: "groups", label: strings.system.groups,
-      render: (u) => (u.group_names.length > 0 ? u.group_names.join(", ") : "—"),
+      render: (u) => {
+        if (u.group_names.length === 0) return "—";
+        const shown = u.group_names.slice(0, 2).join(", ");
+        return u.group_names.length > 2 ? `${shown}, ${strings.system.groupsMore(u.group_names.length - 2)}` : shown;
+      },
     },
     {
       key: "last_login_at", label: strings.system.lastLogin, sortable: true,
@@ -290,39 +312,50 @@ function AccessReviewTab() {
     },
     {
       // Consolidated behind one `ActionMenu` (style guide "Pattern: action
-      // menu") — deactivate/reactivate and ban/unban, the two secondary,
-      // non-primary actions genuinely scoped to org-less accounts (see
-      // `has_org_membership` gate below), previously sat side by side as
-      // separate always-visible buttons on the same row. Grant/revoke
-      // server admin moved to the new "Server roles" `MultiSelectDropdown`
-      // column above (module system Phase 0) — it belongs to every row,
-      // not just org-less ones, unlike this menu's two remaining actions.
-      // The old standalone "Server admin" badge was dropped in the same
-      // move: its closed-state summary text already shows the same fact,
-      // so a separate badge would just duplicate it. Banned/deactivated
-      // badges stay outside the menu, visible at a glance.
+      // menu"). Platform review 2026-09, Phase 5: the menu itself now
+      // renders for every row, not just org-less ones — "Assign server
+      // roles" (moved here from the old always-visible "Server roles"
+      // `MultiSelectDropdown` column, module system Phase 0) and "View
+      // groups" apply regardless of org membership (I-M-08: a server admin
+      // can hold an organisation of their own). Deactivate/reactivate and
+      // ban/unban stay scoped to org-less accounts only — that gate was
+      // protecting those two specific actions, not the menu as a whole, so
+      // it moves to the item list rather than being removed outright. The
+      // old standalone "Server admin" badge stays dropped: the row's other
+      // visible state already shows the same fact, so a separate badge
+      // would just duplicate it. Banned/deactivated badges stay outside the
+      // menu, visible at a glance.
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
           {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
           {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
-          {!u.has_org_membership && (
-            <ActionMenu
-              triggerLabel={strings.system.usersActionsFor(u.display_name)}
-              items={[
-                u.is_active
-                  ? { label: strings.system.deactivate, icon: <UserX size={14} />, onSelect: () => deactivate(u.user_id) }
-                  : { label: strings.system.reactivate, icon: <UserCheck size={14} />, onSelect: () => reactivate(u.user_id) },
-                u.is_banned
-                  ? { label: strings.system.unban, icon: <Ban size={14} />, onSelect: () => unban(u.user_id) }
-                  : { label: strings.system.ban, icon: <Ban size={14} />, onSelect: () => ban(u.user_id) },
-              ]}
-            />
-          )}
+          <ActionMenu
+            triggerLabel={strings.system.usersActionsFor(u.display_name)}
+            items={[
+              { label: strings.system.assignServerRoles, icon: <ShieldCheck size={14} />, onSelect: () => setAssignRolesUserId(u.user_id) },
+              ...(u.group_names.length > 0
+                ? [{ label: strings.system.viewGroups, icon: <Eye size={14} />, onSelect: () => setViewGroupsUserId(u.user_id) }]
+                : []),
+              ...(!u.has_org_membership
+                ? [
+                    u.is_active
+                      ? { label: strings.system.deactivate, icon: <UserX size={14} />, onSelect: () => deactivate(u.user_id) }
+                      : { label: strings.system.reactivate, icon: <UserCheck size={14} />, onSelect: () => reactivate(u.user_id) },
+                    u.is_banned
+                      ? { label: strings.system.unban, icon: <Ban size={14} />, onSelect: () => unban(u.user_id) }
+                      : { label: strings.system.ban, icon: <Ban size={14} />, onSelect: () => ban(u.user_id) },
+                  ]
+                : []),
+            ]}
+          />
         </div>
       ),
     },
   ];
+
+  const viewGroupsUser = users?.find((u) => u.user_id === viewGroupsUserId) ?? null;
+  const assignRolesUser = users?.find((u) => u.user_id === assignRolesUserId) ?? null;
 
   return (
     <div className="stack">
@@ -404,6 +437,66 @@ function AccessReviewTab() {
           onConfirm={revokeAllPatsPlatformWide}
           onCancel={() => setRevokeAllPatsOpen(false)}
         />
+      )}
+      {viewGroupsUser && (
+        <Modal title={strings.system.groupsModalTitle(viewGroupsUser.display_name)} onClose={() => setViewGroupsUserId(null)}>
+          {viewGroupsUser.group_names.length === 0 ? (
+            <p className="text-muted" style={{ margin: 0 }}>{strings.system.noGroups}</p>
+          ) : (
+            <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+              {viewGroupsUser.group_names.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      )}
+      {assignRolesUser && (
+        // Checkboxes rendered directly rather than via `MultiSelectDropdown`
+        // (which OrgAdminPage's own Roles column uses inline in a table
+        // cell): this modal is already the "opened" state, so a second,
+        // nested disclosure control (a dropdown-in-a-modal) would just add
+        // an extra click with no benefit — see docs/decisions.md, Platform
+        // review 2026-09, Phase 5.
+        <Modal
+          title={strings.system.assignServerRolesModalTitle(assignRolesUser.display_name)}
+          onClose={() => setAssignRolesUserId(null)}
+        >
+          <div
+            role="group"
+            aria-label={strings.system.serverRolesFor(assignRolesUser.display_name)}
+            className="stack"
+            style={{ gap: "0.6rem" }}
+          >
+            {(["server_admin", "module_administrator"] as ServerRole[]).map((role) => {
+              const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.is_module_administrator;
+              const roleLabel = SERVER_ROLE_LABEL[role];
+              return (
+                <label key={role} className="row" style={{ gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    aria-label={
+                      checked
+                        ? strings.system.revokeServerRole(roleLabel, assignRolesUser.display_name)
+                        : strings.system.grantServerRole(roleLabel, assignRolesUser.display_name)
+                    }
+                    onChange={() =>
+                      role === "server_admin"
+                        ? checked
+                          ? revokeServerAdmin(assignRolesUser.user_id)
+                          : grantServerAdmin(assignRolesUser.user_id)
+                        : checked
+                          ? revokeModuleAdministrator(assignRolesUser.user_id)
+                          : grantModuleAdministrator(assignRolesUser.user_id)
+                    }
+                  />
+                  {roleLabel}
+                </label>
+              );
+            })}
+          </div>
+        </Modal>
       )}
     </div>
   );

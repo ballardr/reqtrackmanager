@@ -9,8 +9,17 @@ import { createStandardWithVersion } from "./helpers";
  * standard's own `ComplianceRequirement` can be created from the core
  * requirement's own detail page (the primary, V1 flow — see that phase's
  * own "initiating from the compliance-requirement side... deliberately out
- * of scope" note) and is visible from that requirement afterward, alongside
- * its own core-to-core `RequirementLink`s in the same Links card.
+ * of scope" note, reaffirmed and closed off for good in platform-review-
+ * 2026-09 Phase 7's decisions.md entry) and is visible from that requirement
+ * afterward, alongside its own core-to-core `RequirementLink`s in the same
+ * Links card.
+ *
+ * Phase 7 moved the picker itself: it used to be this section's own "Add
+ * compliance link" button + `Popover`; it's now the "Compliance" tab of the
+ * shared `RequirementLinkPickerModal`, opened via the Links card's single
+ * "Add link" button (alongside the built-in Search/Requirements tabs
+ * `requirement-links.spec.ts` covers) — a module-contributed tab that only
+ * appears once the Compliance module is enabled for the project.
  *
  * Every fixture this spec creates (standard, version, compliance
  * requirement, core requirement) is dynamically named with a per-run
@@ -54,15 +63,16 @@ test.describe("Compliance Module: core requirement <-> compliance requirement tr
     await page.getByText(coreRequirementName).click();
     await expect(page.getByRole("heading", { name: coreRequirementName })).toBeVisible();
 
-    await test.step("add a compliance link via the Links card's 'Add compliance link' picker", async () => {
-      await page.getByRole("button", { name: "Add compliance link" }).click();
-      const popover = page.getByRole("dialog", { name: "Add compliance link" });
-      await popover.getByLabel("Standard").selectOption({ label: `${reference} — ${standardName}` });
-      await popover.getByLabel("Version").selectOption({ label: "v1.0" });
-      await popover.getByLabel("Requirement").selectOption({ label: `${complianceRequirementReference} — ${complianceRequirementName}` });
-      await popover.getByLabel("Link type").selectOption({ index: 1 });
-      await popover.getByRole("button", { name: "Add link" }).click();
-      await expect(popover).not.toBeVisible();
+    await test.step("add a compliance link via the shared 'Add link' modal's Compliance tab", async () => {
+      await page.getByRole("button", { name: "Add link" }).click();
+      const modal = page.getByRole("dialog", { name: "Add link" });
+      await modal.getByRole("tab", { name: "Compliance" }).click();
+      await modal.getByLabel("Standard").selectOption({ label: `${reference} — ${standardName}` });
+      await modal.getByLabel("Version").selectOption({ label: "v1.0" });
+      await modal.getByLabel("Requirement").selectOption({ label: `${complianceRequirementReference} — ${complianceRequirementName}` });
+      await modal.getByLabel("Link type").selectOption({ index: 1 });
+      await modal.getByRole("button", { name: "Add link" }).click();
+      await expect(modal).not.toBeVisible();
     });
 
     await expect(page.getByText(new RegExp(complianceRequirementName))).toBeVisible();

@@ -235,6 +235,21 @@ const en = {
     removeLinkTitle: "Remove this link?",
     removeLinkConfirm: "The link is removed from both {requirements}; the {requirement} itself is unaffected.",
     noLinks: "No links yet.",
+    linkPickerSearchTab: "Search",
+    linkPickerRequirementsTab: "{Requirements}",
+    linkPickerSearchPlaceholder: "Search by code or name…",
+    linkPickerNoMatches: "No matching {requirements}.",
+    // Platform review 2026-09, Phase 8 — shown in place of the plain
+    // add/remove-link flow once `is_locked && requiresChangeRequestForLinks`
+    // (project opt-in, or an org-wide force minus this project's own
+    // exemption): the Add link modal's Search/Requirements tabs and the
+    // remove-link confirm dialog both grow a "Reason for change" field and
+    // submit an `add_link`/`remove_link` change request instead of calling
+    // the direct endpoint. Mirrors item 514's identical ADD_ACTION pattern.
+    linkChangeRequestNotice: "This {requirement} is approved and this {project} requires a change request to add a link.",
+    removeLinkViaChangeRequestTitle: "Remove this link via change request?",
+    removeLinkViaChangeRequestConfirm:
+      "This {requirement} is approved and this {project} requires a change request to remove a link. The link is removed from both {requirements} once approved.",
     actionsSection: "Actions",
     linkExistingAction: "Link existing action",
     selectAnActionToLink: "Select an action…",
@@ -242,6 +257,13 @@ const en = {
     unlinkAction: "Unlink",
     unlinkActionTitle: "Unlink this action?",
     unlinkActionConfirm: "The action itself isn't affected — it just stops appearing on this {requirement}'s Actions card.",
+    // Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+    // lock check at all, an asymmetry with the already-gated add side
+    // (item 514); unconditional across every {project}, unlike the
+    // traceability-link strings above.
+    unlinkActionViaChangeRequestTitle: "Unlink this action via change request?",
+    unlinkActionViaChangeRequestConfirm:
+      "This {requirement} is approved — unlinking an action requires a change request. The action itself isn't affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
     noLinkedActions: "No actions linked yet.",
     attachments: "Attachments",
     subscribe: "Subscribe",
@@ -331,6 +353,12 @@ const en = {
     kindAddAction: "Add action",
     proposedAddAction: "Proposed action",
     proposedLinkAction: "Linking existing action",
+    // Platform review 2026-09, Phase 8 — REMOVE_ACTION/ADD_LINK/REMOVE_LINK
+    // change requests, rendered in `ChangeRequestDetailPage.tsx` the same
+    // way ADD_ACTION's two labels above are.
+    proposedRemoveAction: "Removing this action",
+    proposedAddLink: "Proposed link",
+    proposedRemoveLink: "Removing this link",
     reason: "Reason for change",
     submit: "Submit",
     withdraw: "Withdraw",
@@ -392,6 +420,21 @@ const en = {
     name: "Name",
     summary: "Summary",
     allowMemberChangeRequests: "Allow members to submit {changeRequests}",
+    // Platform review 2026-09, Phase 8. When the organisation's own
+    // `force_require_change_request_for_approved_links` is active and this
+    // {project} isn't exempt, this checkbox renders checked-and-disabled
+    // (the `disabled`+`title` "why is this checked and I can't touch it"
+    // convention `ProjectMembersTable.tsx` already establishes) with the
+    // Forced hint below explaining why, rather than silently ignoring the
+    // {project}'s own (irrelevant, in that case) stored value.
+    requireChangeRequestForApprovedLinks: "Require a change request to add/remove links on approved {requirements}",
+    requireChangeRequestForApprovedLinksHint:
+      "Once a {requirement} is approved, adding or removing a traceability link requires a change request instead of the direct action. Off by default — turn on for {projects} where links themselves need review once a {requirement} is locked.",
+    requireChangeRequestForApprovedLinksForcedByOrg:
+      "Required by this organisation's policy — see Org Admin's Advanced settings. Mark this {project} exempt below to opt it out.",
+    exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
+    exemptFromOrgLinkLockHint:
+      "This organisation requires every {project} to gate link changes on an approved {requirement} behind a change request. Checking this opts this {project} out, falling back to its own setting above.",
     isTemplate: "Usable as a {project} template",
     // Hierarchical projects (docs/decisions.md): opt-in eligibility gate —
     // other {projects}' managers can only select this one as a parent once
@@ -655,15 +698,50 @@ const en = {
     // togglable from here at all; it must be changed at its actual source
     // (the group's own membership/role, the project's visibility setting).
     roleNotDirectlyRevocable: "This role isn't a direct grant on this {project} — it comes from a group, nested org group, project reference, or org-wide visibility. Change it at that source instead.",
+    // Appended inline to a checked-but-disabled role option's own label (not
+    // just its hover `title` above) so the reason it's greyed out is
+    // visible without hovering — platform review 2026-09 follow-up.
+    // Deliberately one generic suffix covering every non-`direct_role`
+    // kind (group, nested org group, project reference, org-wide,
+    // inherited), same simplification the Source-column summary below
+    // makes; the precise mechanism stays one hover away via
+    // `roleNotDirectlyRevocable` above, unchanged.
+    roleByGroupSuffix: "(by group)",
+    // Same inline-suffix treatment for the other disabled reason (see
+    // `cannotRemoveLastManager` below) — a purely-direct
+    // `project_manager` role that can't be revoked because it's the
+    // {project}'s last manager, not because it's group-sourced.
+    roleOnlyManagerSuffix: "(only manager)",
     // Shared by both `addControl` compositions (`ProjectAdminPage.tsx`'s
     // Members section, `OrgAdminPage.tsx`'s "Manage users" modal) — the
     // role `<select>` accompanying `UserAutocomplete` in the "add a
     // member" row.
     addRoleSelectLabel: "Role to grant",
     add: "Add",
-    // Per-role provenance text (Source column) — one line per source a
-    // user holds a given role through; see `MemberSourceProvenanceKind`'s
-    // own doc comment for what each of the five direct kinds means.
+    // Whole-row Source-column summary (platform review 2026-09 follow-up)
+    // — replaces the old always-visible per-role provenance lines below
+    // with one plain-language word/phrase per row, since the Role column
+    // already names which roles a member holds (repeating that per source
+    // line was redundant): "Direct" (reused from `sourceDirectRole` below
+    // when every source is `direct_role`), "Group" when every source is
+    // some other (non-`direct_role`) kind, or this — a mix of both. Full
+    // per-source detail (which group, which project, which mode) is not
+    // lost, just moved behind the summary's own click-to-open `Popover`
+    // (`sourceSummaryDetailTitle` below), reusing `sourceLine` for its
+    // contents unchanged.
+    sourceSummaryDirectAndGroup: "Direct and group",
+    // See `sourceSummaryDirectAndGroup` above — shown when every source is
+    // some non-`direct_role` kind (group, nested org group, project
+    // reference, org-wide, inherited). Deliberately one umbrella word
+    // rather than naming each of those five kinds at the row level; the
+    // detail popover still distinguishes them.
+    sourceSummaryGroup: "Group",
+    sourceSummaryDetailTitle: (name: string) => `${name}'s access sources`,
+    // Per-role provenance text (now shown inside the Source column's
+    // detail popover rather than always-visible in the cell itself) — one
+    // line per source a user holds a given role through; see
+    // `MemberSourceProvenanceKind`'s own doc comment for what each of the
+    // five direct kinds means.
     sourceDirectRole: "Direct",
     // Parameterized on the granting group's name (`via_group_name`) so the
     // Source column can say *which* group, not just "Via group" — see
@@ -708,6 +786,19 @@ const en = {
     // scoped to this one row's own outcome instead of a count.
     convertToDirectSuccess: (name: string) => `Converted ${name}'s inherited access to a direct role.`,
     convertToDirectNoOp: (name: string) => `${name} already holds an equal or higher direct role — nothing to convert.`,
+    // Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+    // direct `OrgGroupProjectRole` grant on this project now gets its own
+    // `kind: "group"` row instead of being visible only through a member's
+    // own `direct_org_group_role` Source line. `rolesFor`/`grantRole`/
+    // `revokeRole`/`actionsFor` above are already name-generic and reused
+    // verbatim for a group's own name — no group-specific duplicates needed.
+    groupRowBadge: "Group",
+    removeGroup: "Remove group",
+    removeGroupConfirmTitle: (name: string) => `Remove ${name} from this {project}?`,
+    removeGroupConfirmMessage: (name: string) =>
+      `This revokes every role ${name} holds on this {project}. Its members will need another way to regain access.`,
+    removeGroupConfirmButton: "Remove group",
+    removeGroupSuccess: (name: string) => `Removed ${name}'s access.`,
   },
   serverSettings: {
     title: "Platform branding",
@@ -1067,6 +1158,14 @@ const en = {
     allowRelaxedChildProjectCreationHint:
       "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
     selfSignupSsoConflict: (org: string) => `Self-signup can't be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
+    // Platform review 2026-09, Phase 8 — org-wide force of
+    // `Project.require_change_request_for_approved_links`, minus a
+    // per-project `exempt_from_org_link_lock` opt-out. See `Organization`'s
+    // own field docstring (`frontend/src/api/types.ts`) for the full
+    // resolution.
+    forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, org-wide",
+    forceRequireChangeRequestForApprovedLinksHint:
+      "Applies to every {project} in this organisation, even one whose own setting is off — unless that {project} is individually marked exempt in its own Project Admin settings.",
     autoAcceptEmailDomain: "Accepted email domain",
     autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
     externalUserPolicy: "External users on projects",
@@ -1138,7 +1237,18 @@ const en = {
     organizations: (orgPlural: string) => orgPlural,
     organizationCount: (n: number, org: string) => `Member of ${n} ${org}(s)`,
     noOrganizations: "None",
+    // Platform review 2026-09, Phase 5: Organisations column "show more"
+    // toggle past 2 orgs, mirroring `orgAdmin.userAccessShowAllRoles`/
+    // `userAccessShowFewerRoles`'s copy shape.
+    showAllOrganizations: (n: number) => `Show all ${n}`,
+    showFewerOrganizations: "Show fewer",
     groups: "Groups",
+    // Platform review 2026-09, Phase 5: Groups column compact summary +
+    // "View groups" modal (replacing the old unconditional joined string).
+    groupsMore: (n: number) => `+${n} more`,
+    viewGroups: "View groups",
+    groupsModalTitle: (name: string) => `${name}'s groups`,
+    noGroups: "No groups",
     email: "Email",
     name: "Name",
     lastLogin: "Last login",
@@ -1178,14 +1288,19 @@ const en = {
     revokeServerAdminTitle: "Revoke server admin from this user?",
     revokeServerAdminConfirm: "They will lose access to server-wide management immediately.",
     revokedServerAdminToast: "Server admin revoked",
-    // Module system Phase 0 (docs/compliance-module-plan.md): "Server roles"
-    // MultiSelectDropdown column, mirroring Org Admin's own roles column
-    // string shapes (rolesFor/noRoles/grantRole/revokeRole).
-    serverRoles: "Server roles",
+    // Module system Phase 0 (docs/compliance-module-plan.md): server-tier
+    // role strings, mirroring Org Admin's own roles column string shapes
+    // (rolesFor/noRoles/grantRole/revokeRole). Originally an always-visible
+    // "Server roles" MultiSelectDropdown column; moved behind an ActionMenu
+    // modal in Platform review 2026-09, Phase 5 (see `assignServerRoles`/
+    // `assignServerRolesModalTitle` below) — these per-role strings are
+    // still used there.
     serverRolesFor: (name: string) => `${name}'s server roles`,
     noServerRoles: "No server roles",
     grantServerRole: (role: string, name: string) => `Grant ${role} to ${name}`,
     revokeServerRole: (role: string, name: string) => `Revoke ${role} from ${name}`,
+    assignServerRoles: "Assign server roles",
+    assignServerRolesModalTitle: (name: string) => `${name}'s server roles`,
     grantModuleAdministrator: "Grant module administrator",
     revokeModuleAdministrator: "Revoke module administrator",
     grantModuleAdministratorTitle: "Grant module administrator to this user?",
@@ -1372,6 +1487,29 @@ const en = {
     noLinkedRequirements: "Not linked to any {requirement} yet.",
     completedAt: "Completed",
     created: "Action created",
+  },
+  // The Compliance module's own strings that live inside core's shared
+  // Links card / link-picker modal (`RequirementTraceabilityLinksSection
+  // .tsx`, `ComplianceRequirementLinkPickerTab.tsx` — platform-review-
+  // 2026-09 Phase 7). Added when a human review flagged this module
+  // hardcoding plain English inline instead of going through `t()`/
+  // `useStrings()` like every core page does — no other language could
+  // ever be added otherwise. This section covers only the two files this
+  // phase touches; the rest of the Compliance module (its org-level admin
+  // panels, the Standard workspace, etc.) still hardcodes strings the same
+  // way and was NOT migrated here — that's a much larger, separate body of
+  // work, flagged to the user rather than silently left alongside a
+  // half-fixed corner of the same problem.
+  compliance: {
+    requirementLinksTitle: "Compliance requirement links",
+    noRequirementLinksYet: "No compliance requirement links yet.",
+    removeLink: "Remove link",
+    removeLinkTitle: "Remove compliance link",
+    removeLinkConfirm: "Remove this traceability link? This does not affect either {requirement}'s own content.",
+    standard: "Standard",
+    version: "Version",
+    targetRequirement: "{Requirement}",
+    couldNotCreateLink: "Could not create link.",
   },
   // `ResourcePickerModal` (style guide "Pattern: resource picker dialog",
   // 2026-08 UX audit roadmap row 508) — a two-pane dialog for picking a

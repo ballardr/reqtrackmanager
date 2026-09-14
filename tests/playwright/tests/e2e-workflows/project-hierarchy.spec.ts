@@ -173,20 +173,33 @@ test.describe("hierarchical (parent/child) projects", () => {
       await selectProjectAdminGroup(page, "Members");
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
+      // The Source cell's per-source detail lives behind a click-to-open
+      // popover now (Phase 9, platform review 2026-09 follow-up —
+      // ProjectMembersTable.tsx's own doc comment), not always-visible
+      // text in the cell — this member has no direct role on Gamma-4, so
+      // the row's summary button reads plain "Group".
+      await memberRow.getByRole("button", { name: "Group" }).click();
       await expect(
-        memberRow.getByText(/Inherited from '.*Gamma-3 Hierarchy Parent.*' \(mirror all roles\) \(Stakeholder\)/)
+        page
+          .getByRole("dialog", { name: `${PERSONAS.projectMgrGamma.name}'s access sources` })
+          .getByText(/Inherited from '.*Gamma-3 Hierarchy Parent.*' \(mirror all roles\) \(Stakeholder\)/)
       ).toBeVisible();
+      await page.keyboard.press("Escape");
     });
 
     await test.step("materializing converts that inherited access into a direct role, without dropping the inherited grant", async () => {
       await page.getByRole("button", { name: "Convert all inherited access to direct roles" }).click();
       await expect(page.getByText(/Converted \d+ users? to direct roles\./)).toBeVisible();
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
-      // A user with both a direct grant and an inherited one shows both
-      // sources (docs/decisions.md) — merged text nodes mean an exact
-      // "Direct" match can be unreliable, hence the substring regex.
-      await expect(memberRow.getByText(/Direct \(Stakeholder\)/)).toBeVisible();
-      await expect(memberRow.getByText(/Inherited from/)).toBeVisible();
+      // A user with both a direct grant and an inherited one now shows
+      // "Direct and group" as the row's summary button; the per-source
+      // breakdown (still both lines, same as before Phase 9) is behind the
+      // same popover as above.
+      await memberRow.getByRole("button", { name: "Direct and group" }).click();
+      const popover = page.getByRole("dialog", { name: `${PERSONAS.projectMgrGamma.name}'s access sources` });
+      await expect(popover.getByText(/Direct \(Stakeholder\)/)).toBeVisible();
+      await expect(popover.getByText(/Inherited from/)).toBeVisible();
+      await page.keyboard.press("Escape");
 
       // Materialize is a one-way, permanent grant — revert it via a direct
       // API call so this spec stays idempotent across repeated runs against

@@ -14,6 +14,7 @@ const org: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  force_require_change_request_for_approved_links: false,
 };
 
 const orgUser: OrgUser = {
@@ -26,6 +27,7 @@ const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
   pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
+  force_require_change_request_for_approved_links: false,
 };
 
 const ssoConfig: OrgSsoConfig = {
@@ -1121,6 +1123,34 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
   },
 };
 
+/** Platform review 2026-09, Phase 8 — defaults off (permissive); an org
+ * admin turning it on forces every project's own
+ * `require_change_request_for_approved_links` unless that project is
+ * individually marked exempt (`ProjectAdminPage.stories.tsx`'s
+ * `OverviewTabForcedByOrgPolicy`). */
+export const AdvancedSettingsForceRequireChangeRequestForApprovedLinks: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    const toggle = await waitFor(() =>
+      canvas.getByRole("switch", { name: "Require a change request for link changes on approved requirements, org-wide" })
+    );
+    await expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await userEvent.click(canvas.getByRole("button", { name: "Save security settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ force_require_change_request_for_approved_links: true })
+      )
+    );
+  },
+};
+
 export const AdvancedSettingsRequire2fa: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -1609,14 +1639,20 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
 
 function mockProjectsWorkflowWithOneProject(overrides: {
   effectiveMembers?: unknown[];
+  groupRoles?: unknown[];
   pendingInvites?: unknown[];
 } = {}) {
   const effectiveMembers = overrides.effectiveMembers ?? [];
+  const groupRoles = overrides.groupRoles ?? [];
   const pendingInvites = overrides.pendingInvites ?? [];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return org;
     if (path === `/api/v1/orgs/${ORG_ID}/projects`) return [{ id: "proj-1", name: "Beta", is_archived: false }];
     if (path === "/api/v1/projects/proj-1/effective-members") return effectiveMembers;
+    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // third data source, fetched alongside effective-members/pending-invites
+    // by `openManageUsers`/`reloadManageUsersGroupRoles`.
+    if (path === "/api/v1/projects/proj-1/group-roles") return groupRoles;
     if (path === "/api/v1/projects/proj-1/pending-invites") return pendingInvites;
     // Module system Phase 2: `openManageUsers` fetches this alongside
     // effective-members/pending-invites — must be mocked or that
@@ -1827,6 +1863,53 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
       )
     );
     await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
+  },
+};
+
+/** Phase 6 (docs/platform-review-2026-09-plan.md): the group this modal's
+ * own add-control (`ManageUsersModalAddMemberAutocompleteMatchesGroup`
+ * above) grants a role to now renders as its own row here too, not just on
+ * `ProjectAdminPage.tsx`'s Members section — same shared `ProjectMembersTable`
+ * component, same `onToggleGroupRole`/`onRemoveGroup` wiring, scoped to
+ * `manageUsersProjectId` instead of the page's own `projectId`. */
+export const ManageUsersModalGroupRowRoleToggleAndRemove: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    mockProjectsWorkflowWithOneProject({
+      groupRoles: [{ org_group_id: "grp1", org_group_name: "Engineering", roles: ["stakeholder"] }],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
+
+    const body = within(document.body);
+    const modal = body.getByRole("dialog", { name: "Manage users — Beta" });
+    const row = within(modal).getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's roles" }));
+    const roleGroup = body.getByRole("group", { name: "Engineering's roles" });
+    await userEvent.click(within(roleGroup).getByRole("checkbox", { name: "Grant Member to Engineering" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/v1/projects/proj-1/group-roles",
+        { org_group_id: "grp1", role: "member" },
+      )
+    );
+
+    await userEvent.click(within(row).getByRole("button", { name: "Engineering's actions" }));
+    const menu = body.getByRole("menu", { name: "Engineering's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Remove group" }));
+    const dialog = body.getByRole("dialog", { name: "Remove Engineering from this project?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove group" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith("/api/v1/projects/proj-1/group-roles/grp1/stakeholder")
+    );
   },
 };
 

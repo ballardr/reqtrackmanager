@@ -2339,6 +2339,7 @@ def get_advanced_settings(
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
+        force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
     )
 
 
@@ -2379,6 +2380,11 @@ def update_advanced_settings(
     # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
     # off routers.projects.create_project's relaxed parent-manage-only path.
     org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
+    # Platform review 2026-09, Phase 8: org-wide force of the traceability-
+    # link change-request requirement — see `services.requirements.
+    # requires_change_request_for_links` and `Organization.
+    # force_require_change_request_for_approved_links`'s docstring.
+    org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
@@ -2392,6 +2398,7 @@ def update_advanced_settings(
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
+        force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
     )
 
 

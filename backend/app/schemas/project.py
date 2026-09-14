@@ -105,6 +105,11 @@ class ProjectOut(BaseModel):
     is_archived: bool = False
     is_template: bool = False
     allow_member_change_requests: bool = True
+    # Platform review 2026-09, Phase 8 — see `Project.
+    # require_change_request_for_approved_links`/`exempt_from_org_link_lock`
+    # model docstrings.
+    require_change_request_for_approved_links: bool = False
+    exempt_from_org_link_lock: bool = False
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
     status_id: UUID
@@ -155,6 +160,8 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     summary: str | None = None
     allow_member_change_requests: bool | None = None
+    require_change_request_for_approved_links: bool | None = None
+    exempt_from_org_link_lock: bool | None = None
     is_template: bool | None = None
     visibility: ProjectVisibility | None = None
     # Must belong to the project's own organisation (400 otherwise) — see
@@ -442,6 +449,23 @@ class OrgGroupProjectRoleAssign(BaseModel):
 
     org_group_id: UUID
     role: ProjectRole
+
+
+class OrgGroupProjectRoleSummaryOut(BaseModel):
+    """One organisation group holding at least one direct `OrgGroupProjectRole`
+    grant on this project (`GET /{project_id}/group-roles`) — the read
+    counterpart `assign_group_project_role`/`revoke_group_project_role`
+    (PR4) never got, added in Phase 6 of `docs/platform-review-2026-09-
+    plan.md` so a group granted a role via the Members section's add-
+    control is actually visible and manageable afterward, not just
+    grantable blind. `roles` aggregates every role this one group holds
+    directly on this project into a single row, mirroring how
+    `ProjectGroupOut.roles` already aggregates a project group's own
+    `ProjectGroupRole` rows."""
+
+    org_group_id: UUID
+    org_group_name: str
+    roles: list[ProjectRole]
 
 
 class ProjectGroupRoleAssign(BaseModel):

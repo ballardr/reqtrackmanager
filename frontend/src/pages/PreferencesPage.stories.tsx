@@ -12,6 +12,7 @@ const org: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  force_require_change_request_for_approved_links: false,
 };
 
 const notificationPrefs: NotificationPreference[] = [

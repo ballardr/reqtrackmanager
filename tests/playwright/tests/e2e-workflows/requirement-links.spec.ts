@@ -23,10 +23,19 @@ import { loginAs, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpe
  * the real `<a>` it renders as) rather than a bare `getByText`, to stay
  * unambiguous against those selects.
  *
- * 2026-08 UX audit, sixth pass: "Add link" now opens a `Popover` instead of
+ * 2026-08 UX audit, sixth pass: "Add link" opens a picker instead of
  * rendering the target/type selects as a permanently-visible inline row,
  * and removing a link now goes through a `ConfirmDialog` (Tier 1) instead
  * of firing immediately — both asserted below alongside the underlying job.
+ *
+ * Platform-review-2026-09 Phase 7 replaced that picker's original flat,
+ * unsearched `<select>` `Popover` with `RequirementLinkPickerModal` — a
+ * `Modal` offering a default-active Search tab (exercised below, alongside
+ * the underlying create/remove job) and a Requirements browse tab
+ * (component -> category -> requirement cascade, exercised in its own
+ * dedicated step using a third, otherwise-untouched requirement pair so it
+ * doesn't interfere with the create/remove flow's own HW-FN-005/
+ * SW-PERF-006 pair).
  */
 function linkBadge(page: import("@playwright/test").Page, text: string) {
   return page.locator("span.badge", { hasText: text });
@@ -51,19 +60,56 @@ test.describe("requirement traceability links", () => {
       await expect(page.getByRole("link", { name: /SW-PERF-002/ })).toBeVisible();
     });
 
-    await test.step("add a new 'Depends on' link between two other requirements via the 'Add link' popover", async () => {
+    await test.step("add a new 'Depends on' link between two other requirements via the 'Add link' modal's Search tab", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-005");
       await page.getByRole("button", { name: "Add link" }).click();
-      const popover = page.getByRole("dialog", { name: "Add link" });
-      const targetSelect = popover.getByLabel("Target requirement");
+      const modal = page.getByRole("dialog", { name: "Add link" });
+      // Search is the default-active tab.
+      await modal.getByPlaceholder("Search by code or name…").fill("SW-PERF-006");
+      const targetSelect = modal.getByLabel("Target requirement");
       const targetValue = await targetSelect.locator("option", { hasText: "SW-PERF-006" }).getAttribute("value");
       await targetSelect.selectOption(targetValue!);
-      await popover.getByLabel("Link type").selectOption({ label: "Depends on" });
-      await popover.getByRole("button", { name: "Add link" }).click();
-      await expect(popover).not.toBeVisible();
+      await modal.getByLabel("Link type").selectOption({ label: "Depends on" });
+      await modal.getByRole("button", { name: "Add link" }).click();
+      await expect(modal).not.toBeVisible();
       await expect(linkBadge(page, "Depends on")).toBeVisible();
       await expect(page.getByRole("link", { name: /SW-PERF-006/ })).toBeVisible();
+    });
+
+    await test.step("the 'Add link' modal's Requirements tab cascades component -> category -> requirement", async () => {
+      // A third, otherwise-untouched pair (neither seeded with a fixed
+      // link/action/attachment nor used by any other spec, confirmed by
+      // grep before writing this step) — added then immediately removed so
+      // this step is fully self-contained and leaves no state behind for
+      // later runs.
+      await page.getByRole("link", { name: "Requirements", exact: true }).click();
+      await openRequirementByCode(page, "HW-FN-007");
+      await page.getByRole("button", { name: "Add link" }).click();
+      const modal = page.getByRole("dialog", { name: "Add link" });
+      await modal.getByRole("tab", { name: "Requirements" }).click();
+      await modal.getByLabel("Component").selectOption({ label: "Hardware (HW)" });
+      await modal.getByLabel("Category").selectOption({ label: "Functional (FN)" });
+      // The cascade actually filters: Hardware/Functional never offers a
+      // Software/Performance requirement.
+      await expect(modal.getByLabel("Target requirement").locator("option", { hasText: "SW-PERF-008" })).toHaveCount(0);
+      await modal.getByLabel("Component").selectOption({ label: "Software (SW)" });
+      await modal.getByLabel("Category").selectOption({ label: "Performance (PERF)" });
+      const targetSelect = modal.getByLabel("Target requirement");
+      const targetValue = await targetSelect.locator("option", { hasText: "SW-PERF-008" }).getAttribute("value");
+      await targetSelect.selectOption(targetValue!);
+      await modal.getByLabel("Link type").selectOption({ label: "Depends on" });
+      await modal.getByRole("button", { name: "Add link" }).click();
+      await expect(modal).not.toBeVisible();
+      await expect(linkBadge(page, "Depends on")).toBeVisible();
+      await expect(page.getByRole("link", { name: /SW-PERF-008/ })).toBeVisible();
+
+      const linkRow = page.locator(".row", { hasText: "Depends on" });
+      await linkRow.getByRole("button").click();
+      const dialog = page.getByRole("dialog", { name: "Remove this link?" });
+      await dialog.getByRole("button", { name: "Remove link" }).click();
+      await expect(dialog).not.toBeVisible();
+      await expect(linkBadge(page, "Depends on")).toHaveCount(0);
     });
 
     await test.step("the reverse name shows on the target requirement's own page", async () => {

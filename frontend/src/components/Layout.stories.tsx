@@ -1,5 +1,6 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { page } from "vitest/browser";
 
 import { api } from "../api/client";
 import type { Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
@@ -26,6 +27,7 @@ const ORG: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  force_require_change_request_for_approved_links: false,
 };
 
 const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1" });
@@ -146,6 +148,70 @@ export const ShowsVersionFooter: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("App vdev")).toBeInTheDocument();
     await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
+  },
+};
+
+/** Regression pin for a real bug: the collapse/expand toggle is
+ * `position: fixed`, placed independently of its parent's flow position via
+ * a `left` CSS var that changes with collapse state — so `Tooltip`'s
+ * default in-flow wrapping span (sized to fit an out-of-flow child, i.e.
+ * collapsing to zero size) landed nowhere near the button, and the bubble
+ * showed up near the *collapsed* rail position even while expanded. Fixed
+ * by giving the wrapper the same fixed placement as the button (`Tooltip`'s
+ * `className`/`style` props). This asserts the bubble is actually centred
+ * on the button's real on-screen box, not a hardcoded pixel value. */
+export const ToggleTooltipTracksButtonPosition: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const canvas = within(canvasElement);
+    const toggle = await waitFor(() => canvas.getByRole("button", { name: "Collapse navigation" }));
+    await userEvent.hover(toggle);
+    // Several other rail/header controls also render their own (hidden)
+    // tooltip bubbles, so this must match by name, not just role.
+    const bubble = await waitFor(() =>
+      within(document.body).getByRole("tooltip", { name: "Collapse navigation", hidden: true })
+    );
+    await waitFor(() => expect(bubble).toHaveStyle({ opacity: "1" }));
+    const buttonRect = toggle.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+    const bubbleCenterX = bubbleRect.left + bubbleRect.width / 2;
+    await expect(Math.abs(bubbleCenterX - buttonCenterX)).toBeLessThan(2);
+  },
+};
+
+/** Regression pin for a second real bug found alongside the one above:
+ * below theme.css's 860px nav-rail breakpoint, CSS force-collapses the rail
+ * to icon-only regardless of the user's own (default-expanded)
+ * `nav_rail_collapsed` preference — but `NavRailLink` only wrapped its link
+ * in a `Tooltip` when that JS preference was `true`, so a narrow window
+ * hid every link's text with no tooltip to replace it. Fixed via
+ * `Layout.tsx`'s `railIconOnly` (preference OR `useNarrowViewport`). */
+export const NarrowViewportShowsLinkTooltips: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(700, 800);
+    const canvas = within(canvasElement);
+    // The `matchMedia` "change" listener that flips `useNarrowViewport`'s
+    // state fires asynchronously relative to `page.viewport()` resolving
+    // (see FilterPanel.stories.tsx's `MobileCollapsedByDefault` for the
+    // same caveat) — wait for the rail to actually reflect icon-only mode.
+    await waitFor(() => expect(canvas.getByRole("navigation")).toHaveClass("nav-rail-icons"));
+    const link = canvas.getByRole("link", { name: "Requirements" });
+    await userEvent.hover(link);
+    // Several other rail/header controls also render their own (hidden)
+    // tooltip bubbles, so this must match by name, not just role.
+    const bubble = await waitFor(() =>
+      within(document.body).getByRole("tooltip", { name: "Requirements", hidden: true })
+    );
+    await waitFor(() => expect(bubble).toHaveStyle({ opacity: "1" }));
   },
 };
 

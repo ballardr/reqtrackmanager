@@ -85,7 +85,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
     // --- Switch to the project's own Compliance nav entry (Phase 3 Tier A routing).
     await page.goto("/projects");
@@ -267,7 +267,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
     await page.goto("/projects");
     await page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).click();

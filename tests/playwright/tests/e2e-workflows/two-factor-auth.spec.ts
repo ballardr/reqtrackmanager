@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { PASSWORD, PERSONAS, ensureTwoFactorSectionExpanded, generateTotpCode, selectPreferencesGroup } from "./helpers";
+import { PASSWORD, ensureTwoFactorSectionExpanded, generateTotpCode, selectPreferencesGroup } from "./helpers";
+
+const apiBaseUrl = "http://localhost:8000";
 
 /**
  * Job to be done: a user can enrol in TOTP two-factor authentication
@@ -9,19 +11,51 @@ import { PASSWORD, PERSONAS, ensureTwoFactorSectionExpanded, generateTotpCode, s
  * confirming with a live computed code; login then requires a second
  * step; and 2FA can be disabled again with a fresh code.
  *
- * Uses the orphan persona (zero org memberships, not logged into by any
- * other spec's shared setup) specifically so enabling/disabling 2FA here
- * can't leave a later spec's plain `loginAs()` broken. The test always
- * ends with 2FA disabled again, restoring single-step login for this
- * persona regardless of run order.
+ * Uses a fresh, disposable, zero-org-membership user — created via the API
+ * then immediately made to leave via `DELETE .../membership`, the same
+ * recipe backend/scripts/seed_e2e_dataset.py itself uses to construct
+ * PERSONAS.orphan — rather than the orphan persona itself, so
+ * enabling/disabling 2FA here can't collide with org-login-2fa-handoff.
+ * spec.ts or user-directory-and-bans.spec.ts also touching orphan's
+ * session/account state concurrently (Phase 1, docs/platform-review-2026-
+ * 09-plan.md). The test always ends with 2FA disabled again, but that's
+ * now for tidiness rather than to avoid breaking a shared persona's later
+ * plain `loginAs()`.
  */
 test.describe("two-factor authentication enrollment", () => {
   test("enrol, log in with a code, then disable", async ({ page }) => {
     let secret = "";
+    const suffix = Date.now();
+    const userEmail = `e2e-2fa-standalone-${suffix}@example.com`;
+
+    await test.step("create a fresh, disposable, zero-org-membership user (setup, via API)", async () => {
+      const serverAdminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+        data: { email: "admin@example.com", password: "ChangeMe123!" },
+      });
+      const serverAdminToken = (await serverAdminLoginResp.json()).access_token;
+      const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+
+      const org = await (
+        await page.request.post(`${apiBaseUrl}/api/v1/orgs`, {
+          headers: serverAdminHeaders, data: { name: `E2E 2FA Setup Org ${suffix}` },
+        })
+      ).json();
+      await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+        headers: serverAdminHeaders,
+        data: { email: userEmail, display_name: "E2E 2FA Standalone User", password: PASSWORD, role: "member" },
+      });
+      const userLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
+        data: { email: userEmail, password: PASSWORD },
+      });
+      const userToken = (await userLoginResp.json()).access_token;
+      await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${org.id}/membership`, {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+    });
 
     await test.step("enrol via the real UI, capturing the secret from the enroll response", async () => {
       await page.goto("/login");
-      await page.getByLabel("Email").fill(PERSONAS.orphan.email);
+      await page.getByLabel("Email").fill(userEmail);
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
       await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
@@ -46,7 +80,7 @@ test.describe("two-factor authentication enrollment", () => {
       await page.getByRole("button", { name: "Sign out" }).click();
       await page.waitForURL(/\/login$/);
 
-      await page.getByLabel("Email").fill(PERSONAS.orphan.email);
+      await page.getByLabel("Email").fill(userEmail);
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
       await expect(page.getByText("Two-factor verification")).toBeVisible();
@@ -75,7 +109,7 @@ test.describe("two-factor authentication enrollment", () => {
     });
 
     await test.step("logging in again now only takes a single step, confirming 2FA is really off", async () => {
-      await page.getByLabel("Email").fill(PERSONAS.orphan.email);
+      await page.getByLabel("Email").fill(userEmail);
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
       await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();

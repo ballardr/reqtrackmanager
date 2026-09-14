@@ -15,6 +15,8 @@ import type {
   MaterializeResult,
   ModuleRoleDefinition,
   OrgGroup,
+  OrgGroupProjectRoleSummary,
+  Organization,
   OrgUser,
   PendingInvite,
   Project,
@@ -189,6 +191,17 @@ export function ProjectAdminPage() {
   const [settingsName, setSettingsName] = useState("");
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
+  // Platform review 2026-09, Phase 8 — see `Project.
+  // require_change_request_for_approved_links`/`exempt_from_org_link_lock`
+  // (backend model docstrings) and `Organization.
+  // force_require_change_request_for_approved_links` for the full
+  // resolution. `orgForceLinksLocked` is best-effort — if the org fetch
+  // fails (rare; project access already implies org membership per the
+  // comment on the org-scoped fetches in `reload()` below), it stays
+  // false and this project's own checkbox is simply never shown forced.
+  const [requireCrForLinks, setRequireCrForLinks] = useState(false);
+  const [exemptFromOrgLinkLock, setExemptFromOrgLinkLock] = useState(false);
+  const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
   const [isTemplate, setIsTemplate] = useState(false);
   const [visibility, setVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [statusId, setStatusId] = useState("");
@@ -215,6 +228,11 @@ export function ProjectAdminPage() {
   const [addMirrorMode, setAddMirrorMode] = useState<ProjectRoleInheritanceMode>("member_only");
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
+  // Phase 6 (docs/platform-review-2026-09-plan.md): organisation groups
+  // holding a direct `OrgGroupProjectRole` grant on this project, fed into
+  // `ProjectMembersTable`'s own `kind: "group"` rows — the read side the
+  // existing `addProjectGroupRole` grant flow never had a way to display.
+  const [groupRoles, setGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [materializing, setMaterializing] = useState(false);
   // Module system Phase 2: project-scoped module-contributed role
   // definitions currently available to grant on this project, fed into
@@ -307,14 +325,28 @@ export function ProjectAdminPage() {
 
   const GROUPS_PAGE_SIZE = 20;
 
+  // Belt-and-suspenders guard (same pattern/reasoning as
+  // `RequirementsPage.tsx`'s `loadRequirementsRequestIdRef`): `reload()`
+  // kicks off its own unfiltered `loadGroups` call as part of a long
+  // sequential chain of awaited requests, so a user (or a test) typing
+  // into the Groups search box right after a mutation that triggers
+  // `reload()` (e.g. creating a group) can otherwise have that faster,
+  // newer, filtered response overwritten once the older, slower,
+  // unfiltered `reload()` call finally resolves — each call claims the
+  // next id; a response is applied only if no newer call has started
+  // since.
+  const loadGroupsRequestIdRef = useRef(0);
+
   async function loadGroups(
     search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort
   ) {
     if (!projectId) return;
+    const requestId = ++loadGroupsRequestIdRef.current;
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (sort) params.set("order", sort.direction);
     const page = await api.getPage<ProjectGroup>(`/api/v1/projects/${projectId}/groups?${params.toString()}`);
+    if (requestId !== loadGroupsRequestIdRef.current) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
     setGroupsTotal(page.total);
   }
@@ -335,6 +367,8 @@ export function ProjectAdminPage() {
       setSettingsName(p.name);
       setSettingsSummary(p.summary);
       setAllowMemberCr(p.allow_member_change_requests);
+      setRequireCrForLinks(p.require_change_request_for_approved_links);
+      setExemptFromOrgLinkLock(p.exempt_from_org_link_lock);
       setIsTemplate(p.is_template);
       setVisibility(p.visibility);
       setStatusId(p.status_id);
@@ -358,6 +392,13 @@ export function ProjectAdminPage() {
     // page at all.
     setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
     setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
+    // Platform review 2026-09, Phase 8 — readable by any org member (unlike
+    // most other org policy toggles), so this reuses the same "project
+    // access already implies org membership" reasoning the comment above
+    // gives for the unfiltered org users/groups calls.
+    setOrgForceLinksLocked(
+      (await api.get<Organization>(`/api/v1/orgs/${p.organization_id}`)).force_require_change_request_for_approved_links
+    );
     setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
     setOrgProjectStatuses(await api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`));
     if (!reportConfigDirtyRef.current) {
@@ -389,6 +430,7 @@ export function ProjectAdminPage() {
     // visiting the "members" group.
     setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
     await reloadEffectiveMembers();
+    await reloadGroupRoles();
     await reloadPendingInvites();
     // Module system Phase 2 — same "fetched alongside the rest of this
     // page's own reload()" treatment every other Members-section data
@@ -399,6 +441,15 @@ export function ProjectAdminPage() {
   async function reloadEffectiveMembers() {
     if (!projectId) return;
     setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
+  }
+
+  /** `ProjectMembersTable`'s own third data source (Phase 6) — same
+   * "re-fetch just this" treatment `reloadEffectiveMembers` uses. Called
+   * from `reload()` (below) and after every group-role mutation, since a
+   * grant/revoke/removal changes exactly this list. */
+  async function reloadGroupRoles() {
+    if (!projectId) return;
+    setGroupRoles(await api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${projectId}/group-roles`));
   }
 
   async function reloadPendingInvites() {
@@ -453,7 +504,17 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary,
-        allow_member_change_requests: allowMemberCr, is_template: isTemplate,
+        allow_member_change_requests: allowMemberCr,
+        // Platform review 2026-09, Phase 8 — `requireCrForLinks` always
+        // carries this project's own stored opt-in, even while the org
+        // force is active and the checkbox below renders checked-and-
+        // disabled (rendering it forced doesn't rewrite the underlying
+        // value — if the org later turns its force off, this project's own
+        // setting should still read back whatever it actually was, not a
+        // `true` baked in by a temporary org policy).
+        require_change_request_for_approved_links: requireCrForLinks,
+        exempt_from_org_link_lock: exemptFromOrgLinkLock,
+        is_template: isTemplate,
         visibility, status_id: statusId || null,
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
@@ -925,6 +986,52 @@ export function ProjectAdminPage() {
   async function addProjectGroupRole(orgGroupId: string, role: ProjectRole) {
     await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
     await reloadEffectiveMembers();
+    // Phase 6: the group this just granted a role to now needs its own
+    // `ProjectMembersTable` row, not just its members' updated provenance.
+    await reloadGroupRoles();
+  }
+
+  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6) — grants/
+   * revokes one role on a group's `kind: "group"` row directly, the same
+   * `POST`/`DELETE .../group-roles[...]` calls `addProjectGroupRole`/the
+   * backend's `revoke_group_project_role` already expose, just reachable
+   * from the row itself now instead of only from the "Add member"
+   * autocomplete's one-shot grant. Re-fetches both group roles and
+   * effective members, since a group's role change also changes its
+   * members' own Source column provenance. */
+  async function toggleProjectMemberOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
+    try {
+      if (checked) {
+        await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
+      } else {
+        await api.delete(`/api/v1/projects/${projectId}/group-roles/${orgGroupId}/${role}`);
+      }
+      await reloadGroupRoles();
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** `ProjectMembersTable`'s own "Remove group" (Actions column, Phase 6)
+   * — loops the per-role `DELETE .../group-roles/{org_group_id}/{role}`
+   * over every role the group currently holds, the group-row counterpart
+   * to `removeAllProjectMemberAccess`'s per-user loop. Confirmed via
+   * `ConfirmDialog` inside `ProjectMembersTable` itself before this is
+   * ever called. */
+  async function removeProjectMemberOrgGroup(orgGroupId: string) {
+    const group = groupRoles.find((g) => g.org_group_id === orgGroupId);
+    if (!group) return;
+    try {
+      await Promise.all(
+        group.roles.map((role) => api.delete(`/api/v1/projects/${projectId}/group-roles/${orgGroupId}/${role}`))
+      );
+      showToast(strings.membersTable.removeGroupSuccess(group.org_group_name));
+      await reloadGroupRoles();
+      await reloadEffectiveMembers();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
@@ -1208,6 +1315,46 @@ export function ProjectAdminPage() {
           />
           {strings.admin.allowMemberChangeRequests}
         </label>
+        {/* Platform review 2026-09, Phase 8. Forced checked+disabled (the
+            same disabled+`title` "why is this checked and I can't touch
+            it" convention `ProjectMembersTable.tsx` already establishes)
+            once the org's own force is active and this project isn't
+            exempt — see `exemptFromOrgLinkLock` below for the escape
+            hatch. */}
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
+            disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
+            title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
+            onChange={(e) => {
+              settingsDirtyRef.current = true;
+              setRequireCrForLinks(e.target.checked);
+            }}
+          />
+          {strings.admin.requireChangeRequestForApprovedLinks}
+        </label>
+        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+          {orgForceLinksLocked && !exemptFromOrgLinkLock
+            ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
+            : strings.admin.requireChangeRequestForApprovedLinksHint}
+        </p>
+        {orgForceLinksLocked && (
+          <>
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={exemptFromOrgLinkLock}
+                onChange={(e) => {
+                  settingsDirtyRef.current = true;
+                  setExemptFromOrgLinkLock(e.target.checked);
+                }}
+              />
+              {strings.admin.exemptFromOrgLinkLock}
+            </label>
+            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.exemptFromOrgLinkLockHint}</p>
+          </>
+        )}
         <label className="row">
           <input
             type="checkbox"
@@ -1944,11 +2091,14 @@ export function ProjectAdminPage() {
             <ProjectMembersTable
               members={effectiveMembers}
               invites={pendingInvites}
+              groupRoles={groupRoles}
               onToggleRole={toggleProjectMemberRole}
+              onToggleGroupRole={toggleProjectMemberOrgGroupRole}
               onResendInvite={resendProjectInvite}
               resendingInviteId={resendingInviteId}
               onRemoveAllAccess={removeAllProjectMemberAccess}
               onConvertToDirect={convertProjectMemberToDirect}
+              onRemoveGroup={removeProjectMemberOrgGroup}
               ariaLabel={strings.admin.membersNav}
               availableModuleRoles={availableModuleRoles}
               onToggleModuleRole={toggleProjectMemberModuleRole}

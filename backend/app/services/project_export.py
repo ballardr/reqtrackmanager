@@ -475,7 +475,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     project_json = {
         "source_name": project.name, "summary": project.summary,
-        "allow_member_change_requests": project.allow_member_change_requests, "terminology": project.terminology,
+        "allow_member_change_requests": project.allow_member_change_requests,
+        "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
+        "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "report_intro": project.report_intro, "report_chapters": project.report_chapters, "report_appendices": project.report_appendices,
         "default_report_template_name": default_report_template_name,
@@ -582,6 +584,8 @@ def new_project_from_bundle_data(
     return Project(
         organization_id=organization_id, name=name, summary=summary if summary is not None else data.get("summary", ""),
         allow_member_change_requests=data.get("allow_member_change_requests", True),
+        require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
+        exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
         terminology=data.get("terminology") or {},
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
         report_intro=data.get("report_intro", ""), report_chapters=data.get("report_chapters", []) or [],

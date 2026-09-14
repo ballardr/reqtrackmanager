@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from "react";
 
+import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -142,50 +143,34 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
 
         <h3 style={{ margin: "0.5rem 0 0" }}>Add mapping</h3>
         <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Target standard</span>
-            <select className="input" value={targetStandardId} onChange={(e) => setTargetStandardId(e.target.value)} aria-label="Target standard">
-              <option value="">Select…</option>
-              {standards.map((s) => (
-                <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Target version</span>
-            <select className="input" value={targetVersionId} onChange={(e) => setTargetVersionId(e.target.value)} aria-label="Target version" disabled={!targetStandardId}>
-              <option value="">Select…</option>
-              {targetVersions.map((v) => (
-                <option key={v.id} value={v.id}>{v.version_label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Target requirement</span>
-            <select
-              className="input"
-              value={targetRequirementId}
-              onChange={(e) => setTargetRequirementId(e.target.value)}
-              aria-label="Target requirement"
-              disabled={!targetVersionId}
-            >
-              <option value="">Select…</option>
-              {targetRequirements
-                .filter((r) => r.id !== requirement.id)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>{r.reference ? `${r.reference} — ` : ""}{r.name}</option>
-                ))}
-            </select>
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Relationship type</span>
-            <select className="input" value={relationshipTypeId} onChange={(e) => setRelationshipTypeId(e.target.value)} aria-label="Relationship type">
-              <option value="">Select…</option>
-              {relationshipTypes.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </label>
+          <LabeledSelect
+            label="Target standard"
+            value={targetStandardId}
+            onChange={setTargetStandardId}
+            options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+          />
+          <LabeledSelect
+            label="Target version"
+            value={targetVersionId}
+            onChange={setTargetVersionId}
+            options={targetVersions.map((v) => ({ value: v.id, label: v.version_label }))}
+            disabled={!targetStandardId}
+          />
+          <LabeledSelect
+            label="Target requirement"
+            value={targetRequirementId}
+            onChange={setTargetRequirementId}
+            options={targetRequirements
+              .filter((r) => r.id !== requirement.id)
+              .map((r) => ({ value: r.id, label: `${r.reference ? `${r.reference} — ` : ""}${r.name}` }))}
+            disabled={!targetVersionId}
+          />
+          <LabeledSelect
+            label="Relationship type"
+            value={relationshipTypeId}
+            onChange={setRelationshipTypeId}
+            options={relationshipTypes.map((t) => ({ value: t.id, label: t.name }))}
+          />
         </div>
         <label className="stack" style={{ gap: "0.25rem" }}>
           <span>Notes</span>

@@ -121,7 +121,7 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     // --- Publish the version: requirements become immutable (§4).
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add requirement" })).toHaveCount(0);
 
     // --- History section shows this standard's own audit trail.

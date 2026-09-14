@@ -18,7 +18,7 @@ import type {
   RequirementLink,
   RequirementStatus,
 } from "../api/types";
-import { REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import { ENTITY_ACCENT_COLOR, REQUIREMENT_LEVEL_LABEL, REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
@@ -989,7 +989,11 @@ export function RequirementsPage() {
           {requirements && requirements.length > 0 && viewMode === "tiles" && (
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {requirements.map((r) => (
-                <div key={r.id} className="card stack" style={{ gap: "0.5rem" }}>
+                <div
+                  key={r.id}
+                  className="card stack entity-accent-card"
+                  style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                >
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>
                       {r.unique_code}
@@ -1013,7 +1017,11 @@ export function RequirementsPage() {
                   )}
                   <div className="row" style={{ justifyContent: "space-between" }}>
                     <div className="row" style={{ gap: "0.4rem" }}>
-                      <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
+                      <FilterBadge
+                        active={statusFilter === r.status}
+                        tone={REQUIREMENT_STATUS_TONE[r.status]}
+                        onClick={() => toggleStatusFilter(r.status)}
+                      >
                         {REQUIREMENT_STATUS_LABEL[r.status]}
                       </FilterBadge>
                       {/* C-G-11: rendered as its own badge, distinct from
@@ -1071,7 +1079,11 @@ export function RequirementsPage() {
                 </thead>
                 <tbody>
                   {requirements.map((r) => (
-                    <tr key={r.id}>
+                    <tr
+                      key={r.id}
+                      className="entity-accent-row"
+                      style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                    >
                       {canManageProject && (
                         <td>
                           <input
@@ -1088,7 +1100,11 @@ export function RequirementsPage() {
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.4rem" }}>
-                          <FilterBadge active={statusFilter === r.status} onClick={() => toggleStatusFilter(r.status)}>
+                          <FilterBadge
+                            active={statusFilter === r.status}
+                            tone={REQUIREMENT_STATUS_TONE[r.status]}
+                            onClick={() => toggleStatusFilter(r.status)}
+                          >
                             {REQUIREMENT_STATUS_LABEL[r.status]}
                           </FilterBadge>
                           {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}

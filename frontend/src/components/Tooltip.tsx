@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 const VIEWPORT_MARGIN_PX = 8;
@@ -31,8 +31,23 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * onto — so callers must still set `aria-label={label}` (and may keep
  * `title={label}` too, redundant but harmless) on the actual interactive
  * element themselves.
+ *
+ * `className`/`style` are applied to the wrapping span itself (merged with
+ * its own default `tooltip-trigger` class), not the child. They matter for
+ * a `position: fixed` child like the nav-rail collapse toggle: that button
+ * is placed by its own `left`/`top`, entirely independent of where its
+ * parent sits in normal flow, so the default shrink-wrapped, in-flow
+ * `tooltip-trigger` span collapses to a zero-size box wherever the DOM
+ * happens to put it — nowhere near the button it wraps — and `measure()`
+ * below (which reads *this* span's `getBoundingClientRect()`, not the
+ * child's) would position the bubble there instead. The fix is for the
+ * caller to give the wrapping span the same `position: fixed` placement as
+ * the fixed child, via these props, so the span IS the button's true
+ * on-screen box and measurement is accurate again.
  */
-export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+export function Tooltip({
+  label, children, className, style,
+}: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -62,7 +77,8 @@ export function Tooltip({ label, children }: { label: string; children: ReactNod
   return (
     <span
       ref={triggerRef}
-      className="tooltip-trigger"
+      className={className ? `tooltip-trigger ${className}` : "tooltip-trigger"}
+      style={style}
       onMouseEnter={() => setVisible(true)}
       onMouseLeave={() => setVisible(false)}
       onFocus={() => setVisible(true)}

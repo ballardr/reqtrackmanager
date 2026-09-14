@@ -49,7 +49,7 @@ export function Tabs<K extends string>({
   }
 
   return (
-    <div className="row" role="tablist" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+    <div className="tabs-list" role="tablist">
       {tabs.map((tb, i) => (
         <button
           key={tb.key}
@@ -62,7 +62,7 @@ export function Tabs<K extends string>({
           aria-selected={active === tb.key}
           aria-controls={panelId(idPrefix, tb.key)}
           tabIndex={active === tb.key ? 0 : -1}
-          className={`btn ${active === tb.key ? "btn-primary" : ""}`}
+          className={`tabs-tab ${active === tb.key ? "tabs-tab--active" : ""}`}
           onClick={() => onChange(tb.key)}
           onKeyDown={(e) => handleKeyDown(e, i)}
         >

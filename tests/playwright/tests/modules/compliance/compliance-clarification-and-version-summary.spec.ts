@@ -42,7 +42,7 @@ test.describe("Compliance Module: post-publish clarification + version summary (
 
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit Access control policy" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Clarify Access control policy" })).toBeVisible();
 

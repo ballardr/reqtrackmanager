@@ -19,8 +19,10 @@ import type {
 } from "../api/types";
 import {
   CHANGE_REQUEST_STATUS_LABEL,
+  CHANGE_REQUEST_STATUS_TONE,
   CHANGEABLE_FIELD_LABEL,
   CHANGEABLE_REQUIREMENT_FIELDS,
+  ENTITY_ACCENT_COLOR,
   REQUIREMENT_LEVEL_LABEL,
 } from "../api/types";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -748,12 +750,20 @@ export function ChangeRequestsPage() {
                 </thead>
                 <tbody>
                   {crs.map((cr) => (
-                    <tr key={cr.id}>
+                    <tr
+                      key={cr.id}
+                      className="entity-accent-row"
+                      style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
+                    >
                       <td>
                         <Link to={`/projects/${projectId}/change-requests/${cr.id}`}>{crTitle(cr)}</Link>
                       </td>
                       <td>
-                        <FilterBadge active={statusFilter === cr.status} onClick={() => toggleStatusFilter(cr.status)}>
+                        <FilterBadge
+                          active={statusFilter === cr.status}
+                          tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}
+                          onClick={() => toggleStatusFilter(cr.status)}
+                        >
                           {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
                         </FilterBadge>
                       </td>
@@ -769,12 +779,20 @@ export function ChangeRequestsPage() {
           {crs && crs.length > 0 && viewMode === "tiles" && (
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
               {crs.map((cr) => (
-                <div key={cr.id} className="card stack" style={{ gap: "0.5rem" }}>
+                <div
+                  key={cr.id}
+                  className="card stack entity-accent-card"
+                  style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
+                >
                   <Link to={`/projects/${projectId}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
                     {crTitle(cr)}
                   </Link>
                   <div className="row" style={{ gap: "0.4rem" }}>
-                    <FilterBadge active={statusFilter === cr.status} onClick={() => toggleStatusFilter(cr.status)}>
+                    <FilterBadge
+                      active={statusFilter === cr.status}
+                      tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}
+                      onClick={() => toggleStatusFilter(cr.status)}
+                    >
                       {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
                     </FilterBadge>
                     {cr.proposed_target_stage_id && (

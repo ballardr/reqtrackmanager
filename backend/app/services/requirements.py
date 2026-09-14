@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import RequirementLevel, RequirementStatus
+from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.user import User
@@ -44,6 +45,43 @@ def get_current_version(db: Session, requirement_id: UUID) -> RequirementVersion
 def is_locked(version: RequirementVersion) -> bool:
     """Whether a requirement version can only change via an approved change request (C-G-12)."""
     return version.status in LOCKED_STATUSES
+
+
+def requires_change_request_for_links(db: Session, project: Project) -> bool:
+    """Whether `project` requires an approved change request to add/remove a
+    `RequirementLink` on an already-approved requirement (Platform review
+    2026-09, Phase 8 — a deliberately narrower, opt-in sibling of C-G-12's
+    unconditional lock on a requirement's own content fields; traceability
+    links otherwise stay ungated by design, see `RequirementLink`'s model
+    docstring).
+
+    Resolution order, per the confirmed design (docs/decisions.md's
+    "Platform review 2026-09, Phase 8" entry):
+      1. The project's own opt-in toggle
+         (`Project.require_change_request_for_approved_links`) always wins
+         when set — a project may lock itself down regardless of any org
+         policy.
+      2. Otherwise, the organisation's own force-on policy
+         (`Organization.force_require_change_request_for_approved_links`)
+         applies to every project in the org *except* one explicitly marked
+         `Project.exempt_from_org_link_lock` — the org's one narrow escape
+         hatch for a project that genuinely needs the permissive default
+         despite the org-wide policy.
+      3. Otherwise (neither set), links remain ungated — the pre-existing,
+         default-permissive behaviour.
+
+    Callers still separately check `is_locked(version)` — this function
+    only answers "does this project's policy require a change request *for
+    an already-locked requirement's links*", not whether the requirement is
+    locked at all (an unlocked requirement's links are never gated,
+    regardless of this policy).
+    """
+    if project.require_change_request_for_approved_links:
+        return True
+    org = db.get(Organization, project.organization_id)
+    if org is None:
+        return False
+    return org.force_require_change_request_for_approved_links and not project.exempt_from_org_link_lock
 
 
 def _next_sequence(db: Session, project: Project) -> int:

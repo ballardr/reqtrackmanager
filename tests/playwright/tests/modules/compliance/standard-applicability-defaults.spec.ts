@@ -45,14 +45,21 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
     await logout(page);
 
     // --- A plain Project Manager on Gamma-1 alone — no org role, no
     // compliance_officer grant — self-assigns the standard directly.
     await loginAs(page, PERSONAS.projectMgrGamma.email);
     await page.goto("/projects");
-    await page.getByRole("link", { name: PROJECT_NAMES.gamma1 }).click();
+    // `.first()`: Gamma-1 is a hierarchy `can_be_parent` fixture other
+    // specs create/detach real sub-projects under concurrently (see
+    // playwright.config.ts's GLOBAL_STATE_SPECS comment on
+    // project-hierarchy.spec.ts) — its own row can transiently render more
+    // than one element matching this accessible name, all pointing at the
+    // same project, so pinning to the first match keeps this test's own
+    // assertion about *this* project unaffected by that.
+    await page.getByRole("link", { name: PROJECT_NAMES.gamma1 }).first().click();
     await page.getByRole("link", { name: "Compliance", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
@@ -75,7 +82,7 @@ test.describe("Compliance Module: standard applicability defaults (Phase 20)", (
     await page.getByRole("button", { name: "v1.0" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
-    await expect(page.getByText("Published")).toBeVisible();
+    await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
     // --- Before switching the default, Gamma-2 has no such assignment.
     await page.goto("/projects");

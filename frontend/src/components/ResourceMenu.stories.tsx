@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
-import { expect, userEvent, within } from "storybook/test";
+import { page } from "vitest/browser";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { ResourceMenu, type ResourceMenuGroupDef } from "./ResourceMenu";
 
@@ -203,8 +204,36 @@ export const HidesMenuChromeWithZeroGroups: Story = {
 /** Baseline: with more than one group, the menu chrome renders as before. */
 export const ShowsMenuChromeWithManyGroups: Story = {
   play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("navigation", { name: "Demo sections" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("navigation", { name: "Demo sections" })).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "People" })).toBeInTheDocument();
+  },
+};
+
+/** Below `MOBILE_BREAKPOINT_PX` the vertical link list is replaced with a
+ * single `<select>` (platform-review-2026-09: Org Admin's up to-10-group
+ * list was forcing a scroll past the whole menu on a phone-width viewport
+ * before reaching the selected group's own content). Regression coverage
+ * for the dropdown itself existing, carrying the right options, and still
+ * driving real navigation (not just client-only state) the same way the
+ * link list does. */
+export const CollapsesToDropdownOnNarrowViewport: Story = {
+  play: async ({ canvasElement }) => {
+    await page.viewport(400, 800);
+    const canvas = within(canvasElement);
+    // The `matchMedia` "change" listener that flips `useNarrowViewport`'s
+    // state fires asynchronously relative to `page.viewport()` resolving
+    // (see FilterPanel.stories.tsx's `MobileCollapsedByDefault`), so the
+    // link list -> select swap may not be reflected in the DOM the instant
+    // control returns here.
+    const select = await waitFor(() => canvas.getByRole("combobox", { name: "Demo sections" }));
+    await expect(canvas.queryByRole("navigation")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "People" })).not.toBeInTheDocument();
+    await expect(canvas.getByText("Overview panel")).toBeInTheDocument();
+
+    await userEvent.selectOptions(select, "People");
+    await expect(canvas.getByText("People panel")).toBeInTheDocument();
+    await expect(canvas.queryByText("Overview panel")).not.toBeInTheDocument();
   },
 };
