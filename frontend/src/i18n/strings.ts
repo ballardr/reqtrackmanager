@@ -698,15 +698,50 @@ const en = {
     // togglable from here at all; it must be changed at its actual source
     // (the group's own membership/role, the project's visibility setting).
     roleNotDirectlyRevocable: "This role isn't a direct grant on this {project} — it comes from a group, nested org group, project reference, or org-wide visibility. Change it at that source instead.",
+    // Appended inline to a checked-but-disabled role option's own label (not
+    // just its hover `title` above) so the reason it's greyed out is
+    // visible without hovering — platform review 2026-09 follow-up.
+    // Deliberately one generic suffix covering every non-`direct_role`
+    // kind (group, nested org group, project reference, org-wide,
+    // inherited), same simplification the Source-column summary below
+    // makes; the precise mechanism stays one hover away via
+    // `roleNotDirectlyRevocable` above, unchanged.
+    roleByGroupSuffix: "(by group)",
+    // Same inline-suffix treatment for the other disabled reason (see
+    // `cannotRemoveLastManager` below) — a purely-direct
+    // `project_manager` role that can't be revoked because it's the
+    // {project}'s last manager, not because it's group-sourced.
+    roleOnlyManagerSuffix: "(only manager)",
     // Shared by both `addControl` compositions (`ProjectAdminPage.tsx`'s
     // Members section, `OrgAdminPage.tsx`'s "Manage users" modal) — the
     // role `<select>` accompanying `UserAutocomplete` in the "add a
     // member" row.
     addRoleSelectLabel: "Role to grant",
     add: "Add",
-    // Per-role provenance text (Source column) — one line per source a
-    // user holds a given role through; see `MemberSourceProvenanceKind`'s
-    // own doc comment for what each of the five direct kinds means.
+    // Whole-row Source-column summary (platform review 2026-09 follow-up)
+    // — replaces the old always-visible per-role provenance lines below
+    // with one plain-language word/phrase per row, since the Role column
+    // already names which roles a member holds (repeating that per source
+    // line was redundant): "Direct" (reused from `sourceDirectRole` below
+    // when every source is `direct_role`), "Group" when every source is
+    // some other (non-`direct_role`) kind, or this — a mix of both. Full
+    // per-source detail (which group, which project, which mode) is not
+    // lost, just moved behind the summary's own click-to-open `Popover`
+    // (`sourceSummaryDetailTitle` below), reusing `sourceLine` for its
+    // contents unchanged.
+    sourceSummaryDirectAndGroup: "Direct and group",
+    // See `sourceSummaryDirectAndGroup` above — shown when every source is
+    // some non-`direct_role` kind (group, nested org group, project
+    // reference, org-wide, inherited). Deliberately one umbrella word
+    // rather than naming each of those five kinds at the row level; the
+    // detail popover still distinguishes them.
+    sourceSummaryGroup: "Group",
+    sourceSummaryDetailTitle: (name: string) => `${name}'s access sources`,
+    // Per-role provenance text (now shown inside the Source column's
+    // detail popover rather than always-visible in the cell itself) — one
+    // line per source a user holds a given role through; see
+    // `MemberSourceProvenanceKind`'s own doc comment for what each of the
+    // five direct kinds means.
     sourceDirectRole: "Direct",
     // Parameterized on the granting group's name (`via_group_name`) so the
     // Source column can say *which* group, not just "Via group" — see
@@ -758,7 +793,6 @@ const en = {
     // `revokeRole`/`actionsFor` above are already name-generic and reused
     // verbatim for a group's own name — no group-specific duplicates needed.
     groupRowBadge: "Group",
-    groupDirectGrantSource: "Direct grant on this {project}",
     removeGroup: "Remove group",
     removeGroupConfirmTitle: (name: string) => `Remove ${name} from this {project}?`,
     removeGroupConfirmMessage: (name: string) =>

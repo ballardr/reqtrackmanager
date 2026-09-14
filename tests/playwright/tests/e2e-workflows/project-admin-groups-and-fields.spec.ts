@@ -347,9 +347,21 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
         // Visible on the group's member's own row, naming the granting
         // group directly (PR1's per-group provenance) and distinguishing
-        // this direct grant from the nesting mechanism's own wording.
+        // this direct grant from the nesting mechanism's own wording. The
+        // Source column now shows a plain-language summary per row
+        // (platform review 2026-09 follow-up) rather than this line being
+        // always-visible in the cell — memberAlphaBeta holds no other role
+        // on Beta-2 at this point, so the summary reads "Group" (not
+        // "Direct and group"), and the actual named-group line lives
+        // behind that summary's own click-to-open popover.
         const memberRow = page.locator("tr", { hasText: PERSONAS.memberAlphaBeta.name });
-        await expect(memberRow.getByText(`Via group '${directGroupName}' (direct)`)).toBeVisible();
+        await memberRow.getByRole("button", { name: "Group" }).click();
+        await expect(
+          page
+            .getByRole("dialog", { name: `${PERSONAS.memberAlphaBeta.name}'s access sources` })
+            .getByText(`Via group '${directGroupName}' (direct)`)
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
 
         // Phase 6 (docs/platform-review-2026-09-plan.md): the grant just
         // made above is now also visible and manageable as the group's own
@@ -359,16 +371,28 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // below used to be the only way to do).
         await test.step("the granting group gets its own row, editable and removable", async () => {
           const groupRow = page.getByRole("button", { name: `${directGroupName}'s roles` }).locator("xpath=ancestor::tr[1]");
-          await expect(groupRow.getByText("Group")).toBeVisible();
-          await expect(groupRow.getByText("Direct grant on this project (Stakeholder)")).toBeVisible();
+          await expect(groupRow.getByText("Group", { exact: true })).toBeVisible();
+          // A group row's Source cell just states "Direct" plainly, no
+          // popover (platform review 2026-09 follow-up) — there's nothing
+          // upstream of the group's own grant to disclose, and the Role
+          // column (checked below via the trigger's own summary) already
+          // names which roles it holds. `exact: true` matters here
+          // specifically: this fixture's own group name contains the
+          // literal word "Direct" ("E2E Direct Grant Group ..."), which a
+          // substring match against the Name cell's combined "Group" badge
+          // + name text would also satisfy.
+          await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
+          const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
+          await expect(rolesButton).toHaveAttribute("title", "Stakeholder");
 
           // The role dropdown is directly editable from this row — grant a
           // second role the same way `MembersTabGroupRowRoleToggleAndRemove`
           // (ProjectMembersTable.stories.tsx) covers in isolation.
-          await groupRow.getByRole("button", { name: `${directGroupName}'s roles` }).click();
+          await rolesButton.click();
           const roleGroup = page.getByRole("group", { name: `${directGroupName}'s roles` });
           await roleGroup.getByRole("checkbox", { name: `Grant Member to ${directGroupName}` }).click();
-          await expect(groupRow.getByText("Direct grant on this project (Member)")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(rolesButton).toHaveAttribute("title", "Stakeholder, Member");
 
           // "Remove group" (Actions column) revokes every role at once,
           // behind the same Tier-1 ConfirmDialog every other destructive
@@ -379,7 +403,10 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
             .getByRole("button", { name: "Remove group" }).click();
           await expect(page.getByText(`Removed ${directGroupName}'s access.`)).toBeVisible();
           await expect(page.getByRole("button", { name: `${directGroupName}'s roles` })).toHaveCount(0);
-          await expect(memberRow.getByText(`Via group '${directGroupName}' (direct)`)).toHaveCount(0);
+          // That direct grant was memberAlphaBeta's only source of access
+          // on this project, so their whole row disappears from the
+          // effective-members list too, not just the one Source line.
+          await expect(memberRow).toHaveCount(0);
         });
       } finally {
         // Defensive backstop, not the primary cleanup any more — the step

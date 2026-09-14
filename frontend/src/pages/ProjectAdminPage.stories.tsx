@@ -692,9 +692,20 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Members" }));
     await waitFor(() => expect(canvas.getByText("Priya Shah")).toBeInTheDocument());
-    await expect(canvas.getByText(/Inherited from 'Platform'/)).toBeInTheDocument();
+    // Source column shows a plain-language summary per row (platform review
+    // 2026-09 follow-up), not the always-visible provenance line this story
+    // originally asserted directly — Priya's sole source is
+    // `forward_inherited` (non-`direct_role`), so her cell reads "Group",
+    // and the actual "Inherited from 'Platform'" detail lives behind that
+    // cell's own click-to-open popover.
+    const priyaRow = canvas.getByText("Priya Shah").closest("tr")!;
+    await userEvent.click(within(priyaRow).getByRole("button", { name: "Group" }));
+    const detail = within(document.body).getByRole("dialog", { name: "Priya Shah's access sources" });
+    await expect(within(detail).getByText(/Inherited from 'Platform'/)).toBeInTheDocument();
+
     await expect(canvas.getByText("Sam Lee")).toBeInTheDocument();
-    await expect(canvas.getByText(/Direct/)).toBeInTheDocument();
+    const samRow = canvas.getByText("Sam Lee").closest("tr")!;
+    await expect(within(samRow).getByText("Direct")).toBeInTheDocument();
   },
 };
 
@@ -818,7 +829,11 @@ export const MembersTabGroupRowRoleToggleAndRemove: Story = {
 
     const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
     await expect(within(row).getByText("Group")).toBeInTheDocument();
-    await expect(within(row).getByText(/Direct grant on this project \(Stakeholder\)/)).toBeInTheDocument();
+    // Source cell just states "Direct" plainly (platform review 2026-09
+    // follow-up collapsed the old per-role provenance lines into one
+    // summary word/phrase per row) — see `ProjectMembersTable.stories.tsx`'s
+    // own `GroupRow` story for this cell's dedicated coverage.
+    await expect(within(row).getByText("Direct")).toBeInTheDocument();
 
     // Granting a second role calls the same `POST .../group-roles` the
     // "Add member" autocomplete's own grant flow uses.

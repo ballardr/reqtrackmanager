@@ -624,23 +624,38 @@ textarea.input {
    Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
    the same two tokens .app-content's own margin above uses) rather than
    via a `.nav-rail ~ .nav-rail-toggle` sibling selector, since the button
-   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span (for its
-   hover-bubble positioning) and so is not actually a DOM sibling of
-   `.nav-rail`, only a visual neighbour of one — a sibling-combinator rule
-   here would silently never match. transform: translateX(-50%) is what
+   renders wrapped in `Tooltip`'s own `.tooltip-trigger` span and so is not
+   actually a DOM sibling of `.nav-rail`, only a visual neighbour of one —
+   a sibling-combinator rule here would silently never match.
+
+   The fixed positioning itself lives on `.nav-rail-toggle-wrapper` (the
+   `Tooltip`-rendered `.tooltip-trigger` span, via its `className`/`style`
+   props — see Tooltip.tsx), not on the `.nav-rail-toggle` button inside
+   it. The button is `position: fixed` independent of its parent's layout
+   position, so if the *wrapper* were left as an ordinary in-flow span
+   (sized to fit an out-of-flow child, i.e. collapsing to a zero-size box
+   wherever the DOM puts it), `Tooltip`'s own measurement of that wrapper
+   would land nowhere near the button — this was a real bug: the bubble
+   showed up near the collapsed-rail position even while expanded, because
+   the collapsed-flow span happened to sit close to that edge. Putting the
+   fixed placement on the wrapper instead makes the measured element and
+   the visible button the same box. transform: translateX(-50%) is what
    actually centres the button on that left value rather than sitting to
    one side of it. */
-.nav-rail-toggle {
+.nav-rail-toggle-wrapper {
   position: fixed;
   top: calc(var(--header-height) + 12px);
   transform: translateX(-50%);
+  z-index: 11;
+  transition: left 0.15s ease;
+}
+
+.nav-rail-toggle {
   width: 28px;
   height: 28px;
   padding: 0;
   justify-content: center;
   border-radius: 50%;
-  z-index: 11;
-  transition: left 0.15s ease;
 }
 
 /* Content-width preference (U-U-01-adjacent display preference, stored
@@ -940,7 +955,7 @@ td:has(> .disclosure-toggle) {
      leaving it visible reads as a broken button rather than an
      unavailable one. Hide it rather than show a control that never
      changes the layout. */
-  .nav-rail-toggle {
+  .nav-rail-toggle-wrapper {
     display: none;
   }
   .nav-rail:not(.nav-rail-icons) {

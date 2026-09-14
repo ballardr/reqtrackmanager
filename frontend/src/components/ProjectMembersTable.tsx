@@ -39,12 +39,26 @@
  *   silently no-op while this table
  *   showed the role as removed. See `MemberSourceProvenanceKind`'s own doc
  *   comment (`api/types.ts`) for the full rationale — this is the exact
- *   fix the Phase D `kind` split exists to make possible.
+ *   fix the Phase D `kind` split exists to make possible. A disabled
+ *   option's own label also carries an inline "(by group)"/"(only
+ *   manager)" suffix (platform review 2026-09 follow-up) stating which of
+ *   the two disabled reasons applies, rather than relying solely on the
+ *   `title` tooltip a user has no visible cue to hover for.
  * - An invited row's Role cell shows a status badge (Pending/Expired,
  *   through `PENDING_INVITE_STATUS_LABEL`) and a Resend button instead of a
  *   `MultiSelectDropdown` — folded in from the retired
  *   `PendingInvitesSection.tsx`, unchanged in behavior (`onResendInvite`
  *   calls the same `POST .../pending-invites/{id}/resend`).
+ * - A member row's Source cell is a click-to-open `Popover` summary
+ *   (`MemberSourceSummary` below), not the always-visible per-role
+ *   provenance stack this table originally shipped with (platform review
+ *   2026-09 follow-up): the Role cell above already names which roles a
+ *   member holds, so repeating that per source line in this column too was
+ *   redundant and got noisier the more sources/roles a member had. The
+ *   cell instead shows one plain word/phrase for the whole row — "Direct",
+ *   "Group", or "Direct and group" — and the full per-source detail
+ *   (`sourceLine`, unchanged) moves behind the popover so nothing is lost,
+ *   just no longer forced into view for every row.
  * - A fast, client-side "last manager" hint (disabled + `title`) on a
  *   purely-`direct_role` `project_manager` option, computed only from
  *   `direct_role`-kind entries (not the old collapsed `direct` bucket a
@@ -122,14 +136,15 @@
  *   Source-column provenance chain (there's nothing upstream of a group's
  *   own direct grant to attribute it to) — the Name cell instead carries a
  *   small "Group" badge so the row doesn't read as a person with a blank
- *   email, and the Source cell states plainly that each listed role is a
- *   direct grant. `groupRoles` defaults to `[]` and `onToggleGroupRole`/
+ *   email, and the Source cell just states "Direct" plainly (no popover —
+ *   there's nothing upstream to disclose). `groupRoles` defaults to `[]`
+ *   and `onToggleGroupRole`/
  *   `onRemoveGroup` are optional, same "omit to hide" contract `onRemoveAllAccess`/
  *   `onConvertToDirect` already use, so a future read-only rendering of this
  *   table doesn't need a no-op stub.
  */
-import { Send, Trash2, Wand2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Info, Send, Trash2, Wand2 } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
   EffectiveMember,
@@ -148,6 +163,7 @@ import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
+import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
@@ -194,6 +210,66 @@ function sourceLine(strings: Strings, s: MemberSourceProvenance): string {
     default:
       return "";
   }
+}
+
+/** The Source column's cell for a `kind: "member"` row (platform review
+ * 2026-09 follow-up) — a single plain-language summary word/phrase
+ * ("Direct" / "Group" / "Direct and group") rather than the old
+ * always-visible per-role `sourceLine` stack: the Role column already
+ * names which roles this member holds, so repeating that per source line
+ * here was redundant, just noisier the more roles/sources a member had.
+ * The full per-source detail isn't dropped, only moved behind a
+ * click-to-open `Popover` (reusing `sourceLine` unchanged for its
+ * contents) so it's still traceable — which specific group, project, or
+ * mode granted each role — without cluttering the row itself. */
+function MemberSourceSummary({ strings, member }: { strings: Strings; member: EffectiveMember }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  if (member.sources.length === 0) return <span className="text-muted">—</span>;
+
+  const hasDirect = member.sources.some((s) => s.kind === "direct_role");
+  const hasIndirect = member.sources.some((s) => s.kind !== "direct_role");
+
+  // Every source is `direct_role` — the popover would only ever say
+  // "Direct" once per held role, nothing the Role column doesn't already
+  // convey, so (like the `kind: "group"` row's own Source cell) this skips
+  // the disclosure control entirely rather than offering a popover with
+  // nothing worth opening it for.
+  if (!hasIndirect) return <span className="text-muted">{strings.membersTable.sourceDirectRole}</span>;
+
+  const label = hasDirect ? strings.membersTable.sourceSummaryDirectAndGroup : strings.membersTable.sourceSummaryGroup;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="disclosure-toggle"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Info size={13} />
+        {label}
+      </button>
+      {open && (
+        <Popover
+          anchorRef={triggerRef}
+          title={strings.membersTable.sourceSummaryDetailTitle(member.display_name)}
+          onClose={() => setOpen(false)}
+        >
+          <div className="stack" style={{ gap: "0.15rem" }}>
+            {member.sources.map((s, i) => (
+              <span key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
+                {sourceLine(strings, s)} ({PROJECT_ROLE_LABEL[s.role]})
+              </span>
+            ))}
+          </div>
+        </Popover>
+      )}
+    </>
+  );
 }
 
 export function ProjectMembersTable({
@@ -453,9 +529,20 @@ export function ProjectMembersTable({
                   : !purelyDirect
                     ? strings.membersTable.roleNotDirectlyRevocable
                     : strings.membersTable.cannotRemoveLastManager;
+                // Inline suffix on the option's own label (not just its
+                // hover `title` above) so a greyed-out option states why
+                // at a glance — platform review 2026-09 follow-up; see
+                // `roleByGroupSuffix`'s own doc comment for why this is one
+                // generic "(by group)" wording covering every non-`direct_
+                // role` kind rather than five kind-specific phrases.
+                const disabledSuffix = !disabled
+                  ? ""
+                  : !purelyDirect
+                    ? ` ${strings.membersTable.roleByGroupSuffix}`
+                    : ` ${strings.membersTable.roleOnlyManagerSuffix}`;
                 return {
                   value: role,
-                  label: PROJECT_ROLE_LABEL[role],
+                  label: PROJECT_ROLE_LABEL[role] + disabledSuffix,
                   checked,
                   disabled,
                   title,
@@ -503,28 +590,12 @@ export function ProjectMembersTable({
         if (row.kind === "group") {
           // No provenance chain to walk (unlike a member's `sources`) —
           // there's nothing upstream of a group's own direct grant to
-          // attribute it to, so each listed role just states plainly that
-          // it's a direct grant, mirroring the member branch's own
-          // "one line per role, role name in parens" shape.
-          return (
-            <div className="stack" style={{ gap: "0.15rem" }}>
-              {row.group.roles.map((role) => (
-                <span key={role} className="text-muted" style={{ fontSize: "0.85rem" }}>
-                  {strings.membersTable.groupDirectGrantSource} ({PROJECT_ROLE_LABEL[role]})
-                </span>
-              ))}
-            </div>
-          );
+          // attribute it to, and every role this row lists (Role column)
+          // is that same direct grant, so the cell just states "Direct"
+          // plainly rather than repeating it once per role.
+          return <span className="text-muted">{strings.membersTable.sourceDirectRole}</span>;
         }
-        return (
-          <div className="stack" style={{ gap: "0.15rem" }}>
-            {row.member.sources.map((s, i) => (
-              <span key={i} className="text-muted" style={{ fontSize: "0.85rem" }}>
-                {sourceLine(strings, s)} ({PROJECT_ROLE_LABEL[s.role]})
-              </span>
-            ))}
-          </div>
-        );
+        return <MemberSourceSummary strings={strings} member={row.member} />;
       },
     },
   ];

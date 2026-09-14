@@ -243,10 +243,13 @@ function RequirementsBrowseLinkTab({
   // Category is nested under one component (the tree) — a category
   // belonging to a different component is never valid, so changing the
   // component resets both the category and the leaf selection, mirroring
-  // `RequirementsPage.tsx`'s own create-form cascade.
+  // `RequirementsPage.tsx`'s own create-form cascade. When the new
+  // component has exactly one category, auto-select it rather than
+  // leaving the user to pick from a dropdown with only one real option.
   function handleComponentChange(value: string) {
     setComponentId(value);
-    setCategoryId("");
+    const ownCategories = categories.filter((c) => c.component_id === value);
+    setCategoryId(ownCategories.length === 1 ? ownCategories[0].id : "");
     setTargetId("");
   }
   function handleCategoryChange(value: string) {
@@ -283,7 +286,11 @@ function RequirementsBrowseLinkTab({
         onChange={handleCategoryChange}
         options={categoriesForComponent.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
         disabled={!componentId}
-        placeholder={componentId ? strings.requirements.noCategoriesForComponent : "Select…"}
+        placeholder={
+          componentId && categoriesForComponent.length === 0
+            ? strings.requirements.noCategoriesForComponent
+            : "Select…"
+        }
       />
       <LabeledSelect
         label={strings.requirements.targetRequirement}

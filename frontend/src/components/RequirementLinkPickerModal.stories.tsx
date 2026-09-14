@@ -26,7 +26,10 @@ const targets = [
   buildRequirement({ id: "req-2", unique_code: "AUTH-LOG-002", name: "Users can enable two-factor authentication", component_id: "comp-1", category_id: "cat-1" }),
   buildRequirement({ id: "req-3", unique_code: "AUTH-LOG-003", name: "Passwords expire after 90 days", component_id: "comp-1", category_id: "cat-1" }),
 ];
-const components = [{ id: "comp-1", project_id: "project-1", name: "Authentication", prefix: "AUTH", sort_order: 0 }];
+const components = [
+  { id: "comp-1", project_id: "project-1", name: "Authentication", prefix: "AUTH", sort_order: 0 },
+  { id: "comp-2", project_id: "project-1", name: "Infrastructure", prefix: "INFRA", sort_order: 1 },
+];
 const categories = [{ id: "cat-1", project_id: "project-1", component_id: "comp-1", name: "Login", prefix: "LOG", sort_order: 0 }];
 const linkTypes = [buildLinkType({ id: "lt-1", forward_name: "Depends on", reverse_name: "Is a dependency of" })];
 
@@ -79,8 +82,19 @@ export const RequirementsTabCascades: Story = {
     await expect(body.getByLabelText("Target requirement")).toBeDisabled();
 
     await userEvent.selectOptions(body.getByLabelText("Component"), "comp-1");
-    await userEvent.selectOptions(body.getByLabelText("Category"), "cat-1");
+    // comp-1 has exactly one category — it's auto-selected rather than left
+    // for the user to pick from a dropdown with only one real option.
+    await expect(body.getByLabelText("Category")).toHaveValue("cat-1");
     await expect(body.getByLabelText("Target requirement")).toBeEnabled();
+
+    // comp-2 has zero categories — the placeholder correctly reports that,
+    // rather than the earlier bug where it said "no categories" for any
+    // component whenever none was selected yet, even one that does have some.
+    await userEvent.selectOptions(body.getByLabelText("Component"), "comp-2");
+    await expect(body.getByLabelText("Category")).toHaveValue("");
+    await expect(within(body.getByLabelText("Category")).getByRole("option", { name: /no categories/i })).toBeInTheDocument();
+
+    await userEvent.selectOptions(body.getByLabelText("Component"), "comp-1");
     await userEvent.selectOptions(body.getByLabelText("Target requirement"), "req-2");
     await userEvent.selectOptions(body.getByLabelText("Link type"), "lt-1");
     await userEvent.click(body.getByRole("button", { name: "Add link" }));

@@ -160,14 +160,44 @@ export const AtScalePaginated: Story = {
 };
 
 /** A `direct_group` source names the actual granting `ProjectGroup`
- * (`via_group_name`) in the Source column instead of the generic "Via
- * group" — PR1 of the members/groups directory rework. Priya's fixture
- * source carries `via_group_id`/`via_group_name` for the "Reviewers"
- * group. */
+ * (`via_group_name`) instead of the generic "Via group" — PR1 of the
+ * members/groups directory rework. Priya's fixture source carries
+ * `via_group_id`/`via_group_name` for the "Reviewers" group. That detail
+ * now lives inside the Source column's click-to-open popover (platform
+ * review 2026-09 follow-up) rather than always-visible in the cell — the
+ * cell itself just shows the "Group" summary word (see
+ * `SourceSummaryDirectAndGroup` below for the mixed-sources case). */
 export const NamedGroupSourceLine: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Via group 'Reviewers'/)).toBeInTheDocument();
+    const row = canvas.getByRole("button", { name: "Priya Shah's roles" }).closest("tr")!;
+    await expect(within(row).getByText("Group")).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "Group" }));
+    const detail = within(document.body).getByRole("dialog", { name: "Priya Shah's access sources" });
+    await expect(within(detail).getByText(/Via group 'Reviewers'/)).toBeInTheDocument();
+  },
+};
+
+/** Alex Morgan's only source is `direct_role` — the Source cell reads
+ * plain "Direct", with no popover-opening button at all (nothing to
+ * disclose beyond the one word). Jordan Lee holds both a `direct_role`
+ * (member) and a `forward_inherited` (stakeholder) source at once — the
+ * mixed case reads "Direct and group" and its popover lists both lines,
+ * confirming the summary/detail split doesn't lose either source when a
+ * member's access comes from more than one place. */
+export const SourceSummaryDirectAndGroup: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const alexRow = canvas.getByRole("button", { name: "Alex Morgan's roles" }).closest("tr")!;
+    await expect(within(alexRow).getByText("Direct")).toBeInTheDocument();
+    await expect(within(alexRow).queryByRole("button", { name: "Direct" })).not.toBeInTheDocument();
+
+    const jordanRow = canvas.getByRole("button", { name: "Jordan Lee's roles" }).closest("tr")!;
+    await expect(within(jordanRow).getByText("Direct and group")).toBeInTheDocument();
+    await userEvent.click(within(jordanRow).getByRole("button", { name: "Direct and group" }));
+    const detail = within(document.body).getByRole("dialog", { name: "Jordan Lee's access sources" });
+    await expect(within(detail).getByText(/^Direct \(Member\)$/)).toBeInTheDocument();
+    await expect(within(detail).getByText(/Inherited from 'Parent Project'/)).toBeInTheDocument();
   },
 };
 
@@ -182,23 +212,33 @@ export const NamedGroupSourceLine: Story = {
 export const NamedOrgGroupRoleSourceLine: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Via group 'Engineering' \(direct\)/)).toBeInTheDocument();
+    const row = canvas.getByRole("button", { name: "Morgan Casey's roles" }).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Group" }));
+    const detail = within(document.body).getByRole("dialog", { name: "Morgan Casey's access sources" });
+    await expect(within(detail).getByText(/Via group 'Engineering' \(direct\)/)).toBeInTheDocument();
+
     await userEvent.click(canvas.getByRole("button", { name: "Morgan Casey's roles" }));
     const group = within(document.body).getByRole("group", { name: "Morgan Casey's roles" });
     // Never a freely toggle-off-able direct grant from this row (the
     // backing `OrgGroupProjectRole` belongs to the *group*, not this one
     // user — see `isDirectRoleKind`'s own doc comment for why) — checked
-    // but disabled, same as every other non-`direct_role` kind.
+    // but disabled, same as every other non-`direct_role` kind, and its
+    // own label now carries the same "(by group)" suffix inline (platform
+    // review 2026-09 follow-up) rather than relying on the `title` alone.
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Member from Morgan Casey" });
     await expect(checkbox).toBeDisabled();
     await expect(checkbox).toHaveAttribute("title", expect.stringContaining("isn't a direct grant"));
+    await expect(within(group).getByText("Member (by group)")).toBeInTheDocument();
   },
 };
 
 /** A role sourced from a group (not a genuine `direct_role` grant) shows
  * checked but disabled, with a title explaining it must be changed at its
  * actual source — the core Phase D fix: `DELETE /roles` would silently
- * no-op against this option, so it must never look freely toggle-off-able. */
+ * no-op against this option, so it must never look freely toggle-off-able.
+ * Its own visible label also carries the "(by group)" suffix inline
+ * (platform review 2026-09 follow-up) so the reason is visible without
+ * hovering for the `title`. */
 export const DisabledRoleWithExplanatoryTitle: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -207,13 +247,16 @@ export const DisabledRoleWithExplanatoryTitle: Story = {
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Priya Shah" });
     await expect(checkbox).toBeDisabled();
     await expect(checkbox).toHaveAttribute("title", expect.stringContaining("isn't a direct grant"));
+    await expect(within(group).getByText("Stakeholder (by group)")).toBeInTheDocument();
   },
 };
 
 /** This table's only `direct_role`-sourced `project_manager` has its role
  * control disabled (a fast client-side C-U-08 hint — see the component's
  * own docstring for why the backend guard remains authoritative
- * regardless). */
+ * regardless), its visible label carrying the distinct "(only manager)"
+ * suffix (platform review 2026-09 follow-up) rather than "(by group)" —
+ * this option *is* a genuine direct grant, just not currently revocable. */
 export const LastManagerRoleControlDisabled: Story = {
   args: {
     invites: [],
@@ -226,6 +269,7 @@ export const LastManagerRoleControlDisabled: Story = {
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Project manager from Alex Morgan" });
     await expect(checkbox).toBeDisabled();
     await expect(checkbox).toHaveAttribute("title", expect.stringContaining("only manager source"));
+    await expect(within(group).getByText("Project manager (only manager)")).toBeInTheDocument();
   },
 };
 
@@ -405,22 +449,23 @@ const GROUP_ROLES: OrgGroupProjectRoleSummary[] = [
 /** The group row's Name cell carries a "Group" badge (this table has no
  * dedicated Type column — see the component's own docstring for why a
  * badge in an existing cell was chosen instead), its Email cell is blank
- * (a group has none), and its Source column states plainly that each
- * listed role is a direct grant — one line per role, no provenance chain
- * to walk, unlike a member row. */
+ * (a group has none), and its Source column just states "Direct" plainly
+ * — no per-role breakdown or popover, unlike a member row (platform review
+ * 2026-09 follow-up), since there's nothing upstream of the group's own
+ * direct grant to disclose and the Role column already names which roles
+ * it holds. */
 export const GroupRow: Story = {
   args: { groupRoles: GROUP_ROLES },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // Scoped via the group's own (unique) role-dropdown trigger, not a
     // `getByRole("row", { name: /Engineering/ })` lookup — Morgan Casey's
-    // fixture row also mentions "Engineering" in its own Source line
+    // fixture row also mentions "Engineering" in its own Source popover
     // (`NamedOrgGroupRoleSourceLine`'s `direct_org_group_role` provenance),
     // which would otherwise match too and make the row lookup ambiguous.
     const row = canvas.getByRole("button", { name: "Engineering's roles" }).closest("tr")!;
     await expect(within(row).getByText("Group")).toBeInTheDocument();
-    await expect(within(row).getByText(/Direct grant on this project \(Stakeholder\)/)).toBeInTheDocument();
-    await expect(within(row).getByText(/Direct grant on this project \(Member\)/)).toBeInTheDocument();
+    await expect(within(row).getByText("Direct")).toBeInTheDocument();
   },
 };
 
