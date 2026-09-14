@@ -270,6 +270,16 @@ textarea.input {
   padding: 0.5rem 0.6rem;
 }
 
+/* A native <select>'s own dropdown arrow (appearance: auto — this app
+   draws no custom chevron) renders inside its padding box, not in space
+   the browser reserves beyond it — the shared 0.6rem right padding above
+   left the arrow sitting almost flush against the border on every select
+   in the app. Extra right padding only, so the value text's own left
+   alignment is unaffected. */
+select.input {
+  padding-right: 2rem;
+}
+
 .badge {
   display: inline-block;
   border-radius: 999px;

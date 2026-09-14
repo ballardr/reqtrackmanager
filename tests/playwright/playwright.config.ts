@@ -22,7 +22,7 @@ import { defineConfig } from "@playwright/test";
 //
 // `global-state-mutators` itself still gets its own `workers: 1`
 // (Playwright honours a per-project override of the top-level `workers`
-// limit) even though its 4 files don't touch each other's data — running
+// limit) even though its files don't touch each other's data — running
 // two of them at once measurably increased how often an unrelated
 // upload/dialog wait or a raw `page.request.*` call timed out in
 // whichever file drew the second worker. Reducing to one worker here
@@ -35,6 +35,15 @@ const GLOBAL_STATE_SPECS = [
   "e2e-workflows/self-signup.spec.ts",
   "e2e-workflows/project-admin-groups-and-fields.spec.ts",
   "e2e-workflows/org-branding-override-reset.spec.ts",
+  // Added post-Phase-1 (CI failure on PR #20): this file's "an org admin
+  // can disable the relaxed child-creation path" test flips Gamma's own
+  // org-wide "Allow ... managers to create sub-projects" security toggle
+  // mid-test — exactly the shared-org-setting class the other four files
+  // above are already carved out for. Missed when Phase 1 first wrote this
+  // list, so under `fullyParallel` it raced the toggle against this same
+  // file's other tests (which assume relaxed creation is on), passing or
+  // failing depending on interleaving. See docs/decisions.md.
+  "e2e-workflows/project-hierarchy.spec.ts",
 ];
 
 export default defineConfig({
