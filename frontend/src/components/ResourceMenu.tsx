@@ -1,6 +1,13 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+
+// Matches FilterPanel.tsx's and Layout.tsx's own mobile breakpoint
+// (theme.css, `@media (max-width: 860px)`) — all three should agree on
+// where "mobile" starts rather than disagreeing at some widths.
+const MOBILE_BREAKPOINT_PX = 860;
+
 export interface ResourceMenuGroupDef<K extends string> {
   key: K;
   label: string;
@@ -43,6 +50,18 @@ export interface ResourceMenuGroupDef<K extends string> {
  * `OrgOverviewPage.tsx`'s "Overview") without that caller needing to know
  * whether any other group exists — `ResourceMenu` itself decides whether
  * that's worth a visible menu.
+ *
+ * Below `MOBILE_BREAKPOINT_PX` the vertical `<nav>`/`<ul>` link list is
+ * replaced with a single native `<select>` (platform-review-2026-09,
+ * "resource menus wasting space on narrow windows"). Org Admin alone has up
+ * to 10 groups — the full-height list this component renders on desktop
+ * pushes every group's own content below a page-and-a-half of nav chrome on
+ * a phone-width viewport, forcing a scroll past all of it just to reach the
+ * selected group's settings. A `<select>` collapses that same list of
+ * groups to one row, matching `FilterPanel`'s own narrow-viewport pattern
+ * (`useNarrowViewport`) even though the two widgets differ (accordion
+ * there, since that content is optional filter chrome; a dropdown here,
+ * since exactly one group is always the "current page").
  */
 export function ResourceMenu<K extends string>({
   title,
@@ -79,6 +98,7 @@ export function ResourceMenu<K extends string>({
   // synchronous and immediate, the same reasoning as Tabs' own buttonRefs.
   const linkRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const navigate = useNavigate();
+  const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
 
   function handleKeyDown(e: KeyboardEvent<HTMLAnchorElement>, index: number) {
     let nextIndex: number | null = null;
@@ -117,25 +137,43 @@ export function ResourceMenu<K extends string>({
             failure on Org Admin's Report templates delete button during this
             component's first rollout). */
         <div className="resource-menu">
-          <nav aria-label={ariaLabel} className="resource-menu-nav">
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-              {groups.map((g, i) => (
-                <li key={g.key}>
-                  <Link
-                    ref={(el) => {
-                      linkRefs.current[i] = el;
-                    }}
-                    to={g.href}
-                    className={`nav-link${active === g.key ? " active" : ""}`}
-                    aria-current={active === g.key ? "page" : undefined}
-                    onKeyDown={(e) => handleKeyDown(e, i)}
-                  >
-                    {g.label}
-                  </Link>
-                </li>
+          {isNarrow ? (
+            <select
+              className="input"
+              aria-label={ariaLabel}
+              value={active}
+              onChange={(e) => {
+                const next = groups.find((g) => g.key === e.target.value);
+                if (next) navigate(next.href);
+              }}
+            >
+              {groups.map((g) => (
+                <option key={g.key} value={g.key}>
+                  {g.label}
+                </option>
               ))}
-            </ul>
-          </nav>
+            </select>
+          ) : (
+            <nav aria-label={ariaLabel} className="resource-menu-nav">
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                {groups.map((g, i) => (
+                  <li key={g.key}>
+                    <Link
+                      ref={(el) => {
+                        linkRefs.current[i] = el;
+                      }}
+                      to={g.href}
+                      className={`nav-link${active === g.key ? " active" : ""}`}
+                      aria-current={active === g.key ? "page" : undefined}
+                      onKeyDown={(e) => handleKeyDown(e, i)}
+                    >
+                      {g.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
           <div className="stack resource-menu-content" style={{ flex: 1, minWidth: 0 }}>
             {children}
           </div>

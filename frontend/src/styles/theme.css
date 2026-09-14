@@ -1008,11 +1008,12 @@ td:has(> .disclosure-toggle) {
   .side-grid > .filter-panel {
     order: -1;
   }
+  /* Below this same breakpoint ResourceMenu.tsx swaps its .resource-menu-nav
+     link list for a <select> entirely (own useNarrowViewport check), so
+     .resource-menu-nav itself never renders here — only stack the select
+     above the content pane. */
   .resource-menu {
     flex-direction: column;
-  }
-  .resource-menu-nav {
-    width: 100%;
   }
 }
 

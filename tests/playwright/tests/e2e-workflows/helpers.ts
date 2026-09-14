@@ -168,6 +168,26 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
  */
 export async function selectResourceMenuGroup(page: Page, groupLabel: string): Promise<void> {
   const link = page.getByRole("link", { name: groupLabel, exact: true });
+  // Below ResourceMenu's own mobile breakpoint (theme.css/useNarrowViewport,
+  // 860px) the link list is replaced with a single <select> — same group
+  // switch, a different control (platform-review-2026-09, "resource menus
+  // wasting space on narrow windows"). Scoped to the specific <select> that
+  // actually carries this group as an option, not just "any combobox on the
+  // page" — the currently-selected group's own content pane can contain
+  // unrelated <select>s.
+  const dropdown = page.locator("select").filter({ has: page.getByRole("option", { name: groupLabel, exact: true }) });
+  // Race for whichever of the two actually renders rather than a bare
+  // `.count()` on the link alone — `.count()` doesn't auto-wait, so right
+  // after a navigation (before React has mounted the menu) it can read 0
+  // for the link even on a wide viewport where the link list is what's
+  // about to render, wrongly falling through to the dropdown branch and
+  // then hanging forever waiting for a <select> that was never coming.
+  await expect(link.or(dropdown).first()).toBeAttached();
+  if ((await link.count()) === 0) {
+    await dropdown.selectOption({ label: groupLabel });
+    await page.waitForLoadState("networkidle");
+    return;
+  }
   if ((await link.getAttribute("aria-current")) !== "page") {
     await link.click();
     // The group switch itself is a synchronous route-param change, but the
