@@ -26,9 +26,9 @@ flowchart TB
 
 The reasoning: organisation administration and project content are different trust boundaries. An org admin needs to be able to fix a misconfigured stage or reassign a project's groups without that same access silently becoming a way to read every requirement in the organisation.
 
-## Project groups
+## Direct grants and project groups
 
-Rather than assigning roles to individuals one at a time, a project defines four fixed groups — **Members**, **Project Administrators**, **Project Managers**, **Stakeholders** — that organisation members (or, one level deep, whole organisation-level groups) can be added to directly. This makes onboarding and offboarding a matter of group membership rather than hunting down every individual grant.
+Assigning someone a project role directly — one user, one role — is the default, simplest path, and is how a project's creator gets their own initial Project Manager grant. For onboarding more than a person at a time, a project can also define its own named **project groups** (any name, created as needed — not a fixed set seeded on every project) and grant a role to the group as a whole; organisation members, whole organisation-level groups one level deep, or even another project's own member roster can be added to a group, making onboarding and offboarding a matter of group membership rather than hunting down every individual grant.
 
 ## Why fixed roles, not a custom permission builder
 

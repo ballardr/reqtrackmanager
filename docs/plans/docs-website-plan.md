@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for build
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-15 (Phase 8 complete).
+**Last updated:** 2026-09-15 (Phase 9 complete).
 
-**Overall progress:** 8 / 10 phases complete.
+**Overall progress:** 9 / 10 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -22,7 +22,7 @@ This document is the persistent, session-resumable implementation plan for build
 | 6 | Modules section (own top-level nav) | [x] Complete |
 | 7 | API & Integrations section (REST API, SSO, SCIM, AI assistants/MCP) | [x] Complete |
 | 8 | Enterprise & Security section | [x] Complete |
-| 9 | Reference + Contributing section | [ ] Not started |
+| 9 | Reference + Contributing section | [x] Complete |
 | 10 | Polish, cross-linking, search, broken-link gate, final QA — including a visual QA pass | [ ] Not started |
 
 **Instructions for whoever picks up the next phase:** implement exactly one phase, leave the repo passing its tests and in a clean state, add a `docs/decisions.md` entry (tagged **Decided by: User** or **Decided by: Agent** for every design call per `CLAUDE.md`'s documentation-governance rule), then come back to this file and tick its checkbox and update "Last updated." Do not cascade into the next phase automatically. Content phases (2–9) should each end with `npm run build` in `docs/website/` passing with zero broken-link errors (`onBrokenLinks: 'throw'`, set in Phase 1) before being marked done — a content phase that leaves dangling links for a later phase to fix is not complete.

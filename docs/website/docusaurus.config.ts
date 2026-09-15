@@ -120,7 +120,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} ReqTrackManager contributors. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Richard Ballard. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
