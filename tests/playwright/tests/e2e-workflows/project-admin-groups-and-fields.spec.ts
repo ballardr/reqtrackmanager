@@ -25,95 +25,132 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     const detailedRationaleField = `Detailed rationale ${suffix}`;
     const safetyCriticalField = `Safety critical ${suffix}`;
     const priorityField = `Priority ${suffix}`;
+    let projectId = "";
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.getByText(PROJECT_NAMES.beta2).click();
     await page.getByRole("link", { name: "Project admin", exact: true }).click();
+    projectId = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
 
-    await test.step("create a custom field of each type", async () => {
-      // Custom fields now lives inside the merged "Fields & actions" tab
-      // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
-      await selectProjectAdminGroup(page, "Fields & actions");
+    try {
+      await test.step("create a custom field of each type", async () => {
+        // Custom fields now lives inside the merged "Fields & actions" tab
+        // (2026-08 UX audit roadmap: Project Admin's 8 tabs -> 5).
+        await selectProjectAdminGroup(page, "Fields & actions");
 
-      const fieldNameInput = page.getByPlaceholder("Field name");
+        const fieldNameInput = page.getByPlaceholder("Field name");
 
-      await fieldNameInput.fill(verificationMethodField);
-      await expect(fieldNameInput).toHaveValue(verificationMethodField);
-      await page.getByRole("combobox").nth(1).selectOption("short_text");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(verificationMethodField)).toBeVisible();
+        await fieldNameInput.fill(verificationMethodField);
+        await expect(fieldNameInput).toHaveValue(verificationMethodField);
+        await page.getByRole("combobox").nth(1).selectOption("short_text");
+        await page.getByRole("button", { name: "New field" }).click();
+        await expect(page.getByText(verificationMethodField)).toBeVisible();
 
-      await fieldNameInput.fill(detailedRationaleField);
-      await expect(fieldNameInput).toHaveValue(detailedRationaleField);
-      await page.getByRole("combobox").nth(1).selectOption("long_text");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(detailedRationaleField)).toBeVisible();
+        await fieldNameInput.fill(detailedRationaleField);
+        await expect(fieldNameInput).toHaveValue(detailedRationaleField);
+        await page.getByRole("combobox").nth(1).selectOption("long_text");
+        await page.getByRole("button", { name: "New field" }).click();
+        await expect(page.getByText(detailedRationaleField)).toBeVisible();
 
-      await fieldNameInput.fill(safetyCriticalField);
-      await expect(fieldNameInput).toHaveValue(safetyCriticalField);
-      await page.getByRole("combobox").nth(1).selectOption("checkbox");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(safetyCriticalField)).toBeVisible();
+        await fieldNameInput.fill(safetyCriticalField);
+        await expect(fieldNameInput).toHaveValue(safetyCriticalField);
+        await page.getByRole("combobox").nth(1).selectOption("checkbox");
+        await page.getByRole("button", { name: "New field" }).click();
+        await expect(page.getByText(safetyCriticalField)).toBeVisible();
 
-      await fieldNameInput.fill(priorityField);
-      await expect(fieldNameInput).toHaveValue(priorityField);
-      await page.getByRole("combobox").nth(1).selectOption("list");
-      await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
-      await page.getByLabel("Required").check();
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(priorityField)).toBeVisible();
-      await expect(page.getByText("Required").first()).toBeVisible();
-    });
+        await fieldNameInput.fill(priorityField);
+        await expect(fieldNameInput).toHaveValue(priorityField);
+        await page.getByRole("combobox").nth(1).selectOption("list");
+        await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
+        await page.getByLabel("Required").check();
+        await page.getByRole("button", { name: "New field" }).click();
+        await expect(page.getByText(priorityField)).toBeVisible();
+        await expect(page.getByText("Required").first()).toBeVisible();
+      });
 
-    await test.step("a new custom field shows up on the requirement create form", async () => {
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await page.getByRole("button", { name: "New Requirement" }).click();
-      await expect(page.getByText(verificationMethodField)).toBeVisible();
-      await expect(page.getByText(priorityField)).toBeVisible();
-      await page.keyboard.press("Escape").catch(() => {});
-      await page.goto(page.url());
-    });
+      await test.step("a new custom field shows up on the requirement create form", async () => {
+        await page.getByRole("link", { name: "Requirements", exact: true }).click();
+        await page.getByRole("button", { name: "New Requirement" }).click();
+        await expect(page.getByText(verificationMethodField)).toBeVisible();
+        await expect(page.getByText(priorityField)).toBeVisible();
+        await page.keyboard.press("Escape").catch(() => {});
+        await page.goto(page.url());
+      });
 
-    await test.step("delete a custom field", async () => {
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await selectProjectAdminGroup(page, "Fields & actions");
-      const row = page.locator(".row", { hasText: safetyCriticalField });
-      await row.getByRole("button").click();
-      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-      await expect(page.getByText(safetyCriticalField)).toHaveCount(0);
+      await test.step("delete a custom field", async () => {
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await selectProjectAdminGroup(page, "Fields & actions");
+        const row = page.locator(".row", { hasText: safetyCriticalField });
+        await row.getByRole("button").click();
+        await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+        await expect(page.getByText(safetyCriticalField)).toHaveCount(0);
 
-      // `priorityField` is `required: true` on a shared, persistent project
-      // (Beta-2) — left behind, it blocks every *other* spec's requirement
-      // creation on this project (UI or API) that doesn't happen to supply
-      // a value for it. Delete it too so this spec's own required-field
-      // exercise doesn't leak into unrelated specs sharing Beta-2.
-      const priorityRow = page.locator(".row", { hasText: priorityField });
-      await priorityRow.getByRole("button").click();
-      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-      await expect(page.getByText(priorityField)).toHaveCount(0);
-    });
+        // `priorityField` is `required: true` on a shared, persistent project
+        // (Beta-2) — left behind, it blocks every *other* spec's requirement
+        // creation on this project (UI or API) that doesn't happen to supply
+        // a value for it. Delete it too so this spec's own required-field
+        // exercise doesn't leak into unrelated specs sharing Beta-2.
+        const priorityRow = page.locator(".row", { hasText: priorityField });
+        await priorityRow.getByRole("button").click();
+        await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+        await expect(page.getByText(priorityField)).toHaveCount(0);
+      });
+    } finally {
+      // Defensive backstop, same reasoning as the terminology and
+      // group-roles `finally` blocks below — a direct API call, not the UI
+      // steps above, so cleanup still runs even if an assertion throws
+      // mid-way through creating/deleting these fields. This one matters
+      // more than most: `priorityField` is a *required* field, and this
+      // exact gap (an earlier interrupted run leaving 1-3 required
+      // "Priority ..." fields stuck on Beta-2, each with no default value)
+      // was found live while verifying an unrelated dependency bump —
+      // every other spec that creates a plain requirement on Beta-2 got a
+      // permanently-disabled "Create" button until the stuck fields were
+      // found and deleted by hand. `safetyCriticalField` isn't required
+      // and can't block anything, but it's cheap to sweep up alongside
+      // `priorityField` here rather than leave it as one more never-used
+      // row on an already heavily-accumulated shared project.
+      const token = await page.evaluate(() => localStorage.getItem("reqtrack_token")).catch(() => null);
+      if (token && projectId) {
+        const authHeaders = { Authorization: `Bearer ${token}` };
+        const fields: { id: string; name: string }[] = await page
+          .request.get(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`, {
+            headers: authHeaders,
+          })
+          .then((r) => r.json())
+          .catch(() => []);
+        await Promise.all(
+          fields
+            .filter((f) => f.name === safetyCriticalField || f.name === priorityField)
+            .map((f) =>
+              page.request
+                .delete(`http://localhost:8000/api/v1/projects/${projectId}/custom-fields/${f.id}`, { headers: authHeaders })
+                .catch(() => {})
+            )
+        );
+      }
+    }
 
     // No group is auto-created on project creation any more (follow-up UX
     // batch Phase C, 2026-08-31) — this spec creates its own throwaway
-    // group up front (via the API, same as `token`/`projectId` resolution
-    // the later "nest an org group" step already needed) rather than
-    // reaching for a default "Members" group that no longer exists.
-    const { projectId, groupName: memberGroupName } = await test.step("create a project group to exercise member add/remove and org-group nesting against", async () => {
+    // group up front (via the API, same as the `token`/`projectId` resolved
+    // above) rather than reaching for a default "Members" group that no
+    // longer exists.
+    const memberGroupName = await test.step("create a project group to exercise member add/remove and org-group nesting against", async () => {
       const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-      const id = page.url().match(/projects\/([0-9a-f-]+)\/admin/)![1];
       const groupName = `E2E Beta-2 Group ${Date.now()}`;
       // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
       // no longer accepts a role at all — this group is created bare, which
       // is fine here since none of the steps below (member add/remove,
       // the `?openGroup=` deep link, org-group nesting) exercise its role.
-      await page.request.post(`http://localhost:8000/api/v1/projects/${id}/groups`, {
+      await page.request.post(`http://localhost:8000/api/v1/projects/${projectId}/groups`, {
         headers: { Authorization: `Bearer ${token}` }, data: { name: groupName },
       });
       // ProjectAdminPage fetches project groups once on mount — the group
       // just created via a direct API call isn't in that state until
       // reloaded.
       await page.reload();
-      return { projectId: id, groupName };
+      return groupName;
     });
 
     await test.step("add and remove a project group member", async () => {
@@ -431,26 +468,53 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
     });
 
     await test.step("override and then revert a terminology term", async () => {
-      // Terminology now lives inside Overview ("Project settings") rather
-      // than its own tab (2026-08 UX audit roadmap: Project Admin's 8
-      // tabs -> 5) — still needs a tab click since we're currently on
-      // "Project groups" from the step above (Overview is only the
-      // *default* tab on a fresh mount, not the currently-active one
-      // here). Its own Save button is labelled "Save terminology",
-      // distinct from Overview's own "Save settings" button now that both
-      // sit on the same screen.
-      await selectProjectAdminGroup(page, "Project settings");
-      await page.getByPlaceholder("requirement").fill("Spec");
-      await page.getByRole("button", { name: "Save terminology" }).click();
-      await page.reload();
-      await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
+      // The revert at the end is wrapped in try/finally, with a direct API
+      // call as the actual backstop (not just the UI steps below) — same
+      // reasoning as the group-roles `finally` above. Beta-2 is shared and
+      // persistent (this file's own docstring), so if any assertion in
+      // this step throws before the UI-driven revert runs, this override
+      // would otherwise stick around and break every *other* spec's
+      // default-terminology nav-label assertions until someone notices and
+      // resets it by hand — which is exactly what happened here once
+      // already (found while verifying an unrelated dependency bump: this
+      // step had thrown mid-run in an earlier session, leaving Beta-2's
+      // `terminology` at `{"requirement": "Spec"}` and causing every
+      // subsequent run — including a plain `getByRole("link", { name:
+      // "Requirements" })` in this same file's own first test.step — to
+      // fail immediately, with a symptom that looked unrelated to
+      // terminology at all).
+      try {
+        // Terminology now lives inside Overview ("Project settings") rather
+        // than its own tab (2026-08 UX audit roadmap: Project Admin's 8
+        // tabs -> 5) — still needs a tab click since we're currently on
+        // "Project groups" from the step above (Overview is only the
+        // *default* tab on a fresh mount, not the currently-active one
+        // here). Its own Save button is labelled "Save terminology",
+        // distinct from Overview's own "Save settings" button now that both
+        // sit on the same screen.
+        await selectProjectAdminGroup(page, "Project settings");
+        await page.getByPlaceholder("requirement").fill("Spec");
+        await page.getByRole("button", { name: "Save terminology" }).click();
+        await page.reload();
+        await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
 
-      await page.getByRole("link", { name: "Specs", exact: true }).click();
-      await expect(page.url()).toContain("/requirements");
+        await page.getByRole("link", { name: "Specs", exact: true }).click();
+        await expect(page.url()).toContain("/requirements");
 
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByPlaceholder("requirement").fill("");
-      await page.getByRole("button", { name: "Save terminology" }).click();
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        await page.getByPlaceholder("requirement").fill("");
+        await page.getByRole("button", { name: "Save terminology" }).click();
+      } finally {
+        const token = await page.evaluate(() => localStorage.getItem("reqtrack_token")).catch(() => null);
+        if (token) {
+          await page.request
+            .put(`http://localhost:8000/api/v1/projects/${projectId}/terminology`, {
+              headers: { Authorization: `Bearer ${token}` },
+              data: { terminology: {} },
+            })
+            .catch(() => {});
+        }
+      }
     });
   });
 });

@@ -43,7 +43,7 @@
  *   click — the caller owns `sort` state and decides how to re-sort
  *   (refetch or re-slice), then passes new `rows` back in.
  */
-import type { ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { LoadMoreButton } from "./LoadMoreButton";

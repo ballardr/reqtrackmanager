@@ -4,6 +4,19 @@ import { AUTH_UNAUTHORIZED_EVENT, api, loadStoredToken, setAuthToken } from "../
 import type { User } from "../api/types";
 import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
 
+// Every other call through this client waits indefinitely (no timeout at
+// all) — login/2FA-verify are the deliberate exception. Both hit
+// `verify_password` (bcrypt, cost factor 12, ~200ms of CPU-bound work per
+// call), which under concurrent login load (many users signing in around
+// the same time, e.g. shift start) legitimately queues behind other logins
+// competing for the same CPU cores rather than failing outright. Without an
+// explicit ceiling that queuing shows up as a submit button that spins
+// forever with no feedback; 45s is generous relative to the ~200ms
+// single-call cost so it only ever fires under genuinely abnormal
+// contention or a real backend outage, not routine load. See
+// docs/decisions.md, "bcrypt login cost under concurrent load".
+const LOGIN_TIMEOUT_MS = 45_000;
+
 /** Provides the authenticated user and login/logout actions to the app. */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -31,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     const result = await api.post<
       { access_token: string; user: User } | { requires_2fa: true; challenge_token: string }
-    >("/api/v1/auth/login", { email, password });
+    >("/api/v1/auth/login", { email, password }, LOGIN_TIMEOUT_MS);
     if ("requires_2fa" in result) {
       return { requires2fa: true, challengeToken: result.challenge_token };
     }
@@ -56,10 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const verify2fa = useCallback(async (challengeToken: string, code: string): Promise<User> => {
-    const result = await api.post<{ access_token: string; user: User }>("/api/v1/auth/2fa/verify", {
-      challenge_token: challengeToken,
-      code,
-    });
+    const result = await api.post<{ access_token: string; user: User }>(
+      "/api/v1/auth/2fa/verify",
+      { challenge_token: challengeToken, code },
+      LOGIN_TIMEOUT_MS,
+    );
     setAuthToken(result.access_token);
     setUser(result.user);
     return result.user;

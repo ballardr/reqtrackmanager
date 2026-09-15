@@ -46,74 +46,109 @@ test.describe("hierarchical (parent/child) projects", () => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/projects");
 
-    await test.step("create the parent as an ordinary root project", async () => {
-      await page.getByRole("button", { name: "New project" }).click();
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      await dialog.getByLabel("Name", { exact: true }).fill(parentName);
-      await dialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByRole("heading", { name: parentName })).toBeVisible();
-    });
+    // Archives (doesn't delete — projects have no hard-delete endpoint,
+    // `archive_project` in routers/projects.py) both throwaway projects at
+    // the end, in `finally`: an earlier version left them behind forever,
+    // on the same "leaving throwaway fixtures behind is harmless"
+    // assumption `role-display-collapsing.spec.ts` had for its own
+    // throwaway groups (see that spec's docstring/fix, docs/decisions.md).
+    // That assumption was false there once a paginated table accumulated
+    // enough rows to hide a just-created one from a locator entirely; the
+    // same class of failure reproduced here after enough repeated runs
+    // left 15+ leftover "Hierarchy Parent/Child {timestamp}" pairs on the
+    // Projects list page, causing a `toBeVisible` timeout on a freshly
+    // created project's own card. Best-effort (each archive call wrapped
+    // individually) so a failure archiving one doesn't skip the other or
+    // mask whatever the `try` block itself failed with.
+    try {
+      await test.step("create the parent as an ordinary root project", async () => {
+        await page.getByRole("button", { name: "New project" }).click();
+        const dialog = page.getByRole("dialog", { name: "New project" });
+        await dialog.getByLabel("Name", { exact: true }).fill(parentName);
+        await dialog.getByRole("button", { name: "Create", exact: true }).click();
+        await expect(page.getByRole("heading", { name: parentName })).toBeVisible();
+      });
 
-    await test.step("can_be_parent defaults off — opt in via the settings tab before this project can be used as a parent", async () => {
-      await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      const addSubProject = page.getByRole("button", { name: "Add sub-project" });
-      await expect(addSubProject).toBeDisabled();
-      await page.getByLabel(/Allow this .* to be a parent/).check();
-      await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(addSubProject).toBeEnabled();
-    });
+      await test.step("can_be_parent defaults off — opt in via the settings tab before this project can be used as a parent", async () => {
+        await page.getByRole("link", { name: "Project admin", exact: true }).click();
+        const addSubProject = page.getByRole("button", { name: "Add sub-project" });
+        await expect(addSubProject).toBeDisabled();
+        await page.getByLabel(/Allow this .* to be a parent/).check();
+        await page.getByRole("button", { name: "Save settings" }).click();
+        await expect(addSubProject).toBeEnabled();
+      });
 
-    await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
-      await page.getByRole("button", { name: "Add sub-project" }).click();
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      // The parent select's current selection resolves to the parent
-      // project's own name as its chosen <option> text.
-      await expect(dialog.getByLabel("Parent project").locator("option:checked")).toHaveText(parentName);
+      await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
+        await page.getByRole("button", { name: "Add sub-project" }).click();
+        const dialog = page.getByRole("dialog", { name: "New project" });
+        // The parent select's current selection resolves to the parent
+        // project's own name as its chosen <option> text.
+        await expect(dialog.getByLabel("Parent project").locator("option:checked")).toHaveText(parentName);
 
-      await dialog.getByLabel("Name", { exact: true }).fill(childName);
-    });
+        await dialog.getByLabel("Name", { exact: true }).fill(childName);
+      });
 
-    await test.step("selecting 'Mirror all roles' requires confirmation naming the parent before it takes effect", async () => {
-      const dialog = page.getByRole("dialog", { name: "New project" });
-      await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
+      await test.step("selecting 'Mirror all roles' requires confirmation naming the parent before it takes effect", async () => {
+        const dialog = page.getByRole("dialog", { name: "New project" });
+        await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
 
-      const confirm = page.getByRole("dialog", { name: "Enable access inheritance?" });
-      await expect(confirm).toBeVisible();
-      await expect(confirm.getByText(new RegExp(`holds any role on '${parentName}'`))).toBeVisible();
-      // Cancelling leaves the mode unchanged (still "None") rather than
-      // silently applying it.
-      await confirm.getByRole("button", { name: "Cancel" }).click();
-      await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("none");
+        const confirm = page.getByRole("dialog", { name: "Enable access inheritance?" });
+        await expect(confirm).toBeVisible();
+        await expect(confirm.getByText(new RegExp(`holds any role on '${parentName}'`))).toBeVisible();
+        // Cancelling leaves the mode unchanged (still "None") rather than
+        // silently applying it.
+        await confirm.getByRole("button", { name: "Cancel" }).click();
+        await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("none");
 
-      await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
-      await page.getByRole("dialog", { name: "Enable access inheritance?" }).getByRole("button", { name: "Enable inheritance" }).click();
-      await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("mirror_all");
+        await dialog.getByLabel("Inherit access from parent").selectOption("mirror_all");
+        await page.getByRole("dialog", { name: "Enable access inheritance?" }).getByRole("button", { name: "Enable inheritance" }).click();
+        await expect(dialog.getByLabel("Inherit access from parent")).toHaveValue("mirror_all");
 
-      await dialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(page.getByRole("heading", { name: childName })).toBeVisible();
-    });
+        await dialog.getByRole("button", { name: "Create", exact: true }).click();
+        await expect(page.getByRole("heading", { name: childName })).toBeVisible();
+      });
 
-    await test.step("'Child of:'/'Parent of:' labels render on the project list", async () => {
-      await page.goto("/projects");
-      await page.getByRole("button", { name: "Tile view" }).click();
-      const cardFor = (name: string) =>
-        page.locator(`a[title="${name}"]`).locator(
-          "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
-        );
+      await test.step("'Child of:'/'Parent of:' labels render on the project list", async () => {
+        await page.goto("/projects");
+        await page.getByRole("button", { name: "Tile view" }).click();
+        const cardFor = (name: string) =>
+          page.locator(`a[title="${name}"]`).locator(
+            "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
+          );
 
-      const childCard = cardFor(childName);
-      await expect(childCard.getByText("Child of:")).toBeVisible();
-      await expect(childCard.getByRole("link", { name: parentName, exact: true })).toBeVisible();
-      const parentCard = cardFor(parentName);
-      await expect(parentCard.getByText("Parent of:")).toBeVisible();
-      await expect(parentCard.getByRole("link", { name: childName, exact: true })).toBeVisible();
-    });
+        const childCard = cardFor(childName);
+        await expect(childCard.getByText("Child of:")).toBeVisible();
+        await expect(childCard.getByRole("link", { name: parentName, exact: true })).toBeVisible();
+        const parentCard = cardFor(parentName);
+        await expect(parentCard.getByText("Parent of:")).toBeVisible();
+        await expect(parentCard.getByRole("link", { name: childName, exact: true })).toBeVisible();
+      });
 
-    await test.step("tree view renders the new parent/child pair", async () => {
-      await page.getByRole("button", { name: "Tree view" }).click();
-      const treeParentRow = page.getByRole("link", { name: parentName, exact: true }).locator("xpath=ancestor::li[1]");
-      await expect(treeParentRow.getByRole("link", { name: childName, exact: true })).toBeVisible();
-    });
+      await test.step("tree view renders the new parent/child pair", async () => {
+        await page.getByRole("button", { name: "Tree view" }).click();
+        const treeParentRow = page.getByRole("link", { name: parentName, exact: true }).locator("xpath=ancestor::li[1]");
+        await expect(treeParentRow.getByRole("link", { name: childName, exact: true })).toBeVisible();
+      });
+    } finally {
+      await test.step("clean up: archive the parent and child projects, best-effort so an earlier failure isn't masked", async () => {
+        await loginAs(page, PERSONAS.orgAdminGamma.email);
+        const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+        const headers = { Authorization: `Bearer ${token}` };
+        const projectsResp = await page.request.get("http://localhost:8000/api/v1/projects?archived=false", { headers });
+        const projects: { id: string; name: string }[] = await projectsResp.json();
+        for (const name of [parentName, childName]) {
+          const project = projects.find((p) => p.name === name);
+          if (project) {
+            try {
+              await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/archive`, { headers });
+            } catch {
+              // Best-effort: a failure here must not replace/mask whatever
+              // the `try` block above actually failed with.
+            }
+          }
+        }
+      });
+    }
   });
 
   test("member sources are managed from the parent's admin page only, and effective members show inherited provenance with materialize", async ({

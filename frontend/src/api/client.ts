@@ -45,7 +45,15 @@ export function loadStoredToken(): string | null {
  */
 export const AUTH_UNAUTHORIZED_EVENT = "reqtrack:unauthorized";
 
-async function rawRequest(path: string, options: RequestInit = {}): Promise<Response> {
+/** No request in this client carries a timeout by default — a plain `fetch()`
+ * with no `signal` waits indefinitely, so a genuinely slow backend call has
+ * always surfaced as a spinner that never resolves, not a distinct "timed
+ * out" error. `timeoutMs` opts a specific call into an explicit ceiling
+ * (login uses this — see AuthContext.tsx — since a bcrypt-verify under
+ * concurrent login load can legitimately take longer than this app's other,
+ * cheap requests; see docs/decisions.md, "bcrypt login cost under
+ * concurrent load"). */
+async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
@@ -54,7 +62,19 @@ async function rawRequest(path: string, options: RequestInit = {}): Promise<Resp
     headers["Authorization"] = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const controller = timeoutMs !== undefined ? new AbortController() : undefined;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal });
+  } catch (err) {
+    if (controller?.signal.aborted) {
+      throw new ApiError(0, "The server is taking longer than expected to respond. Please try again.");
+    }
+    throw err;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
   if (!response.ok) {
     // The backend raises 401 for two different reasons: the bearer token
     // itself being missing/invalid/expired (`deps.py`'s shared
@@ -80,8 +100,8 @@ async function rawRequest(path: string, options: RequestInit = {}): Promise<Resp
   return response;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await rawRequest(path, options);
+async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<T> {
+  const response = await rawRequest(path, options, timeoutMs);
   if (response.status === 204) {
     return undefined as T;
   }
@@ -120,8 +140,8 @@ async function requestPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, timeoutMs?: number) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }, timeoutMs),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

@@ -63,6 +63,17 @@ services:
       retries: 10
 
   backend:
+    # Deliberately single-process (no `--workers`/replica count here): login
+    # verifies via bcrypt (cost factor 12, ~200ms of CPU-bound work per
+    # call), which already parallelises across whatever cores this
+    # container has (bcrypt's C extension releases the GIL) — so under a
+    # login burst (e.g. many users at shift start), the safe lever is
+    # allocating this container more CPU, not more worker processes.
+    # Naively adding `--workers`/replicas would duplicate the in-process
+    # scheduler (backend/app/services/scheduler.py — daily review-reminder
+    # emails, stage auto-approval sweeps, module jobs), sending N-fold
+    # duplicate emails, since that scheduler has no leader-election guard
+    # yet. See docs/decisions.md, "bcrypt login cost under concurrent load".
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend

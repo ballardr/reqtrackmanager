@@ -327,32 +327,52 @@ export function ProjectAdminPage() {
 
   // Belt-and-suspenders guard (same pattern/reasoning as
   // `RequirementsPage.tsx`'s `loadRequirementsRequestIdRef`): `reload()`
-  // kicks off its own unfiltered `loadGroups` call as part of a long
-  // sequential chain of awaited requests, so a user (or a test) typing
-  // into the Groups search box right after a mutation that triggers
-  // `reload()` (e.g. creating a group) can otherwise have that faster,
-  // newer, filtered response overwritten once the older, slower,
-  // unfiltered `reload()` call finally resolves — each call claims the
-  // next id; a response is applied only if no newer call has started
-  // since.
+  // kicks off its own `loadGroups` call as part of a long sequential chain
+  // of awaited requests, so a user (or a test) typing into the Groups
+  // search box right after a mutation that triggers `reload()` (e.g.
+  // creating a group, granting a role) can otherwise have that faster,
+  // newer, filtered response overwritten once the older, slower `reload()`
+  // call finally resolves — each call claims the next id; a response is
+  // applied only if no newer call has started since.
+  //
+  // The id must be claimed at the moment the caller *decides* to search
+  // with a given term, not merely when the network request for it actually
+  // fires — `reload()` claims its id up front (an optional `requestId`
+  // param, defaulted to self-claiming for direct callers) specifically
+  // because it does a long chain of unrelated awaits (project/stages/
+  // components/etc.) *before* it gets to `loadGroups`. Claiming late, deep
+  // inside that chain, let a call invoked *earlier* (with an
+  // already-stale search closed over from that earlier moment) win the
+  // race and overwrite a genuinely newer, already-applied search result —
+  // reproduced deterministically (not just under load) by creating a group,
+  // searching for it, then immediately creating and searching for a second
+  // one: the first group's mutation-triggered `reload()` reached this
+  // point later than the second group's own explicit search call, so it
+  // claimed a *higher* id despite carrying *older* intent, and won. See
+  // docs/decisions.md.
   const loadGroupsRequestIdRef = useRef(0);
 
   async function loadGroups(
-    search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort
+    search: string, offset: number, append: boolean, sort: typeof groupSort = groupSort, requestId?: number
   ) {
     if (!projectId) return;
-    const requestId = ++loadGroupsRequestIdRef.current;
+    const id = requestId ?? ++loadGroupsRequestIdRef.current;
     const params = new URLSearchParams({ limit: String(GROUPS_PAGE_SIZE), offset: String(offset) });
     if (search) params.set("search", search);
     if (sort) params.set("order", sort.direction);
     const page = await api.getPage<ProjectGroup>(`/api/v1/projects/${projectId}/groups?${params.toString()}`);
-    if (requestId !== loadGroupsRequestIdRef.current) return;
+    if (id !== loadGroupsRequestIdRef.current) return;
     setGroups((prev) => (append ? [...prev, ...page.items] : page.items));
     setGroupsTotal(page.total);
   }
 
   async function reload() {
     if (!projectId) return;
+    // Claimed here, before the long chain of unrelated awaits below, so
+    // this call's place in the ordering reflects when it was actually
+    // invoked — not whenever it happens to reach the `loadGroups` line
+    // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
+    const groupsRequestId = ++loadGroupsRequestIdRef.current;
     const [p, s, c, cat, cf, rc, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
@@ -381,26 +401,9 @@ export function ProjectAdminPage() {
     setStages(s);
     setComponents(c);
     setCategories(cat);
-    await loadGroups(groupSearch, 0, false);
+    await loadGroups(groupSearch, 0, false, groupSort, groupsRequestId);
     setCustomFields(cf);
     setActionTypes(at);
-    // Group membership (below) only stores user ids — resolving those to
-    // an email/display name needs the org's member directory. Any org
-    // role (including plain "member") can call this endpoint unfiltered
-    // (see `routers/orgs.py::list_org_users`), and project access already
-    // implies org membership, so this is safe for whoever can reach this
-    // page at all.
-    setOrgUsers(await api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`));
-    setOrgGroups(await api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`));
-    // Platform review 2026-09, Phase 8 — readable by any org member (unlike
-    // most other org policy toggles), so this reuses the same "project
-    // access already implies org membership" reasoning the comment above
-    // gives for the unfiltered org users/groups calls.
-    setOrgForceLinksLocked(
-      (await api.get<Organization>(`/api/v1/orgs/${p.organization_id}`)).force_require_change_request_for_approved_links
-    );
-    setReportTemplates(await api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`));
-    setOrgProjectStatuses(await api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`));
     if (!reportConfigDirtyRef.current) {
       setReportIntro(rc.intro);
       setReportChapters(rc.chapters);
@@ -413,29 +416,75 @@ export function ProjectAdminPage() {
       appendices: rc.appendices_is_organisation_default,
     });
 
-    // Hierarchical projects (docs/decisions.md). Parent selector options
-    // are restricted server-side to the caller's own accessible set
-    // already (list_projects); this is the same org-wide accessible list
-    // ProjectListPage's "New project" modal uses for its own parent field.
-    setOrgProjects(await api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${p.organization_id}`));
-    setMemberSources(await api.get<ProjectMemberSource[]>(`/api/v1/projects/${projectId}/member-sources`));
-
-    // Groups section's own `?openGroup=` deep-link lookup (unpaginated, no
-    // `limit`) — see this state's own declaration comment. Also the source
-    // of the Groups section's own "last manager" hint (`directRoleManager
-    // SourceCount` below), which needs `effectiveMembers` to already be
-    // loaded regardless of which tab is currently open — so, unlike the
-    // old lazy "Show members" button this replaced, effective-members and
-    // pending invites are fetched eagerly here too, not gated behind first
-    // visiting the "members" group.
-    setMemberTableGroups(await api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`));
-    await reloadEffectiveMembers();
-    await reloadGroupRoles();
-    await reloadPendingInvites();
-    // Module system Phase 2 — same "fetched alongside the rest of this
-    // page's own reload()" treatment every other Members-section data
-    // source above gets.
-    setAvailableModuleRoles(await api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`));
+    // The rest of this page's data sources — none of these fetches depend
+    // on each other's *results* (each is its own independent GET, keyed
+    // only on `projectId`/`p.organization_id`, both already known) — used
+    // to be twelve separate, individually-awaited calls in sequence. That
+    // turned every `reload()` (called after nearly every mutation on this
+    // page) into a serial network waterfall: fine on a fast, idle local
+    // backend, but a real, measurable source of slowness under any real
+    // latency or contention — traced here after finding a Playwright spec
+    // that does many mutations against this exact page timing out at a
+    // different step each retry, the hallmark of a test genuinely too slow
+    // for its budget rather than a flaky assertion (see docs/decisions.md).
+    // Batched into one `Promise.all` so they run concurrently instead.
+    const [
+      orgUsers, orgGroups, orgForOrgSettings, reportTemplates, orgProjectStatuses,
+      orgProjects, memberSources, memberTableGroups, effectiveMembers, groupRoles,
+      pendingInvites, availableModuleRoles,
+    ] = await Promise.all([
+      // Group membership (above) only stores user ids — resolving those to
+      // an email/display name needs the org's member directory. Any org
+      // role (including plain "member") can call this endpoint unfiltered
+      // (see `routers/orgs.py::list_org_users`), and project access already
+      // implies org membership, so this is safe for whoever can reach this
+      // page at all.
+      api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`),
+      api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`),
+      // Platform review 2026-09, Phase 8 — readable by any org member
+      // (unlike most other org policy toggles), so this reuses the same
+      // "project access already implies org membership" reasoning above
+      // for the unfiltered org users/groups calls.
+      api.get<Organization>(`/api/v1/orgs/${p.organization_id}`),
+      api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`),
+      api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`),
+      // Hierarchical projects (docs/decisions.md). Parent selector options
+      // are restricted server-side to the caller's own accessible set
+      // already (list_projects); this is the same org-wide accessible list
+      // ProjectListPage's "New project" modal uses for its own parent
+      // field.
+      api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${p.organization_id}`),
+      api.get<ProjectMemberSource[]>(`/api/v1/projects/${projectId}/member-sources`),
+      // Groups section's own `?openGroup=` deep-link lookup (unpaginated,
+      // no `limit`) — see that state's own declaration comment. Also the
+      // source of the Groups section's own "last manager" hint
+      // (`directRoleManagerSourceCount` below), which needs
+      // `effectiveMembers` to already be loaded regardless of which tab is
+      // currently open — so, unlike the old lazy "Show members" button
+      // this replaced, effective-members and pending invites are fetched
+      // eagerly here too, not gated behind first visiting the "members"
+      // group.
+      api.get<ProjectGroup[]>(`/api/v1/projects/${projectId}/groups`),
+      api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`),
+      api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${projectId}/group-roles`),
+      api.get<PendingInvite[]>(`/api/v1/projects/${projectId}/pending-invites`),
+      // Module system Phase 2 — same "fetched alongside the rest of this
+      // page's own reload()" treatment every other Members-section data
+      // source above gets.
+      api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`),
+    ]);
+    setOrgUsers(orgUsers);
+    setOrgGroups(orgGroups);
+    setOrgForceLinksLocked(orgForOrgSettings.force_require_change_request_for_approved_links);
+    setReportTemplates(reportTemplates);
+    setOrgProjectStatuses(orgProjectStatuses);
+    setOrgProjects(orgProjects);
+    setMemberSources(memberSources);
+    setMemberTableGroups(memberTableGroups);
+    setEffectiveMembers(effectiveMembers);
+    setGroupRoles(groupRoles);
+    setPendingInvites(pendingInvites);
+    setAvailableModuleRoles(availableModuleRoles);
   }
 
   async function reloadEffectiveMembers() {
@@ -2308,6 +2357,24 @@ export function ProjectAdminPage() {
                         optionLabel: checked
                           ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], g.name)
                           : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], g.name),
+                        // False positive (react-hooks/refs): `toggleProjectGroupRole`
+                        // transitively touches `loadGroupsRequestIdRef` via `reload()`,
+                        // but this `onToggle` only ever runs from MultiSelectDropdown's
+                        // click handling, never during render — refs are explicitly fine
+                        // in event handlers per this rule's own description. The one
+                        // upstream fix that targets this shape (facebook/react#35062,
+                        // "allow ref access in callbacks passed to event handler props")
+                        // is gated behind a compiler flag that isn't shipped in any
+                        // published eslint-plugin-react-hooks build as of 7.1.1/latest
+                        // canary (2026-09-04) — and wouldn't cover this specific site
+                        // anyway, since it only exempts JSX attributes on built-in DOM
+                        // elements, not a plain object field consumed by a custom
+                        // component (see facebook/react#35062's own
+                        // error.ref-value-in-custom-component-event-handler-wrapper.tsx
+                        // test fixture). See docs/decisions.md's Phase 4 entry (Decided
+                        // by: User, 2026-09-15) for the full investigation, including why
+                        // `useEffectEvent` and the `"use no memo"` directive don't help.
+                        // eslint-disable-next-line react-hooks/refs
                         onToggle: () => toggleProjectGroupRole(g.id, role, !checked),
                       };
                     })}
@@ -2333,6 +2400,11 @@ export function ProjectAdminPage() {
                             className="btn btn-danger"
                             title={strings.admin.removeMember(u ? u.display_name : userId)}
                             aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
+                            // False positive (react-hooks/refs): only runs on click, not
+                            // during render. facebook/react#35062 fixes this exact shape
+                            // (built-in `<button onClick>`) but isn't shipped yet — see
+                            // the onToggle comment above and docs/decisions.md's Phase 4.
+                            // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeGroupMember(g.id, userId)}
                           >
                             <Trash2 size={14} />
@@ -2345,6 +2417,13 @@ export function ProjectAdminPage() {
                 <UserAutocomplete
                   users={availableUsers}
                   placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                  // False positive (react-hooks/refs): only runs when a result is
+                  // selected, not during render. Unlike the onClick sites below,
+                  // facebook/react#35062's exemption (even once shipped) wouldn't cover
+                  // this either way — it's scoped to built-in DOM elements only, and
+                  // `UserAutocomplete` is a custom component. See the onToggle comment
+                  // above and docs/decisions.md's Phase 4.
+                  // eslint-disable-next-line react-hooks/refs
                   onSelect={(userId) => addGroupMember(g.id, userId)}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
@@ -2358,6 +2437,11 @@ export function ProjectAdminPage() {
                   // role held at all there's nothing sensible to
                   // approximate, so the invite affordance is withheld
                   // entirely rather than granting nothing.
+                  // False positive (react-hooks/refs): same as `onSelect` above —
+                  // custom-component prop, out of scope even for facebook/react#35062's
+                  // fix once shipped. See the onToggle comment above and
+                  // docs/decisions.md's Phase 4.
+                  // eslint-disable-next-line react-hooks/refs
                   onSelectExternal={g.roles.length > 0 ? (email) => addExternalMember(email, g.roles[0]) : undefined}
                 />
                 {/* `externalAddResult` is shared with the Members section's
@@ -2380,6 +2464,9 @@ export function ProjectAdminPage() {
                           className="btn btn-danger"
                           title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                          // False positive (react-hooks/refs) — see the onToggle comment
+                          // above and docs/decisions.md's Phase 4.
+                          // eslint-disable-next-line react-hooks/refs
                           onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
                           <Trash2 size={14} />
@@ -2408,6 +2495,9 @@ export function ProjectAdminPage() {
                       disabled={!orgGroupSelections[g.id]}
                       title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      // False positive (react-hooks/refs) — see the onToggle comment
+                      // above and docs/decisions.md's Phase 4.
+                      // eslint-disable-next-line react-hooks/refs
                       onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                     >
                       <Plus size={14} />
@@ -2427,6 +2517,9 @@ export function ProjectAdminPage() {
                             className="btn btn-danger"
                             title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                            // False positive (react-hooks/refs) — see the onToggle
+                            // comment above and docs/decisions.md's Phase 4.
+                            // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeProjectRefMember(g.id, p.id)}
                           >
                             <Trash2 size={14} />
@@ -2457,6 +2550,9 @@ export function ProjectAdminPage() {
                       disabled={!sourceProjectSelections[g.id]}
                       title={strings.admin.addProjectReferenceToProjectGroup}
                       aria-label={strings.admin.addProjectReferenceToProjectGroup}
+                      // False positive (react-hooks/refs) — see the onToggle comment
+                      // above and docs/decisions.md's Phase 4.
+                      // eslint-disable-next-line react-hooks/refs
                       onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
                     >
                       <Plus size={14} />
