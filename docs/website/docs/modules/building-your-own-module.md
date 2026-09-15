@@ -103,7 +103,7 @@ The manifest builder turns this into a real tool the MCP server can offer an AI 
 - **The tool's path must fall inside the declaring module's own router prefix** — an entry pointing outside it is excluded and logged, regardless of what the module's own manifest claims.
 - **Any tool resolving to an approval-type action is excluded from the manifest entirely** — approval must stay attributably human, the same principle every hand-written tool in this application already enforces by simply never exposing that capability as a tool at all.
 
-See [API & Integrations → AI assistants (MCP)](../api-integrations/index.md) for how a client actually calls these once registered.
+See [API & Integrations → AI assistants (MCP)](../api-integrations/ai-assistants-mcp/overview.md) for how a client actually calls these once registered.
 
 ## Building a new module: a checklist
 

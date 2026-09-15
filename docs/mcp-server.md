@@ -35,7 +35,7 @@ Plus two write tools, only when [write mode](#write-mode) is enabled:
 
 No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
 
-A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers eight so far (all read-only), listed there.
+A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers ten so far (all read-only), listed there.
 
 ## Write mode
 

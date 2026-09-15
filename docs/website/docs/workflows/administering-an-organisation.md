@@ -29,7 +29,7 @@ Set the organisation's logo and, under **Templates & reports**, define **report 
 
 ## Single sign-on
 
-Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/index.md) for the full setup.
+Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for the full setup.
 
 ## Advanced settings
 

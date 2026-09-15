@@ -130,7 +130,7 @@ Both directions round-trip: exporting and re-importing a project or organisation
 
 ## MCP tools
 
-The Compliance module contributes ten read-only tools to the MCP server an AI assistant can call — listing standards/versions/requirements, a project's overall status, non-compliant requirements, expiring evidence, pending approvals, reviews due, requirement mappings, and a version diff. See [API & Integrations → AI assistants (MCP)](../api-integrations/index.md) for the full, current list with parameters — nothing that approves, decides, or otherwise mutates compliance state is ever exposed there, by the same "approval stays human-only" design as every other approval-shaped action in ReqTrackManager.
+The Compliance module contributes ten read-only tools to the MCP server an AI assistant can call — listing standards/versions/requirements, a project's overall status, non-compliant requirements, expiring evidence, pending approvals, reviews due, requirement mappings, and a version diff. See [API & Integrations → AI assistants (MCP)](../api-integrations/ai-assistants-mcp/overview.md) for the full, current list with parameters — nothing that approves, decides, or otherwise mutates compliance state is ever exposed there, by the same "approval stays human-only" design as every other approval-shaped action in ReqTrackManager.
 
 ## Known limitations
 

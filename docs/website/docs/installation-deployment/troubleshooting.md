@@ -16,7 +16,7 @@ After `docker compose up -d`, confirm:
 2. `curl http://localhost:8000/metrics` returns Prometheus-format metrics.
 3. The frontend loads and you can log in with the bootstrap admin credentials you configured.
 4. If using email notifications, trigger one (e.g. change your password) and confirm it arrives at your configured SMTP provider (or MailHog's UI in non-production environments).
-5. `curl http://localhost:8100/health` returns `ok` — see [AI assistants (MCP)](../api-integrations/index.md) if you intend to use the MCP server, including from a remote client.
+5. `curl http://localhost:8100/health` returns `ok` — see [AI assistants (MCP) → Overview](../api-integrations/ai-assistants-mcp/overview.md) if you intend to use the MCP server, including from a remote client.
 
 ## Still stuck?
 

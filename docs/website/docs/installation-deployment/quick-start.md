@@ -23,7 +23,7 @@ Once every container reports healthy:
 | Backend OpenAPI schema (JSON) | http://localhost:8000/openapi.json |
 | Health check | http://localhost:8000/health |
 | Prometheus metrics | http://localhost:8000/metrics |
-| MCP server (see [AI assistants (MCP)](../api-integrations/index.md)) | http://localhost:8100/mcp |
+| MCP server (see [AI assistants (MCP)](../api-integrations/ai-assistants-mcp/overview.md)) | http://localhost:8100/mcp |
 | MailHog UI (view sent notification emails) | http://localhost:8025 |
 | MinIO console (view uploaded files) | http://localhost:9001 |
 

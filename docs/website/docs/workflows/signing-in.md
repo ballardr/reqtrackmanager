@@ -25,7 +25,7 @@ If your organisation has SSO configured, go to its branded login page (`/login/{
 2. You're redirected to your organisation's own identity provider to authenticate — this app never sees your IdP password.
 3. You land back in the app already signed in, provisioned with whatever role your IdP group maps to.
 
-If your organisation requires membership in a specific identity-provider group and you're not in it, you'll see a message explaining your organisation hasn't provisioned you access yet — contact your org admin rather than retrying. See [API & Integrations → Single sign-on](../api-integrations/index.md) for how an org admin sets this up.
+If your organisation requires membership in a specific identity-provider group and you're not in it, you'll see a message explaining your organisation hasn't provisioned you access yet — contact your org admin rather than retrying. See [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for how an org admin sets this up.
 
 ## Signing up
 
@@ -43,4 +43,4 @@ If you were sent an invite link by a project admin instead, follow that link rat
 
 ## Where this fits
 
-See [Organisations and projects](../concepts/organisations-and-projects.md) for the containment model your account sits inside once you're in, and [API & Integrations → Authenticating](../api-integrations/index.md) for signing in programmatically (Personal Access Tokens) rather than through the browser.
+See [Organisations and projects](../concepts/organisations-and-projects.md) for the containment model your account sits inside once you're in, and [API & Integrations → Authenticating](../api-integrations/authenticating.md) for signing in programmatically (Personal Access Tokens) rather than through the browser.
