@@ -5442,7 +5442,7 @@ Asked the user how to proceed given this: refactor anyway on React 18 (accepting
 
 ### Status / next step
 
-Still open: `npm install`/`npm ci` will keep warning `eslint@9.39.5 is no longer supported` until either (a) a React 18→19 upgrade lands and this migration is retried with `useEffectEvent` available, or (b) the user decides instead to disable `react-hooks/set-state-in-effect`/`react-hooks/refs` explicitly rather than wait on a React major-version migration. The React 19 upgrade itself has not been scoped yet (breaking changes, ecosystem package compat — `react-router-dom@7`, `recharts@3`, Storybook 10, `@vitejs/plugin-react`, `mermaid` — and blast radius across the app were not investigated in this pass) and is a separate, significant piece of work in its own right.
+**Resolved as of 2026-09-15** — the React 19 upgrade this entry deferred to was scoped and carried out as `docs/react19-eslint10-upgrade-plan.md` (all 5 phases complete), which retried this exact migration with `useEffectEvent` available and closed it out; see that plan doc and its Phase 3/4/5 `decisions.md` entries below for the full account, including why `useEffectEvent` turned out not to be the fix this entry expected.
 
 ### Files changed
 
@@ -5702,3 +5702,39 @@ None of the transient failures touch `ProjectAdminPage.tsx`, groups/refs functio
 ### Files changed
 
 `frontend/src/pages/ProjectAdminPage.tsx`, `tests/playwright/tests/e2e-workflows/stage-review-and-completion.spec.ts`, `docs/react19-eslint10-upgrade-plan.md`, `docs/decisions.md` (this entry).
+
+---
+
+## React 19/ESLint 10 upgrade plan, Phase 5: final sweep and close-out (2026-09-15)
+
+Final verification gate for the whole plan (Phases 1-4 already landed as separate commits on `chore/package-uplifts`; no application code changed in this phase). **Decided by: Agent** for the verification approach below — the phase itself is close-out/sign-off, not a design decision.
+
+### Static/unit gates
+
+`npm run lint`: 0 errors, 68 `set-state-in-effect` warnings (expected, per Phase 3's rule downgrade). `npm run build`: clean (same two pre-existing `[INEFFECTIVE_DYNAMIC_IMPORT]` notices from Phase 1's Rolldown adoption). `npm run test-storybook -- --coverage`: 115/115 files, 936/936 tests.
+
+### Playwright: three local runs before a clean read, then a genuine local flake surfaced
+
+1. **Run 1** (fresh `down -v && up --build -d`, but only `seed_e2e_dataset.py` run afterward — `seed_demo_data.py` forgotten): 13 failures. Traced every one back to the missing seed step — `result-count-and-filter-panel.spec.ts`/`dashboard-navigation.spec.ts`/`badge-filters.spec.ts` all log in as `demo.admin@example.com`/`DemoDemo123!`, which only `seed_demo_data.py` creates. Not a regression; an operator error in this session's own verification sequencing (recurrence-#5 shape in the `project-backend-pool-wedge` memory, just with the demo script instead of the e2e one omitted).
+2. **Run 2** (`seed_demo_data.py` run immediately after, suite re-run against the *same*, now-dirtier stack with no reseed in between): 9 failures — almost no overlap with run 1's non-demo failures (only `requirement-actions.spec.ts`/`role-display-collapsing.spec.ts` repeated). A completely different failure set on an immediate rerun is itself a signal of shared-fixture pollution from repeated runs, not a stable regression.
+3. **Run 3** (full `down -v && up --build -d`, both seed scripts, single clean run): 4 failures — `org-merge-import.spec.ts`, `requirement-actions.spec.ts`, `role-display-collapsing.spec.ts`, `workflow-bypass-attempts.spec.ts`. All four are already-named members of this file's own extensively-documented "systemic environment-level flake" class (see the Phase 3 entry above, "Verification surfaced 3 flaky Playwright specs" — `role-display-collapsing.spec.ts`, `stage-review-and-completion.spec.ts`, and `workflow-bypass-attempts.spec.ts` are the exact same trio that class was named for).
+
+Rather than accept that resemblance on its own, reseeded fresh once more and reran with `CI=true` (`playwright.config.ts`'s `retries: process.env.CI ? 2 : 0` — matching the exact verification Phase 3 used for its own final sign-off): **141 passed, 2 flaky (recovered on retry), 2 hard-failed after 2 retries each** (`role-display-collapsing.spec.ts`, `workflow-bypass-attempts.spec.ts`).
+
+Before accepting "known flake class" as the answer for those last 2, checked whether they were at least *deterministic* flakes (the same assertion failing every attempt, which would point at a real bug Phase 3's fixes didn't fully cover) — they are not: each of the 3 attempts (original + 2 retries) for both specs failed at a **different** line/assertion (`role-display-collapsing.spec.ts`: a project card not visible → an invite-list item not visible → a `networkidle` wait timing out; `workflow-bypass-attempts.spec.ts`: a post-login "Sign out" button not visible → a raw `page.request.get` never resolving → the same "Sign out" timeout again). A real, deterministic bug fails at the same point every time (exactly how Phase 3's three genuine fixes were originally identified); a different failure point on every attempt is this file's own already-documented "transient client-side connection stall... not a deterministic app bug" class (`playwright.config.ts`'s own `retries` comment), consistent with local Docker Desktop resource contention under `workers: 2` rather than an application regression.
+
+**Decisive corroboration**: this branch's own CI run against this exact commit (929f52c, current `HEAD` at the time) — [run 34923580547](https://github.com/ballardr/reqtrackmanager/actions/runs/34923580547), real GitHub Actions infrastructure, not this local machine — passed its E2E job **145/145, 0 failed, 0 retries needed, in 8.6 minutes** (versus 11-13.5 minutes for each local attempt above). The identical code that failed intermittently and non-deterministically on this local machine ran clean on dedicated CI hardware. This resolves `docs/react19-eslint10-upgrade-plan.md`'s Phase 4 "open item" about `stage-review-and-completion.spec.ts`'s own timeout margin too — that spec is included in the 145 and passed with no retry.
+
+**Conclusion**: no genuine regression from any phase of this plan. The local flakiness is this session's own machine under load (2 parallel Playwright workers plus the full Docker Compose stack), a pre-existing, previously-documented characteristic of this repo's local test environment, not something Phases 1-4 introduced or worsened.
+
+### Repo-wide stale-reference sweep
+
+Grepped for "React 18"/"Vite 6"/`^18.3` mentions outside this plan doc itself: only hit was `docs/decisions.md`'s own 2026-09-14 "ESLint 9→10 migration attempted: blocked on React 19's `useEffectEvent`" entry's "Still open" paragraph, now updated above to point here instead of describing the migration as still pending.
+
+### Outcome
+
+`vite@8.3.0`/`@vitejs/plugin-react@5.2.0`, `react`/`react-dom@19.3.0`, `eslint@10.10.0`/`eslint-plugin-react-hooks@7.1.1`, `npm run lint` clean (0 errors), all gates green. Plan closed — see `docs/react19-eslint10-upgrade-plan.md`'s status table.
+
+### Files changed
+
+`docs/decisions.md` (this entry plus the Phase-1-entry-predecessor's "Still open" correction above), `docs/react19-eslint10-upgrade-plan.md` (status table closed out).
