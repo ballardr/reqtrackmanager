@@ -35,7 +35,7 @@ Plus two write tools, only when [write mode](#write-mode) is enabled:
 
 No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
 
-A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers eight so far (all read-only), listed there.
+A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers ten so far (all read-only), listed there.
 
 ## Write mode
 
@@ -51,9 +51,9 @@ Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`ye
 
 ## Module-contributed tools
 
-Beyond the hand-written tools above, a backend module (compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (compliance-module-plan.md Phase 6, extended in Phases 7, 8, 9, 10 and 11) is the first module to use this**, contributing ten read-only tools:
+**Compliance (plans/compliance-module-plan.md Phase 6, extended in Phases 7, 8, 9, 10 and 11) is the first module to use this**, contributing ten read-only tools:
 
 | Tool | Purpose |
 | --- | --- |

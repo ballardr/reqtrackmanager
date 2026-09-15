@@ -6,7 +6,8 @@
   and, as of this change, LoginBrandHeader's fallback) rather than inventing
   a new mark, so the browser tab matches the in-app branding. The logo's
   strokes/fills are white-on-transparent (designed to sit on the app
-  header's dark background, --color-header-bg #14161c in theme.css), so a
+  header's dark background, the color-header-bg token (#14161c) in
+  theme.css), so a
   matching dark rounded-square background is added here — an SVG favicon
   rendered directly on a light browser toolbar would otherwise be
   invisible. Not admin-configurable (out of scope per the task); see

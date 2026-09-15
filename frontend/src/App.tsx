@@ -40,7 +40,13 @@ function ProtectedRoutes() {
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
-  const { modules: enabledModules, loaded: modulesLoaded } = useProjectEnabledModules(projectId);
+  // `!loading` (see the hook's own docstring, "`ready`") defers this fetch
+  // until `AuthProvider` has actually set a real bearer token — called
+  // unconditionally here regardless, since Rules of Hooks forbids skipping
+  // it before the `loading`/`!user` early returns below, and this component
+  // is a descendant of `AuthProvider` whose own token-loading effect would
+  // otherwise still be pending the first time this one fires.
+  const { modules: enabledModules, loaded: modulesLoaded } = useProjectEnabledModules(projectId, !loading);
   // Module system follow-up, 2026-09-07 (Tier C / Module Federation): a
   // project-scoped module whose manifest is `"federated"` needs its
   // `TierAModuleDefinition` loaded at runtime before `buildModuleRoutes`

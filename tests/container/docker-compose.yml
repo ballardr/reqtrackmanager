@@ -198,6 +198,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local preview of docs/website/ (Docusaurus) — see
+  # docs/plans/docs-website-plan.md. Port 3001 (not 3000, already taken by
+  # `frontend` above). No `depends_on`: unlike every other service in this
+  # stack, the docs site is fully static and built entirely from files in
+  # docs/website/ — it neither calls nor is called by db/backend/frontend/
+  # anything else here, so it can be brought up in isolation
+  # (`docker compose up --build -d docs`) without any of them running.
+  # Dev/eval-only, like the rest of this stack — the real, public docs site
+  # is what GitHub Pages serves once the `docs-deploy` CI job runs against
+  # `main` (see docusaurus.config.ts's `url`/`baseUrl`, hence the
+  # /reqtrackmanager/ prefix on the URLs below matching that same path
+  # locally).
+  docs:
+    build:
+      context: ../../docs/website
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/reqtrackmanager/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   reqtrack_test_db_data:
   reqtrack_test_minio_data:

@@ -23,6 +23,7 @@ Once healthy:
 - **MCP server** (AI-assistant access to requirements — see [mcp-server.md](mcp-server.md)): http://localhost:8100/mcp
 - **MailHog UI** (view sent notification emails): http://localhost:8025
 - **MinIO console** (view uploaded files): http://localhost:9001
+- **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
@@ -55,7 +56,7 @@ uvicorn app.main:app --reload --port 8000
 
 Migrations run automatically on startup. To run them manually, or to create a new one: `python scripts/db.py upgrade head` / `python scripts/db.py revision -m "..."` (from `backend/`, venv active) — not bare `alembic <command>`. A first-party module's own migrations live colocated with the rest of that module's code (e.g. `app/modules/compliance/migrations/`, not the flat `backend/alembic/versions/` every module used to share) rather than in one place, and Alembic's own static `alembic.ini` config can't see that dynamically — the wrapper is what actually resolves every registered module's migration directory before dispatching to Alembic, so it still walks the full chain correctly. See [docs/modules.md](modules.md)'s own migration section for the full module-authoring convention.
 
-**Backend tests** live under `backend/tests/` (core/cross-cutting) and, for a first-party module, colocated at `backend/app/modules/<key>/tests/` instead (Compliance's own tests are there, not in `backend/tests/`, as of a compliance-module-plan.md Phase 11 follow-up) — `pytest` from `backend/` discovers both automatically, no separate invocation needed. They run against their own dedicated `reqtrack_pytest_test` database, never `reqtrack_test` (the dev/demo database the stack above and Playwright use) — `backend/tests/conftest.py` unconditionally rewrites whatever `DATABASE_URL` it's given to that database name (same host/port/user/password, just a different name) before any test runs, and creates it automatically if it doesn't exist yet. This is deliberate: the suite drops and recreates the entire schema at the start of every session and truncates every table after every test, which used to make `reqtrack_test` unsafe to run pytest against while also using it for manual/demo testing (see `docs/decisions.md`) — pointing pytest at its own database removes that conflict entirely, regardless of what `DATABASE_URL` you pass it. `tests/conftest.py`'s own `*_test`-suffix guard still applies as a backstop (it refuses to start against a database not ending in `_test`).
+**Backend tests** live under `backend/tests/` (core/cross-cutting) and, for a first-party module, colocated at `backend/app/modules/<key>/tests/` instead (Compliance's own tests are there, not in `backend/tests/`, as of a plans/compliance-module-plan.md Phase 11 follow-up) — `pytest` from `backend/` discovers both automatically, no separate invocation needed. They run against their own dedicated `reqtrack_pytest_test` database, never `reqtrack_test` (the dev/demo database the stack above and Playwright use) — `backend/tests/conftest.py` unconditionally rewrites whatever `DATABASE_URL` it's given to that database name (same host/port/user/password, just a different name) before any test runs, and creates it automatically if it doesn't exist yet. This is deliberate: the suite drops and recreates the entire schema at the start of every session and truncates every table after every test, which used to make `reqtrack_test` unsafe to run pytest against while also using it for manual/demo testing (see `docs/decisions.md`) — pointing pytest at its own database removes that conflict entirely, regardless of what `DATABASE_URL` you pass it. `tests/conftest.py`'s own `*_test`-suffix guard still applies as a backstop (it refuses to start against a database not ending in `_test`).
 
 ```bash
 cd tests/container && docker compose up -d db   # provides both reqtrack_test and (auto-created) reqtrack_pytest_test
@@ -102,7 +103,23 @@ frontend/scripts/sync-lockfile.sh some-package@1.2.3  # add/bump a package — a
 
 It refuses to run if the active Node's major version doesn't match `frontend/.nvmrc`, then reinstalls from scratch and re-verifies the result with `npm ci`.
 
-A pre-commit hook also backstops this automatically: `npm install` in `frontend/` wires up `core.hooksPath` to the repo's tracked `.githooks/` directory (via the `postinstall` script), and `.githooks/pre-commit` runs `npm ci --dry-run` (fast, writes nothing to disk) whenever `frontend/package.json` or `package-lock.json` is staged, blocking the commit if they're out of sync.
+A pre-commit hook also backstops this automatically: `npm install` in `frontend/` wires up `core.hooksPath` to the repo's tracked `.githooks/` directory (via the `postinstall` script), and `.githooks/pre-commit` runs `npm ci --dry-run` (fast, writes nothing to disk) whenever `frontend/package.json` or `package-lock.json` is staged, blocking the commit if they're out of sync — the same hook also covers `docs/website/package.json`/`package-lock.json` (see [Documentation website](#documentation-website) below).
+
+## Documentation website
+
+The public documentation site lives at [docs/website/](../docs/website/) (Docusaurus), covering everything in [docs/plans/docs-website-plan.md](plans/docs-website-plan.md)'s "Site structure." To preview it locally with live reload:
+
+```bash
+cd docs/website
+npm install
+npm start   # http://localhost:3000 (a separate dev server — stop the app's own frontend dev server first, or pass --port)
+```
+
+`npm run build` produces the static site in `docs/website/build/` and fails on any broken internal link or anchor (`onBrokenLinks`/`onBrokenAnchors: 'throw'` in `docusaurus.config.ts`) — this is what CI's `docs` job runs. `npm run serve` serves that production build locally (what the `docs` service in the dev/test Compose stack below also does, so a container-based preview exercises the same static output GitHub Pages will).
+
+For a preview that doesn't need a local Node install, or to see it alongside the rest of the running stack, the dev/test Compose stack above also runs it as the `docs` service (`docker compose up --build -d docs` from `tests/container/`) — see [Quick start](#quick-start--local-development--evaluation) above for the URL. It has no `depends_on`: the docs site is fully static and independent of `db`/`backend`/everything else in that stack.
+
+Changing `docs/website/package.json` follows the same lockfile-sync discipline as the frontend: run `docs/website/scripts/sync-lockfile.sh` (it refuses to run under the wrong Node major version, per `docs/website/.nvmrc`) rather than a bare `npm install`.
 
 ## End-to-end tests
 
