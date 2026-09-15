@@ -35,4 +35,4 @@ Project-level **group membership** is deliberately excluded — only group struc
 
 ## Where this fits
 
-See [Enterprise & Security](../enterprise-security/index.md) for the retention/disposal reasoning behind what an export can and can't carry, and [Project templates](./project-templates.md) for the other, template-based way to seed a new project's structure without history.
+See [Enterprise & Security → Encryption and secrets handling](../enterprise-security/encryption-and-secrets-handling.md) for the classification reasoning behind why secrets are never included in an export bundle, and [Project templates](./project-templates.md) for the other, template-based way to seed a new project's structure without history.
