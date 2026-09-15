@@ -30,4 +30,4 @@ Security- and administration-relevant events — logins, permission grants, pass
 
 ## Why the separation
 
-Collapsing discussion, formal change history, and security audit into one feed would make each of them worse at its own job: a change log cluttered with chit-chat is harder to audit, and a security audit trail mixed with informal comments is harder to search when it actually matters. See [Core Features](../core-features/index.md) for the day-to-day mechanics of discussion, notifications, and reporting on project history.
+Collapsing discussion, formal change history, and security audit into one feed would make each of them worse at its own job: a change log cluttered with chit-chat is harder to audit, and a security audit trail mixed with informal comments is harder to search when it actually matters. See [Notifications and email](../core-features/notifications-and-email.md) for the day-to-day mechanics of discussion, notifications, and reporting on project history.

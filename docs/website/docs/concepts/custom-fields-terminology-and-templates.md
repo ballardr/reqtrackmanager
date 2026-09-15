@@ -25,4 +25,4 @@ Defining custom fields and terminology once per project is fine for a single tea
 
 ## Why this matters
 
-This is the mechanism that lets ReqTrackManager fit a team's actual process instead of the other way around — without turning every customisation into a one-off, unmaintained fork. See [Core Features](../core-features/index.md) for the full mechanics of defining fields, terminology, and templates.
+This is the mechanism that lets ReqTrackManager fit a team's actual process instead of the other way around — without turning every customisation into a one-off, unmaintained fork. See [Project templates](../core-features/project-templates.md) for the full mechanics of defining fields, terminology, and templates.
