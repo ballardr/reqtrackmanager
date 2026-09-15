@@ -33,75 +33,102 @@ test.describe("project list organisation scoping for a server admin", () => {
     const orgB = await (
       await page.request.post("http://localhost:8000/api/v1/orgs", { headers: authHeaders, data: { name: orgBName } })
     ).json();
-    for (const org of [orgA, orgB]) {
-      const resp = await page.request.post(`http://localhost:8000/api/v1/orgs/${org.id}/join-as-admin`, { headers: authHeaders });
-      expect(resp.status()).toBe(204);
+
+    // Both orgs' cleanup is in a `finally` below: this test self-elevates
+    // the *shared* `serverAdmin` persona into both, and the cleanup used to
+    // be two unguarded steps at the very end. If any earlier assertion
+    // failed (as happened on real CI — an unrelated org-list-ordering bug,
+    // fixed separately in `routers/orgs.py`), neither org was ever deleted,
+    // and a retry re-ran this whole test from scratch, creating *another*
+    // two orgs on top of the leaked pair — CI's own retry log shows this
+    // compounding exactly: `scopedIds.length` expected 2, got 4 on retry 1,
+    // then 6 on retry 2. See docs/decisions.md.
+    try {
+      for (const org of [orgA, orgB]) {
+        const resp = await page.request.post(`http://localhost:8000/api/v1/orgs/${org.id}/join-as-admin`, { headers: authHeaders });
+        expect(resp.status()).toBe(204);
+      }
+
+      // Real UI navigation, not just an API assertion — the actual bug
+      // reported was what the page renders. Intercept the real request the
+      // page fires so this checks the exact response the UI acted on,
+      // rather than a separately-issued one that could drift from what the
+      // page actually calls.
+      const orgsResponse = page.waitForResponse((r) => r.url().includes("/api/v1/orgs?mine=true") && r.status() === 200);
+      await page.goto("/projects");
+      const orgsBody: { id: string; name: string }[] = await (await orgsResponse).json();
+      const scopedIds = orgsBody.map((o) => o.id);
+      expect(scopedIds).toContain(orgA.id);
+      expect(scopedIds).toContain(orgB.id);
+      // The negative check that actually proves the fix: some other org in
+      // the deployment (every shared E2E persona org qualifies) must not
+      // leak in just because this caller is a server admin.
+      expect(scopedIds.length).toBe(2);
+
+      // Two orgs — a real choice exists, so both controls must be offered,
+      // and neither may offer anything beyond org A/B.
+      const orgFilter = page.locator("select:has(option:text-is('All organisations'))");
+      await expect(orgFilter).toBeVisible();
+      await expect(orgFilter.locator("option")).toHaveText(["All organisations", orgAName, orgBName]);
+
+      // "New project" opens a Modal (style guide "Pattern: modal dialog for
+      // entity create/rename") — scoped to it rather than a bare ".card".
+      await page.getByRole("button", { name: "New project" }).click();
+      const newProjectDialog = page.getByRole("dialog", { name: "New project" });
+      const orgPicker = newProjectDialog.locator("select").first();
+      await expect(orgPicker.locator("option")).toHaveText([orgAName, orgBName]);
+
+      // Drop to a single org. Hard-deletes org B rather than self-service
+      // leaving it (`DELETE /orgs/{id}/membership`, mirroring Preferences'
+      // own "Leave organisation" action, under its "Your access" tab):
+      // this server admin self-elevated as
+      // org B's *only* admin above, so leaving would hit the "can't strip
+      // an org's last admin" guard (409) — deletion is server-admin-only
+      // and doesn't require ongoing membership, and these orgs are
+      // disposable either way. Now there's no real choice between orgs, so
+      // both controls should disappear entirely rather than offering one
+      // option.
+      const deleteBResp = await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgB.id}`, {
+        headers: authHeaders, data: { confirm_name: orgBName },
+      });
+      expect(deleteBResp.status()).toBe(204);
+      await page.reload();
+      await expect(page.locator("select:has(option:text-is('All organisations'))")).toHaveCount(0);
+      await page.getByRole("button", { name: "New project" }).click();
+      const soloDialog = page.getByRole("dialog", { name: "New project" });
+      // No org select now (org A has no projects yet either, so the
+      // template picker is also absent) — org A is the only valid choice,
+      // applied implicitly rather than asked for. Visibility is a real,
+      // always-meaningful choice independent of org count, so that select
+      // is still expected here. The hierarchical-projects "Parent project"
+      // picker, by contrast, is can_be_parent-gated (docs/decisions.md) and
+      // org A has zero projects at all yet, let alone any eligible ones —
+      // so it correctly renders nothing rather than a picker with only
+      // "None" to offer (requested directly: showing that field with
+      // nothing eligible in it was confusing).
+      await expect(soloDialog.locator("select")).toHaveCount(1);
+      await expect(soloDialog.getByLabel("Visibility")).toBeVisible();
+      await expect(soloDialog.getByText("Parent project")).toHaveCount(0);
+    } finally {
+      // Restores the shared `serverAdmin` persona to its documented
+      // zero-org baseline for any other spec that runs after this one —
+      // moved here from the test's own last line so it still runs
+      // regardless of where an earlier assertion failed. Org B is usually
+      // already deleted by the mid-test step above (dropping to a single
+      // org is part of the test's own narrative, not just cleanup, so it
+      // stays inline there) — best-effort/tolerant of a 404 here for
+      // whichever of the two didn't get that far.
+      for (const [org, name] of [[orgA, orgAName], [orgB, orgBName]] as const) {
+        try {
+          await page.request.delete(`http://localhost:8000/api/v1/orgs/${org.id}`, {
+            headers: authHeaders, data: { confirm_name: name },
+          });
+        } catch {
+          // Best-effort: a failure here (including a 404 for org B, if the
+          // mid-test step already deleted it) must not replace/mask
+          // whatever the `try` block above actually failed with.
+        }
+      }
     }
-
-    // Real UI navigation, not just an API assertion — the actual bug
-    // reported was what the page renders. Intercept the real request the
-    // page fires so this checks the exact response the UI acted on, rather
-    // than a separately-issued one that could drift from what the page
-    // actually calls.
-    const orgsResponse = page.waitForResponse((r) => r.url().includes("/api/v1/orgs?mine=true") && r.status() === 200);
-    await page.goto("/projects");
-    const orgsBody: { id: string; name: string }[] = await (await orgsResponse).json();
-    const scopedIds = orgsBody.map((o) => o.id);
-    expect(scopedIds).toContain(orgA.id);
-    expect(scopedIds).toContain(orgB.id);
-    // The negative check that actually proves the fix: some other org in
-    // the deployment (every shared E2E persona org qualifies) must not
-    // leak in just because this caller is a server admin.
-    expect(scopedIds.length).toBe(2);
-
-    // Two orgs — a real choice exists, so both controls must be offered,
-    // and neither may offer anything beyond org A/B.
-    const orgFilter = page.locator("select:has(option:text-is('All organisations'))");
-    await expect(orgFilter).toBeVisible();
-    await expect(orgFilter.locator("option")).toHaveText(["All organisations", orgAName, orgBName]);
-
-    // "New project" opens a Modal (style guide "Pattern: modal dialog for
-    // entity create/rename") — scoped to it rather than a bare ".card".
-    await page.getByRole("button", { name: "New project" }).click();
-    const newProjectDialog = page.getByRole("dialog", { name: "New project" });
-    const orgPicker = newProjectDialog.locator("select").first();
-    await expect(orgPicker.locator("option")).toHaveText([orgAName, orgBName]);
-
-    // Drop to a single org. Hard-deletes org B rather than self-service
-    // leaving it (`DELETE /orgs/{id}/membership`, mirroring Preferences'
-    // own "Leave organisation" action, under its "Your access" tab):
-    // this server admin self-elevated as
-    // org B's *only* admin above, so leaving would hit the "can't strip an
-    // org's last admin" guard (409) — deletion is server-admin-only and
-    // doesn't require ongoing membership, and these orgs are disposable
-    // either way. Now there's no real choice between orgs, so both
-    // controls should disappear entirely rather than offering one option.
-    const deleteBResp = await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgB.id}`, {
-      headers: authHeaders, data: { confirm_name: orgBName },
-    });
-    expect(deleteBResp.status()).toBe(204);
-    await page.reload();
-    await expect(page.locator("select:has(option:text-is('All organisations'))")).toHaveCount(0);
-    await page.getByRole("button", { name: "New project" }).click();
-    const soloDialog = page.getByRole("dialog", { name: "New project" });
-    // No org select now (org A has no projects yet either, so the template
-    // picker is also absent) — org A is the only valid choice, applied
-    // implicitly rather than asked for. Visibility is a real,
-    // always-meaningful choice independent of org count, so that select is
-    // still expected here. The hierarchical-projects "Parent project"
-    // picker, by contrast, is can_be_parent-gated (docs/decisions.md) and
-    // org A has zero projects at all yet, let alone any eligible ones — so
-    // it correctly renders nothing rather than a picker with only "None"
-    // to offer (requested directly: showing that field with nothing
-    // eligible in it was confusing).
-    await expect(soloDialog.locator("select")).toHaveCount(1);
-    await expect(soloDialog.getByLabel("Visibility")).toBeVisible();
-    await expect(soloDialog.getByText("Parent project")).toHaveCount(0);
-
-    // Delete org A too, restoring the shared persona to its documented
-    // zero-org baseline for any other spec that runs after this one.
-    await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgA.id}`, {
-      headers: authHeaders, data: { confirm_name: orgAName },
-    });
   });
 });

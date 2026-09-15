@@ -56,6 +56,25 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      // Downgraded to warn (not disabled): this React-Compiler-derived rule
+      // flags React's own documented canonical fetch-in-effect pattern
+      // (async function does `setX(null); await fetch(...); setY(data)`,
+      // called from a useEffect keyed on filter/id deps — used throughout
+      // this codebase's data-fetching pages) as an error, with no clean fix.
+      // `useEffectEvent` does not silence it — it only removes stale-closure
+      // deps, and the rule explicitly propagates its "contains setState"
+      // flag through useEffectEvent wrappers. The only patterns that satisfy
+      // the rule's static analysis (moving the setState into a nested
+      // `.then()` callback, `setTimeout`, `startTransition`) are, by the
+      // React community's and reporters' own description, "tricking the
+      // lint rule" rather than a real fix. This is an open, unresolved,
+      // Status:Unconfirmed upstream bug in React's compiler-derived lint
+      // rules — see facebook/react#34905, #34743, #34858 (all report this
+      // exact false positive against React's own docs' example) and the
+      // in-flight, unmerged fix at facebook/react#36734. Revisit once that
+      // lands upstream. (Decided by: User, 2026-09-15 — see
+      // docs/react19-eslint10-upgrade-plan.md Phase 3.)
+      "react-hooks/set-state-in-effect": "warn",
     },
   }
 );

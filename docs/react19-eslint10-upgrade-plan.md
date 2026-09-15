@@ -8,17 +8,19 @@ This document is the persistent, session-resumable implementation plan for upgra
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-14 (Phase 2 complete; next session starts fresh at Phase 3, per this plan's own discipline of not cascading into the next phase automatically).
+**Last updated:** 2026-09-15 (Phase 3 complete; next session starts fresh at Phase 4, per this plan's own discipline of not cascading into the next phase automatically).
 
-**Overall progress:** 2 / 5 phases complete.
+**Overall progress:** 3 / 5 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Vite 6 → 8.3.0 (Rolldown bundler swap) + `@vitejs/plugin-react` 4 → 5.2.0 | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 1" entry |
 | 2 | React 18 → 19.3.0 runtime bump (`react`/`react-dom`/`@types/react`/`@types/react-dom`) | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 2" entry |
-| 3 | ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration, batch A (core files) | [ ] Not started |
-| 4 | ESLint migration batch B (compliance module) + `react-hooks/refs` investigation | [ ] Not started |
+| 3 | ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration | [x] Done, but not as originally scoped — see "Phase 3, revised" below and `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 3" entry. The planned `useEffectEvent`-per-site fix for `react-hooks/set-state-in-effect` turned out not to work; the rule was downgraded to `warn` with a documented rationale instead, repo-wide, in one step (no batch A/B split needed). Verification also surfaced and root-caused 3 flaky Playwright specs plus a real request-ordering race in `ProjectAdminPage.tsx`'s groups search, all fixed — see that decisions.md entry's "Verification surfaced 3 flaky Playwright specs" section for the full account. |
+| 4 | `react-hooks/refs` investigation (8 findings, `ProjectAdminPage.tsx`) | [ ] Not started — this is now the *only* remaining lint-error work; the compliance-module `set-state-in-effect` batch originally planned here no longer applies (resolved by Phase 3's rule downgrade) |
 | 5 | Final sweep and close-out | [ ] Not started |
+
+**Outside this plan, same session:** `project-hierarchy.spec.ts`'s "doesn't clean up its own throwaway projects" gap (flagged as a follow-up above) was fixed directly at the user's request, along with root-causing a real CI failure (a missing `ORDER BY` in `list_organizations`, plus an identical shared-persona-grant leak in `project-list-org-scoping.spec.ts`) — see `docs/decisions.md`'s "`project-hierarchy.spec.ts` cleanup gap, and root-causing a real CI failure" entry. That entry also found and partially fixed a real `ProjectAdminPage.tsx` performance issue (`reload()`'s ~12 independent fetches ran serially, now parallelized) — kept as a genuine improvement, but it did **not** fully resolve `stage-review-and-completion.spec.ts`'s own persistent near-30s-timeout margin under CI-style retries, which remains an **open** item for whoever next touches Project Admin/that spec: profile its actual per-step timing (a trace, not a guess) rather than assume it's fixed.
 
 **Instructions for whoever picks up the next phase:** implement exactly one phase, leave the repo passing its tests and in a clean state, add a `docs/decisions.md` entry (tagged **Decided by: User** or **Decided by: Agent** for every design call per `CLAUDE.md`'s documentation-governance rule), then come back to this file and tick its checkbox and update "Last updated." Do not cascade into the next phase automatically.
 
@@ -42,6 +44,8 @@ This document is the persistent, session-resumable implementation plan for upgra
 - The 68 `set-state-in-effect` sites split almost evenly along this repo's own existing module boundary: **25 files (~34 sites) under `src/modules/compliance/`**, **27 files (~34 sites + all 8 refs) everywhere else** (`src/pages`, `src/components`, `src/context`, `src/hooks`) — matching `CLAUDE.md`'s "Modular Feature System Boundary," which already treats the compliance module as independently bounded, so splitting the lint-fix work along that same line (Phases 3/4 below) is a natural checkpoint, not an arbitrary split.
 
 Outcome of this plan: `vite@8.3.0`/`@vitejs/plugin-react@5.2.0`, `react`/`react-dom@19.3.0`, `eslint@10.x`/`eslint-plugin-react-hooks@7.1.1`, zero lint errors, no behavior regressions.
+
+**Correction found during Phase 3 (see that phase's section below for the full account): the `useEffectEvent`-fixes-`set-state-in-effect` premise above is wrong.** `useEffectEvent` only removes a function from the reactive dependency array (the `exhaustive-deps` concern); the rule that actually blocked the original 2026-09-14 migration attempt is a separate, React-Compiler-derived static check that traces whether a state setter is reachable from a function invoked in an effect, and it explicitly propagates that "contains setState" flag *through* a `useEffectEvent` wrapper rather than clearing it. This was verified empirically (wrapping a real call site and re-linting still errored, at the new location) and by reading the installed rule's own source. It is also a known, open, upstream issue — the exact pattern this app uses (and React's own documentation's canonical fetch-in-effect example) is misflagged; see `facebook/react` issues #34905, #34743, #34858 and the still-open, unmerged fix at #36734. Phase 3 downgraded the rule to `warn` with that rationale recorded in `eslint.config.js` instead of restructuring ~68 call sites around an unresolved upstream bug.
 
 ---
 
@@ -80,32 +84,49 @@ Builds on the now-Vite-8 baseline; still isolated from the ESLint migration.
 
 ---
 
-## Phase 3 — ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration, batch A (core files)
+## Phase 3 — ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration [DONE, revised from original scope below]
 
-Scope: everywhere **outside** `src/modules/compliance/` — `src/pages/*`, `src/components/*`, `src/context/*`, `src/hooks/*`. ~27 files, ~34 `set-state-in-effect` sites (`ProjectAdminPage.tsx`'s 2 `set-state-in-effect` sites are in scope here; its 8 `refs` findings are deferred to Phase 4).
+### As originally planned (superseded — kept for the record)
 
-**Changes:**
-- `frontend/package.json`: `eslint` → `^10.10.0`, `@eslint/js` → `^10.0.1`, `eslint-plugin-react-hooks` → `^7.1.1`. Run `sync-lockfile.sh`.
-- For each flagged site: wrap the setState-touching logic (the local function the effect calls, e.g. `reload`, or inline resets like `setLoadError(null)`) in `useEffectEvent`, and call that stable event-callback from the effect instead — preserving exact existing fetch/reset behavior.
-- Where a fixed site carries a `// eslint-disable-next-line react-hooks/exhaustive-deps` comment (several do, e.g. `RequirementsPage.tsx`, `ChangeRequestDetailPage.tsx`), remove it if the `useEffectEvent` restructuring makes it unnecessary (an effect-event callback isn't a reactive dependency).
+Scope: everywhere **outside** `src/modules/compliance/` — `src/pages/*`, `src/components/*`, `src/context/*`, `src/hooks/*`. ~27 files, ~34 `set-state-in-effect` sites (`ProjectAdminPage.tsx`'s 2 `set-state-in-effect` sites in scope here; its 8 `refs` findings deferred to Phase 4). The plan was: bump the three packages, then for each flagged site wrap the setState-touching logic in `useEffectEvent` and call that from the effect instead.
+
+### What actually happened
+
+The versions bumped exactly as planned: `eslint` → `^10.10.0`, `@eslint/js` → `^10.0.1`, `eslint-plugin-react-hooks` → `^7.1.1` (`frontend/package.json`, `sync-lockfile.sh`). Re-linting reproduced the same 76 errors documented in "Research already done" above (68 `set-state-in-effect`, 8 `refs`).
+
+The `useEffectEvent`-per-site fix was tried on the simplest real site (`ProjectHistoryPage.tsx`) **before** rolling it out across the batch, and it did not work: wrapping `reload()`'s effect-body call in a `useEffectEvent`-created callback and calling that from the effect still errored — same rule, same file, just pointing at the new call site (`onFiltersChange();` instead of `reload();`).
+
+Reading the installed rule's own source (`eslint-plugin-react-hooks/cjs/eslint-plugin-react-hooks.development.js`, `validateNoSetStateInEffects`/`getSetStateCall`) explained why: `react-hooks/set-state-in-effect` and `react-hooks/exhaustive-deps` solve different problems. `useEffectEvent` only takes a callback out of the *reactive dependency* graph (what `exhaustive-deps` cares about about stale closures) — it does not make a function's "contains a setState call" status disappear. The rule's own `isUseEffectEventType` branch explicitly *propagates* that status through the wrapper (`setStateFunctions.set(<the useEffectEvent result>, <the underlying setState>)`) rather than clearing it, so calling the wrapped event from inside a `useEffect` still trips the same check one level further out. The rule instead does a purely static, one-hop trace: does the function passed to `useEffect` (or a named function it calls, if that named function's own top-level body directly calls a setter) contain a literal call to a state setter? An `async function reload() { setX(null); await fetch(...); setY(data); }` pattern — this app's standard data-fetch-on-dependency-change shape, and also **React's own documented canonical pattern** for fetching data in an effect (react.dev, "Synchronizing with Effects") — matches that trace regardless of the `await` in between, because the rule doesn't special-case control flow after an `await`; it only cares whether the call is a direct top-level statement in the invoked function's own body.
+
+Confirmed via web search that this is a known, currently-open, unresolved issue in React's own compiler team, not a misreading of the rule or something specific to this codebase:
+- [facebook/react#34905](https://github.com/facebook/react/issues/34905) — `set-state-in-effect` false-positives on `setState` called after an `await`. Status: Unconfirmed. Fix PR [#36734](https://github.com/facebook/react/pull/36734) exists but is still open, unmerged.
+- [facebook/react#34743](https://github.com/facebook/react/issues/34743) — the rule flagging common valid patterns straight from React's own docs, Next.js's docs, and libraries like MUI Joy UI; the reporter calls the available workarounds (`.then()`-nesting the setState call one level deeper so it falls outside the rule's one-hop trace, `setTimeout`, `startTransition`) "code smell or 'tricking the lint rule'" rather than a real fix.
+- [facebook/react#34858](https://github.com/facebook/react/issues/34858) — same false positive against a fetch pattern lifted directly from React's own documentation.
+
+Given there is no available fix that isn't either (a) an unresolved upstream compiler limitation or (b) deliberately shaping code to dodge a static trace with no genuine behavioral improvement — and given restructuring ~68 real call sites around a bug the React team itself hasn't resolved risks needing to be reverted once it lands — presented this to the user rather than picking a workaround unilaterally. **Decided by: User**, choosing (after a first pass of "pause and research further" to confirm the false-positive finding via GitHub before committing) to downgrade `react-hooks/set-state-in-effect` from `error` to `warn` in `frontend/eslint.config.js`, with the full rationale and the three issue links above recorded as a comment directly on the rule, rather than restructuring the call sites or leaving `npm run lint` red. This resolves all 68 `set-state-in-effect` findings **repo-wide in one step** (including the ~34 sites originally planned for a separate Phase 4 "batch B" in the compliance module) — no per-site code change was needed once the severity was corrected, and no batch split was necessary.
+
+**Changes actually made:**
+- `frontend/package.json`/`package-lock.json`: `eslint` → `^10.10.0`, `@eslint/js` → `^10.0.1`, `eslint-plugin-react-hooks` → `^7.1.1`.
+- `frontend/eslint.config.js`: `"react-hooks/set-state-in-effect": "warn"` added to the `rules` block, with the rationale/issue-links comment described above.
+- No application code changed in this phase — the `useEffectEvent` test edit on `ProjectHistoryPage.tsx` was reverted once it was shown not to work.
 
 **Verification:**
-- `npm run lint`: 0 errors for every file in this batch's scope (compliance-module files will still show pending errors until Phase 4 — expected).
-- `npm run build`, `npm run test-storybook -- --coverage`, full Playwright suite (rebuild+recreate containers first).
-- `docs/decisions.md` entry.
+- `npm run lint`: exits with **8 errors, 68 warnings** — the 8 errors are exactly the `react-hooks/refs` findings in `ProjectAdminPage.tsx`, already scoped to Phase 4 below; the 68 warnings are the now-downgraded `set-state-in-effect` findings, expected and accepted per the decision above.
+- `npm run build`: clean (pre-existing `[INEFFECTIVE_DYNAMIC_IMPORT]`/chunk-size notices from Phase 1's Rolldown adoption reappear, unrelated to this phase — see that phase's decisions.md entry).
+- `npm run test-storybook -- --coverage`: 115/115 test files, 936/936 tests passed.
+- Full Playwright suite, containers rebuilt+recreated first — see `docs/decisions.md`'s Phase 3 entry for the actual result.
 
 ---
 
-## Phase 4 — ESLint migration batch B (compliance module) + the `react-hooks/refs` investigation
+## Phase 4 — the `react-hooks/refs` investigation (only remaining lint-error work)
 
-Scope: `src/modules/compliance/*` (~25 files, ~34 `set-state-in-effect` sites) plus the 8 `react-hooks/refs` findings in `ProjectAdminPage.tsx` deferred from Phase 3.
+Scope: the 8 `react-hooks/refs` findings in `ProjectAdminPage.tsx`. (The compliance-module `set-state-in-effect` batch originally planned for this phase no longer applies — Phase 3's rule downgrade resolved it repo-wide already.)
 
 **Changes:**
-- Same `useEffectEvent` restructuring pattern as Phase 3, applied across the compliance-module inventory (`ApplicabilityTree.tsx`, `ProjectCompliancePage.tsx`, `StandardWorkspacePage.tsx`, `RequirementMappingsModal.tsx`, etc.).
-- For the 8 `refs` findings: read `MultiSelectDropdown`'s implementation and `toggleProjectGroupRole`'s full closure chain to determine whether the compiler is catching a real risk or a false positive from the options-array shape. If real, fix it properly. If a false positive, say so explicitly and get the user's sign-off before disabling `react-hooks/refs` for those specific lines with a documented comment (per `CLAUDE.md`'s rule that a lint rule can only be turned off, with justification, not silently).
+- Read `MultiSelectDropdown`'s implementation and `toggleProjectGroupRole`'s full closure chain to determine whether the compiler is catching a real risk or a false positive from the options-array shape. If real, fix it properly. If a false positive, say so explicitly and get the user's sign-off before disabling `react-hooks/refs` for those specific lines with a documented comment (per `CLAUDE.md`'s rule that a lint rule can only be turned off, with justification, not silently). Given Phase 3's finding that this same rule family (React-Compiler-derived hooks rules) has other open false-positive reports upstream, it is worth specifically checking whether `facebook/react`'s issue tracker already has a matching report for this exact `onToggle`-in-options-array shape before assuming it needs a from-scratch investigation.
 
 **Verification:**
-- `npm run lint`: 0 errors repo-wide.
+- `npm run lint`: 0 errors repo-wide (68 `set-state-in-effect` warnings remain, expected).
 - `npm run build`, `npm run test-storybook -- --coverage`, full Playwright suite (rebuild+recreate containers first).
 - `docs/decisions.md` entry.
 

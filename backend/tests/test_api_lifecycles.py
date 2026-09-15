@@ -16,8 +16,9 @@ from tests.conftest import (
 
 
 def test_organization_create_and_get_lifecycle(client, admin_token):
-    """Organisations have no delete/archive endpoint at all (by design -
-    they are the top-level tenant boundary); this covers create + both
+    """Organisations have no *archive* endpoint (a server admin hard-deletes
+    one outright instead, via `DELETE /orgs/{id}` — see
+    `test_org_lifecycle.py` for delete coverage); this covers create + both
     read paths (list and single)."""
     resp = client.post("/api/v1/orgs", json={"name": "Lifecycle Org"}, headers=auth_headers(admin_token))
     assert resp.status_code == 201, resp.text
@@ -30,6 +31,32 @@ def test_organization_create_and_get_lifecycle(client, admin_token):
     single = client.get(f"/api/v1/orgs/{org['id']}", headers=auth_headers(admin_token))
     assert single.status_code == 200
     assert single.json()["name"] == "Lifecycle Org"
+
+
+def test_organization_list_is_alphabetically_ordered(client, admin_token):
+    """`list_organizations` (routers/orgs.py) previously had no `ORDER BY`
+    on either branch, so Postgres was free to return rows in any order —
+    this is what caused a real CI failure in
+    `project-list-org-scoping.spec.ts`, whose org-filter dropdown
+    intermittently showed two orgs swapped (see docs/decisions.md). Creates
+    orgs in reverse-alphabetical order deliberately, so a regression back to
+    unordered/insertion-order behaviour would fail this immediately rather
+    than coincidentally still pass. Covers both branches: the server-admin
+    bypass (`mine` omitted, sees every org) and `mine=true` (scoped to the
+    caller's own memberships, self-elevated into via `join-as-admin`)."""
+    org_z = client.post("/api/v1/orgs", json={"name": "Zeta Ordering Org"}, headers=auth_headers(admin_token)).json()
+    org_a = client.post("/api/v1/orgs", json={"name": "Alpha Ordering Org"}, headers=auth_headers(admin_token)).json()
+    org_m = client.post("/api/v1/orgs", json={"name": "Mid Ordering Org"}, headers=auth_headers(admin_token)).json()
+
+    all_orgs = client.get("/api/v1/orgs", headers=auth_headers(admin_token)).json()
+    ordering_org_names = [o["name"] for o in all_orgs if o["id"] in {org_z["id"], org_a["id"], org_m["id"]}]
+    assert ordering_org_names == ["Alpha Ordering Org", "Mid Ordering Org", "Zeta Ordering Org"]
+
+    for org in (org_z, org_a, org_m):
+        assert client.post(f"/api/v1/orgs/{org['id']}/join-as-admin", headers=auth_headers(admin_token)).status_code == 204
+    mine_orgs = client.get("/api/v1/orgs", params={"mine": "true"}, headers=auth_headers(admin_token)).json()
+    mine_ordering_org_names = [o["name"] for o in mine_orgs if o["id"] in {org_z["id"], org_a["id"], org_m["id"]}]
+    assert mine_ordering_org_names == ["Alpha Ordering Org", "Mid Ordering Org", "Zeta Ordering Org"]
 
 
 def test_requirement_full_lifecycle_create_get_update_delete(client, admin_token, org_id):

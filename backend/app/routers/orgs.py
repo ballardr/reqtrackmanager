@@ -450,13 +450,15 @@ def list_organizations(
     membership anywhere pick an organisation they hold no role in at all.
     """
     if current_user.is_server_admin and not mine:
-        return db.scalars(select(Organization)).all()
+        return db.scalars(select(Organization).order_by(Organization.name)).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
     ).all()
     if not org_ids:
         return []
-    return db.scalars(select(Organization).where(Organization.id.in_(org_ids))).all()
+    return db.scalars(
+        select(Organization).where(Organization.id.in_(org_ids)).order_by(Organization.name)
+    ).all()
 
 
 @router.get("/{organization_id}", response_model=OrganizationOut)
