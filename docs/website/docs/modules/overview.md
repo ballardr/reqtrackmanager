@@ -46,10 +46,13 @@ A module is gated at two independent tiers, and **both** must pass for it to be 
 
 A disabled or non-entitled module's endpoints return a plain 404 — indistinguishable from not existing — never a 403 that would leak the module's presence to an organisation that shouldn't see it.
 
+## Roadmap
+
+Compliance is the first module built on this system, and more are planned to follow the same pattern — each one an optional, self-contained capability an organisation can entitle and enable independently, rather than a feature permanently bolted into the core application. Nothing further is committed publicly yet; check back here as new modules ship.
+
 ## Where this fits
 
 - [Compliance module](./compliance-module.md) — the one module shipped today: what it does and how to work with it.
 - [Building your own module](./building-your-own-module.md) — the contract for a module that ships inside this repository (Tier A).
 - [Third-party and federated modules](./third-party-and-federated-modules.md) — building and installing a module that was never compiled into this deployment's own images.
-- [Roadmap](./roadmap.md) — what's planned beyond Compliance.
 - [Installation & Deployment → Scaling and adding modules](../installation-deployment/scaling-and-modules.md) — the operator-side steps for actually mounting a third-party module into a running deployment.

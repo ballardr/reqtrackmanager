@@ -25,7 +25,11 @@ Every endpoint is mounted under `/api/v1/...`. Most routes are further scoped by
 | `/api/v1/projects/{project_id}/...` | Project-scoped resources — requirements, change requests, reports, files, actions |
 | `/api/v1/system/...` | Server-admin-only deployment-wide settings |
 
-A module (e.g. the Compliance module) contributes its own endpoints under the same `/api/v1/orgs/{organization_id}/modules/<key>/...` and `/api/v1/projects/{project_id}/modules/<key>/...` shape — see [Extending with modules](./extending-with-modules.md). There is only one API version today; a future breaking change would introduce `/api/v2/...` alongside `/api/v1/...` rather than break existing callers in place.
+A module (e.g. the Compliance module) contributes its own endpoints under the same `/api/v1/orgs/{organization_id}/modules/<key>/...` and `/api/v1/projects/{project_id}/modules/<key>/...` shape — see below. There is only one API version today; a future breaking change would introduce `/api/v2/...` alongside `/api/v1/...` rather than break existing callers in place.
+
+## Module-contributed endpoints and tools
+
+A [module](../modules/overview.md) isn't limited to what ships in the core application: it can contribute its own REST endpoints (the URL shape above) and its own MCP tools, automatically prefixed with the module's key and registered alongside the hand-written ones (see [AI assistants → Overview](./ai-assistants-mcp/overview.md#module-contributed-tools)). The Compliance module, documented in [Modules → Compliance module](../modules/compliance-module.md), is the working example of both. For the contract a module implements to do this — the `ModuleDefinition` shape, how a router gets mounted, how an MCP tool is declared and mechanically constrained — see [Modules → Building your own module](../modules/building-your-own-module.md).
 
 ## Request and response conventions
 

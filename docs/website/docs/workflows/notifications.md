@@ -6,7 +6,7 @@ sidebar_position: 10
 
 ## The bell icon
 
-The bell icon in the top bar shows your recent notifications — project joins, stage transitions, change-request activity, password changes, permission grants, and more — with an unread count badge. Click a notification to mark it read and, for anything tied to a specific requirement, change request, or project, jump straight to it. **Mark all read** clears every unread one without navigating anywhere.
+The bell icon in the top bar shows your recent notifications, with an unread count badge — see [Core Features → Notifications and email](../core-features/notifications-and-email.md) for the full list of what triggers one. Click a notification to mark it read and, for anything tied to a specific requirement, change request, or project, jump straight to it. **Mark all read** clears every unread one without navigating anywhere.
 
 ## The Notifications page
 

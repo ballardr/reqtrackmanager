@@ -26,7 +26,7 @@ Only a project manager or administrator can approve a stage; a plain member's at
 
 ## Renaming and deleting a stage
 
-Anyone who can create a stage can rename it inline or delete it. Deleting a stage requires picking another existing stage to reassign everything currently targeting it to — every requirement (and its full history) and every pending change request proposing that stage. A stage with an approved baseline can't be deleted at all, since that would rewrite a permanent record of what was approved.
+Anyone who can create a stage can rename it inline or delete it. Deleting one requires picking another stage to reassign everything currently targeting it to, and a stage with an approved baseline can't be deleted at all — see [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#renaming-and-deleting-stages) for the full reassignment rules.
 
 ## Scheduling and recording an individual review
 

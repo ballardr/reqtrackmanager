@@ -18,7 +18,7 @@ flowchart TB
     Item --> Audit["Audit trail\n(security & admin events)"]
 ```
 
-Keeping these separate means a project's official history view can show exactly what was formally decided without needing to filter out casual conversation after the fact — and a discussion comment can still be added to a *locked* requirement, since it was never part of that requirement's governed content in the first place.
+One consequence of the split: a discussion comment can still be added to a *locked* requirement, since it was never part of that requirement's governed content in the first place.
 
 ## Notifications
 

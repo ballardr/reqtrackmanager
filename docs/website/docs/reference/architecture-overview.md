@@ -160,7 +160,7 @@ Every service exposes health endpoints for container orchestration. The backend 
 
 ## Non-functional considerations
 
-- **Scalability** — the initial deployment is simple by design, with an explicit path to more services (backend replicas, a dedicated worker service, external caching/search) once needed, rather than a rewrite.
+- **Scalability** — see [Deployment architecture](#deployment-architecture) above: the initial single-container model has an explicit, documented path to more services once needed, rather than a rewrite.
 - **Maintainability** — the domain-driven module structure and containerised, documented deployment model keep the codebase approachable for new contributors.
 - **Extensibility** — SSO, external object storage, and multi-tenant enterprise features (per-organisation branding, SCIM, the module system) are already built, not just left extensible in the abstract. The one item still genuinely future rather than built: dedicated notification/scheduler worker services — the notification digest, disk-usage monitor, and review-deadline scheduler all still run in-process in the single backend container today.
 
@@ -168,7 +168,7 @@ Every service exposes health endpoints for container orchestration. The backend 
 
 A candid, non-exhaustive list of what's deliberately scoped down or not yet built, mirroring the [README](https://github.com/ballardr/reqtrackmanager#known-limitations)'s own "Known limitations" section:
 
-- SCIM provisioning and a standalone separate-port provisioning API are documented as implementable blueprints (see [SCIM provisioning](../api-integrations/scim-provisioning.md)) rather than built.
+- A standalone separate-port provisioning API is documented as an implementable blueprint rather than built — SCIM provisioning itself is built; see [SCIM provisioning](../api-integrations/scim-provisioning.md).
 - The backend does not yet emit OpenTelemetry traces — the Alloy/Tempo pipeline is wired and ready to receive them, but nothing currently sends any.
 - Login IP is logged but not geolocated; requirement/component/category ordering is move-up/move-down rather than drag-and-drop; permission revocation does not send a notification (only granting one does).
 - Notification/digest delivery, the disk-usage monitor, and the review/stage-deadline scheduler run as in-process background tasks in the backend container rather than a separately-scaled worker service.

@@ -21,8 +21,4 @@ flowchart LR
 
 ## Templates carry that setup forward
 
-Defining custom fields and terminology once per project is fine for a single team, but an organisation running many similar projects doesn't want to rebuild the same setup by hand each time. Any project can be marked **usable as a template**; creating a new project from it copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft) into the new project. An organisation can also nominate a **default template**, offered automatically whenever someone creates a new project.
-
-## Why this matters
-
-This is the mechanism that lets ReqTrackManager fit a team's actual process instead of the other way around — without turning every customisation into a one-off, unmaintained fork. See [Project templates](../core-features/project-templates.md) for the full mechanics of defining fields, terminology, and templates.
+Defining custom fields and terminology once per project is fine for a single team, but an organisation running many similar projects doesn't want to rebuild the same setup by hand each time. Any project can be marked **usable as a template**; creating a new project from it copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft) into the new project. An organisation can also nominate a **default template**, offered automatically whenever someone creates a new project — together, this is the mechanism that lets ReqTrackManager fit a team's actual process instead of the other way around, without turning every customisation into a one-off, unmaintained fork. See [Project templates](../core-features/project-templates.md) for the full mechanics of defining fields, terminology, and templates.

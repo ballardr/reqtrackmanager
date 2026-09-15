@@ -6,7 +6,7 @@ sidebar_position: 8
 
 ## Attaching a file
 
-Use the file picker at the bottom of a requirement's (or action's) Attachments card to upload a supporting document; click a filename to download it, or the trash icon to remove it. Once a requirement is locked, this direct upload is no longer available — a file can still be attached via an approved [change request](./change-requests.md), or informally via a discussion comment, which stays available on locked requirements since it isn't part of the governed content.
+Use the file picker at the bottom of a requirement's (or action's) Attachments card to upload a supporting document; click a filename to download it, or the trash icon to remove it. See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md) for what changes once a requirement is locked, and for organisation-wide shared resources.
 
 ## Commenting and editing comments
 

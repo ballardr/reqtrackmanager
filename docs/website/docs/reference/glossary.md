@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Glossary
 
-Terminology introduced across the [Concepts](../concepts/organisations-and-projects.md) section, gathered into one alphabetical reference. Each entry links back to the page that explains it in full.
+Terminology introduced across this site, gathered into one alphabetical reference. Each entry links back to the page that explains it in full.
 
 #### Advisory stakeholder vote
 
@@ -105,6 +105,10 @@ A short follow-up item tied to a change request, with an optional assignee and d
 #### Terminology override
 
 A project-level renaming of a fixed set of nouns (project, stage, component, category, requirement, change request) so a team sees its own vocabulary throughout the UI. See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md).
+
+#### Tier A / Tier B / Tier C module
+
+The three ways a module can supply its frontend UI: Tier A is compiled directly into the core frontend image, Tier B renders in a sandboxed iframe, and Tier C is loaded dynamically at runtime with no rebuild and no sandbox. See [Modules → Overview](../modules/overview.md) and [Third-party and federated modules](../modules/third-party-and-federated-modules.md).
 
 #### Two-factor authentication (2FA)
 

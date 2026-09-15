@@ -22,10 +22,7 @@ A single user account can belong to more than one organisation at once — an or
 
 ## Roles live at two levels
 
-- **Organisation roles** (`org_admin`, `project_creator`, `member`) govern organisation-wide administration: managing users, groups, SSO, and branding, and — for `org_admin` — seeing which projects exist in the organisation.
-- **Project roles** (`project_manager`, `project_administrator`, `stakeholder`, `member`) govern what someone can actually do inside one specific project: author requirements, review and approve change requests, manage project settings, or just view.
-
-The full detail of how these roles combine — including the deliberate gap between "organisation admin" and "can read this project's requirements" — is covered in [Roles, groups, and access control](./roles-groups-and-access-control.md).
+Access control is split into two independent levels: **organisation roles** (`org_admin`, `project_creator`, `member`) govern organisation-wide administration, and **project roles** (`project_manager`, `project_administrator`, `stakeholder`, `member`) govern what someone can actually do inside one specific project. The full detail of how these combine — including the deliberate gap between "organisation admin" and "can read this project's requirements" — is covered in [Roles, groups, and access control](./roles-groups-and-access-control.md).
 
 ## Why the split matters
 

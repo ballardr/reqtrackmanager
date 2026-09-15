@@ -89,7 +89,6 @@ const sidebars: SidebarsConfig = {
         'modules/compliance-module',
         'modules/building-your-own-module',
         'modules/third-party-and-federated-modules',
-        'modules/roadmap',
       ],
     },
     {
@@ -114,7 +113,6 @@ const sidebars: SidebarsConfig = {
             'api-integrations/ai-assistants-mcp/known-limitations',
           ],
         },
-        'api-integrations/extending-with-modules',
       ],
     },
     {
