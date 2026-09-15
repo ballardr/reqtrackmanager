@@ -8,16 +8,16 @@ This document is the persistent, session-resumable implementation plan for upgra
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-15 (Phase 3 complete; next session starts fresh at Phase 4, per this plan's own discipline of not cascading into the next phase automatically).
+**Last updated:** 2026-09-15 (Phase 4 complete; next session starts fresh at Phase 5, per this plan's own discipline of not cascading into the next phase automatically).
 
-**Overall progress:** 3 / 5 phases complete.
+**Overall progress:** 4 / 5 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Vite 6 → 8.3.0 (Rolldown bundler swap) + `@vitejs/plugin-react` 4 → 5.2.0 | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 1" entry |
 | 2 | React 18 → 19.3.0 runtime bump (`react`/`react-dom`/`@types/react`/`@types/react-dom`) | [x] Done — see `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 2" entry |
 | 3 | ESLint 10 + `eslint-plugin-react-hooks` 7.1.1 migration | [x] Done, but not as originally scoped — see "Phase 3, revised" below and `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 3" entry. The planned `useEffectEvent`-per-site fix for `react-hooks/set-state-in-effect` turned out not to work; the rule was downgraded to `warn` with a documented rationale instead, repo-wide, in one step (no batch A/B split needed). Verification also surfaced and root-caused 3 flaky Playwright specs plus a real request-ordering race in `ProjectAdminPage.tsx`'s groups search, all fixed — see that decisions.md entry's "Verification surfaced 3 flaky Playwright specs" section for the full account. |
-| 4 | `react-hooks/refs` investigation (8 findings, `ProjectAdminPage.tsx`) | [ ] Not started — this is now the *only* remaining lint-error work; the compliance-module `set-state-in-effect` batch originally planned here no longer applies (resolved by Phase 3's rule downgrade) |
+| 4 | `react-hooks/refs` investigation (8 findings, `ProjectAdminPage.tsx`) | [x] Done — all 8 confirmed false positives (same root cause: `reload()`'s anti-race ref touched transitively from 8 JSX event-handler props). No non-evasive fix exists at current dependency versions — the one upstream fix (facebook/react#35062) isn't shipped in any published `eslint-plugin-react-hooks` build and wouldn't cover all 8 sites anyway. Silenced with per-line, documented `eslint-disable-next-line` comments. `npm run lint` now 0 errors repo-wide (68 `set-state-in-effect` warnings remain, expected). See `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 4" entry, which also fixed `stage-review-and-completion.spec.ts`'s previously-open 30s timeout margin (found during this phase's own verification, root-caused with a real trace, unrelated to the refs change itself). |
 | 5 | Final sweep and close-out | [ ] Not started |
 
 **Outside this plan, same session:** `project-hierarchy.spec.ts`'s "doesn't clean up its own throwaway projects" gap (flagged as a follow-up above) was fixed directly at the user's request, along with root-causing a real CI failure (a missing `ORDER BY` in `list_organizations`, plus an identical shared-persona-grant leak in `project-list-org-scoping.spec.ts`) — see `docs/decisions.md`'s "`project-hierarchy.spec.ts` cleanup gap, and root-causing a real CI failure" entry. That entry also found and partially fixed a real `ProjectAdminPage.tsx` performance issue (`reload()`'s ~12 independent fetches ran serially, now parallelized) — kept as a genuine improvement, but it did **not** fully resolve `stage-review-and-completion.spec.ts`'s own persistent near-30s-timeout margin under CI-style retries, which remains an **open** item for whoever next touches Project Admin/that spec: profile its actual per-step timing (a trace, not a guess) rather than assume it's fixed.
@@ -118,17 +118,21 @@ Given there is no available fix that isn't either (a) an unresolved upstream com
 
 ---
 
-## Phase 4 — the `react-hooks/refs` investigation (only remaining lint-error work)
+## Phase 4 — the `react-hooks/refs` investigation [DONE] (only remaining lint-error work)
 
 Scope: the 8 `react-hooks/refs` findings in `ProjectAdminPage.tsx`. (The compliance-module `set-state-in-effect` batch originally planned for this phase no longer applies — Phase 3's rule downgrade resolved it repo-wide already.)
 
-**Changes:**
-- Read `MultiSelectDropdown`'s implementation and `toggleProjectGroupRole`'s full closure chain to determine whether the compiler is catching a real risk or a false positive from the options-array shape. If real, fix it properly. If a false positive, say so explicitly and get the user's sign-off before disabling `react-hooks/refs` for those specific lines with a documented comment (per `CLAUDE.md`'s rule that a lint rule can only be turned off, with justification, not silently). Given Phase 3's finding that this same rule family (React-Compiler-derived hooks rules) has other open false-positive reports upstream, it is worth specifically checking whether `facebook/react`'s issue tracker already has a matching report for this exact `onToggle`-in-options-array shape before assuming it needs a from-scratch investigation.
+### What actually happened
 
-**Verification:**
-- `npm run lint`: 0 errors repo-wide (68 `set-state-in-effect` warnings remain, expected).
-- `npm run build`, `npm run test-storybook -- --coverage`, full Playwright suite (rebuild+recreate containers first).
-- `docs/decisions.md` entry.
+All 8 findings are the same false positive, one root cause: every flagged site is a JSX callback prop (`onToggle`, 6× `onClick`, `onSelect`/`onSelectExternal`) for a handler that calls `reload()`, which touches four `useRef`s synchronously (including `loadGroupsRequestIdRef`, Phase 3's own anti-race guard) — the compiler's `readRefEffect` propagation flags passing any such handler as a JSX prop, even though these only ever run from event handling, never during render.
+
+Per the user's explicit request, investigated upstream before accepting a disable rather than assuming a from-scratch investigation was needed: `facebook/react#35062` ("Allow ref access in callbacks passed to event handler props"), merged 2025-11-14 and cited in `eslint-plugin-react-hooks` 7.1.0's own changelog, implements exactly this exemption — but only for built-in DOM `on*` props, gated behind a compiler flag (`enableInferEventHandlers`, default `false`) confirmed **entirely absent** from every published `eslint-plugin-react-hooks` build checked, including the installed 7.1.1 and the newest canary (`7.1.1-canary-f1f7ed2a-20260904`). The changelog describes a capability that hasn't reached the npm package. Even once it does, it would only cover 6 of the 8 sites (the native `<button onClick>` ones) — the PR's own test fixtures keep custom-component props (`UserAutocomplete`'s `onSelect`/`onSelectExternal`, `MultiSelectDropdown`'s `onToggle`) as errors by design.
+
+Also ruled out: `useEffectEvent` (no reference to it anywhere in the refs-validation code path), the `"use no memo"` per-function opt-out directive (verified empirically — added it to one function, still 8/8 errors; it only skips the babel-transform step, not the ESLint-facing event log), and swapping `useRef` for a same-shaped `useState(() => ({current: 0}))[0]` box (would evade the compiler's type detection, but is the same footgun with the "ref" label removed — worse than a documented disable, not better).
+
+**Decided by: User** — presented all of the above and chose per-line `eslint-disable-next-line react-hooks/refs` comments with inline rationale, once no non-evasive route was confirmed to exist. Full account, including the trace-based fix also applied to `stage-review-and-completion.spec.ts`'s previously-open 30s timeout margin (found during this phase's own verification, unrelated to the refs change, comment-only diff), in `docs/decisions.md`'s "React 19/ESLint 10 upgrade plan, Phase 4" entry.
+
+**Verification:** `npm run lint` 0 errors (68 `set-state-in-effect` warnings, expected), `npm run build` clean, `npm run test-storybook -- --coverage` 115/115 files, and a full Playwright suite verification that took three attempts to get a clean read (a forgotten reseed after a stack wipe, then accumulated shared-fixture pollution from several repeated runs in one session, then a genuinely clean `down -v`+reseed+run) — full detail, including why the remaining transient failures are unrelated to this phase, in that decisions.md entry.
 
 ---
 

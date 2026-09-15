@@ -44,6 +44,20 @@ test.describe("stage review deadlines and completion", () => {
   test("scoping -> review (with a deadline and a stakeholder response) -> approved -> completed, cascaded", async ({
     page,
   }) => {
+    // This test's own budget is real, accounted-for cost, not slack to trim:
+    // it makes 6 real UI logins (~1.5s each end-to-end — navigate, fill,
+    // submit, the ~210ms bcrypt check itself, redirect, hydrate, "Sign out"
+    // visible — inflated further by CPU contention from Playwright's other
+    // concurrent workers hitting the same backend's bcrypt calls) plus real
+    // multi-persona workflow steps, summing to ~26-31s against the 30s
+    // default. Root-caused with an actual trace, not guessed at — see
+    // docs/decisions.md's "bcrypt login cost under concurrent load" and
+    // "React 19/ESLint 10 upgrade plan, Phase 4" entries. This is
+    // deliberately not the blind timeout bump an earlier session rejected
+    // (see the Phase 3 entry) — that rejection was of a bump applied before
+    // root-causing; both entries above did the root-causing first.
+    test.setTimeout(45_000);
+
     let projectId = "";
     let stageId = "";
     const stageName = `E2E Stage Cycle ${Date.now()}`;

@@ -2357,6 +2357,24 @@ export function ProjectAdminPage() {
                         optionLabel: checked
                           ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], g.name)
                           : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], g.name),
+                        // False positive (react-hooks/refs): `toggleProjectGroupRole`
+                        // transitively touches `loadGroupsRequestIdRef` via `reload()`,
+                        // but this `onToggle` only ever runs from MultiSelectDropdown's
+                        // click handling, never during render — refs are explicitly fine
+                        // in event handlers per this rule's own description. The one
+                        // upstream fix that targets this shape (facebook/react#35062,
+                        // "allow ref access in callbacks passed to event handler props")
+                        // is gated behind a compiler flag that isn't shipped in any
+                        // published eslint-plugin-react-hooks build as of 7.1.1/latest
+                        // canary (2026-09-04) — and wouldn't cover this specific site
+                        // anyway, since it only exempts JSX attributes on built-in DOM
+                        // elements, not a plain object field consumed by a custom
+                        // component (see facebook/react#35062's own
+                        // error.ref-value-in-custom-component-event-handler-wrapper.tsx
+                        // test fixture). See docs/decisions.md's Phase 4 entry (Decided
+                        // by: User, 2026-09-15) for the full investigation, including why
+                        // `useEffectEvent` and the `"use no memo"` directive don't help.
+                        // eslint-disable-next-line react-hooks/refs
                         onToggle: () => toggleProjectGroupRole(g.id, role, !checked),
                       };
                     })}
@@ -2382,6 +2400,11 @@ export function ProjectAdminPage() {
                             className="btn btn-danger"
                             title={strings.admin.removeMember(u ? u.display_name : userId)}
                             aria-label={strings.admin.removeMember(u ? u.display_name : userId)}
+                            // False positive (react-hooks/refs): only runs on click, not
+                            // during render. facebook/react#35062 fixes this exact shape
+                            // (built-in `<button onClick>`) but isn't shipped yet — see
+                            // the onToggle comment above and docs/decisions.md's Phase 4.
+                            // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeGroupMember(g.id, userId)}
                           >
                             <Trash2 size={14} />
@@ -2394,6 +2417,13 @@ export function ProjectAdminPage() {
                 <UserAutocomplete
                   users={availableUsers}
                   placeholder={strings.admin.addOrInviteMemberPlaceholder}
+                  // False positive (react-hooks/refs): only runs when a result is
+                  // selected, not during render. Unlike the onClick sites below,
+                  // facebook/react#35062's exemption (even once shipped) wouldn't cover
+                  // this either way — it's scoped to built-in DOM elements only, and
+                  // `UserAutocomplete` is a custom component. See the onToggle comment
+                  // above and docs/decisions.md's Phase 4.
+                  // eslint-disable-next-line react-hooks/refs
                   onSelect={(userId) => addGroupMember(g.id, userId)}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
@@ -2407,6 +2437,11 @@ export function ProjectAdminPage() {
                   // role held at all there's nothing sensible to
                   // approximate, so the invite affordance is withheld
                   // entirely rather than granting nothing.
+                  // False positive (react-hooks/refs): same as `onSelect` above —
+                  // custom-component prop, out of scope even for facebook/react#35062's
+                  // fix once shipped. See the onToggle comment above and
+                  // docs/decisions.md's Phase 4.
+                  // eslint-disable-next-line react-hooks/refs
                   onSelectExternal={g.roles.length > 0 ? (email) => addExternalMember(email, g.roles[0]) : undefined}
                 />
                 {/* `externalAddResult` is shared with the Members section's
@@ -2429,6 +2464,9 @@ export function ProjectAdminPage() {
                           className="btn btn-danger"
                           title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
+                          // False positive (react-hooks/refs) — see the onToggle comment
+                          // above and docs/decisions.md's Phase 4.
+                          // eslint-disable-next-line react-hooks/refs
                           onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
                           <Trash2 size={14} />
@@ -2457,6 +2495,9 @@ export function ProjectAdminPage() {
                       disabled={!orgGroupSelections[g.id]}
                       title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      // False positive (react-hooks/refs) — see the onToggle comment
+                      // above and docs/decisions.md's Phase 4.
+                      // eslint-disable-next-line react-hooks/refs
                       onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                     >
                       <Plus size={14} />
@@ -2476,6 +2517,9 @@ export function ProjectAdminPage() {
                             className="btn btn-danger"
                             title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
+                            // False positive (react-hooks/refs) — see the onToggle
+                            // comment above and docs/decisions.md's Phase 4.
+                            // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeProjectRefMember(g.id, p.id)}
                           >
                             <Trash2 size={14} />
@@ -2506,6 +2550,9 @@ export function ProjectAdminPage() {
                       disabled={!sourceProjectSelections[g.id]}
                       title={strings.admin.addProjectReferenceToProjectGroup}
                       aria-label={strings.admin.addProjectReferenceToProjectGroup}
+                      // False positive (react-hooks/refs) — see the onToggle comment
+                      // above and docs/decisions.md's Phase 4.
+                      // eslint-disable-next-line react-hooks/refs
                       onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
                     >
                       <Plus size={14} />
