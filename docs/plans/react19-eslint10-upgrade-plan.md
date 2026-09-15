@@ -1,6 +1,6 @@
 # Vite 8 + React 19.3.0 Upgrade, then ESLint 9→10 Migration — Implementation Plan
 
-This document is the persistent, session-resumable implementation plan for upgrading the frontend's core toolchain (Vite, React) and finishing a previously-blocked ESLint 9→10 migration. It follows the same phased, resumable structure as `docs/compliance-module-plan.md` and `docs/platform-review-2026-09-plan.md` — read cold, by a session with no memory of this conversation.
+This document is the persistent, session-resumable implementation plan for upgrading the frontend's core toolchain (Vite, React) and finishing a previously-blocked ESLint 9→10 migration. It follows the same phased, resumable structure as `compliance-module-plan.md` and `platform-review-2026-09-plan.md` — read cold, by a session with no memory of this conversation.
 
 **If you are starting a session against this plan, read "Status / Resume Here" below first.**
 
@@ -28,7 +28,7 @@ This document is the persistent, session-resumable implementation plan for upgra
 
 ## Origin
 
-`docs/decisions.md`'s 2026-09-14 entry ("ESLint 9→10 migration attempted: blocked on React 19's `useEffectEvent`") recorded that bumping `eslint`/`eslint-plugin-react-hooks` to support ESLint 10 pulls in React-Compiler-derived lint rules (`react-hooks/set-state-in-effect`, `react-hooks/refs`) that flag 76 sites across ~52 files — almost all the app's standard `useEffect(() => { reload(); }, [deps])` data-fetch pattern. Those rules' only clean fix is React 19's `useEffectEvent` hook, unavailable on this app's pinned React `^18.3.1`. The user chose to scope a React 19 upgrade first (**Decided by: User**), then asked to start that planning and — since it touches ~50+ files across several dependency bumps — asked for a resumable phased plan doc like `docs/compliance-module-plan.md`/`docs/platform-review-2026-09-plan.md` (**Decided by: User**). Mid-planning, the user also asked to fold in the also-overdue Vite upgrade (pinned `^6.4.3` at the time; `latest` was `8.3.0`), and after reviewing the tradeoff between stopping at Vite 7 versus going to Vite 8, chose Vite 8 (**Decided by: User**).
+`docs/decisions.md`'s 2026-09-14 entry ("ESLint 9→10 migration attempted: blocked on React 19's `useEffectEvent`") recorded that bumping `eslint`/`eslint-plugin-react-hooks` to support ESLint 10 pulls in React-Compiler-derived lint rules (`react-hooks/set-state-in-effect`, `react-hooks/refs`) that flag 76 sites across ~52 files — almost all the app's standard `useEffect(() => { reload(); }, [deps])` data-fetch pattern. Those rules' only clean fix is React 19's `useEffectEvent` hook, unavailable on this app's pinned React `^18.3.1`. The user chose to scope a React 19 upgrade first (**Decided by: User**), then asked to start that planning and — since it touches ~50+ files across several dependency bumps — asked for a resumable phased plan doc like `compliance-module-plan.md`/`platform-review-2026-09-plan.md` (**Decided by: User**). Mid-planning, the user also asked to fold in the also-overdue Vite upgrade (pinned `^6.4.3` at the time; `latest` was `8.3.0`), and after reviewing the tradeoff between stopping at Vite 7 versus going to Vite 8, chose Vite 8 (**Decided by: User**).
 
 ---
 
@@ -146,6 +146,6 @@ Also ruled out: `useEffectEvent` (no reference to it anywhere in the refs-valida
 
 ## Notes for whoever resumes a phase
 
-- One phase per session/PR, same discipline as `docs/compliance-module-plan.md`: implement, verify per that phase's bar above, record the `docs/decisions.md` entry, tick the status table, stop — don't cascade into the next phase automatically.
+- One phase per session/PR, same discipline as `compliance-module-plan.md`: implement, verify per that phase's bar above, record the `docs/decisions.md` entry, tick the status table, stop — don't cascade into the next phase automatically.
 - Always use `frontend/scripts/sync-lockfile.sh` after any `package.json` change in this plan, never a bare `npm install`.
 - Rebuild+recreate the docker-compose containers before any live/Playwright verification — compose does not bind-mount source in this project.

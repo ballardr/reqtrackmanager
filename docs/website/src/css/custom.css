@@ -1,0 +1,56 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ *
+ * Palette derived from frontend/src/styles/theme.css's own tokens
+ * (--color-accent, --color-header-bg) so the site's chrome reads as the
+ * same product as the app, per docs/plans/docs-website-plan.md's
+ * "Diagrams"/visual-style decisions.
+ */
+
+:root {
+  --ifm-color-primary: #2f855a;
+  --ifm-color-primary-dark: #2a774f;
+  --ifm-color-primary-darker: #27704b;
+  --ifm-color-primary-darkest: #205c3e;
+  --ifm-color-primary-light: #34935f;
+  --ifm-color-primary-lighter: #379a6b;
+  --ifm-color-primary-lightest: #40b17b;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-navbar-background-color: #14161c;
+  --ifm-navbar-link-color: #ffffff;
+  --ifm-navbar-link-hover-color: #a9b6c7;
+  --ifm-menu-color-active: #2f855a;
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #68d391;
+  --ifm-color-primary-dark: #4fc57d;
+  --ifm-color-primary-darker: #43be74;
+  --ifm-color-primary-darkest: #379c5f;
+  --ifm-color-primary-light: #81dba3;
+  --ifm-color-primary-lighter: #8fdfac;
+  --ifm-color-primary-lightest: #b6ecca;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-navbar-background-color: #14161c;
+  --ifm-menu-color-active: #68d391;
+}
+
+.navbar__brand,
+.navbar__link {
+  color: var(--ifm-navbar-link-color);
+}
+
+.navbar__link:hover {
+  color: var(--ifm-navbar-link-hover-color);
+}
+
+/* Wide tables/code blocks scroll inside their own container instead of
+   overflowing the page horizontally. */
+.markdown table {
+  display: block;
+  overflow-x: auto;
+}

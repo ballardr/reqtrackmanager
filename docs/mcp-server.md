@@ -51,9 +51,9 @@ Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`ye
 
 ## Module-contributed tools
 
-Beyond the hand-written tools above, a backend module (compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (compliance-module-plan.md Phase 6, extended in Phases 7, 8, 9, 10 and 11) is the first module to use this**, contributing ten read-only tools:
+**Compliance (plans/compliance-module-plan.md Phase 6, extended in Phases 7, 8, 9, 10 and 11) is the first module to use this**, contributing ten read-only tools:
 
 | Tool | Purpose |
 | --- | --- |
