@@ -3,45 +3,67 @@
  * bundles Infima by default. Infima is a CSS framework designed to
  * work well for content-centric websites.
  *
- * Palette derived from frontend/src/styles/theme.css's own tokens
- * (--color-accent, --color-header-bg) so the site's chrome reads as the
- * same product as the app, per docs/plans/docs-website-plan.md's
- * "Diagrams"/visual-style decisions.
+ * Navbar background derived from frontend/src/styles/theme.css's own
+ * --color-header-bg token, so the site's header reads as the same
+ * product as the app. The accent scale itself is blue, not the app's
+ * green --color-accent - a deliberate divergence made at the user's
+ * request (2026-09-15, see docs/decisions.md's Phase 10 entry) to match
+ * the blue tint the Mermaid diagram theme moved to in
+ * docusaurus.config.ts, rather than mixing a blue-diagram/green-chrome
+ * site. Hue/saturation (~210/58-60%) matches that diagram theme's
+ * primaryBorderColor (#1a4d80); the lightness step pattern
+ * (0/-3/-5/-11 dark, 0/+4/+6/+12 light) is carried over unchanged from
+ * the site's original green scale, which followed Infima's own
+ * generator convention.
  */
 
 :root {
-  --ifm-color-primary: #2f855a;
-  --ifm-color-primary-dark: #2a774f;
-  --ifm-color-primary-darker: #27704b;
-  --ifm-color-primary-darkest: #205c3e;
-  --ifm-color-primary-light: #34935f;
-  --ifm-color-primary-lighter: #379a6b;
-  --ifm-color-primary-lightest: #40b17b;
+  --ifm-color-primary: #25588d;
+  --ifm-color-primary-dark: #225081;
+  --ifm-color-primary-darker: #204b79;
+  --ifm-color-primary-darkest: #1a3c61;
+  --ifm-color-primary-light: #2a629d;
+  --ifm-color-primary-lighter: #2c67a5;
+  --ifm-color-primary-lightest: #3276bd;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
   --ifm-navbar-background-color: #14161c;
   --ifm-navbar-link-color: #ffffff;
   --ifm-navbar-link-hover-color: #a9b6c7;
-  --ifm-menu-color-active: #2f855a;
+  --ifm-menu-color-active: #25588d;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #68d391;
-  --ifm-color-primary-dark: #4fc57d;
-  --ifm-color-primary-darker: #43be74;
-  --ifm-color-primary-darkest: #379c5f;
-  --ifm-color-primary-light: #81dba3;
-  --ifm-color-primary-lighter: #8fdfac;
-  --ifm-color-primary-lightest: #b6ecca;
+  --ifm-color-primary: #649cd8;
+  --ifm-color-primary-dark: #5894d5;
+  --ifm-color-primary-darker: #508fd3;
+  --ifm-color-primary-darkest: #3780cd;
+  --ifm-color-primary-light: #74a7dc;
+  --ifm-color-primary-lighter: #7cacde;
+  --ifm-color-primary-lightest: #95bbe4;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
   --ifm-navbar-background-color: #14161c;
-  --ifm-menu-color-active: #68d391;
+  --ifm-menu-color-active: #649cd8;
 }
 
 .navbar__brand,
 .navbar__link {
   color: var(--ifm-navbar-link-color);
+}
+
+/* Infima's own `.navbar__logo img { height: 100% }` (default.css) beats the
+   `height` attribute docusaurus.config.ts's navbar.logo.height renders as a
+   plain HTML attribute on the <img>, since a stylesheet rule always wins
+   over a presentational attribute regardless of the number passed there -
+   so the actual pixel size has to be set here too, matching the app's own
+   24px header logo height (frontend/src/components/Layout.tsx). */
+.navbar__logo {
+  height: 24px;
+}
+
+.navbar__logo img {
+  height: 24px;
 }
 
 .navbar__link:hover {
