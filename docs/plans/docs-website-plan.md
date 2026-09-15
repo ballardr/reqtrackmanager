@@ -8,14 +8,14 @@ This document is the persistent, session-resumable implementation plan for build
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-15 (Phase 1 complete).
+**Last updated:** 2026-09-15 (Phase 2 complete).
 
-**Overall progress:** 1 / 10 phases complete.
+**Overall progress:** 2 / 10 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Docs folder tidy (`docs/plans/`) + Docusaurus scaffold (`docs/website/`) + local Docker Compose preview service + CI deploy wiring | [x] Complete |
-| 2 | Introduction + Concepts section | [ ] Not started |
+| 2 | Introduction + Concepts section | [x] Complete |
 | 3 | Installation & Deployment chapter | [ ] Not started |
 | 4 | Core Features section | [ ] Not started |
 | 5 | Workflows section | [ ] Not started |
