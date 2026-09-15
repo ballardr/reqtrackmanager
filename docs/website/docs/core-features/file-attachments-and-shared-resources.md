@@ -27,4 +27,4 @@ Beyond per-item attachments, an organisation admin can upload **shared resources
 
 ## Where this fits
 
-See [Workflows → Files, comments, and history](../workflows/index.md) for the end-to-end task walkthrough.
+See [Workflows → Files, comments, and history](../workflows/files-comments-and-history.md) for the end-to-end task walkthrough.

@@ -31,4 +31,4 @@ The full detail of how these roles combine — including the deliberate gap betw
 
 Keeping organisation-level administration separate from project-level content access lets an organisation admin manage users, SSO, and billing-adjacent settings without that grant silently becoming a backdoor into every project's requirements. It also lets a single deployment host organisations with completely different identity providers, or none at all, without any project's access model needing to know or care which one its organisation uses.
 
-See [Project templates](../core-features/project-templates.md) for how projects are created, archived, and templated, and [Workflows](../workflows/index.md) for the day-to-day mechanics of managing organisations and projects.
+See [Project templates](../core-features/project-templates.md) for how projects are created, archived, and templated, and [Workflows → Organisations and projects](../workflows/organisations-and-projects.md) for the day-to-day mechanics of managing organisations and projects.

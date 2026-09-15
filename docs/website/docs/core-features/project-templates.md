@@ -23,4 +23,4 @@ An organisation can also set a **default template** (**Organisation admin → Pr
 
 ## Where this fits
 
-See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md) for why this exists, and [Workflows → Organisations and projects](../workflows/index.md) for the end-to-end task walkthrough of creating a project from a template.
+See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md) for why this exists, and [Workflows → Organisations and projects](../workflows/organisations-and-projects.md) for the end-to-end task walkthrough of creating a project from a template.

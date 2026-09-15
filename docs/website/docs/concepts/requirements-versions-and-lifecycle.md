@@ -25,7 +25,7 @@ A requirement moves through a fixed sequence of statuses: **Draft** → **Review
 
 ## Locking
 
-Once a requirement is **Approved** or **Completed**, it is locked: the edit form disables itself, and any further change has to go through a formal change request rather than a silent edit. This is what makes a baseline mean something — "approved" is a real commitment, not a label that can quietly drift. The full mechanics of proposing and approving a change to a locked requirement, plus what happens if someone tries to edit one directly, are covered in [Workflows → Authoring and reviewing requirements](../workflows/index.md).
+Once a requirement is **Approved** or **Completed**, it is locked: the edit form disables itself, and any further change has to go through a formal change request rather than a silent edit. This is what makes a baseline mean something — "approved" is a real commitment, not a label that can quietly drift. The full mechanics of proposing and approving a change to a locked requirement, plus what happens if someone tries to edit one directly, are covered in [Workflows → Authoring and reviewing requirements](../workflows/authoring-and-reviewing-requirements.md).
 
 ## Why it's built this way
 

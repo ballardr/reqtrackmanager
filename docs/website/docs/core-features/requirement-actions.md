@@ -25,4 +25,4 @@ The Actions list filters by type and outcome, and **Include archived** brings ba
 
 ## Where this fits
 
-See [Requirements management](./requirements-management.md) for how a requirement itself is authored and reviewed, and [Workflows → Requirement actions](../workflows/index.md) for the end-to-end task walkthrough.
+See [Requirements management](./requirements-management.md) for how a requirement itself is authored and reviewed, and [Workflows → Requirement actions](../workflows/requirement-actions.md) for the end-to-end task walkthrough.

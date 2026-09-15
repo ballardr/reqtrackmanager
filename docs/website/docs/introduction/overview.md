@@ -32,4 +32,4 @@ The screenshots below are captured from the seeded demo dataset — a fictional 
 - New to the product? Read [Use cases](./use-cases.md) for concrete scenarios this was built for.
 - Want to understand the model before clicking around? Start with [Concepts](../concepts/organisations-and-projects.md).
 - Ready to run it yourself? [Installation & Deployment](../installation-deployment/overview.md) has a one-command local stack with this exact demo dataset.
-- Want to see how a specific screen works, step by step? See [Workflows](../workflows/index.md).
+- Want to see how a specific screen works, step by step? See [Workflows](../workflows/signing-in.md).

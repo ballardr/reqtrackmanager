@@ -8,9 +8,9 @@ This document is the persistent, session-resumable implementation plan for build
 
 ## Status / Resume Here
 
-**Last updated:** 2026-09-15 (Phase 4 complete).
+**Last updated:** 2026-09-15 (Phase 5 complete).
 
-**Overall progress:** 4 / 10 phases complete.
+**Overall progress:** 5 / 10 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -18,7 +18,7 @@ This document is the persistent, session-resumable implementation plan for build
 | 2 | Introduction + Concepts section | [x] Complete |
 | 3 | Installation & Deployment chapter | [x] Complete |
 | 4 | Core Features section | [x] Complete |
-| 5 | Workflows section | [ ] Not started |
+| 5 | Workflows section | [x] Complete |
 | 6 | Modules section (own top-level nav) | [ ] Not started |
 | 7 | API & Integrations section (REST API, SSO, SCIM, AI assistants/MCP) | [ ] Not started |
 | 8 | Enterprise & Security section | [ ] Not started |

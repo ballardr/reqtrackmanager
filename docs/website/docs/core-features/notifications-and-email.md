@@ -35,4 +35,4 @@ flowchart LR
 
 ## Where this fits
 
-See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md) for the underlying model, and [Workflows → Notifications](../workflows/index.md) for the end-to-end task walkthrough.
+See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md) for the underlying model, and [Workflows → Notifications](../workflows/notifications.md) for the end-to-end task walkthrough.

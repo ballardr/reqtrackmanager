@@ -19,4 +19,4 @@ The Projects list offers **tile**, **list**, and (for an organisation with hiera
 
 ## Where this fits
 
-These controls appear throughout [Requirements management](./requirements-management.md), [Change requests](./change-requests.md), and the [Workflows](../workflows/index.md) section's task walkthroughs — this page exists as a single reference for behaviour that's otherwise repeated on nearly every list in the app.
+These controls appear throughout [Requirements management](./requirements-management.md), [Change requests](./change-requests.md), and the Workflows section's task walkthroughs (see [Authoring and reviewing requirements](../workflows/authoring-and-reviewing-requirements.md) for the requirements list in context) — this page exists as a single reference for behaviour that's otherwise repeated on nearly every list in the app.

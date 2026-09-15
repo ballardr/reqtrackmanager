@@ -23,4 +23,4 @@ The same Reports page exports requirements as CSV — every field, including cus
 
 ## Where this fits
 
-See [Workflows → Reporting and CSV import/export](../workflows/index.md) for the end-to-end task walkthrough, and [Project templates](./project-templates.md) for how report content carries into a newly created project.
+See [Workflows → Reporting and CSV import/export](../workflows/reporting-and-csv-import-export.md) for the end-to-end task walkthrough, and [Project templates](./project-templates.md) for how report content carries into a newly created project.

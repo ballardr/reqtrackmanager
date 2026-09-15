@@ -34,4 +34,4 @@ Rather than assigning roles to individuals one at a time, a project defines four
 
 The role vocabulary is fixed rather than freely definable. A custom permission-authoring system is a materially larger feature with its own failure modes (a misconfigured custom role silently under- or over-granting access); a small, well-understood set of roles that combine predictably is easier to audit and reason about — which matters more for a tool whose whole purpose is an auditable trail of who could do what, and when.
 
-See [Organisations and projects](./organisations-and-projects.md) for the containment model these roles apply within, and [Workflows → Administering an organisation](../workflows/index.md) / [Administering a project](../workflows/index.md) for the day-to-day mechanics.
+See [Organisations and projects](./organisations-and-projects.md) for the containment model these roles apply within, and [Workflows → Administering an organisation](../workflows/administering-an-organisation.md) / [Administering a project](../workflows/administering-a-project.md) for the day-to-day mechanics.

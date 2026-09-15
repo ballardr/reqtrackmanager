@@ -21,4 +21,4 @@ An organisation can require every member to have 2FA enabled (**Organisation adm
 
 ## Where this fits
 
-See [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md) for how 2FA fits into the broader access-control model, and [Workflows → Two-factor authentication](../workflows/index.md) for the end-to-end task walkthrough.
+See [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md) for how 2FA fits into the broader access-control model, and [Workflows → Two-factor authentication](../workflows/two-factor-authentication.md) for the end-to-end task walkthrough.

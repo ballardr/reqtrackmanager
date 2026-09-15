@@ -27,4 +27,4 @@ Change requests also carry:
 
 ## The change-request-only-once-locked rule
 
-A requirement that hasn't yet been approved can still be edited directly — there's nothing to protect yet. The rule only kicks in once a requirement is locked, which is exactly the point at which a spreadsheet-based process would otherwise let someone quietly edit something the team already signed off on. See [Requirements, versions, and the lifecycle](./requirements-versions-and-lifecycle.md) for how locking itself works, and [Workflows → Change requests](../workflows/index.md) for the actual submit/review/approve mechanics.
+A requirement that hasn't yet been approved can still be edited directly — there's nothing to protect yet. The rule only kicks in once a requirement is locked, which is exactly the point at which a spreadsheet-based process would otherwise let someone quietly edit something the team already signed off on. See [Requirements, versions, and the lifecycle](./requirements-versions-and-lifecycle.md) for how locking itself works, and [Workflows → Change requests](../workflows/change-requests.md) for the actual submit/review/approve mechanics.

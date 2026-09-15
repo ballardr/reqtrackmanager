@@ -51,5 +51,5 @@ There's no organisation-deletion endpoint, so the script only skips rather than 
 ## Next steps
 
 - [Use cases](../introduction/use-cases.md) for the kinds of teams this was built for.
-- [Workflows](../workflows/index.md) for a guided tour of each screen, step by step.
+- [Workflows](../workflows/signing-in.md) for a guided tour of each screen, step by step.
 - [Production deployment](./production-deployment.md) once you're ready to run this for real users.

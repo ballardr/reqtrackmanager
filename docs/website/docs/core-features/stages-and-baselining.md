@@ -26,4 +26,4 @@ Once a stage's work is delivered, a project manager can mark the **stage itself 
 
 ## Where this fits
 
-See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for what a baseline is and why it exists, and [Workflows → Stages, baselining, and reviews](../workflows/index.md) for the end-to-end task walkthrough.
+See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for what a baseline is and why it exists, and [Workflows → Stages, baselining, and reviews](../workflows/stages-baselining-and-reviews.md) for the end-to-end task walkthrough.

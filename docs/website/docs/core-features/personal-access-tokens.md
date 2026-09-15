@@ -25,4 +25,4 @@ Pass the token as `Authorization: Bearer <token>` on API requests. From the same
 
 ## Where this fits
 
-See [API & Integrations → Authenticating](../api-integrations/index.md) for how a PAT is used to call the REST API or connect an MCP client, and [Workflows → Preferences and help](../workflows/index.md) for the end-to-end task walkthrough.
+See [API & Integrations → Authenticating](../api-integrations/index.md) for how a PAT is used to call the REST API or connect an MCP client, and [Workflows → Preferences and help](../workflows/preferences-and-help.md) for the end-to-end task walkthrough.

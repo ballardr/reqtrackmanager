@@ -42,4 +42,4 @@ Click **Import CSV** on the Requirements page, choose a file, then map its colum
 
 ## Where this fits
 
-See [Change requests](./change-requests.md) for how a locked requirement is modified, [Stages and baselining](./stages-and-baselining.md) for how locking itself is triggered, and [Workflows → Authoring and reviewing requirements](../workflows/index.md) for the end-to-end task walkthrough.
+See [Change requests](./change-requests.md) for how a locked requirement is modified, [Stages and baselining](./stages-and-baselining.md) for how locking itself is triggered, and [Workflows → Authoring and reviewing requirements](../workflows/authoring-and-reviewing-requirements.md) for the end-to-end task walkthrough.

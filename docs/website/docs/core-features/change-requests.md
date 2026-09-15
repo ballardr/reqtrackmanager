@@ -35,4 +35,4 @@ As with requirements, clicking a status or target-stage badge in the Change Requ
 
 ## Where this fits
 
-See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for why the review workflow exists and the locking rule that triggers it, and [Workflows → Change requests](../workflows/index.md) for the end-to-end task walkthrough.
+See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for why the review workflow exists and the locking rule that triggers it, and [Workflows → Change requests](../workflows/change-requests.md) for the end-to-end task walkthrough.
