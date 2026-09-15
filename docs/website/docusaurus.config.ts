@@ -99,7 +99,12 @@ const config: Config = {
         },
         {
           href: 'https://github.com/ballardr/reqtrackmanager',
-          label: 'GitHub',
+          label: 'Repository',
+          position: 'left',
+        },
+        {
+          href: 'https://github.com/sponsors/ballardr/',
+          label: 'Sponsor',
           position: 'right',
         },
       ],
