@@ -20,7 +20,7 @@ The failure mode of a shared requirements spreadsheet is familiar: by the second
 
 ## A team tracking a compliance framework against real requirements
 
-Once the optional [Compliance module](../modules/index.md) is enabled for an organisation, a team can define a reusable compliance standard (an internal security standard, a regulatory obligation, a customer-mandated framework), version it, and track each project's own assessment against it — independently of every other project in the organisation.
+Once the optional [Compliance module](../modules/compliance-module.md) is enabled for an organisation, a team can define a reusable compliance standard (an internal security standard, a regulatory obligation, a customer-mandated framework), version it, and track each project's own assessment against it — independently of every other project in the organisation.
 
 ## A multi-project engineering organisation
 

@@ -69,8 +69,26 @@ interface State {
  * so the very first render after any `projectId` change already reports
  * `loaded: false` (or `true` immediately, for the "no project" case) with
  * no stale carry-over from whatever `projectId` was current before.
+ *
+ * `ready` (found 2026-09-15, documenting the Modules section) covers a
+ * third, structural race one step earlier still: `App.tsx`'s `ProtectedRoutes`
+ * must call this hook unconditionally, before its own `if (loading) return
+ * <Spinner />` early return (Rules of Hooks) — but React fires a commit's
+ * passive effects child-before-parent, so on a fresh app boot this hook's
+ * effect (a descendant of `AuthProvider`) can fire, and dispatch its fetch,
+ * *before* `AuthProvider`'s own effect has called `loadStoredToken()`. That
+ * first request went out with no `Authorization` header at all, 401ed, and —
+ * because `projectId` never changes again for the rest of that project visit
+ * — this hook never got a second chance to fetch, permanently hiding every
+ * Tier A module's nav entry/route for that project for the rest of the
+ * session (worse than the plain failed-fetch case above, which at least
+ * resolves; this one resolves to a *wrong*, stuck-empty result). `App.tsx`
+ * passes `!loading` here so the effect simply doesn't fire at all until
+ * `AuthProvider` has already set a real token — `Layout.tsx`'s own call site
+ * needs no such gate, since `Layout` only ever mounts after `ProtectedRoutes`'s
+ * `loading` check has already passed.
  */
-export function useProjectEnabledModules(projectId: string | null): ProjectEnabledModulesResult {
+export function useProjectEnabledModules(projectId: string | null, ready: boolean = true): ProjectEnabledModulesResult {
   const [state, setState] = useState<State>({ forId: projectId, modules: [], loaded: projectId === null });
 
   if (state.forId !== projectId) {
@@ -78,15 +96,31 @@ export function useProjectEnabledModules(projectId: string | null): ProjectEnabl
   }
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !ready) return;
     let cancelled = false;
-    api.get<ModuleNavEntry[]>(`/api/v1/projects/${projectId}/enabled-modules`).then((result) => {
-      if (!cancelled) setState({ forId: projectId, modules: result, loaded: true });
-    });
+    api.get<ModuleNavEntry[]>(`/api/v1/projects/${projectId}/enabled-modules`).then(
+      (result) => {
+        if (!cancelled) setState({ forId: projectId, modules: result, loaded: true });
+      },
+      () => {
+        // A failed fetch (e.g. a transient 401) must still resolve `loaded`
+        // to `true` — leaving it `false` forever was a real bug: `App.tsx`'s
+        // wildcard route (see its own comment at that route) holds a
+        // project-scoped navigation on a spinner until `loaded` flips,
+        // specifically so it doesn't need to know this list yet. A rejected
+        // promise here never flipped it, so one transient failure produced
+        // a permanently stuck spinner on every module route for that
+        // project, with no retry. Falling back to `modules: []` is the same
+        // safe default this hook already returns while a fetch is in
+        // flight — worst case a module's nav entry/route is briefly
+        // unavailable, never a hang.
+        if (!cancelled) setState({ forId: projectId, modules: [], loaded: true });
+      }
+    );
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, ready]);
 
   // By this point `state.forId === projectId` always holds: calling
   // `setState` during render (above) makes React immediately discard this
