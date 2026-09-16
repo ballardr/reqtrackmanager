@@ -67,6 +67,22 @@ const config: Config = {
         language: ['en'],
       },
     ],
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // No separate homepage - `/` should land a visitor straight on the
+        // docs' own front page rather than a hero/"Read the docs" page in
+        // between. The navbar logo's `href` below is pointed at the same
+        // target rather than left at its `/` default, so nothing else in
+        // the site links to `/` itself for onBrokenLinks to validate.
+        redirects: [
+          {
+            from: '/',
+            to: '/docs/introduction/overview',
+          },
+        ],
+      },
+    ],
   ],
 
   themeConfig: {
@@ -78,6 +94,7 @@ const config: Config = {
       title: 'ReqTrackManager',
       logo: {
         alt: 'ReqTrackManager logo',
+        href: '/docs/introduction/overview',
         src: 'img/logo.svg',
         // Matches the app's own header logo height (Layout.tsx's
         // `style={{height: 24}}` on the same mark) rather than Infima's

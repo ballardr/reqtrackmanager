@@ -8,6 +8,11 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
  * filesystem/alphabetical ordering. Every section has real content as of
  * Phase 9 (API & Integrations nests a further "AI assistants (MCP)" category
  * inside it) - the plan's Phase 10 is polish/cross-linking/QA, not new pages.
+ * Modules nests a further "Compliance module" category the same way, added
+ * post-launch (2026-09-17) once that module's single page proved too shallow
+ * to cover it - see docs/decisions.md's "Compliance module docs: nested
+ * page split" entry. Any future module gets the same treatment rather than
+ * one long page, per that decision.
  */
 const sidebars: SidebarsConfig = {
   docsSidebar: [
@@ -86,9 +91,23 @@ const sidebars: SidebarsConfig = {
       label: 'Modules',
       items: [
         'modules/overview',
-        'modules/compliance-module',
+        {
+          type: 'category',
+          label: 'Compliance module',
+          items: [
+            'modules/compliance-module/overview',
+            'modules/compliance-module/data-model-and-lifecycle',
+            'modules/compliance-module/assessing-a-project',
+            'modules/compliance-module/reviews-and-notifications',
+            'modules/compliance-module/mapping-and-migration',
+            'modules/compliance-module/reporting-and-export',
+            'modules/compliance-module/mcp-integration',
+            'modules/compliance-module/known-limitations',
+          ],
+        },
         'modules/building-your-own-module',
         'modules/third-party-and-federated-modules',
+        'modules/roadmap',
       ],
     },
     {

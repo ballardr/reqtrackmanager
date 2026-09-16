@@ -29,7 +29,7 @@ A module (e.g. the Compliance module) contributes its own endpoints under the sa
 
 ## Module-contributed endpoints and tools
 
-A [module](../modules/overview.md) isn't limited to what ships in the core application: it can contribute its own REST endpoints (the URL shape above) and its own MCP tools, automatically prefixed with the module's key and registered alongside the hand-written ones (see [AI assistants → Overview](./ai-assistants-mcp/overview.md#module-contributed-tools)). The Compliance module, documented in [Modules → Compliance module](../modules/compliance-module.md), is the working example of both. For the contract a module implements to do this — the `ModuleDefinition` shape, how a router gets mounted, how an MCP tool is declared and mechanically constrained — see [Modules → Building your own module](../modules/building-your-own-module.md).
+A [module](../modules/overview.md) isn't limited to what ships in the core application: it can contribute its own REST endpoints (the URL shape above) and its own MCP tools, automatically prefixed with the module's key and registered alongside the hand-written ones (see [AI assistants → Overview](./ai-assistants-mcp/overview.md#module-contributed-tools)). The Compliance module, documented in [Modules → Compliance module](../modules/compliance-module/overview.md), is the working example of both. For the contract a module implements to do this — the `ModuleDefinition` shape, how a router gets mounted, how an MCP tool is declared and mechanically constrained — see [Modules → Building your own module](../modules/building-your-own-module.md).
 
 ## Request and response conventions
 
