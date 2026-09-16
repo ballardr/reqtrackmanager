@@ -2342,6 +2342,7 @@ def get_advanced_settings(
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
+        allow_ai_approvals=org.allow_ai_approvals,
     )
 
 
@@ -2387,6 +2388,14 @@ def update_advanced_settings(
     # requires_change_request_for_links` and `Organization.
     # force_require_change_request_for_approved_links`'s docstring.
     org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
+    # AI approval via MCP (docs/decisions.md): org half of the two-level
+    # opt-in gate. The frontend requires an explicit acknowledgment dialog
+    # before ever sending `allow_ai_approvals=true` here — this endpoint
+    # trusts that already happened (same "form-level guardrail, not
+    # server-enforced" pattern as every other advanced-settings checkbox on
+    # this endpoint), since the decision is a human's, not something to
+    # validate server-side.
+    org.allow_ai_approvals = payload.allow_ai_approvals
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
@@ -2401,6 +2410,7 @@ def update_advanced_settings(
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
+        allow_ai_approvals=org.allow_ai_approvals,
     )
 
 

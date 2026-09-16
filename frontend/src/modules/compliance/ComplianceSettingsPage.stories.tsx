@@ -13,6 +13,7 @@ const ORG: Organization = {
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   force_require_change_request_for_approved_links: false,
+  allow_ai_approvals: false,
 };
 const ACTION_TYPES: ComplianceActionType[] = [{ id: "at-1", organization_id: ORG.id, name: "Review", sort_order: 0 }];
 const MAPPING_TYPES: ComplianceMappingRelationshipType[] = [

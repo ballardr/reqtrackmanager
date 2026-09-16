@@ -151,6 +151,15 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # active org force like any other, until its own manager or an org admin
     # deliberately opts it out.
     exempt_from_org_link_lock: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether an AI assistant acting through the MCP server may perform an
+    # approval-type action in this project — see
+    # Organization.allow_ai_approvals's docstring for the full mechanism.
+    # Both this AND the organisation's own flag must be true; there is no
+    # per-project exemption/override here (unlike the link-lock pair above)
+    # since this only ever narrows what's possible, never widens it. Off by
+    # default, requiring a project manager/administrator to explicitly
+    # acknowledge the accountability trade-off in the UI before enabling it.
+    allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether this project can be used as a template for new projects (C-E-05).
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     # Whether every org member automatically gets baseline view access

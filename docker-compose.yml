@@ -166,10 +166,16 @@ services:
     environment:
       REQTRACK_API_URL: http://backend:8000
       REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
-      # Off by default: a deployment operator must explicitly opt in before
-      # this server can create/edit anything — see docs/mcp-server.md's
-      # "Write mode" section.
-      MCP_WRITES_ENABLED: ${MCP_WRITES_ENABLED:-false}
+      # On by default (docs/decisions.md's "AI approval via MCP" entry,
+      # 2026-09): lets an AI assistant author/edit requirement content out
+      # of the box. Set to "false" to opt this deployment back into
+      # read-only-only. Note this is separate from, and does not by itself
+      # enable, the further AI-approval capability (approve_requirement/
+      # decide_change_request/complete_requirement) — that also needs an
+      # org admin and a project manager to each explicitly enable it for
+      # their own organisation/project. See docs/mcp-server.md's "Write
+      # mode" section.
+      MCP_WRITES_ENABLED: ${MCP_WRITES_ENABLED:-true}
     depends_on:
       backend:
         condition: service_healthy

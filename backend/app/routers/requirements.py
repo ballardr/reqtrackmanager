@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, get_request_channel
 from app.metrics import (
     requirements_archived_total,
     requirements_created_total,
@@ -71,7 +71,12 @@ from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
-from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
+from app.services.rbac import (
+    get_effective_project_roles,
+    require_ai_approvals_enabled,
+    require_project_manage,
+    require_project_view,
+)
 from app.services.requirement_csv import (
     CUSTOM_FIELD_COLUMN_PREFIX,
     custom_field_definitions_for_export,
@@ -770,6 +775,7 @@ def record_review_outcome(
 def approve_requirement(
     project_id: UUID, requirement_id: UUID,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
     """Approves a draft or reviewed requirement directly (C-G-11) — the
     previously-missing standalone path out of draft/reviewed status (2026-08
@@ -789,22 +795,30 @@ def approve_requirement(
     can also provide approvals for change requests and approval of project
     requirements from scoping review to project requirements") — the same
     check `decide_change_request` and `update_requirement`'s own
-    status=approved branch already use.
+    status=approved branch already use. When reached through the MCP server
+    (`channel == "mcp"`), additionally requires this project and its
+    organisation to both have explicitly enabled AI approval (docs/decisions.md's
+    "AI approval via MCP" entry) — a plain UI/API call is unaffected by that
+    flag either way.
     """
     if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, db.get(Project, project_id))
     current_version = get_current_version(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
     new_version = apply_new_version(
         db, requirement, current_version, current_user,
-        status_value=RequirementStatus.APPROVED, change_note="Approved directly.",
+        status_value=RequirementStatus.APPROVED,
+        change_note="Approved via MCP." if channel == "mcp" else "Approved directly.",
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="approved",
-              actor_id=current_user.id, project_id=project_id)
+              actor_id=current_user.id, project_id=project_id,
+              detail={"via": "mcp"} if channel == "mcp" else None)
     db.commit()
     db.refresh(requirement)
     pubsub.notify(project_id, {"type": "requirement", "action": "approved", "id": str(requirement.id)})
@@ -815,11 +829,14 @@ def approve_requirement(
 def complete_requirement(
     project_id: UUID, requirement_id: UUID,
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db), channel: str = Depends(get_request_channel),
 ):
     """Marks an approved requirement completed (C-P-03, C-G-11), gated the
     same as archiving — a status transition a project manager can make
-    directly, not content that needs to go through a change request.
+    directly, not content that needs to go through a change request. When
+    reached through the MCP server, additionally requires this project and
+    its organisation to both have explicitly enabled AI approval — see
+    `approve_requirement`'s docstring.
 
     Sets `is_completed`/`completed_at`/`completed_by` directly on the
     `Requirement` row rather than calling `apply_new_version` — completion
@@ -830,6 +847,8 @@ def complete_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, project)
     current_version = get_current_version(db, requirement.id)
     if current_version.status != RequirementStatus.APPROVED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only an approved requirement can be marked completed.")
@@ -839,7 +858,8 @@ def complete_requirement(
     requirement.completed_at = datetime.now(UTC)
     requirement.completed_by = current_user.id
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="completed",
-              actor_id=current_user.id, project_id=project_id)
+              actor_id=current_user.id, project_id=project_id,
+              detail={"via": "mcp"} if channel == "mcp" else None)
     db.commit()
     db.refresh(requirement)
     return _to_out(db, requirement, current_version, current_user.id)

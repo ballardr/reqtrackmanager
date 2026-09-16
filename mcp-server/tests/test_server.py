@@ -50,6 +50,10 @@ READ_ONLY_TOOLS = {
     "list_my_reviews_due", "list_project_reviews_due",
 }
 WRITE_TOOLS = {"create_requirement", "update_requirement"}
+# AI approval via MCP (docs/decisions.md): approval-type tools, always
+# present when write mode is on (each additionally gated at call time on a
+# live org+project allow_ai_approvals setting — see the tests below).
+APPROVAL_TOOLS = {"approve_requirement", "decide_change_request", "complete_requirement"}
 
 requires_write_mode = pytest.mark.skipif(
     not MCP_WRITES_ENABLED, reason="MCP_WRITES_ENABLED is not set on the server under test"
@@ -85,18 +89,19 @@ def test_health_check_is_reachable_without_auth():
 async def test_tools_are_discoverable():
     async with _client(None) as client:
         tools = {t.name for t in await client.list_tools()}
-    expected = READ_ONLY_TOOLS | (WRITE_TOOLS if MCP_WRITES_ENABLED else set())
+    expected = READ_ONLY_TOOLS | (WRITE_TOOLS | APPROVAL_TOOLS if MCP_WRITES_ENABLED else set())
     assert tools == expected
 
 
 @pytest.mark.asyncio
-async def test_no_tool_can_ever_approve_or_decide_anything():
-    """Regression guard for the explicit product decision (docs/decisions.md's
-    "MCP server write mode" entry): no tool, in either mode, may approve or
-    decide a change request, approve/complete a requirement, or record a
-    review outcome — those stay human-only actions taken in the UI. Guards
-    against a future change accidentally adding one without deliberately
-    revisiting that decision."""
+async def test_only_the_explicitly_allowed_approval_tools_exist():
+    """Regression guard, updated for docs/decisions.md's "AI approval via
+    MCP" entry, which deliberately reopened the original blanket exclusion
+    (this same test's previous form, `test_no_tool_can_ever_approve_or_
+    decide_anything`) for exactly three tools. Voting and recording a
+    review outcome remain excluded in every configuration; guards against a
+    *fourth* approval-type tool appearing without deliberately revisiting
+    this decision again."""
     async with _client(None) as client:
         tools = {t.name for t in await client.list_tools()}
     # Checked as a *leading* verb, not a substring — a read tool like
@@ -104,9 +109,13 @@ async def test_no_tool_can_ever_approve_or_decide_anything():
     # advisory tally, not casting one) and must not trip this guard.
     forbidden_leading_verbs = {"approve", "decide", "complete", "vote", "reject"}
     for name in tools:
+        if name in APPROVAL_TOOLS:
+            continue
         leading_verb = name.lower().split("_", 1)[0]
         assert leading_verb not in forbidden_leading_verbs, f"{name!r} looks like an approval-type tool"
         assert "review_outcome" not in name.lower(), f"{name!r} looks like an approval-type tool"
+    if MCP_WRITES_ENABLED:
+        assert APPROVAL_TOOLS <= tools
 
 
 @pytest.mark.asyncio
@@ -385,6 +394,137 @@ async def test_update_requirement_rejects_edits_to_a_locked_requirement(admin_to
                 "update_requirement",
                 {"project_id": project_id, "requirement_id": requirement_id, "reasoning": "Should not be allowed."},
             )
+
+
+def _own_org_id(admin_token: str) -> str:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    return httpx.get(f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10).json()[0]["id"]
+
+
+def _set_ai_approvals(admin_token: str, org_id: str, project_id: str, *, org_enabled: bool, project_enabled: bool) -> None:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_resp = httpx.put(
+        f"{REQTRACK_API_URL}/api/v1/orgs/{org_id}/advanced-settings",
+        json={"allow_ai_approvals": org_enabled}, headers=headers, timeout=10,
+    )
+    org_resp.raise_for_status()
+    project_resp = httpx.patch(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}",
+        json={"allow_ai_approvals": project_enabled}, headers=headers, timeout=10,
+    )
+    project_resp.raise_for_status()
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_approve_requirement_blocked_until_ai_approval_enabled_for_both_org_and_project(admin_token):
+    """AI approval via MCP (docs/decisions.md): approve_requirement fails
+    with a clear error while either flag is off, even for this admin
+    account's own full project-manager rights, and succeeds once both are
+    explicitly enabled — recording "Approved via MCP." in the requirement's
+    history so it's distinguishable from a human approving directly."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    org_id = _own_org_id(admin_token)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {"project_id": project_id, "name": "Needs AI approval", "component_id": component_id, "category_id": category_id},
+        )
+        requirement_id = created.data["id"]
+
+        with pytest.raises(ToolError, match="AI approval is not enabled"):
+            await client.call_tool("approve_requirement", {"project_id": project_id, "requirement_id": requirement_id})
+
+        _set_ai_approvals(admin_token, org_id, project_id, org_enabled=True, project_enabled=False)
+        with pytest.raises(ToolError, match="AI approval is not enabled"):
+            await client.call_tool("approve_requirement", {"project_id": project_id, "requirement_id": requirement_id})
+
+        _set_ai_approvals(admin_token, org_id, project_id, org_enabled=True, project_enabled=True)
+        approved = await client.call_tool(
+            "approve_requirement", {"project_id": project_id, "requirement_id": requirement_id}
+        )
+    assert approved.data["status"] == "approved"
+
+    history = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{requirement_id}/history",
+        headers=headers, timeout=10,
+    ).json()
+    assert history[-1]["change_note"] == "Approved via MCP."
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_a_plain_api_call_to_approve_is_unaffected_by_ai_approval_flags(admin_token):
+    """Regression guard: the new gate must only ever apply to an MCP-
+    originated call — a plain REST call (no X-Reqtrack-Client header, which
+    is exactly what a browser/curl call looks like) must keep working via
+    ordinary RBAC alone, with both flags left at their default (off)."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    created = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements",
+        json={"name": "Direct approval", "component_id": component_id, "category_id": category_id},
+        headers=headers, timeout=10,
+    ).json()
+    approve = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{created['id']}/approve",
+        headers=headers, timeout=10,
+    )
+    assert approve.status_code == 200, approve.text
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_complete_and_decide_change_request_are_also_gated(admin_token):
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    org_id = _own_org_id(admin_token)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {"project_id": project_id, "name": "For completion", "component_id": component_id, "category_id": category_id},
+        )
+        requirement_id = created.data["id"]
+        approve = httpx.post(
+            f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{requirement_id}/approve",
+            headers=headers, timeout=10,
+        )
+        assert approve.status_code == 200
+
+        with pytest.raises(ToolError, match="AI approval is not enabled"):
+            await client.call_tool("complete_requirement", {"project_id": project_id, "requirement_id": requirement_id})
+
+        _set_ai_approvals(admin_token, org_id, project_id, org_enabled=True, project_enabled=True)
+        completed = await client.call_tool(
+            "complete_requirement", {"project_id": project_id, "requirement_id": requirement_id}
+        )
+    assert completed.data["is_completed"] is True
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_default_scope_headers_let_project_id_be_omitted(admin_token):
+    """AI approval via MCP work also added optional X-Default-Organization-Id/
+    X-Default-Project-Id connection headers as a convenience — a client
+    configured with one can omit project_id from a tool call entirely."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    headers = {"Authorization": f"Bearer {admin_token}", "X-Default-Project-Id": project_id}
+    async with Client(StreamableHttpTransport(url=MCP_SERVER_URL, headers=headers)) as client:
+        created = await client.call_tool(
+            "create_requirement", {"name": "Defaulted scope", "component_id": component_id, "category_id": category_id}
+        )
+        assert created.data["name"] == "Defaulted scope"
+
+        requirements = await client.call_tool("list_requirements", {})
+        assert any(r["id"] == created.data["id"] for r in requirements.data)
+
+
+@pytest.mark.asyncio
+async def test_missing_project_id_and_no_default_scope_fails_clearly(admin_token):
+    async with _client(admin_token) as client:
+        with pytest.raises(ToolError, match="X-Default-Project-Id"):
+            await client.call_tool("get_project", {})
 
 
 LOGIN_PAGE_URL = MCP_SERVER_URL.replace("/mcp", "/login")

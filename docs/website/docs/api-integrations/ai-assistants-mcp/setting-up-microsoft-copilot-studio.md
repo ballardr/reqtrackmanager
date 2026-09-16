@@ -16,6 +16,8 @@ Copilot Studio's native MCP wizard supports header-based API-key authentication 
 
 Because Copilot Studio's connection is configured once per connector rather than refreshed per-session the way Claude Code's `headersHelper` can, use a [Personal Access Token](../authenticating.md) here rather than a 12-hour session token.
 
+The wizard above only configures one header (the `Authorization` API key), so it has no dedicated slot for the optional `X-Default-Organization-Id`/`X-Default-Project-Id` headers described in [Overview → Default organisation/project scope](./overview.md#default-organisationproject-scope) — if your Copilot Studio setup supports adding further custom headers to an MCP connector beyond this wizard's single API-key field, add them there the same way; otherwise, have the assistant pass `project_id`/`organization_id` explicitly on each tool call instead.
+
 ## Where this fits
 
 See [Overview](./overview.md) for what's available once connected, and [Deploying for remote clients](./deploying-for-remote-clients.md) for exposing this server outside `localhost` in the first place.

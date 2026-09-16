@@ -779,7 +779,8 @@ def list_projects(
                 is_archived=p.is_archived, is_template=p.is_template,
                 allow_member_change_requests=p.allow_member_change_requests,
                 require_change_request_for_approved_links=p.require_change_request_for_approved_links,
-                exempt_from_org_link_lock=p.exempt_from_org_link_lock, visibility=p.visibility,
+                exempt_from_org_link_lock=p.exempt_from_org_link_lock, allow_ai_approvals=p.allow_ai_approvals,
+                visibility=p.visibility,
                 terminology=p.terminology, status_id=p.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,
@@ -1039,6 +1040,13 @@ def update_project(
         project.require_change_request_for_approved_links = payload.require_change_request_for_approved_links
     if payload.exempt_from_org_link_lock is not None:
         project.exempt_from_org_link_lock = payload.exempt_from_org_link_lock
+    if payload.allow_ai_approvals is not None:
+        # AI approval via MCP (docs/decisions.md) — project half of the
+        # two-level opt-in gate; see Project.allow_ai_approvals's docstring.
+        # The frontend requires an explicit acknowledgment dialog before
+        # ever sending `allow_ai_approvals=true`, same as the org-level
+        # counterpart in update_advanced_settings.
+        project.allow_ai_approvals = payload.allow_ai_approvals
     if payload.is_template is not None:
         project.is_template = payload.is_template
     if payload.can_be_parent is not None:
@@ -1254,7 +1262,8 @@ def get_project_children(
                 is_archived=c.is_archived, is_template=c.is_template,
                 allow_member_change_requests=c.allow_member_change_requests,
                 require_change_request_for_approved_links=c.require_change_request_for_approved_links,
-                exempt_from_org_link_lock=c.exempt_from_org_link_lock, visibility=c.visibility,
+                exempt_from_org_link_lock=c.exempt_from_org_link_lock, allow_ai_approvals=c.allow_ai_approvals,
+                visibility=c.visibility,
                 terminology=c.terminology, status_id=c.status_id,
                 current_stage_name=stage.name if stage else None,
                 current_stage_status=stage.status if stage else None,

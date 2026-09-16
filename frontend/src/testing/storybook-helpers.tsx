@@ -82,6 +82,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     allow_member_change_requests: true,
     require_change_request_for_approved_links: false,
     exempt_from_org_link_lock: false,
+    allow_ai_approvals: false,
     visibility: "only_specified",
     terminology: {},
     status_id: "status-1",

@@ -243,6 +243,21 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
 
     force_require_change_request_for_approved_links: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Whether an AI assistant acting through the MCP server (mcp-server/) may
+    # perform an approval-type action (approve a requirement, decide a
+    # change request, complete a requirement) in this organisation's
+    # projects. Consulted only for MCP-originated calls (see
+    # app.deps.get_request_channel) — a plain UI/API call is never affected
+    # by this flag. Both this AND the project's own `allow_ai_approvals`
+    # must be true (see Project.allow_ai_approvals); there is no org-wide
+    # "force" the way link-change-request policy has, since this is a
+    # narrowing gate, not a policy every project should inherit by default.
+    # Off by default: enabling it requires an org admin to explicitly
+    # acknowledge (in the UI) that an AI-made approval is not necessarily a
+    # deliberate, in-the-moment human decision. See docs/decisions.md's "AI
+    # approval via MCP" entry.
+    allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     """Platform-wide defaults for UI branding, lazily created as a single

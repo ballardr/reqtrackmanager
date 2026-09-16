@@ -355,6 +355,11 @@ export interface Organization {
   // to know whether this force is active to render their own project's
   // settings correctly. See `Project.require_change_request_for_approved_links`.
   force_require_change_request_for_approved_links: boolean;
+  // AI approval via MCP (docs/decisions.md) — readable by any org member
+  // for the same reason as the field above: a project manager configuring
+  // their own project's allow_ai_approvals needs to know whether the org
+  // side of the gate is even on. See Project.allow_ai_approvals.
+  allow_ai_approvals: boolean;
 }
 
 export interface OrgImportResult {
@@ -608,6 +613,11 @@ export interface Project {
   // force_require_change_request_for_approved_links` — meaningless unless
   // that org policy is active.
   exempt_from_org_link_lock: boolean;
+  // AI approval via MCP (docs/decisions.md) — project half of the
+  // two-level opt-in gate. Both this AND `Organization.allow_ai_approvals`
+  // must be true; there is no exemption/override here (unlike the pair
+  // above), since this only ever narrows what's possible, never widens it.
+  allow_ai_approvals: boolean;
   visibility: "only_specified" | "org_wide";
   terminology: Record<string, string>;
   status_id: string;
@@ -1222,7 +1232,13 @@ export function describeActivityEntry(entry: ChangeEntry): string {
   const who = entry.actor_display_name ?? "Someone";
   const action = activityActionLabel(entry.action);
   const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";
-  return `${who} ${action}${changeNote ? ` — ${changeNote}` : ""}`;
+  // AI approval via MCP (docs/decisions.md): every approval/decision/
+  // completion performed through the MCP server carries `detail.via ===
+  // "mcp"` — surfaced here so it's visible on every one of this function's
+  // callers (ActivityPanel, ProjectHistoryPage, requirement/CR Activity
+  // tabs) without each needing its own change.
+  const viaMcp = entry.detail?.via === "mcp" ? " (via MCP)" : "";
+  return `${who} ${action}${changeNote ? ` — ${changeNote}` : ""}${viaMcp}`;
 }
 
 /**
@@ -1314,6 +1330,9 @@ export interface OrgAdvancedSettings {
   // Platform review 2026-09, Phase 8 — see `Organization`'s own field of
   // the same name for the full resolution.
   force_require_change_request_for_approved_links: boolean;
+  // AI approval via MCP (docs/decisions.md) — see `Organization`'s own
+  // field of the same name for the full resolution.
+  allow_ai_approvals: boolean;
 }
 
 /** One module's state as seen by an org admin (module system Phase 1,

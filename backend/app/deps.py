@@ -272,3 +272,30 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def get_request_channel(request: Request) -> str:
+    """Identifies which channel a request arrived through: `"mcp"` if it
+    carries the self-declared `X-Reqtrack-Client: mcp-server` header
+    `mcp-server/server.py`'s `_call_backend` adds to every request it makes,
+    `"ui"` otherwise (the normal frontend/direct-API case).
+
+    This is a non-secret, self-identifying marker, not an authentication or
+    authorization mechanism — see docs/decisions.md's "AI approval via MCP"
+    entry for why that's sufficient here: the only thing this value gates
+    (an org/project's `allow_ai_approvals` check on an approval-type action)
+    can only ever *restrict* an action the calling account could already
+    take directly, so there is no privilege-escalation risk in a caller
+    spoofing this header in either direction. Used to (a) apply that gate
+    only to MCP-originated calls, never plain UI/API ones, and (b) mark the
+    resulting audit event / requirement change-note as "via MCP" so an
+    AI-made approval is visibly distinguishable from a human one wherever
+    it's later shown.
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        `"mcp"` or `"ui"`.
+    """
+    return "mcp" if request.headers.get("x-reqtrack-client") == "mcp-server" else "ui"
