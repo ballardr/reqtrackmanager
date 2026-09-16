@@ -6,7 +6,7 @@ sidebar_position: 1
 
 ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying for remote clients](./deploying-for-remote-clients.md).
 
-Read-only by default. An opt-in **write mode** additionally lets an AI assistant *author* requirement content — narrowly scoped, with a structural guarantee that no tool, in either mode, can ever approve or decide anything. See [Write mode](#write-mode) below.
+Read-only by default. An opt-in **write mode** (on by default) additionally lets an AI assistant *author* requirement content and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below.
 
 Every tool call authenticates with the caller's own ReqTrackManager token — see [Authenticating](../authenticating.md), which covers this in full; this page and the rest of this section link back to it rather than repeating it.
 
@@ -32,26 +32,40 @@ Fifteen read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus two write tools, only when write mode is enabled:
+Plus five write tools, only when write mode is enabled:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
+| `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation |
+| `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |
 
-No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](./known-limitations.md) for what's deliberately out of scope and why.
+No tool, in any configuration, can vote, comment, or record a review outcome. See [Known limitations](./known-limitations.md) for what's deliberately still out of scope and why.
 
 ## Write mode
 
-Off by default (`MCP_WRITES_ENABLED` unset, or anything other than `true`/`1`/`yes`/`on`) — a deployment operator must explicitly opt in before this server can change any data at all, and when it's off, `create_requirement`/`update_requirement` don't just refuse to run — they don't exist: an MCP client's tool list never mentions them. The bundled dev/test stack already sets it on; the production stack defaults it off.
+On by default (`MCP_WRITES_ENABLED` unset, or anything other than `false`/`0`/`no`/`off`) — set it to `false` explicitly to opt a deployment back into read-only-only. Both the bundled dev/test stack and the production stack default it on. When it's off, none of the five write tools above exist at all: an MCP client's tool list never mentions them.
 
-**Requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through this server, regardless of what the calling account's own role could do directly via the API. Editing an already-approved (locked) requirement is rejected with a clear error pointing at a change request instead — this server has no tool to create or decide one.
+**`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Editing an already-approved (locked) requirement is rejected with a clear error pointing at a change request instead.
 
-**Why approval specifically stays human-only, structurally, not just by convention:** ReqTrackManager's approval workflow (a Project Manager approving a requirement, or deciding a change request) is only meaningful if every approval represents a real person taking accountability for that decision. The backend's own RBAC would *correctly* let a PM-privileged caller approve something through this server if a tool offered it — RBAC isn't wrong here, it's just answering a different question ("is this account allowed to?") than the one that matters for this specific action ("did an accountable human actually decide this, right now, deliberately?"). So this boundary is enforced at this server's own tool surface — by never exposing the capability in the first place — rather than left to the backend's per-account authorization to (correctly, but insufficiently) gate.
+**`approve_requirement`/`decide_change_request`/`complete_requirement`: approval-type actions, gated by an explicit organisation-and-project opt-in.** ReqTrackManager's approval workflow is only meaningful if every approval represents a real person taking accountability for that decision, so this was originally kept entirely off-limits through this server. It's since been deliberately, narrowly reopened, under a two-level opt-in that must **both** be true:
 
-**Still exactly the same pass-through authentication and authorization as every read tool** — write mode doesn't add a second permission model, it just adds two more tools that happen to issue `POST`/`PUT` requests instead of `GET`. The caller's own account still needs a requirement-editing project role for either write tool to succeed, exactly as the UI would require.
+- The organisation's **Allow AI approval via MCP** setting (Org Admin → Security → Advanced settings), an org-admin-only toggle.
+- The specific project's own **Allow AI approval via MCP for this project** setting (Project Admin → Overview), a project-manager/administrator-only toggle.
 
-**What's still not exposed, even with write mode on** — a deliberately narrow first cut, not an oversight: submitting or deciding a change request, voting, commenting, recording a review outcome, marking a requirement completed, archiving/deleting, uploading attachments, and creating traceability links.
+Both are off by default, and enabling either one requires the enabling admin/manager to explicitly acknowledge — via a dialog that blocks confirmation until an acknowledgment checkbox is checked — that an AI-made approval isn't necessarily a deliberate, in-the-moment human decision and may weaken the accountability the approval workflow is meant to represent. If either flag is off, calling one of these three tools fails with a clear error, even if the calling account's own role would normally allow the action directly through the UI — a plain UI/API call is entirely unaffected by these two flags either way.
+
+Every approval/decision/completion performed this way is visibly marked "(via MCP)" wherever that requirement's or change request's activity is displayed, and approving a requirement this way records the change note "Approved via MCP." directly in its Version History.
+
+**Still exactly the same pass-through authentication and authorization as every read tool** — write mode doesn't add a second permission model. The caller's own account still needs a requirement-editing project role for `create_requirement`/`update_requirement`, and the project-manager role for the three approval-type tools, exactly as the UI would require.
+
+**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, uploading attachments, and creating traceability links.
+
+## Default organisation/project scope
+
+Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` / `X-Default-Project-Id` — let a client permanently scoped to one organisation or project omit `organization_id`/`project_id` from every tool call; the configured default is used instead when a call doesn't name one explicitly. Set them the same way you set the `Authorization` header — see [Generic/other MCP clients](./generic-mcp-clients.md).
 
 ## Module-contributed tools
 

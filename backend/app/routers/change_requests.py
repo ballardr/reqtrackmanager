@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, get_request_channel
 from app.metrics import (
     change_requests_approved_total,
     change_requests_rejected_total,
@@ -77,6 +77,7 @@ from app.services.rbac import (
     get_effective_project_roles,
     get_project_member_user_ids,
     get_project_users_by_role,
+    require_ai_approvals_enabled,
     require_project_manage,
     require_project_role,
     require_project_view,
@@ -608,15 +609,24 @@ def withdraw_change_request(
 def decide_change_request(
     project_id: UUID, cr_id: UUID, payload: ChangeRequestDecision,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
     """Approves or rejects a submitted change request (C-U-03: project manager only).
 
     Approval applies the proposed change immediately: for a modification, a
     new requirement version is created via the change-request path; for a
     new requirement, the requirement is created directly in approved state.
+
+    When reached through the MCP server (`channel == "mcp"`), additionally
+    requires this project and its organisation to both have explicitly
+    enabled AI approval — see `requirements.approve_requirement`'s
+    docstring and docs/decisions.md's "AI approval via MCP" entry. A plain
+    UI/API call is unaffected by that flag either way.
     """
     if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can decide change requests.")
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, db.get(Project, project_id))
 
     # Row-locked (not a plain db.get): two concurrent /decide calls on the
     # same CR (e.g. one approve, one reject) would otherwise both read
@@ -903,7 +913,8 @@ def decide_change_request(
     log_event(
         db, entity_type="change_request", entity_id=cr.id,
         action="approved" if payload.approve else "rejected",
-        actor_id=current_user.id, project_id=project_id, detail={"note": payload.note},
+        actor_id=current_user.id, project_id=project_id,
+        detail={"note": payload.note, "via": "mcp"} if channel == "mcp" else {"note": payload.note},
     )
 
     display_title = _display_title(db, cr, version)

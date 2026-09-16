@@ -115,6 +115,12 @@ def calculate_total(items: list[Item]) -> Decimal:
 - The decisions log at [docs/decisions.md](docs/decisions.md) should be used to record architectural and implementation decisions.
 - Every new decision recorded from now on — in `docs/decisions.md`, in `docs/plans/compliance-module-plan.md`'s "Open decisions" list and individual phase specs, or in any comparable plan/decisions doc added later — must say who made it: **Decided by: User** (an explicit instruction, or the user's answer to a clarifying question) or **Decided by: Agent** (the implementing session's own judgment call, absent explicit direction). This exists because a "settled" decision an agent made on its own is not the same weight as one the user actually gave, and a later session needs to know which is which before treating either as fixed — an agent decision can be revisited on its own judgment where a user decision needs the user's sign-off to change. This applies going forward only; do not spend effort retroactively re-tagging existing entries.
 
+## Docs Website Maintenance
+
+- After developing a new feature or making a change to existing behaviour, review the documentation site under `docs/website/` to determine whether it needs updating as a result. This is a distinct check from the README/decisions-log/architecture-doc requirements elsewhere in this file — the docs website is a separate, published artifact (see `docs/plans/docs-website-plan.md`) and does not get updated automatically just because those other docs were.
+- Make the judgement call on necessity explicitly: does the change add/remove/rename a user-facing feature, workflow, screen, API, config option, or concept the site documents or should document? If yes, update the relevant page(s) as part of the same change, following the site's existing structure, tone, and Mermaid-diagram conventions (see the Documentation Requirements section above). If no, no action is needed — do not pad the site with updates for purely internal/backend-only changes that have no user-visible surface.
+- Treat this the same as the other "fix/update now, don't defer" rules in this file: if an update is deemed necessary, perform it in the same change rather than noting it for later.
+
 ## README Requirements
 
 The README.md must always reflect the current state of the project.

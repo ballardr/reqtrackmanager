@@ -34,6 +34,7 @@ import type {
 import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -202,6 +203,13 @@ export function ProjectAdminPage() {
   const [requireCrForLinks, setRequireCrForLinks] = useState(false);
   const [exemptFromOrgLinkLock, setExemptFromOrgLinkLock] = useState(false);
   const [orgForceLinksLocked, setOrgForceLinksLocked] = useState(false);
+  // AI approval via MCP (docs/decisions.md) — project half of the
+  // two-level opt-in gate; see `Organization.allow_ai_approvals`'s
+  // docstring for the org half and the full resolution. Enabling it (not
+  // disabling) requires acknowledging the accountability trade-off first.
+  const [allowAiApprovals, setAllowAiApprovals] = useState(false);
+  const [aiApprovalsAckPending, setAiApprovalsAckPending] = useState(false);
+  const [aiApprovalsAckChecked, setAiApprovalsAckChecked] = useState(false);
   const [isTemplate, setIsTemplate] = useState(false);
   const [visibility, setVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [statusId, setStatusId] = useState("");
@@ -389,6 +397,7 @@ export function ProjectAdminPage() {
       setAllowMemberCr(p.allow_member_change_requests);
       setRequireCrForLinks(p.require_change_request_for_approved_links);
       setExemptFromOrgLinkLock(p.exempt_from_org_link_lock);
+      setAllowAiApprovals(p.allow_ai_approvals);
       setIsTemplate(p.is_template);
       setVisibility(p.visibility);
       setStatusId(p.status_id);
@@ -563,6 +572,7 @@ export function ProjectAdminPage() {
         // `true` baked in by a temporary org policy).
         require_change_request_for_approved_links: requireCrForLinks,
         exempt_from_org_link_lock: exemptFromOrgLinkLock,
+        allow_ai_approvals: allowAiApprovals,
         is_template: isTemplate,
         visibility, status_id: statusId || null,
         parent_project_id: parentProjectId || null,
@@ -1404,6 +1414,30 @@ export function ProjectAdminPage() {
             <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.exemptFromOrgLinkLockHint}</p>
           </>
         )}
+        {/* AI approval via MCP (docs/decisions.md) — uses the shared
+            ToggleSwitch component (as OrgAdminPage's counterpart does)
+            rather than this page's own plain-checkbox convention above; a
+            deliberate choice per the UX style guide's component-reuse
+            principle, not an oversight. */}
+        <label className="row" style={{ gap: "0.6rem" }}>
+          <ToggleSwitch
+            checked={allowAiApprovals}
+            onChange={(next) => {
+              if (next) {
+                setAiApprovalsAckChecked(false);
+                setAiApprovalsAckPending(true);
+              } else {
+                settingsDirtyRef.current = true;
+                setAllowAiApprovals(false);
+              }
+            }}
+            label={strings.admin.allowAiApprovals}
+          />
+          <span className="stack" style={{ gap: 0 }}>
+            {strings.admin.allowAiApprovals}
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.allowAiApprovalsHint}</span>
+          </span>
+        </label>
         <label className="row">
           <input
             type="checkbox"
@@ -1552,6 +1586,31 @@ export function ProjectAdminPage() {
               setRoleInheritanceMode(pendingInheritMode);
               setPendingInheritMode(null);
             }}
+          />
+        )}
+        {aiApprovalsAckPending && (
+          <ConfirmDialog
+            title={strings.admin.allowAiApprovalsAckTitle}
+            message={
+              <span className="stack" style={{ gap: "0.5rem" }}>
+                <span>{strings.admin.allowAiApprovalsAckBody}</span>
+                <label className="row" style={{ gap: "0.4rem" }}>
+                  <input
+                    type="checkbox" checked={aiApprovalsAckChecked}
+                    onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
+                  />
+                  {strings.admin.allowAiApprovalsAckCheckbox}
+                </label>
+              </span>
+            }
+            confirmLabel={strings.admin.allowAiApprovalsAckConfirm}
+            confirmDisabled={!aiApprovalsAckChecked}
+            onConfirm={() => {
+              settingsDirtyRef.current = true;
+              setAllowAiApprovals(true);
+              setAiApprovalsAckPending(false);
+            }}
+            onCancel={() => setAiApprovalsAckPending(false)}
           />
         )}
 

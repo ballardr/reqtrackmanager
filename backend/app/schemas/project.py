@@ -110,6 +110,10 @@ class ProjectOut(BaseModel):
     # model docstrings.
     require_change_request_for_approved_links: bool = False
     exempt_from_org_link_lock: bool = False
+    # AI approval via MCP (docs/decisions.md) — project half of the
+    # two-level opt-in gate. See `Project.allow_ai_approvals`'s model
+    # docstring; both this and the organisation's own flag must be true.
+    allow_ai_approvals: bool = False
     visibility: ProjectVisibility = ProjectVisibility.ONLY_SPECIFIED
     terminology: dict[str, str] = {}
     status_id: UUID
@@ -162,6 +166,7 @@ class ProjectUpdate(BaseModel):
     allow_member_change_requests: bool | None = None
     require_change_request_for_approved_links: bool | None = None
     exempt_from_org_link_lock: bool | None = None
+    allow_ai_approvals: bool | None = None
     is_template: bool | None = None
     visibility: ProjectVisibility | None = None
     # Must belong to the project's own organisation (400 otherwise) — see

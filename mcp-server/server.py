@@ -24,20 +24,22 @@ Responsibilities:
   see or change through the normal UI/API — there is no second, parallel
   permission model to get wrong here. See `_forward_auth_header` and
   docs/mcp-server.md's "Authentication model" section.
-- Never exposes an approval-type action, in either mode. There is no tool
-  to approve/decide a change request, approve a requirement, record a
-  review outcome, or mark a requirement completed — and, structurally, no
-  way to request one: `update_requirement` has no `status` parameter at
-  all, so a `status` transition can never be sent through this server
-  regardless of what the calling account's own role could do directly via
-  the API. This is a deliberate product decision, not merely an oversight
-  left for later: ReqTrackManager's approval workflow is only meaningful if
-  every approval is a deliberate human action taken with real accountability
-  in the UI, so this server keeps that boundary bright-line rather than
-  relying on the backend's RBAC (which *would* correctly allow a
-  PM-privileged caller to approve something) to enforce a product policy
-  it was never meant to express. See docs/decisions.md's "MCP server write
-  mode" entry.
+- Never exposes a vote, a review-outcome record, or a `status` transition
+  through `update_requirement` (which still has no `status` parameter at
+  all — a content edit can never smuggle a status change through it,
+  regardless of the calling account's own role). Three narrower
+  approval-type actions — `approve_requirement`, `decide_change_request`,
+  `complete_requirement` — *are* exposed (write mode only), but each is
+  additionally gated, at the backend, on an explicit organisation **and**
+  project opt-in (`allow_ai_approvals` on both) that an admin/manager must
+  deliberately enable, acknowledging in the UI that an AI-made approval
+  isn't necessarily a deliberate, in-the-moment human decision. This
+  reopens what was originally a bright-line, no-exceptions exclusion (see
+  docs/decisions.md's original "MCP server write mode" entry) — narrower
+  than a plain RBAC check would give a PM-privileged caller, not wider: the
+  gate can only *restrict* what an already-authorized human's account could
+  do directly, never grant more. See docs/decisions.md's "AI approval via
+  MCP" entry for the full reasoning.
 - Registers module-contributed tools declaratively (compliance-module-plan.md
   Phase 4): a backend module (e.g. a future Compliance module) can declare
   its own tools, which this server discovers by fetching `GET /api/v1/
@@ -123,17 +125,23 @@ _READ_ONLY_INSTRUCTIONS = (
     "requirement or change request lives in, then list_requirements / get_requirement or "
     "list_change_requests / get_change_request. A change request's discussion, tasks, and advisory "
     "stakeholder votes are separate tools (list_change_request_comments/_tasks/_votes) from its "
-    "core detail."
+    "core detail. If this connection is configured with X-Default-Organization-Id/"
+    "X-Default-Project-Id headers, organization_id/project_id can be omitted from any tool call and "
+    "that default is used instead."
 )
 _WRITE_MODE_INSTRUCTIONS = (
     " Write mode is enabled on this server: create_requirement and update_requirement let you "
-    "author and edit requirement *content*. Neither tool, nor any other tool here, can approve or "
-    "decide anything — there is no way to approve a requirement or a change request, record a "
-    "review outcome, or mark a requirement completed through this server, regardless of the "
-    "calling account's own role. Those are deliberately human-only actions taken in the "
-    "ReqTrackManager UI. update_requirement also refuses to touch a requirement that's already "
-    "approved/locked — at that point a change request is required instead, and this server has no "
-    "tool for creating or deciding one."
+    "author and edit requirement *content* (never a status transition — update_requirement has no "
+    "status parameter at all). approve_requirement, decide_change_request, and complete_requirement "
+    "let you perform an approval-type action, but only when both the target project and its "
+    "organisation have explicitly enabled AI approval (an admin/manager opt-in, off by default) — "
+    "calling one of these three without that enabled fails with a clear 'AI approval is not "
+    "enabled' error, even if your account's own role would normally allow the action directly; ask "
+    "a human, or ask an org/project admin to enable it, in that case. Voting and recording a review "
+    "outcome remain entirely unavailable through this server, in every configuration. "
+    "update_requirement also refuses to touch a requirement that's already approved/locked — at "
+    "that point a change request is required instead, and decide_change_request only *decides* an "
+    "already-submitted one; there is no tool to create or submit one."
 )
 
 mcp = FastMCP(
@@ -200,6 +208,47 @@ def _require_uuid(value: str, field_name: str) -> str:
         raise ValueError(f"{field_name!r} must be a valid UUID, got {value!r}.") from exc
 
 
+def _default_scope() -> tuple[str | None, str | None]:
+    """Reads this MCP connection's optional default-scope headers,
+    `X-Default-Organization-Id`/`X-Default-Project-Id` — a convenience for a
+    client permanently scoped to one organisation/project (e.g. a deployment
+    dedicated to a single team) so every tool call doesn't have to name
+    `organization_id`/`project_id` explicitly. Not sensitive, so no
+    `include_all=True` needed the way `_forward_auth_header` requires for
+    `Authorization` (see that function's docstring).
+
+    Returns:
+        `(default_organization_id, default_project_id)`, either or both
+        `None` if not configured on this connection.
+    """
+    headers = get_http_headers()
+    return headers.get("x-default-organization-id"), headers.get("x-default-project-id")
+
+
+def _require_project_id(project_id: str | None) -> str:
+    """Resolves `project_id` against an explicit argument first, falling
+    back to this connection's configured `X-Default-Project-Id` header
+    (`_default_scope`), then validates it as a UUID — the shared resolution
+    every tool below with a `project_id` parameter uses."""
+    resolved = project_id or _default_scope()[1]
+    if not resolved:
+        raise ValueError(
+            "'project_id' was not given, and no X-Default-Project-Id header is configured on this MCP "
+            "connection either. Pass project_id explicitly (see list_projects), or configure a default "
+            "scope header — see docs/mcp-server.md."
+        )
+    return _require_uuid(resolved, "project_id")
+
+
+def _resolve_organization_id(organization_id: str | None) -> str | None:
+    """Same fallback as `_require_project_id`, but for the one tool
+    (`list_projects`) whose `organization_id` is optional even with no
+    default configured — omitting it there means "every organisation," not
+    an error."""
+    resolved = organization_id or _default_scope()[0]
+    return _require_uuid(resolved, "organization_id") if resolved else None
+
+
 def _detail(response: httpx.Response) -> str:
     """Extracts FastAPI's `{"detail": "..."}` error body shape into a plain
     string when present, falling back to the raw response text otherwise —
@@ -246,6 +295,16 @@ async def _call_backend(
             failure reaching the backend at all.
     """
     headers = _forward_auth_header()
+    # Self-identifies every request this server makes as MCP-originated —
+    # not a secret or an authentication mechanism (see
+    # app.deps.get_request_channel's docstring on the backend for why a
+    # plain, spoofable header is sufficient here): it only ever lets the
+    # backend *narrow* what an approval-type action can do (the AI-approval
+    # org+project gate, docs/decisions.md's "AI approval via MCP" entry),
+    # never widen it, so there's no privilege-escalation risk in a client
+    # bypassing this server and calling the backend directly with or
+    # without this header.
+    headers["X-Reqtrack-Client"] = "mcp-server"
     clean_params = {k: v for k, v in (params or {}).items() if v is not None}
     url = f"{REQTRACK_API_URL}{path}"
     try:
@@ -264,8 +323,10 @@ async def _call_backend(
             "revoked, or malformed. Obtain a fresh token and reconfigure your MCP client."
         )
     if response.status_code == 403:
+        detail = _detail(response)
         raise PermissionError(
-            "Your ReqTrackManager account does not have access to this resource (403) — this "
+            f"ReqTrackManager rejected this request (403): {detail}" if detail
+            else "Your ReqTrackManager account does not have access to this resource (403) — this "
             "mirrors exactly what you'd see calling the API directly with the same account; this "
             "server has no broader access than your own account does."
         )
@@ -308,7 +369,7 @@ async def list_projects(organization_id: str | None = None, search: str | None =
     Returns:
         A list of projects, each with `id`, `organization_id`, `name`, `summary`, and status flags.
     """
-    org_filter = _require_uuid(organization_id, "organization_id") if organization_id else None
+    org_filter = _resolve_organization_id(organization_id)
     response = await _call_backend(
         "GET", "/api/v1/projects", params={"search": search, "archived": include_archived}
     )
@@ -319,7 +380,7 @@ async def list_projects(organization_id: str | None = None, search: str | None =
 
 
 @mcp.tool
-async def get_project(project_id: str) -> dict:
+async def get_project(project_id: str | None = None) -> dict:
     """Gets a single project's details by id.
 
     Args:
@@ -328,14 +389,14 @@ async def get_project(project_id: str) -> dict:
     Returns:
         The project's `id`, `organization_id`, `name`, `summary`, and status flags.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}")
     return response.json()
 
 
 @mcp.tool
 async def list_requirements(
-    project_id: str,
+    project_id: str | None = None,
     status: str | None = None,
     search: str | None = None,
     keyword: str | None = None,
@@ -363,7 +424,7 @@ async def list_requirements(
         with `get_requirement` for the full record, or `get_requirement_history`
         for its change log.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     comp = _require_uuid(component_id, "component_id") if component_id else None
     cat = _require_uuid(category_id, "category_id") if category_id else None
     response = await _call_backend(
@@ -377,7 +438,7 @@ async def list_requirements(
 
 
 @mcp.tool
-async def get_requirement(project_id: str, requirement_id: str) -> dict:
+async def get_requirement(project_id: str | None = None, *, requirement_id: str) -> dict:
     """Gets a single requirement's full current detail.
 
     Args:
@@ -391,14 +452,14 @@ async def get_requirement(project_id: str, requirement_id: str) -> dict:
         `clarification`, `status`, `is_locked`, `component_id`,
         `category_id`, `keywords`, `custom_fields`, and more.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     rid = _require_uuid(requirement_id, "requirement_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}")
     return response.json()
 
 
 @mcp.tool
-async def get_requirement_history(project_id: str, requirement_id: str) -> list[dict]:
+async def get_requirement_history(project_id: str | None = None, *, requirement_id: str) -> list[dict]:
     """Gets a requirement's full version history — every prior state it has been in.
 
     Useful for answering "why does this requirement say X" or "what did
@@ -414,14 +475,14 @@ async def get_requirement_history(project_id: str, requirement_id: str) -> list[
         `version_number`, `name`, `reasoning`, `status`, `change_note`,
         `created_by`, and `created_at`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     rid = _require_uuid(requirement_id, "requirement_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}/history")
     return response.json()
 
 
 @mcp.tool
-async def list_change_requests(project_id: str, status: str | None = None) -> list[dict]:
+async def list_change_requests(project_id: str | None = None, status: str | None = None) -> list[dict]:
     """Lists change requests in a project.
 
     Args:
@@ -435,13 +496,13 @@ async def list_change_requests(project_id: str, status: str | None = None) -> li
         `proposed_reasoning`, `reason`, `status`, and the `requirement_id`
         it targets (`None` for a "new_requirement" proposal).
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests", params={"cr_status": status})
     return response.json()
 
 
 @mcp.tool
-async def get_change_request(project_id: str, change_request_id: str) -> dict:
+async def get_change_request(project_id: str | None = None, *, change_request_id: str) -> dict:
     """Gets a single change request's full current detail.
 
     Args:
@@ -453,14 +514,14 @@ async def get_change_request(project_id: str, change_request_id: str) -> dict:
         `proposed_reasoning`, `proposed_clarification`, `reason`, `status`,
         the requirement it targets, and more.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}")
     return response.json()
 
 
 @mcp.tool
-async def list_change_request_votes(project_id: str, change_request_id: str) -> dict:
+async def list_change_request_votes(project_id: str | None = None, *, change_request_id: str) -> dict:
     """Gets a change request's advisory stakeholder vote tally and individual votes.
 
     Advisory only — a project manager's actual approve/reject decision
@@ -476,14 +537,14 @@ async def list_change_request_votes(project_id: str, change_request_id: str) -> 
         each vote includes `user_id`, `vote` ("approve"/"reject"), an
         optional `comment`, and `voted_at`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}/votes")
     return response.json()
 
 
 @mcp.tool
-async def list_change_request_tasks(project_id: str, change_request_id: str) -> list[dict]:
+async def list_change_request_tasks(project_id: str | None = None, *, change_request_id: str) -> list[dict]:
     """Lists the follow-up tasks tracked against a change request (C-R-02, C-R-04).
 
     Args:
@@ -494,14 +555,14 @@ async def list_change_request_tasks(project_id: str, change_request_id: str) -> 
         A list of tasks, each including `description`, `assignee_id`,
         `due_date`, and `is_done`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}/tasks")
     return response.json()
 
 
 @mcp.tool
-async def list_change_request_comments(project_id: str, change_request_id: str) -> list[dict]:
+async def list_change_request_comments(project_id: str | None = None, *, change_request_id: str) -> list[dict]:
     """Lists the discussion thread on a change request.
 
     Args:
@@ -511,14 +572,14 @@ async def list_change_request_comments(project_id: str, change_request_id: str) 
     Returns:
         A list of comments, each including `author_id`, `body`, and `created_at`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     cid = _require_uuid(change_request_id, "change_request_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/change-requests/{cid}/comments")
     return response.json()
 
 
 @mcp.tool
-async def list_requirement_comments(project_id: str, requirement_id: str) -> list[dict]:
+async def list_requirement_comments(project_id: str | None = None, *, requirement_id: str) -> list[dict]:
     """Lists the discussion thread on a requirement.
 
     Args:
@@ -528,7 +589,7 @@ async def list_requirement_comments(project_id: str, requirement_id: str) -> lis
     Returns:
         A list of comments, each including `author_id`, `body`, and `created_at`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     rid = _require_uuid(requirement_id, "requirement_id")
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}/comments")
     return response.json()
@@ -563,7 +624,7 @@ async def list_my_reviews_due() -> list[dict]:
 
 
 @mcp.tool
-async def list_project_reviews_due(project_id: str) -> list[dict]:
+async def list_project_reviews_due(project_id: str | None = None) -> list[dict]:
     """Lists every requirement in a project with a scheduled review date that has now passed, regardless of which reviewer it's assigned to.
 
     Args:
@@ -573,7 +634,7 @@ async def list_project_reviews_due(project_id: str) -> list[dict]:
         A list of requirements due for review, each including `id`,
         `unique_code`, `name`, `reviewer_id`, and `review_date`.
     """
-    pid = _require_uuid(project_id, "project_id")
+    pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/reviews/due")
     return response.json()
 
@@ -581,19 +642,24 @@ async def list_project_reviews_due(project_id: str) -> list[dict]:
 # --- Write mode (MCP_WRITES_ENABLED) ----------------------------------------
 #
 # Registered only when the deployment operator has explicitly opted in.
-# When write mode is off, these tools don't exist at all — an MCP client
+# When write mode is off, none of these tools exist at all — an MCP client
 # never even sees them listed, rather than seeing them fail at call time.
-# Deliberately narrow: requirement *content* only. Neither tool has a
-# `status` parameter, so an approval/completion transition can never be
-# requested through this server, regardless of the calling account's own
-# role — see this module's docstring and docs/decisions.md's "MCP server
-# write mode" entry for the reasoning.
+# create_requirement/update_requirement are requirement *content* only:
+# neither has a `status` parameter, so a status transition can never be
+# requested through them, regardless of the calling account's own role.
+# approve_requirement/decide_change_request/complete_requirement (below)
+# *are* approval-type actions — each carries its own separate, live
+# organisation+project opt-in check on top of this env-level gate, since
+# write mode alone is not considered sufficient authorization for those
+# three. See this module's docstring and docs/decisions.md's "MCP server
+# write mode" / "AI approval via MCP" entries for the full reasoning.
 
 if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def create_requirement(
-        project_id: str,
+        project_id: str | None = None,
+        *,
         name: str,
         component_id: str,
         category_id: str,
@@ -642,7 +708,7 @@ if MCP_WRITES_ENABLED:
         Returns:
             The newly created requirement's full detail, same shape as `get_requirement`.
         """
-        pid = _require_uuid(project_id, "project_id")
+        pid = _require_project_id(project_id)
         body = {
             "name": name,
             "reasoning": reasoning,
@@ -664,7 +730,8 @@ if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def update_requirement(
-        project_id: str,
+        project_id: str | None = None,
+        *,
         requirement_id: str,
         name: str | None = None,
         reasoning: str | None = None,
@@ -721,7 +788,7 @@ if MCP_WRITES_ENABLED:
         Returns:
             The requirement's new current detail, same shape as `get_requirement`.
         """
-        pid = _require_uuid(project_id, "project_id")
+        pid = _require_project_id(project_id)
         rid = _require_uuid(requirement_id, "requirement_id")
         current = (await _call_backend("GET", f"/api/v1/projects/{pid}/requirements/{rid}")).json()
 
@@ -751,6 +818,96 @@ if MCP_WRITES_ENABLED:
             # account could do directly via the API.
         }
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
+        return response.json()
+
+    # --- Approval-type tools (AI approval via MCP) --------------------------
+    #
+    # Unlike create_requirement/update_requirement above, each of these
+    # three performs an approval-type action — reopening what was
+    # originally a bright-line, no-exceptions exclusion (see this module's
+    # docstring and docs/decisions.md's original "MCP server write mode"
+    # entry). Each is additionally gated at the backend on an explicit
+    # organisation AND project opt-in (`allow_ai_approvals` on both — see
+    # docs/decisions.md's "AI approval via MCP" entry), checked fresh on
+    # every call rather than at tool-registration time, since that setting
+    # can change at any time and is scoped per-project. A 403 here always
+    # means either that gate is off, or the caller's own account lacks the
+    # role the UI would also require (project manager) — this server
+    # cannot tell those apart itself; the backend's own error message
+    # (surfaced verbatim by `_call_backend`) says which.
+
+    @mcp.tool
+    async def approve_requirement(project_id: str | None = None, *, requirement_id: str) -> dict:
+        """Approves a draft or reviewed requirement (the same transition the
+        UI's "Approve" button performs).
+
+        Requires AI approval to be explicitly enabled for both this project
+        and its organisation (an admin/manager opt-in, off by default) —
+        otherwise fails with a clear "AI approval is not enabled" error,
+        even if your account's own role would normally allow this directly.
+        The caller's own account still needs the project-manager role
+        either way. Recorded in the requirement's version history with the
+        change note "Approved via MCP." so it's visibly distinguishable
+        from a human approving directly in the UI.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The requirement's UUID (from `list_requirements`).
+
+        Returns:
+            The requirement's new current detail, same shape as `get_requirement`.
+        """
+        pid = _require_project_id(project_id)
+        rid = _require_uuid(requirement_id, "requirement_id")
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/approve")
+        return response.json()
+
+    @mcp.tool
+    async def decide_change_request(
+        project_id: str | None = None, *, change_request_id: str, approve: bool, note: str = ""
+    ) -> dict:
+        """Approves or rejects a submitted (or in-review) change request.
+
+        Same AI-approval gate and project-manager requirement as
+        `approve_requirement`. Approving applies the proposed change
+        immediately, exactly as the UI's decision does.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            change_request_id: The change request's UUID (from `list_change_requests`).
+            approve: `True` to approve, `False` to reject.
+            note: Optional note explaining the decision.
+
+        Returns:
+            The change request's new current detail, same shape as `get_change_request`.
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(change_request_id, "change_request_id")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/change-requests/{cid}/decide",
+            json={"approve": approve, "note": note},
+        )
+        return response.json()
+
+    @mcp.tool
+    async def complete_requirement(project_id: str | None = None, *, requirement_id: str) -> dict:
+        """Marks an approved requirement completed (the same transition the
+        UI's "Mark completed" action performs).
+
+        Same AI-approval gate and project-manager requirement as
+        `approve_requirement`. Fails with a clear conflict error if the
+        requirement isn't currently approved, or is already completed.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The requirement's UUID (from `list_requirements`).
+
+        Returns:
+            The requirement's new current detail, same shape as `get_requirement`.
+        """
+        pid = _require_project_id(project_id)
+        rid = _require_uuid(requirement_id, "requirement_id")
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/complete")
         return response.json()
 
 

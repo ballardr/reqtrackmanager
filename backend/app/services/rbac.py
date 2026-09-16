@@ -1947,6 +1947,38 @@ def require_project_manage(
     return project
 
 
+def require_ai_approvals_enabled(db: Session, project: Project) -> None:
+    """Gate for an approval-type action (approve/decide/complete) reached
+    through the MCP server — see `app.deps.get_request_channel` and
+    docs/decisions.md's "AI approval via MCP" entry.
+
+    Both the project's own `allow_ai_approvals` AND its organisation's must
+    be true; neither alone is sufficient (`Organization.allow_ai_approvals`/
+    `Project.allow_ai_approvals` docstrings). Callers must only invoke this
+    when `get_request_channel(request) == "mcp"` — a plain UI/API call is
+    never subject to this check, regardless of either flag's value, since
+    the calling account's own RBAC role (already checked separately) is
+    sufficient for a human acting directly.
+
+    Args:
+        db: Active database session.
+        project: The project the action targets (already loaded by the
+            caller's own RBAC dependency, e.g. `require_project_manage`).
+
+    Raises:
+        HTTPException: 403, naming which side of the gate is off, if either
+            the project or its organisation has not enabled AI approval.
+    """
+    organization = db.get(Organization, project.organization_id)
+    if not (organization is not None and organization.allow_ai_approvals and project.allow_ai_approvals):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "AI approval is not enabled for this project and its organisation. An org admin and this "
+            "project's manager/administrator must both explicitly enable it before an AI assistant can "
+            "approve, decide, or complete anything here — use the ReqTrackManager UI otherwise.",
+        )
+
+
 def _enforce_module_frame_scope(
     request: Request, *, organization_id: UUID | None = None, project_id: UUID | None = None
 ) -> None:

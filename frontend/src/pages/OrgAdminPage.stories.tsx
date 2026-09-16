@@ -15,6 +15,7 @@ const org: Organization = {
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   force_require_change_request_for_approved_links: false,
+  allow_ai_approvals: false,
 };
 
 const orgUser: OrgUser = {
@@ -28,6 +29,7 @@ const advanced: OrgAdvancedSettings = {
   pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
   force_require_change_request_for_approved_links: false,
+  allow_ai_approvals: false,
 };
 
 const ssoConfig: OrgSsoConfig = {
@@ -1146,6 +1148,39 @@ export const AdvancedSettingsForceRequireChangeRequestForApprovedLinks: Story = 
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
         expect.objectContaining({ force_require_change_request_for_approved_links: true })
+      )
+    );
+  },
+};
+
+export const AdvancedSettingsAllowAiApprovals: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    const toggle = await waitFor(() => canvas.getByRole("switch", { name: "Allow AI approval via MCP" }));
+    await expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+
+    // Enabling opens the acknowledgment dialog (docs/decisions.md's "AI
+    // approval via MCP" entry) — the confirm button starts disabled until
+    // the acknowledgment checkbox is checked.
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Allow AI approval for this organisation?" }));
+    const confirmButton = dialog.getByRole("button", { name: "Allow AI approval" });
+    await expect(confirmButton).toBeDisabled();
+    await userEvent.click(dialog.getByRole("checkbox"));
+    await expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+    await expect(toggle).toBeChecked();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save security settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ allow_ai_approvals: true })
       )
     );
   },

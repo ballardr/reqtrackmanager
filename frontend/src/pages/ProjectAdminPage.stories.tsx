@@ -81,6 +81,7 @@ function mockProjectAdminApis(
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     force_require_change_request_for_approved_links: false,
+    allow_ai_approvals: false,
   };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
@@ -229,6 +230,35 @@ export const OverviewTabRequireChangeRequestForLinks: Story = {
   },
 };
 
+export const OverviewTabAllowAiApprovals: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await waitFor(() => canvas.getByRole("switch", { name: "Allow AI approval via MCP for this project" }));
+    await expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Allow AI approval for this project?" }));
+    const confirmButton = dialog.getByRole("button", { name: "Allow AI approval" });
+    await expect(confirmButton).toBeDisabled();
+    await userEvent.click(dialog.getByRole("checkbox"));
+    await expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+    await expect(toggle).toBeChecked();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}`,
+        expect.objectContaining({ allow_ai_approvals: true })
+      )
+    );
+  },
+};
+
 /** Once the organisation forces this policy, the project's own checkbox
  * renders checked-and-disabled with an explanatory `title` (the same
  * disabled+title convention `ProjectMembersTable.tsx` uses) and an
@@ -269,6 +299,7 @@ function buildForcedOrg(): Organization {
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     force_require_change_request_for_approved_links: true,
+    allow_ai_approvals: false,
   };
 }
 

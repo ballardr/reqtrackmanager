@@ -28,6 +28,7 @@ const ORG: Organization = {
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   force_require_change_request_for_approved_links: false,
+  allow_ai_approvals: false,
 };
 
 const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1" });

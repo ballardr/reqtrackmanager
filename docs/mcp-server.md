@@ -2,7 +2,7 @@
 
 ReqTrackManager ships a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server — `mcp-server/` — that exposes requirements, change requests, notifications, and review schedules as tools an AI assistant can call directly, instead of a person copy-pasting content into a chat window. It runs as its own container, talks to the same REST API everything else uses, and is meant to be reachable by both local developer tools (Claude Code, VS Code Copilot Chat) and remote/hosted ones (Microsoft Copilot Studio) — see [Deploying it for remote clients](#deploying-it-for-remote-clients-copilot-studio-etc) below.
 
-Read-only by default. An opt-in **write mode** (`MCP_WRITES_ENABLED=true`) additionally lets an AI assistant *author* requirement content — create new requirements and edit unlocked ones — narrowly scoped and with a structural guarantee that no tool, in either mode, can ever approve or decide anything. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" entry for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
+Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, defaulting to `true` on both the bundled dev/test stack and the production `docker-compose.yml` at the repo root; set it to `false` to opt a deployment back into read-only-only — additionally lets an AI assistant *author* requirement content (create new requirements and edit unlocked ones) and, separately, perform an approval-type action once an org admin and a project manager/administrator have each explicitly enabled that for their own organisation/project. See [Write mode](#write-mode) below, and [docs/decisions.md](decisions.md)'s "MCP server write mode" and "AI approval via MCP" entries for the full design rationale, including why this is this project's deliberately-preferred way to let AI act on the system at all (rather than building a bespoke AI backend/model into the product itself).
 
 ## What it can do
 
@@ -26,28 +26,42 @@ Fifteen read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus two write tools, only when [write mode](#write-mode) is enabled:
+Plus five write tools, only when [write mode](#write-mode) is enabled:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
+| `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation |
+| `complete_requirement` | Marks an approved requirement completed — **only when AI approval is enabled** for the project and its organisation |
 
-No tool, in either mode, can vote, comment, decide a change request, or record a review outcome — and, in write mode, `update_requirement` cannot approve or complete a requirement either. See [Known limitations](#known-limitations) for what's deliberately out of scope and why.
+No tool, in any configuration, can vote, comment, or record a review outcome. See [Known limitations](#known-limitations) for what's deliberately still out of scope and why.
 
 A backend module can also contribute its own tools here, prefixed with that module's key (e.g. `compliance_list_standards`) — see [Module-contributed tools](#module-contributed-tools) below. The Compliance module registers ten so far (all read-only), listed there.
 
 ## Write mode
 
-Off by default (`MCP_WRITES_ENABLED` unset or anything other than `true`/`1`/`yes`/`on`) — a deployment operator must explicitly opt in before this server can change any data at all, and when it's off, `create_requirement`/`update_requirement` don't just refuse to run, they don't exist: an MCP client's tool list never mentions them. Set `MCP_WRITES_ENABLED=true` on the `mcp-server` container's environment to turn it on (the bundled dev/test stack, `tests/container/docker-compose.yml`, already does; the production `docker-compose.yml` at the repo root defaults it off).
+On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the five write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
 
-**Requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through this server, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead; this server has no tool to create or decide one.
+**`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead.
 
-**Why approval specifically stays human-only, structurally, not just by convention:** ReqTrackManager's approval workflow (a Project Manager approving a requirement, or deciding a change request) is only meaningful if every approval represents a real person taking accountability for that decision. The backend's own RBAC would *correctly* let a PM-privileged caller approve something through this server if a tool offered it — RBAC isn't wrong here, it's just answering a different question ("is this account allowed to?") than the one that matters for this specific action ("did an accountable human actually decide this, right now, deliberately?"). So this boundary is enforced at this server's own tool surface — by never exposing the capability in the first place — rather than left to the backend's per-account authorization to (correctly, but insufficiently) gate.
+**`approve_requirement`/`decide_change_request`/`complete_requirement`: approval-type actions, gated by an explicit organisation-and-project opt-in.** These previously didn't exist in any configuration — ReqTrackManager's approval workflow is only meaningful if every approval represents a real person taking accountability for that decision, so this was originally kept bright-line human-only, structurally, rather than relying on the backend's RBAC (which *would* correctly let a PM-privileged caller approve something through this server if a tool merely existed) to enforce a product policy it was never meant to express. That boundary has since been deliberately, narrowly reopened — see [docs/decisions.md](decisions.md)'s "AI approval via MCP" entry for the full reasoning — under a two-level opt-in that must **both** be true:
 
-**Still exactly the same pass-through authentication and authorization as every read tool** (see [Authentication model](#authentication-model) below) — write mode doesn't add a second permission model, it just adds two more tools that happen to issue `POST`/`PUT` requests instead of `GET`. The caller's own account still needs a requirement-editing project role (stakeholder, administrator, or manager) for either write tool to succeed, exactly as the UI would require.
+- The organisation's **Allow AI approval via MCP** setting (Org Admin → Security → Advanced settings), an org-admin-only toggle.
+- The specific project's own **Allow AI approval via MCP for this project** setting (Project Admin → Overview), a project-manager/administrator-only toggle.
 
-**What's still not exposed, even with write mode on** — a deliberately narrow first cut, not an oversight: submitting or deciding a change request, voting, commenting, recording a review outcome, marking a requirement completed, archiving/deleting, uploading attachments, and creating traceability links. All read-only-adjacent for now (each already has a read tool where relevant); a natural, larger follow-up if any of them is wanted later — see [Known limitations](#known-limitations).
+Both are off by default, and enabling either one requires the enabling user to explicitly acknowledge — via a dialog that blocks confirmation until an acknowledgment checkbox is checked — that an AI-made approval isn't necessarily a deliberate, in-the-moment human decision and may weaken the accountability the approval workflow is meant to represent. If either flag is off, calling any of these three tools fails with a clear "AI approval is not enabled for this project and its organisation" error, even if the calling account's own role would normally allow the action directly through the UI — a plain UI/API call is entirely unaffected by these two flags either way, in every case.
+
+Every approval/decision/completion performed through one of these three tools is visibly marked **"via MCP"**: it shows up as "(via MCP)" wherever that requirement's or change request's activity is displayed (its Activity tab, the project-wide history page), and `approve_requirement` specifically records the change note "Approved via MCP." directly in the requirement's Version History table.
+
+**Still exactly the same pass-through authentication and authorization as every read tool** (see [Authentication model](#authentication-model) below) — write mode doesn't add a second permission model. The caller's own account still needs a requirement-editing project role (stakeholder, administrator, or manager) for `create_requirement`/`update_requirement`, and the project-manager role for the three approval-type tools, exactly as the UI would require.
+
+**What's still not exposed, in any configuration** — a deliberately narrow set, not an oversight: submitting a change request, voting, commenting, recording a review outcome, archiving/deleting, uploading attachments, and creating traceability links. All read-only-adjacent for now (each already has a read tool where relevant); a natural, larger follow-up if any of them is wanted later — see [Known limitations](#known-limitations).
+
+## Default organisation/project scope
+
+Two optional, non-sensitive HTTP headers on the MCP connection — `X-Default-Organization-Id` / `X-Default-Project-Id` — let a client permanently scoped to one organisation or project (e.g. a deployment dedicated to a single team) omit `organization_id`/`project_id` from every tool call. When a tool call doesn't name one explicitly, the configured default is used instead; if neither is given, the tool fails with a clear error telling you to pass one explicitly or configure a default. Set them the same way you set `Authorization` — as headers in your MCP client's configuration (see the client setup sections below).
 
 ## Module-contributed tools
 
@@ -137,6 +151,8 @@ claude mcp add --transport http reqtrackmanager http://localhost:8100/mcp \
   --header "Authorization: Bearer <your-access-token>"
 ```
 
+Add `--header "X-Default-Project-Id: <uuid>"` (and/or `X-Default-Organization-Id`) alongside it if this connection should always default to one project/organisation — see [Default organisation/project scope](#default-organisationproject-scope) above.
+
 Or in `.mcp.json` directly, with environment-variable expansion so the token isn't committed to the repo:
 
 ```json
@@ -146,12 +162,15 @@ Or in `.mcp.json` directly, with environment-variable expansion so the token isn
       "type": "http",
       "url": "http://localhost:8100/mcp",
       "headers": {
-        "Authorization": "Bearer ${REQTRACK_TOKEN}"
+        "Authorization": "Bearer ${REQTRACK_TOKEN}",
+        "X-Default-Project-Id": "${REQTRACK_DEFAULT_PROJECT_ID}"
       }
     }
   }
 }
 ```
+
+(Omit `X-Default-Project-Id`/`X-Default-Organization-Id` entirely if you don't want a default scope — they're optional.)
 
 **Self-refreshing token (recommended for anything longer than a quick test)**: Claude Code supports a `headersHelper` — a command it runs fresh on every connection and reconnect, and automatically re-runs (retrying the failed call once) if a tool call comes back 401/403. `mcp-server/scripts/get_auth_header.sh` is written exactly for this: it logs in and prints the header JSON `headersHelper` expects.
 
@@ -168,6 +187,8 @@ Or in `.mcp.json` directly, with environment-variable expansion so the token isn
 ```
 
 (Requires a native, 2FA-disabled account — see the script's own docstring.) Check `claude mcp list` afterward; it reports `✔ Connected`, `! Needs authentication`, or `✘ Failed to connect` per server.
+
+`headers` and `headersHelper` can coexist on the same server entry (static headers apply first; anything the helper returns for the same name overrides them) — add a `"headers"` block with `X-Default-Project-Id`/`X-Default-Organization-Id` alongside `"headersHelper"` if you want a default scope with this self-refreshing setup too.
 
 ## Setting up VS Code (GitHub Copilot Chat)
 
@@ -188,14 +209,15 @@ VS Code's MCP support uses `.vscode/mcp.json` with an `inputs` array so the toke
       "type": "http",
       "url": "http://localhost:8100/mcp",
       "headers": {
-        "Authorization": "Bearer ${input:reqtrack-token}"
+        "Authorization": "Bearer ${input:reqtrack-token}",
+        "X-Default-Project-Id": "<uuid, optional>"
       }
     }
   }
 }
 ```
 
-Open the Command Palette → **MCP: Add Server** → **HTTP** as an alternative to hand-writing the file, then paste the URL and let VS Code walk you through the input prompt. Click **Start** at the top of `mcp.json` to connect. There's no `headersHelper` equivalent in VS Code today, so a token configured this way needs manually re-entering (Command Palette → **MCP: Add Server** again, or clear the stored input) once it expires.
+Open the Command Palette → **MCP: Add Server** → **HTTP** as an alternative to hand-writing the file, then paste the URL and let VS Code walk you through the input prompt. Click **Start** at the top of `mcp.json` to connect. There's no `headersHelper` equivalent in VS Code today, so a token configured this way needs manually re-entering (Command Palette → **MCP: Add Server** again, or clear the stored input) once it expires. `X-Default-Project-Id`/`X-Default-Organization-Id` are optional (see [Default organisation/project scope](#default-organisationproject-scope) above) — add them as plain static entries in the same `"headers"` object; drop the line entirely if you don't want a default scope.
 
 ## Setting up Microsoft Copilot Studio
 
@@ -211,14 +233,17 @@ Copilot Studio's native MCP wizard supports header-based API-key authentication 
 
 Because Copilot Studio's connection is configured once per connector rather than refreshed per-session the way Claude Code's `headersHelper` can, use a Personal Access Token here rather than a 12-hour session token — see [Getting a token](#getting-a-token) above.
 
+The wizard above only configures one header (the `Authorization` API key), so it has no dedicated slot for the optional `X-Default-Organization-Id`/`X-Default-Project-Id` headers described in [Default organisation/project scope](#default-organisationproject-scope) — if your Copilot Studio setup supports adding further custom headers to an MCP connector beyond this wizard's single API-key field, add them there the same way; otherwise, have the assistant pass `project_id`/`organization_id` explicitly on each tool call instead.
+
 ## Generic / other MCP clients
 
 Any MCP client that supports the Streamable HTTP transport (the current, non-deprecated transport — SSE is legacy) can use this server with just two things:
 
 - **URL**: `http://<host>:8100/mcp` (or wherever it's deployed/proxied).
 - **Header**: `Authorization: Bearer <a ReqTrackManager access token>`.
+- **Optional headers**: `X-Default-Organization-Id`/`X-Default-Project-Id` — see [Default organisation/project scope](#default-organisationproject-scope) above, useful if this client is only ever going to talk to one project/organisation.
 
-No OAuth flow, no client registration, no server-specific SDK — it's a standard MCP server over plain HTTP with one required header. See the [MCP specification](https://modelcontextprotocol.io/specification) for the wire protocol itself.
+No OAuth flow, no client registration, no server-specific SDK — it's a standard MCP server over plain HTTP with one required header (plus the two optional ones above). See the [MCP specification](https://modelcontextprotocol.io/specification) for the wire protocol itself.
 
 ## Deploying it for remote clients (Copilot Studio, etc.)
 
@@ -241,7 +266,7 @@ Then the MCP URL you give any remote client is `https://my.website.com/mcp/mcp` 
 
 ## Known limitations
 
-- **Read-only unless write mode is explicitly enabled, and narrow even then.** See [Write mode](#write-mode) above. Voting, commenting, submitting/deciding change requests, recording review outcomes, marking a requirement completed, archiving, and file/link management are all still out of scope regardless of `MCP_WRITES_ENABLED` — letting an AI assistant *author requirement content* is a deliberately smaller, safer surface than letting it act on the rest of the workflow, and approval-type actions specifically are excluded on principle, not just left for later (see Write mode's rationale). A natural, larger follow-up if any of the non-approval items is ever wanted.
+- **Read-only unless write mode is explicitly enabled, and narrow even then.** See [Write mode](#write-mode) above. Voting, commenting, submitting a change request, recording review outcomes, archiving, and file/link management are all still out of scope regardless of `MCP_WRITES_ENABLED` — a deliberately narrow set, not just left for later. Approving/deciding/completing are *possible*, unlike those, but only for a project and organisation that have each explicitly opted in and acknowledged the accountability trade-off — see Write mode's rationale and [docs/decisions.md](decisions.md)'s "AI approval via MCP" entry.
 - **No zero-click "click a button and you're connected" login.** Some MCP servers (Azure DevOps' among them) drive a full OAuth 2.1 flow so a client like VS Code can pop a browser automatically on first connection with no separate step. This server deliberately doesn't do that: building a spec-compliant OAuth 2.1 authorization server (PKCE, dynamic client registration, redirect_uri validation, authorization-code/token storage) is a substantial undertaking to get right, and `fastmcp`'s own documentation for the feature that would provide it explicitly warns "this is an extremely advanced pattern that most users should avoid." The `/login` page above is the deliberately-simpler alternative: one browser visit, a real login form, no new protocol surface — you still have to paste the resulting token into your client's config once, rather than it happening invisibly, but there's no custom authorization-server code to get wrong. See `docs/decisions.md` for the full writeup of this tradeoff.
 - **~~No long-lived API token mechanism~~ — resolved.** Personal Access Tokens (Preferences → Personal Access Tokens) are exactly this: independently revocable, scoped to whichever organisation(s) their creator chooses, and long-lived by default (90 days unless an org sets its own cap) — see [Getting a token](#getting-a-token) above. Session tokens (12-hour lifetime) and Claude Code's self-refreshing `headersHelper` remain available as lighter-weight alternatives when a long-lived credential isn't wanted.
 - **SSO accounts can't use the automated login helper.** `get_auth_header.sh` does a single non-interactive native-credential login; SSO accounts should use `/login?org=<slug>`'s "Sign in with SSO" button instead (see [Getting a token](#getting-a-token) above).

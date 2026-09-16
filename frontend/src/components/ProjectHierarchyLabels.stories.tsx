@@ -10,6 +10,7 @@ function project(overrides: Partial<ProjectListItem>): ProjectListItem {
     id: "p1", organization_id: "org-1", name: "Project", summary: "", created_at: "", updated_at: "",
     is_archived: false, is_template: false, allow_member_change_requests: true,
     require_change_request_for_approved_links: false, exempt_from_org_link_lock: false,
+    allow_ai_approvals: false,
     visibility: "only_specified",
     terminology: {}, status_id: "s1", parent_project_id: null, role_inheritance_mode: "none",
     role_inheritance_filter_role: null, can_be_parent: false, current_stage_name: null, current_stage_status: null,

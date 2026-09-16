@@ -435,6 +435,19 @@ const en = {
     exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
     exemptFromOrgLinkLockHint:
       "This organisation requires every {project} to gate link changes on an approved {requirement} behind a change request. Checking this opts this {project} out, falling back to its own setting above.",
+    // AI approval via MCP (docs/decisions.md). Both this AND the
+    // organisation's own toggle (Org Admin's Advanced settings) must be on
+    // for an AI assistant acting through the MCP server to approve,
+    // decide, or complete anything in this {project} — see
+    // orgAdmin.allowAiApprovals's own comment for the org-level half.
+    allowAiApprovals: "Allow AI approval via MCP for this {project}",
+    allowAiApprovalsHint:
+      "Also requires AI approval to be enabled for this {project}'s organisation (Org Admin's Advanced settings). Off by default.",
+    allowAiApprovalsAckTitle: "Allow AI approval for this {project}?",
+    allowAiApprovalsAckBody:
+      "Approvals made by an AI assistant through the MCP server are not necessarily a deliberate, in-the-moment decision by a human reviewer, and may weaken the accountability this approval workflow is meant to represent.",
+    allowAiApprovalsAckCheckbox: "I understand this and want to allow it for this {project} anyway.",
+    allowAiApprovalsAckConfirm: "Allow AI approval",
     isTemplate: "Usable as a {project} template",
     // Hierarchical projects (docs/decisions.md): opt-in eligibility gate —
     // other {projects}' managers can only select this one as a parent once
@@ -1166,6 +1179,21 @@ const en = {
     forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, org-wide",
     forceRequireChangeRequestForApprovedLinksHint:
       "Applies to every {project} in this organisation, even one whose own setting is off — unless that {project} is individually marked exempt in its own Project Admin settings.",
+    // AI approval via MCP (docs/decisions.md). Both this AND a given
+    // {project}'s own toggle (Project Admin's settings) must be on before
+    // an AI assistant acting through the MCP server can approve, decide,
+    // or complete anything in that {project} — this flag alone is not
+    // sufficient. Readable by any org member (see OrganizationOut.
+    // allow_ai_approvals's docstring) since a {project} manager needs to
+    // know whether their own toggle can even take effect.
+    allowAiApprovals: "Allow AI approval via MCP",
+    allowAiApprovalsHint:
+      "Lets an AI assistant acting through the MCP server approve/decide/complete things — but only in a {project} whose own manager or administrator has also explicitly enabled it. Off by default.",
+    allowAiApprovalsAckTitle: "Allow AI approval for this organisation?",
+    allowAiApprovalsAckBody:
+      "Approvals made by an AI assistant through the MCP server are not necessarily a deliberate, in-the-moment decision by a human reviewer, and may weaken the accountability this approval workflow is meant to represent.",
+    allowAiApprovalsAckCheckbox: "I understand this and want to allow it for this organisation anyway.",
+    allowAiApprovalsAckConfirm: "Allow AI approval",
     autoAcceptEmailDomain: "Accepted email domain",
     autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
     externalUserPolicy: "External users on projects",

@@ -339,6 +339,12 @@ export function OrgAdminPage() {
   // `exempt_from_org_link_lock` opt-out. See `Organization`'s own field
   // docstring for the full resolution.
   const [forceRequireCrForLinks, setForceRequireCrForLinks] = useState(false);
+  // AI approval via MCP (docs/decisions.md) — org half of the two-level
+  // opt-in gate. Enabling it (not disabling) requires acknowledging the
+  // accountability trade-off first — see `aiApprovalsAckPending` below.
+  const [allowAiApprovals, setAllowAiApprovals] = useState(false);
+  const [aiApprovalsAckPending, setAiApprovalsAckPending] = useState(false);
+  const [aiApprovalsAckChecked, setAiApprovalsAckChecked] = useState(false);
   // Guards the advanced-settings form fields above against `reload()` —
   // called after every unrelated mutation on this page (e.g.
   // `toggleDisplayNameLock`) and not awaited by its caller, so it can
@@ -591,6 +597,7 @@ export function OrgAdminPage() {
         setExternalUserPolicy(a.external_user_policy);
         setAllowRelaxedChildProjectCreation(a.allow_relaxed_child_project_creation);
         setForceRequireCrForLinks(a.force_require_change_request_for_approved_links);
+        setAllowAiApprovals(a.allow_ai_approvals);
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
@@ -773,6 +780,7 @@ export function OrgAdminPage() {
         external_user_policy: externalUserPolicy,
         allow_relaxed_child_project_creation: allowRelaxedChildProjectCreation,
         force_require_change_request_for_approved_links: forceRequireCrForLinks,
+        allow_ai_approvals: allowAiApprovals,
       });
       setAdvanced(saved);
       setSmtpPassword("");
@@ -3391,6 +3399,27 @@ export function OrgAdminPage() {
                   </span>
                 </label>
 
+                {/* AI approval via MCP (docs/decisions.md) */}
+                <label className="row" style={{ gap: "0.6rem" }}>
+                  <ToggleSwitch
+                    checked={allowAiApprovals}
+                    onChange={(next) => {
+                      if (next) {
+                        setAiApprovalsAckChecked(false);
+                        setAiApprovalsAckPending(true);
+                      } else {
+                        advancedDirtyRef.current = true;
+                        setAllowAiApprovals(false);
+                      }
+                    }}
+                    label={strings.orgAdmin.allowAiApprovals}
+                  />
+                  <span className="stack" style={{ gap: 0 }}>
+                    {strings.orgAdmin.allowAiApprovals}
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowAiApprovalsHint}</span>
+                  </span>
+                </label>
+
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
                 {/* `onClick={saveAdvanced}` submits the *whole*
                     `OrgAdvancedSettings` object — SMTP/email (its own
@@ -3611,6 +3640,31 @@ export function OrgAdminPage() {
           confirmLabel={strings.orgAdmin.patRevokeAll(orgLabel)}
           onConfirm={revokeAllOrgPats}
           onCancel={() => setRevokeAllPatsOpen(false)}
+        />
+      )}
+      {aiApprovalsAckPending && (
+        <ConfirmDialog
+          title={strings.orgAdmin.allowAiApprovalsAckTitle}
+          message={
+            <span className="stack" style={{ gap: "0.5rem" }}>
+              <span>{strings.orgAdmin.allowAiApprovalsAckBody}</span>
+              <label className="row" style={{ gap: "0.4rem" }}>
+                <input
+                  type="checkbox" checked={aiApprovalsAckChecked}
+                  onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
+                />
+                {strings.orgAdmin.allowAiApprovalsAckCheckbox}
+              </label>
+            </span>
+          }
+          confirmLabel={strings.orgAdmin.allowAiApprovalsAckConfirm}
+          confirmDisabled={!aiApprovalsAckChecked}
+          onConfirm={() => {
+            advancedDirtyRef.current = true;
+            setAllowAiApprovals(true);
+            setAiApprovalsAckPending(false);
+          }}
+          onCancel={() => setAiApprovalsAckPending(false)}
         />
       )}
     </div>

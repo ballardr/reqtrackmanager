@@ -89,6 +89,12 @@ class OrganizationOut(BaseModel):
     # correctly. See `Organization.force_require_change_request_for_approved_links`'s
     # model docstring.
     force_require_change_request_for_approved_links: bool = False
+    # Readable by any org member for the same reason as the field above: a
+    # project manager configuring their own project's `allow_ai_approvals`
+    # (Project model) needs to know whether the org side of the gate is even
+    # on, otherwise their own toggle would silently be a no-op. See
+    # `Organization.allow_ai_approvals`'s model docstring.
+    allow_ai_approvals: bool = False
 
 
 class OrgImportResult(BaseModel):
@@ -199,6 +205,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
+    allow_ai_approvals: bool = False
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -214,6 +221,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     external_user_policy: ExternalUserPolicy = ExternalUserPolicy.DISABLED
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
+    allow_ai_approvals: bool = False
 
 
 class ModuleFrontendManifestOut(BaseModel):
