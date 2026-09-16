@@ -31,7 +31,7 @@ flowchart LR
    ```
 3. `docker compose up -d backend` (or restart the container). At startup the backend discovers `MODULE_DEFINITION`, mounts its router (if any), registers its RBAC roles/MCP tools (if any), imports its models into the schema-comparison metadata, and — because `ALLOW_EXTERNAL_MODULES` is on — automatically applies its own `migrations_import_path` migration if it declares one. No edit to any core ReqTrackManager file is needed for any of this.
 
-A first-party module shipped inside the backend's own image (e.g. the [Compliance module](../modules/compliance-module.md)) is unaffected by any of this — it always loads regardless of `ALLOW_EXTERNAL_MODULES`, and its own schema changes always ship as a reviewed Alembic migration in the core image, never via `migrations_import_path`.
+A first-party module shipped inside the backend's own image (e.g. the [Compliance module](../modules/compliance-module/overview.md)) is unaffected by any of this — it always loads regardless of `ALLOW_EXTERNAL_MODULES`, and its own schema changes always ship as a reviewed Alembic migration in the core image, never via `migrations_import_path`.
 
 ## Adding a Tier C (federated) frontend module
 
