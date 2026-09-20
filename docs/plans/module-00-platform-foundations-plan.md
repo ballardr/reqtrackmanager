@@ -27,14 +27,35 @@ point at it.
 
 ## Status / Resume Here
 
-2 / 4 phases complete (Phase 0 + Phase 1). Phase 2 is next.
+3 / 4 phases complete (Phase 0 + Phase 1 + Phase 2). Phase 3 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: relationship-model decision + sequence-numbering decision (the two forks below) | [x] Complete (2026-09-21) |
 | 1 | Build the generic cross-artefact relationship model | [x] Complete (2026-09-21) |
-| 2 | Per-project sequence-number / unique-code generation | [ ] Not started |
+| 2 | Per-project sequence-number / unique-code generation | [x] Complete (2026-09-21) |
 | 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [ ] Not started |
+
+**Phase 2 outcome (2026-09-21), Decided by: Agent (implementation details) /
+User (Phase 0 design)** — see `docs/decisions.md`'s "Module 0 (Platform
+Foundations) Phase 2" entry for the full record:
+
+- Built `project_sequence_counters` (model
+  `app.models.sequence.ProjectSequenceCounter`: `project_id`,
+  `artefact_type` (reuses `ArtefactType`), `next_seq`) and
+  `app/services/sequences.py`'s `generate_unique_code(db, project,
+  artefact_type, prefix)`, additive alongside the untouched
+  `next_requirement_seq`/`next_action_seq` columns — no data backfill,
+  since no roadmap artefact type consumes this yet.
+- Concurrency-safe by reusing `services.rbac.lock_project_for_update`
+  (not a new locking helper) to serialize the read-increment-write around
+  the counter row, proven with a real multi-threaded test, not just a
+  sequential one.
+- Found and fixed an incidental, deterministic bug in Phase 1's own
+  `test_artefact_links.py::test_untyped_link_partial_unique_index_rejects_duplicate`
+  (a `try/except` scoped to the wrong call) while verifying — see the
+  decisions-log entry.
+- Full backend test suite run: 1114 passed.
 
 **Phase 1 outcome (2026-09-21), Decided by: Agent (implementation details) /
 User (Phase 0 design)** — see `docs/decisions.md`'s "Module 0 (Platform
@@ -323,7 +344,11 @@ exist — likely `Decision` and `Requirement`, if Module 4 goes first per the
 user's plan) rather than only a single-type-pair happy path, since the
 entire point of building this module is that it generalises past one pair.
 
-## Phase 2 — Per-project sequence-number / unique-code generation
+## Phase 2 — Per-project sequence-number / unique-code generation — COMPLETE
+
+**Status: complete (2026-09-21).** See "Phase 2 outcome" in "Status / Resume
+Here" above and `docs/decisions.md`'s "Module 0 (Platform Foundations)
+Phase 2" entry for the full record.
 
 **Scope:** the `ProjectSequenceCounter` table (`project_id`,
 `artefact_type`, `next_seq`) plus a shared `generate_unique_code(db,

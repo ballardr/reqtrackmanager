@@ -127,13 +127,18 @@ def test_untyped_link_partial_unique_index_rejects_duplicate(client, admin_token
         )
         db.commit()
 
-        relationships.create_link(
-            db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action_id,
-            target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
-            link_type_id=None, created_by=creator_id,
-        )
         try:
-            db.commit()
+            # `create_link` flushes immediately (see its own docstring) —
+            # Postgres enforces `ux_artefact_links_untyped` (a plain
+            # `CREATE UNIQUE INDEX`, not a deferrable constraint) at
+            # statement time, so the violation surfaces here, on the
+            # flush inside `create_link` itself, not on a later
+            # `db.commit()`.
+            relationships.create_link(
+                db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action_id,
+                target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
+                link_type_id=None, created_by=creator_id,
+            )
             raised = False
         except IntegrityError:
             db.rollback()

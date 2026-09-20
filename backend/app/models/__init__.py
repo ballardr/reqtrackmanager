@@ -56,6 +56,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.models.sequence import ProjectSequenceCounter
 from app.models.server_role import UserServerRole
 from app.models.user import User
 
@@ -107,6 +108,7 @@ __all__ = [
     "RequirementAction",
     "RequirementReview",
     "RequirementVersion",
+    "ProjectSequenceCounter",
     "UserServerRole",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
