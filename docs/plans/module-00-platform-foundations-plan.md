@@ -27,13 +27,60 @@ point at it.
 
 ## Status / Resume Here
 
-0 / 3 phases complete. Phase 0 is next.
+2 / 4 phases complete (Phase 0 + Phase 1). Phase 2 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Exploratory: relationship-model decision + sequence-numbering decision (the two forks below) | [ ] Not started |
-| 1 | Build the generic cross-artefact relationship model | [ ] Not started |
+| 0 | Exploratory: relationship-model decision + sequence-numbering decision (the two forks below) | [x] Complete (2026-09-21) |
+| 1 | Build the generic cross-artefact relationship model | [x] Complete (2026-09-21) |
 | 2 | Per-project sequence-number / unique-code generation | [ ] Not started |
+| 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [ ] Not started |
+
+**Phase 1 outcome (2026-09-21), Decided by: Agent (implementation details) /
+User (Phase 0 design)** — see `docs/decisions.md`'s "Module 0 (Platform
+Foundations) Phase 1" entry for the full record:
+
+- Built `artefact_links` (model `app.models.relationship.ArtefactLink`) —
+  the generic polymorphic relationship table, with a new shared
+  `ArtefactType` enum (`models/enums.py`, mirroring `ReviewTargetType`'s
+  precedent) and generic query helpers in the new
+  `app/services/relationships.py`.
+- Migrated every existing `RequirementLink` row (typed,
+  requirement-to-requirement traceability) and `RequirementActionLink` row
+  (untyped, action-to-requirement membership) into `artefact_links`
+  (migration 0041), preserving row ids so the one live external FK
+  (`change_request_versions.proposed_link_id`, from Platform review
+  2026-09 Phase 8's `REMOVE_LINK` change-request kind) could be repointed
+  rather than broken. Both old tables and the `RequirementLink`/
+  `RequirementActionLink` model classes are gone.
+- Two separate uniqueness constraints, not one, to correctly handle
+  Postgres's NULL-distinctness for the untyped (action-link) case — see
+  the decisions-log entry for why a single 5-column constraint would have
+  under-enforced duplicate prevention.
+- Repointed every call site (`routers.requirements`, `routers.
+  change_requests`, `routers.orgs`, `services.project_export`, `services.
+  requirement_csv`) onto the generic service, preserving every existing
+  REST endpoint's request/response shape and every existing tenant-
+  isolation check exactly. The compliance module needed no changes — it
+  never imported either old model.
+- Full backend test suite run (see decisions-log entry for the result), including a new cross-artefact-type test and a partial-unique-index duplicate-prevention test (`tests/test_artefact_links.py`).
+
+**Phase 0 outcome (2026-09-21), Decided by: User** — see `docs/decisions.md`'s
+"Module 0 (Platform Foundations) Phase 0" entry for the full record of the
+discussion:
+
+- Relationship model: **polymorphic table** (`source_type`/`source_id`/
+  `target_type`/`target_id`/`link_type_id`).
+- Existing `RequirementLink` rows: **migrate into the new table** (not kept
+  as a separate requirement-only fast path).
+- `RequirementActionLink`: **folds into the same polymorphic table** (an
+  `Action` is just another `source_type`).
+- Sequence numbering: **shared `ProjectSequenceCounter` table** (not a
+  per-type column on `Project`). Existing `next_requirement_seq`/
+  `next_action_seq` are left as-is, untouched.
+- Type-list pattern (non-blocking, decided anyway per activity 4): **shared
+  frontend component only** (`TypeDefinitionManager`-style), separate
+  backend tables per domain.
 
 ## Why this can't just be "Module 1's problem"
 
@@ -55,11 +102,19 @@ rule the moment a second module needed to import it (`CLAUDE.md`'s
 may import from another module's directory). So it has to live outside
 every content module, built once, before any of them.
 
-## Phase 0 — Exploratory: Requirements Clarification & Design Validation
+## Phase 0 — Exploratory: Requirements Clarification & Design Validation — COMPLETE
 
-**Why this phase exists:** this is a real architectural fork with a
+**Status: complete (2026-09-21).** All forks below were resolved with the
+user directly, including follow-up elaboration on module-removal behaviour,
+query-pattern trade-offs, and concurrency implications before the final
+calls were made. See `docs/decisions.md`'s "Module 0 (Platform Foundations)
+Phase 0" entry for the full record. The fork write-ups below are kept as
+historical context for *why*, not as open questions — do not re-litigate
+them in Phase 1/2 without new information.
+
+**Why this phase existed:** this was a real architectural fork with a
 migration-cost/generality trade-off (below), not a mechanical implementation
-detail — it needs explicit user sign-off before Phase 1, the same as every
+detail — it needed explicit user sign-off before Phase 1, the same as every
 other module's design-sensitive Phase 0, just with higher stakes since
 every other module depends on the outcome.
 
@@ -225,22 +280,30 @@ agent assumption, since it's genuinely a new table either way.
    record it here and in `docs/decisions.md` as **Decided by: User** once
    chosen, same as activity 1.
 
-**Exit criteria:** user has chosen a side of both the relationship-model
+**Exit criteria:** ~~user has chosen a side of both the relationship-model
 fork and the sequence-numbering fork (and, if polymorphic, the migration
-sub-choices for each) before Phase 1/2 start.
+sub-choices for each) before Phase 1/2 start.~~ **Met 2026-09-21** — see
+outcome recorded in "Status / Resume Here" above.
 
 ## Phase 1 — Build the generic cross-artefact relationship model
 
-**Scope:** whatever Phase 0 decided — either the polymorphic relationship
-table (`source_type`/`source_id`/`target_type`/`target_id`/`link_type_id`)
-plus generic query helpers ("what links to X," "what does X link to,"
-filtered by type, with explicit forward/reverse direction and display
-names per overview §40), or the first per-pair join table plus a documented
-convention for adding more. Lands in a neutral location outside any
-content module's own directory — e.g. `backend/app/services/relationships.py`
-and a core `artefact_links`/`relationship_links` table — consistent with
-`CLAUDE.md`'s module-boundary rule, since this is core infrastructure every
-module consumes, not any one module's own feature.
+**Scope:** the polymorphic relationship table (`source_type`/`source_id`/
+`target_type`/`target_id`/`link_type_id`) plus generic query helpers ("what
+links to X," "what does X link to," filtered by type, with explicit
+forward/reverse direction and display names per overview §40). Lands in a
+neutral location outside any content module's own directory —
+`backend/app/services/relationships.py` and a core `artefact_links` table —
+consistent with `CLAUDE.md`'s module-boundary rule, since this is core
+infrastructure every module consumes, not any one module's own feature.
+
+Per the Phase 0 outcome, this phase also covers: (a) migrating existing
+`RequirementLink` rows into the new table and repointing existing call
+sites (`backend/app/services/requirements.py` and anywhere else that
+queries `requirement_links` directly — confirm the full call-site list
+before touching data), and (b) folding `RequirementActionLink` into the
+same table (`Action` as a `source_type`). Both are in scope for this phase,
+not deferred follow-ups — the Phase 0 decision was specifically to
+consolidate onto one table now rather than leave two tables live.
 
 **Why (risk/outcome):** every module plan in this roadmap (Context &
 Strategy, Stakeholders & Personas, Risk Management, Decision Management,
@@ -262,13 +325,13 @@ entire point of building this module is that it generalises past one pair.
 
 ## Phase 2 — Per-project sequence-number / unique-code generation
 
-**Scope:** whatever Phase 0 decided on the sequence-numbering fork —
-either the `ProjectSequenceCounter` table plus shared
-`generate_unique_code(db, project, artefact_type, prefix)` helper, or a
-documented convention for adding another `next_<type>_seq` column to
-`Project` plus a per-type service function. Same neutral-location
-reasoning as Phase 1 (`backend/app/services/sequences.py` or similar, not
-inside any content module's own directory) if generalised.
+**Scope:** the `ProjectSequenceCounter` table (`project_id`,
+`artefact_type`, `next_seq`) plus a shared `generate_unique_code(db,
+project, artefact_type, prefix)` helper. Same neutral-location reasoning
+as Phase 1 (`backend/app/services/sequences.py`, not inside any content
+module's own directory). Existing `next_requirement_seq`/
+`next_action_seq` columns on `Project` are left untouched — this phase
+only builds the mechanism *new* artefact types will use going forward.
 
 **Why (risk/outcome):** every module plan in this roadmap that defines a
 new identified artefact (Decision, Design, Risk, Pain Point, Strategy,
@@ -286,6 +349,60 @@ artefact_type)`, not accidentally shared across types) and that concurrent
 creation of two artefacts of the same type in the same project never
 produces a duplicate code (mirroring whatever concurrency guarantee
 `next_requirement_seq`'s existing increment already relies on).
+
+## Phase 3 — Migrate the compliance module's own evidence-link tables onto the new relationship model
+
+**Added 2026-09-21, at the user's explicit request** once Phase 1 was under
+way, on discovering during Phase 1's own call-site audit that the
+compliance module (`backend/app/modules/compliance/`) already independently
+built exactly the per-pair-table pattern Module 0 exists to replace:
+`ComplianceEvidenceRequirementLink` (Evidence↔`ProjectComplianceRequirement`)
+and `ComplianceEvidenceActionLink` (Evidence↔
+`ComplianceRequiredActionAssessment`), both in
+`backend/app/modules/compliance/models.py`, each an untyped many-to-many
+join table (`evidence_id`, the target FK, `linked_by`, `created_at` — no
+`link_type_id`, unlike core's `RequirementLink`). Their own docstrings
+state outright that they were "deliberately owned by this module, not
+core" specifically *because* no shared relationship infrastructure existed
+yet when the compliance module was built — this phase is that gap closing.
+
+**Scope:** replace both tables with rows in the new `artefact_links` table
+(`source_type='compliance_evidence'`, `target_type` one of
+`'project_compliance_requirement'`/`'compliance_required_action_assessment'`,
+`link_type_id` null — same untyped-link shape Phase 1 already established
+for `RequirementActionLink`). Add the two new artefact-type members to the
+shared type vocabulary Phase 1 introduces (mirroring `ReviewTargetType`'s
+existing precedent of a shared enum in a core file that every consuming
+module extends with its own members — not a module-boundary violation
+since it's a value in a shared vocabulary, not an import of module-owned
+code). Migrate existing `compliance_evidence_requirement_links`/
+`compliance_evidence_action_links` rows into `artefact_links`, then drop
+both old tables, mirroring exactly how Phase 1 retires `requirement_links`/
+`requirement_action_links`. Repoint every call site in `service.py`,
+`export.py`, `reports.py`, `project_router.py`, and `schemas.py` (found via
+this session's audit — see grep results in the Phase 1 implementation
+notes) to the shared relationship service (`services/relationships.py`)
+instead of querying the module's own tables directly, preserving the
+existing REST API request/response shapes exactly (this is an internal
+storage change, not a compliance-module feature change).
+
+**Why (risk/outcome):** without this, the compliance module remains the
+concrete counter-example to Module 0's entire premise — new shared
+infrastructure that an existing module doesn't use, sitting right next to
+it. Doing this now, directly after Phase 1, means the compliance module
+becomes the second real consumer of the polymorphic table (alongside core
+`Requirement`/`RequirementAction`), which is itself part of Phase 1's own
+verification bar ("exercise the cross-module case... rather than only a
+single-type-pair happy path") — this phase gives that verification a real,
+already-shipped second module to test against, not just a stub.
+
+**Verification bar:** full compliance module test suite passes unchanged
+(same external behaviour, different internal storage); a new test confirms
+`artefact_links` correctly returns compliance evidence links alongside
+core requirement/action links when queried generically (i.e. Module 0's
+"what links to X" helper works across a content-module boundary, not just
+within core). `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py`
+checked for any direct references to the old table/model names.
 
 ## Related, non-blocking: patterns worth a shared convention but not shared infrastructure
 

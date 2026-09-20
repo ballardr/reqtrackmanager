@@ -45,16 +45,16 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
+from app.models.relationship import ArtefactLink
 from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
     RequirementKeyword,
-    RequirementLink,
     RequirementReview,
     RequirementVersion,
 )
-from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.server_role import UserServerRole
 from app.models.user import User
@@ -98,14 +98,13 @@ __all__ = [
     "ProjectStatusDefinition",
     "StageReviewResponse",
     "UserProjectRole",
+    "ArtefactLink",
     "Baseline",
     "BaselineItem",
     "Requirement",
     "RequirementKeyword",
-    "RequirementLink",
     "RequirementLinkTypeDefinition",
     "RequirementAction",
-    "RequirementActionLink",
     "RequirementReview",
     "RequirementVersion",
     "UserServerRole",

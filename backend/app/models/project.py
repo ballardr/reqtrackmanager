@@ -130,13 +130,13 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # to enabled per the requirement's clarification.
     allow_member_change_requests: Mapped[bool] = mapped_column(Boolean, default=True)
     # Platform review 2026-09, Phase 8: opt-in per-project requirement that
-    # adding/removing a `RequirementLink` (traceability link) on an
-    # already-approved requirement go through a change request
+    # adding/removing a requirement-to-requirement traceability `ArtefactLink`
+    # on an already-approved requirement go through a change request
     # (`ChangeRequestKind.ADD_LINK`/`REMOVE_LINK`) instead of the direct
     # endpoint — see `services.requirements.requires_change_request_for_links`
     # for the full resolution (this field, or an org-wide force, minus this
     # project's own exemption). Defaults to `False`: links stay ungated by
-    # default, matching `RequirementLink`'s existing "traceability metadata
+    # default, matching `ArtefactLink`'s existing "traceability metadata
     # isn't C-G-12 content" design and this repo's own
     # `allow_member_change_requests` precedent for a permissive default that
     # doesn't retroactively break every existing project.

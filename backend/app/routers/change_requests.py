@@ -35,6 +35,7 @@ from app.models.change_request import (
 )
 from app.models.custom_field import CustomFieldEntityKind
 from app.models.enums import (
+    ArtefactType,
     ChangeRequestKind,
     ChangeRequestStatus,
     ChangeRequestVoteChoice,
@@ -46,8 +47,9 @@ from app.models.enums import (
 from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementLink
-from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement
+from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.schemas.change_request import (
@@ -82,6 +84,8 @@ from app.services.rbac import (
     require_project_role,
     require_project_view,
 )
+from app.services.relationships import create_link as create_artefact_link
+from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import (
     apply_new_version,
     create_requirement,
@@ -265,10 +269,9 @@ def create_change_request(
             )
         if has_link:
             action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
-            existing = db.scalar(
-                select(RequirementActionLink).where(
-                    RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
-                )
+            existing = get_artefact_link_between(
+                db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+                target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
             )
             if existing is not None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is already linked to this requirement.")
@@ -301,10 +304,9 @@ def create_change_request(
         if payload.proposed_action_link_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_action_link_id is required to remove an action.")
         action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
-        existing = db.scalar(
-            select(RequirementActionLink).where(
-                RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
-            )
+        existing = get_artefact_link_between(
+            db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+            target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
         )
         if existing is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is not linked to this requirement.")
@@ -313,8 +315,8 @@ def create_change_request(
         # ADD_ACTION/REMOVE_ACTION above: only reachable once
         # `services.requirements.requires_change_request_for_links` is true
         # for this project (links otherwise stay ungated — see
-        # `RequirementLink`'s model docstring), *and* the target requirement
-        # is locked.
+        # `models.relationship.ArtefactLink`'s model docstring), *and* the
+        # target requirement is locked.
         if payload.requirement_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "requirement_id is required to change a link.")
         requirement = db.get(Requirement, payload.requirement_id)
@@ -348,8 +350,13 @@ def create_change_request(
         else:
             if payload.proposed_link_id is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposed_link_id is required to remove a link.")
-            link = db.get(RequirementLink, payload.proposed_link_id)
-            if link is None or requirement.id not in (link.source_requirement_id, link.target_requirement_id):
+            link = db.get(ArtefactLink, payload.proposed_link_id)
+            if (
+                link is None
+                or link.source_type != ArtefactType.REQUIREMENT
+                or link.target_type != ArtefactType.REQUIREMENT
+                or requirement.id not in (link.source_id, link.target_id)
+            ):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid proposed_link_id.")
     else:
         # NEW_REQUIREMENT ignores changed_fields entirely (there's no
@@ -759,16 +766,16 @@ def decide_change_request(
             if version.proposed_action_link_id is not None:
                 action = db.get(RequirementAction, version.proposed_action_link_id)
                 if action is not None and action.project_id == project_id:
-                    existing = db.scalar(
-                        select(RequirementActionLink).where(
-                            RequirementActionLink.requirement_id == requirement.id, RequirementActionLink.action_id == action.id
-                        )
+                    existing = get_artefact_link_between(
+                        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+                        target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
                     )
                     if existing is None:
-                        db.add(RequirementActionLink(
-                            requirement_id=requirement.id, action_id=action.id, linked_by=cr.creator_id,
-                            created_at=datetime.now(UTC),
-                        ))
+                        create_artefact_link(
+                            db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+                            target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
+                            link_type_id=None, created_by=cr.creator_id,
+                        )
                         log_event(
                             db, entity_type="requirement_action_link", entity_id=action.id, action="linked",
                             actor_id=current_user.id, project_id=project_id,
@@ -789,10 +796,11 @@ def decide_change_request(
                     )
                     db.add(action)
                     db.flush()
-                    db.add(RequirementActionLink(
-                        requirement_id=requirement.id, action_id=action.id, linked_by=cr.creator_id,
-                        created_at=datetime.now(UTC),
-                    ))
+                    create_artefact_link(
+                        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+                        target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
+                        link_type_id=None, created_by=cr.creator_id,
+                    )
                     log_event(
                         db, entity_type="requirement_action", entity_id=action.id, action="created",
                         actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
@@ -808,18 +816,16 @@ def decide_change_request(
             # directly (before this requirement was re-locked, say) between
             # submission and approval, so re-verify rather than assume.
             requirement = db.get(Requirement, cr.requirement_id)
-            existing = db.scalar(
-                select(RequirementActionLink).where(
-                    RequirementActionLink.requirement_id == requirement.id,
-                    RequirementActionLink.action_id == version.proposed_action_link_id,
-                )
+            existing = get_artefact_link_between(
+                db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=version.proposed_action_link_id,
+                target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
             )
             if existing is not None:
                 log_event(
-                    db, entity_type="requirement_action_link", entity_id=existing.action_id, action="unlinked",
+                    db, entity_type="requirement_action_link", entity_id=existing.source_id, action="unlinked",
                     actor_id=current_user.id, project_id=project_id,
                     detail={
-                        "requirement_id": str(requirement.id), "action_id": str(existing.action_id),
+                        "requirement_id": str(requirement.id), "action_id": str(existing.source_id),
                         "via": "change_request", "change_request_id": str(cr.id),
                     },
                 )
@@ -831,20 +837,17 @@ def decide_change_request(
             target = db.get(Requirement, version.proposed_link_target_requirement_id)
             link_type = db.get(RequirementLinkTypeDefinition, version.proposed_link_type_id)
             if target is not None and target.project_id == project_id and link_type is not None:
-                existing = db.scalar(
-                    select(RequirementLink).where(
-                        RequirementLink.source_requirement_id == requirement.id,
-                        RequirementLink.target_requirement_id == target.id,
-                        RequirementLink.link_type_id == link_type.id,
-                    )
+                existing = get_artefact_link_between(
+                    db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
+                    target_type=ArtefactType.REQUIREMENT, target_id=target.id,
+                    link_type_id=link_type.id,
                 )
                 if existing is None:
-                    link = RequirementLink(
-                        source_requirement_id=requirement.id, target_requirement_id=target.id,
+                    link = create_artefact_link(
+                        db, source_type=ArtefactType.REQUIREMENT, source_id=requirement.id,
+                        target_type=ArtefactType.REQUIREMENT, target_id=target.id,
                         link_type_id=link_type.id, created_by=cr.creator_id,
                     )
-                    db.add(link)
-                    db.flush()
                     log_event(
                         db, entity_type="requirement_link", entity_id=link.id, action="created",
                         actor_id=current_user.id, project_id=project_id,
@@ -858,14 +861,14 @@ def decide_change_request(
             # Platform review 2026-09, Phase 8 — same re-check posture as
             # ADD_LINK above: the link may already have been removed via
             # some other path between submission and approval.
-            link = db.get(RequirementLink, version.proposed_link_id)
+            link = db.get(ArtefactLink, version.proposed_link_id)
             if link is not None:
                 log_event(
                     db, entity_type="requirement_link", entity_id=link.id, action="deleted",
                     actor_id=current_user.id, project_id=project_id,
                     detail={
-                        "source_requirement_id": str(link.source_requirement_id),
-                        "target_requirement_id": str(link.target_requirement_id),
+                        "source_requirement_id": str(link.source_id),
+                        "target_requirement_id": str(link.target_id),
                         "via": "change_request", "change_request_id": str(cr.id),
                     },
                 )

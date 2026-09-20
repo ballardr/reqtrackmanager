@@ -919,8 +919,8 @@ def list_project_files(
 
     # Joined directly on RequirementAction.project_id rather than via a
     # linked requirement: an action may be linked to zero, one, or several
-    # requirements (RequirementActionLink), so it has no single owning
-    # requirement to attribute the file to.
+    # requirements (via untyped `ArtefactLink` rows), so it has no single
+    # owning requirement to attribute the file to.
     for asset, linked_at, action_id, action_code, action_title in db.execute(
         select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
         .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)

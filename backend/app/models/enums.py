@@ -205,6 +205,29 @@ class ReviewTargetType(str, enum.Enum):
     ACTION = "action"
 
 
+class ArtefactType(str, enum.Enum):
+    """What a polymorphic `ArtefactLink` (`models.relationship`) points at,
+    on either its source or target end (Module 0 — Platform Foundations,
+    Phase 1).
+
+    Mirrors `ReviewTargetType`'s existing precedent exactly (a shared
+    vocabulary enum in a core file, extended with new members by whichever
+    module introduces the artefact type) rather than inventing a new
+    pattern for a second polymorphic type+id pair — see
+    `models.relationship.ArtefactLink`'s own docstring for the table this
+    backs. Future modules (Decision, Design, Risk, Pain Point, Strategy,
+    Guiding Principle, Open Question, Stakeholder/Persona, per
+    docs/plans/module-00-platform-foundations-plan.md) add their own
+    members here as they ship — this is a value in a shared vocabulary, not
+    an import of module-owned code, so extending it from a future module's
+    own migration does not violate this project's module-boundary rule
+    (CLAUDE.md "Modular Feature System Boundary").
+    """
+
+    REQUIREMENT = "requirement"
+    REQUIREMENT_ACTION = "requirement_action"
+
+
 class RequirementActionOutcome(str, enum.Enum):
     """Lifecycle/outcome state of a `RequirementAction`.
 

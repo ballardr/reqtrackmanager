@@ -2,8 +2,16 @@
 Module: models.requirement
 
 Defines requirements and their supporting structures: versioned content
-(temporal history, C-A-02), traceability links (C-G-09), keywords (C-M-01),
-and per-stage approval baselines (C-G-10).
+(temporal history, C-A-02), keywords (C-M-01), and per-stage approval
+baselines (C-G-10).
+
+Traceability links (C-G-09) used to live here as `RequirementLink`, and
+action membership as `RequirementActionLink` (`models.requirement_action`).
+Module 0 (Platform Foundations), Phase 1 folded both into the generic
+polymorphic `ArtefactLink` (`models.relationship`) — a requirement-to-
+requirement traceability link is now an `ArtefactLink` row with
+`source_type`/`target_type` both `ArtefactType.REQUIREMENT` and a non-null
+`link_type_id`; see that module's docstring for the full design.
 
 Design decision: rather than a single mutable row with valid_from/valid_to
 columns, the `Requirement` row holds only stable identity fields
@@ -181,44 +189,6 @@ class RequirementKeyword(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
     )
     keyword: Mapped[str] = mapped_column(String(100), index=True)
-
-
-class RequirementLink(UUIDPKMixin, TimestampMixin, Base):
-    """A traceability link between two requirements (C-G-09).
-
-    `link_type_id` replaces the previous fixed `RequirementLinkType` enum
-    (migration 0012) — see `RequirementLinkTypeDefinition`'s docstring for
-    why link types became an org-definable table. Links are **not** gated
-    by a requirement's lock state (`services.requirements.is_locked`):
-    traceability metadata isn't "requirement content" under C-G-12 any more
-    than a `ReviewComment` is (this codebase already treats discussion
-    threads as outside the change-log/lock boundary; links get the same
-    treatment).
-    """
-
-    __tablename__ = "requirement_links"
-    # Explicit short name: the default-generated name for this 3-column
-    # constraint is 78 bytes, over Postgres's 63-byte NAMEDATALEN limit and
-    # thus silently truncated/unpredictable — see
-    # `RequirementLinkTypeDefinition`'s __table_args__ comment for the same
-    # issue and this codebase's established fix (migration 0009).
-    __table_args__ = (
-        UniqueConstraint(
-            "source_requirement_id", "target_requirement_id", "link_type_id",
-            name="uq_requirement_links_source_target_type",
-        ),
-    )
-
-    source_requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
-    )
-    target_requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
-    )
-    link_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id")
-    )
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class Baseline(UUIDPKMixin, TimestampMixin, Base):

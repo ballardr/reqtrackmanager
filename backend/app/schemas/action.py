@@ -2,7 +2,8 @@
 Module: schemas.action
 
 Request/response models for requirement actions (`RequirementAction`) and
-their many-to-many links to requirements (`RequirementActionLink`).
+their many-to-many links to requirements (untyped `ArtefactLink` rows,
+`models.relationship`).
 """
 
 from __future__ import annotations

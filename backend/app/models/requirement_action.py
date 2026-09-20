@@ -6,15 +6,23 @@ satisfy one or more requirements. Unlike `RequirementReview` (a single
 recorded outcome tied to one requirement's scheduled review date, C-R-07),
 a `RequirementAction` has its own first-class, project-scoped identity —
 its own `unique_code` (mirroring `Requirement.unique_code`) — so a single
-action can be linked from multiple requirements via `RequirementActionLink`
-instead of being owned by exactly one. Comments on an action reuse the
-existing generic `ReviewComment`/`CommentFile` machinery unchanged
-(`ReviewTargetType.ACTION`), the same way requirements and change requests
-already share one discussion-thread model instead of each having their own.
+action can be linked from multiple requirements via an untyped
+`ArtefactLink` row (`models.relationship`, `source_type=
+ArtefactType.REQUIREMENT_ACTION`) instead of being owned by exactly one.
+Comments on an action reuse the existing generic `ReviewComment`/
+`CommentFile` machinery unchanged (`ReviewTargetType.ACTION`), the same way
+requirements and change requests already share one discussion-thread model
+instead of each having their own.
 
 An action is never hard-deleted, only archived (`is_archived`, mirroring
 `Requirement.is_archived`, C-A-06) — the same "preserve history, hide from
 default views" rule this codebase already applies to requirements.
+
+Prior to Module 0 (Platform Foundations), Phase 1, action-to-requirement
+membership was its own dedicated `RequirementActionLink` join table; that
+phase folded it into the generic polymorphic `ArtefactLink` table instead
+(an untyped link, `link_type_id IS NULL`) — see `models.relationship`'s
+module docstring for the full design.
 """
 
 from __future__ import annotations
@@ -76,34 +84,3 @@ class RequirementAction(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-
-
-class RequirementActionLink(UUIDPKMixin, Base):
-    """Links a `RequirementAction` to a requirement it helps satisfy.
-
-    A many-to-many join, deliberately distinct from `RequirementLink`
-    (requirement-to-requirement traceability) — an action is a task, not a
-    requirement, so it gets its own link table rather than being shoehorned
-    into `RequirementLink`. Unlinking (deleting this row) never deletes the
-    underlying `RequirementAction`, which may still be linked from other
-    requirements.
-
-    Both FK columns are individually indexed (`index=True`): the unique
-    constraint below already gives `requirement_id` lookups a usable
-    (leading-column) index, but `action_id` lookups ("which requirements is
-    this action linked to", used by the action detail page) would otherwise
-    have to scan — unlike `RequirementActionFile`/`RequirementFile`, where
-    only one lookup direction (by the owning entity) is ever needed.
-    """
-
-    __tablename__ = "requirement_action_links"
-    __table_args__ = (UniqueConstraint("requirement_id", "action_id"),)
-
-    requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), index=True
-    )
-    action_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_actions.id", ondelete="CASCADE"), index=True
-    )
-    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
