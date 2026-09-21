@@ -32,6 +32,7 @@ by the time it's picked up).
 | 4 | Cross-project traceability | [ ] Not started |
 | 5 | Traceability matrices + coverage reporting | [ ] Not started |
 | 6 | Frontend UI | [ ] Not started |
+| 7 | Docs website coverage | [ ] Not started — depends on Phase 6 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -190,6 +191,31 @@ against elsewhere (§47.1's Reporting principle, stated generally but
 directly applicable here); computing it live from real relationship data is
 what makes it trustworthy.
 
+**MCP tools.** The instruction to give every not-yet-built module plan this
+same explicit MCP-tools and docs-website treatment is **Decided by: User**
+(2026-09-21); which phase to amend and the specific candidate names below
+are **Decided by: Agent** — Phase 5 is chosen because it's the last
+backend-building phase in this plan's own sequence, by which point the full
+rule-configuration/enforcement/exception/matrix surface from Phases 1–5
+exists (this plan has no single consolidated "Backend API" phase the way
+Module 4's plan does). Once these endpoints exist, declare narrow,
+read-only-only `McpToolDefinition` entries per
+[docs/modules.md](../modules.md) §6, following the Compliance and Decision
+Management (`module-04-decision-management-plan.md`) precedent. Concrete
+candidates: "list traceability rules" (a project's configured rules and
+their enforcement level), "get traceability matrix" (a saved
+`TraceabilityMatrixDefinition`'s generated view, §25), "get coverage
+report" (§27's percentages/orphan counts). Excluded, deliberately:
+requesting or approving a traceability exception (Phase 3, §22) — approving
+one is exactly the kind of accountable, human governance decision this
+codebase's MCP surface has never exposed, so that endpoint is marked
+`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` (`backend/app/modules/
+registry.py`) at build time, mechanically excluding it from the manifest
+rather than relying on this list alone. This mirrors Phase 0 Q3's own flag
+of exception approval as a self-approval risk worth extra scrutiny — the
+same caution applies to the MCP surface, not only to who holds the
+approver role.
+
 ## Phase 6 — Frontend UI
 
 Rule configuration screens (per Phase 0 Q1's schema, with the three named
@@ -198,6 +224,80 @@ editor), per-artefact traceability-status display (§21's checkmark
 example), matrix viewer, coverage dashboard, exception request/approval
 flow. Playwright e2e + Storybook coverage; enum/status values through
 label maps.
+
+## Phase 7 — Docs website coverage
+
+Adding this as its own explicit, tracked phase (rather than leaving it
+implicit) is **Decided by: User** (2026-09-21, the same instruction as the
+MCP-tools addition above, applied to every not-yet-built module plan); the
+specific scope below is **Decided by: Agent**.
+
+**Goal:** add Traceability's user-facing surface to `docs/website/` (the
+published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
+coverage", adapted to this module's own content rather than copied.
+
+**Why this is its own tracked phase, not folded silently into Phase 6:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, in the same change rather than
+deferred. It is broken out explicitly here, mirroring Decision
+Management's own Phase 6 reasoning, because this module's user-facing
+surface is unusually broad and easy to under-scope for one phase (rule
+configuration, enforcement levels, the Governance integration boundary,
+exceptions, cross-project traceability, and matrix/coverage reporting all
+land in the same Phase 6 UI at once).
+
+**Scope:**
+
+- A new docs-site page (or section, matching whatever grouping the site
+  already uses for other project-scoped modules) covering: what
+  Traceability rules are and the explicit, load-bearing guarantee that
+  disabling Traceability never disables ordinary relationships (§17.1); the
+  three enforcement levels (Informational/Warning/Required-for-approval,
+  §20) and — critically, since this is the exact boundary the overview
+  insists on (§30) — that Traceability only *computes and exposes* rule
+  status, while Governance's baseline policy (Module 8 Phase 4) is what
+  actually blocks anything; how the three named UI presets relate to the
+  full rule editor (§19); the exception mechanism, including that an
+  approved exception is always rendered distinctly from genuine rule
+  satisfaction, never merged into the same "covered" indicator (§22); and
+  traceability matrices/coverage reporting as generated views over live
+  relationship data, never a separately maintained structure (§25). Include
+  a Mermaid diagram of the Traceability/Governance/relationship-model
+  division of responsibility (Module 0 owns relationships, this module
+  computes rule status against them, Governance decides what blocks
+  baselining) — this exact three-way boundary is the single most likely
+  thing for a reader to conflate.
+- Update the site's module/feature index or nav to include Traceability
+  once it ships, noting its dependency on Governance (Module 8).
+- Cross-link from the Governance documentation wherever it already
+  discusses baseline policies consulting Traceability status, and from the
+  Requirements documentation wherever it discusses requirement-type
+  hierarchy configuration (§23, which this module implements as an
+  ordinary `TraceabilityRule` row rather than a separate mechanism).
+- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
+  here rather than leaving it implicit is **Decided by: User** (the same
+  instruction as the phase itself, applied specifically to screenshots this
+  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  bound this page to its standard, but this phase's Scope above never said
+  so in as many words). This page is subject to that standard in full:
+  1440×900 viewport, captured against the seeded demo dataset
+  (`backend/scripts/seed_demo_data.py`), stored under
+  `docs/website/static/img/screenshots/`, real alt text plus a one-line
+  caption, no surrounding "what this shows/why it matters" prose. Per that
+  standard's "at least one screenshot or diagram per page, not forced onto
+  every page" bar, plausible candidate screens (**Decided by: Agent**) are
+  the rule configuration screen (including the three named quick-setup
+  presets), the per-artefact traceability-status indicator, and the
+  matrix/coverage dashboard — the Mermaid diagram above already covers the
+  Traceability/Governance/relationship-model boundary itself and doesn't
+  need a duplicate screenshot.
+
+**Status:** not started. Depends on Phase 6 (frontend) actually shipping —
+there is no real user-facing workflow to document accurately before then,
+the same reasoning Decision Management's own Phase 6 and Compliance's
+docs-site page both used. Also depends, for the Governance cross-link
+specifically, on Module 8's own docs-website coverage existing to link to.
 
 ## Acceptance criteria (from overview §48, Traceability subset)
 

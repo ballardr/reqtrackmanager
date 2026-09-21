@@ -23,6 +23,7 @@ build order (§46 Phase 6) — built *before* Traceability (Phase 7), because
 | 3 | Review policies (scheduled reassessment, generalised) | [ ] Not started |
 | 4 | Baseline policies + Governance Health view | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
+| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -161,12 +162,124 @@ Baseline *policy* says that missing link blocks baselining. Without this
 module, Traceability (once built) would have no lever to actually enforce
 anything — it would be purely informational.
 
+**MCP tools.** The instruction to give every not-yet-built module plan this
+same explicit MCP-tools and docs-website treatment is **Decided by: User**
+(2026-09-21); which phase to amend and the specific candidate names below
+are **Decided by: Agent** — Phase 4 is chosen because it's the last
+backend-building phase in this plan's own sequence, by which point the full
+lifecycle/approval/review/baseline-policy CRUD surface from Phases 1–4
+exists (this plan has no single consolidated "Backend API" phase the way
+Module 4's plan does). Once these endpoints exist, declare narrow,
+read-only-only `McpToolDefinition` entries per
+[docs/modules.md](../modules.md) §6, following the Compliance and Decision
+Management (`module-04-decision-management-plan.md`) precedent. Concrete
+candidates: "list lifecycle policies", "list approval policies" (both
+per-artefact-type, Phases 1–2), and "get governance health" (§35's
+aggregate view, Phase 4).
+
+**Extra care, per this task's own instruction: Governance defines Approval
+Policies as a core concept (Phase 2, §32) — this is not a smaller exception
+to the read-only rule, it is exactly the kind of route the rule exists for.**
+The distinction that matters: Phase 2's own CRUD endpoints for *configuring*
+an Approval Policy (create/list/get/update/delete "Architecture Decisions
+require approval by an Architecture Approver") are ordinary configuration
+endpoints — listing/getting them is a safe read-only MCP candidate like any
+other definition table in this codebase. What must never be an MCP tool,
+here or in any artefact-owning module that later consults a Governance
+policy, is the endpoint that actually *executes* an approval decision under
+that policy (e.g. a content module's own `approve`/`reject` route, or any
+future Governance-side override/exception endpoint that itself finalizes a
+blocked baseline or lifecycle transition) — every such route is marked
+`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` (`backend/app/modules/
+registry.py`) at build time, mechanically excluding it from the manifest,
+the same way Decision Management's own `approve`/`reject` routes already
+are per that plan's MCP-tools addendum. This applies regardless of which
+module's router the approval-executing endpoint physically lives in —
+Governance owning the *policy* never makes the *act of approving* under it
+any safer to expose than it already wasn't.
+
 ## Phase 5 — Frontend UI
 
 Project settings surfaces for configuring each policy category (per the
 UX style guide's settings-hierarchy-depth model — this is exactly the kind
 of "new settings surface" the style guide's principles govern), plus the
 Governance Health dashboard view. Playwright e2e + Storybook coverage.
+
+## Phase 6 — Docs website coverage
+
+Adding this as its own explicit, tracked phase (rather than leaving it
+implicit) is **Decided by: User** (2026-09-21, the same instruction as the
+MCP-tools addition above, applied to every not-yet-built module plan); the
+specific scope below is **Decided by: Agent**.
+
+**Goal:** add Governance's user-facing surface to `docs/website/` (the
+published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
+coverage", adapted to this module's own content rather than copied.
+
+**Why this is its own tracked phase, not folded silently into Phase 5:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, in the same change rather than
+deferred. It is broken out explicitly here, mirroring Decision
+Management's own Phase 6 reasoning, because Governance is explicitly meta
+(§26.1) and its documentation has to get the module boundary right for
+readers, not just describe screens — the four policy categories, the
+generic per-artefact-type registry they apply against, and the explicit
+non-replacement of any existing Requirement-specific logic (Phase 0 Q2/Q3)
+are all easy to under-explain in a single paragraph folded into Phase 5.
+
+**Scope:**
+
+- A new docs-site page (or section, matching whatever grouping the site
+  uses for other project-scoped modules) covering: what Governance is and
+  is not (it configures *rules* about lifecycle/approval/review/baseline,
+  it does not store engineering artefacts itself, §26.1); the four policy
+  categories (Lifecycle, Approval, Review, Baseline) and which artefact
+  types each currently governs, framed as an extensible registry rather
+  than a fixed list; that approval and review policies reference *roles*,
+  never specific individuals (§32's explicit requirement); the explicit,
+  important caveat that Requirements' own long-established lifecycle/
+  approval/baseline logic is not replaced by Governance as a side effect of
+  this module shipping — only new artefact types are built against the
+  generic engine from the start, per Phase 0 Q2's resolution — so a reader
+  should not assume Governance immediately supersedes existing Requirement
+  behaviour; and the Governance Health view (§35) as a live, computed
+  aggregate, not a periodic snapshot. Include a Mermaid diagram showing how
+  Traceability's rule-satisfaction signal feeds a Baseline Policy's
+  decision to block or allow baselining (§34, and this module's own
+  Phase 4 "Why") — this exact hand-off is the one the roadmap's own
+  Governance-vs-Traceability distinction table exists to clarify, and is
+  worth restating visually here since Traceability's own Phase 7 docs page
+  will describe the same boundary from its side.
+- Update the site's module/feature index or nav to include Governance once
+  it ships.
+- Cross-link from any documentation this repo already has for Requirements'
+  existing lifecycle/approval/baseline behaviour, noting explicitly whether
+  or not it has migrated onto the generic Governance engine at the time
+  this page is written (per Phase 0 Q2's deliberately separate, later
+  migration decision) — this cross-link must not silently assume migration
+  happened just because Governance shipped.
+- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
+  here rather than leaving it implicit is **Decided by: User** (the same
+  instruction as the phase itself, applied specifically to screenshots this
+  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  bound this page to its standard, but this phase's Scope above never said
+  so in as many words). This page is subject to that standard in full:
+  1440×900 viewport, captured against the seeded demo dataset
+  (`backend/scripts/seed_demo_data.py`), stored under
+  `docs/website/static/img/screenshots/`, real alt text plus a one-line
+  caption, no surrounding "what this shows/why it matters" prose. Per that
+  standard's "at least one screenshot or diagram per page, not forced onto
+  every page" bar, plausible candidate screens (**Decided by: Agent**) are
+  a project settings screen for one of the four policy categories (e.g.
+  Baseline Policy configuration, since it's the one this phase's own
+  Mermaid diagram above already discusses) and the Governance Health
+  dashboard view.
+
+**Status:** not started. Depends on Phase 5 (frontend) actually shipping —
+there is no real user-facing workflow to document accurately before then,
+the same reasoning Decision Management's own Phase 6 and Compliance's
+docs-site page both used.
 
 ## Acceptance criteria (from overview §48, Governance subset)
 

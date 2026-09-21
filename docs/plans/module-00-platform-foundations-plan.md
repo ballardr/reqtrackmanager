@@ -35,6 +35,7 @@ point at it.
 | 1 | Build the generic cross-artefact relationship model | [x] Complete (2026-09-21) |
 | 2 | Per-project sequence-number / unique-code generation | [x] Complete (2026-09-21) |
 | 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [x] Complete (2026-09-21) |
+| — | MCP tools / Docs website coverage | N/A — see "MCP tools and docs-website coverage" note below |
 
 **Phase 3 outcome (2026-09-21), Decided by: User (both corrections below) /
 Agent (remaining implementation details)** — see `docs/decisions.md`'s
@@ -558,3 +559,58 @@ many-to-many linking). This predates this roadmap entirely and reconciling
 it with `RequirementAction` would be an unrelated refactor of shipped,
 tested functionality — flagged for awareness, not recommended as part of
 this roadmap's Module 0 work.
+
+## MCP tools and docs-website coverage — evaluated, neither applies here
+
+Added 2026-09-21, at the user's explicit instruction (**Decided by: User**)
+to make explicit, across every not-yet-built module plan in this roadmap,
+that each module should commit to (a) narrow, read-only-only MCP tools once
+its backend API phase ships, and (b) docs-website coverage once its
+frontend (or backend, if it has none) ships — the same pattern
+[Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+shipped `mcp_tools` declarations (`backend/app/modules/decisions/module.py`)
+and its Phase 6 "Docs website coverage" now follow. Checked against this
+module's own actual shape rather than applied by rote (**Decided by:
+Agent**, the specific determination below, per `docs/modules.md` §6 and
+this repo's docs-website-maintenance rule in `CLAUDE.md`):
+
+- **MCP tools: does not apply.** Module 0 has no `ModuleDefinition` and no
+  `get_router()`/`get_project_router()` of its own at all — per this plan's
+  own "Why this can't just be Module 1's problem" section, it deliberately
+  lands as core infrastructure (`backend/app/services/relationships.py`,
+  `backend/app/services/sequences.py`), consumed by every content module's
+  own service layer, precisely so no content module has to import from
+  another module's directory. It is not a registered module with a REST
+  surface that `docs/modules.md` §6's `McpToolDefinition`/`path_template`
+  mechanism (which validates a tool's path against its *declaring* module's
+  own router prefix) could attach to. There is no module-owned, safe-to-
+  expose endpoint here for a tool to proxy — a "list relationships" or
+  "get next sequence code" style tool would only ever make sense declared
+  by the *content* module that owns the artefact being queried (Decision
+  Management, and this roadmap's other nine), gated by that module's own
+  key, never by Module 0's.
+- **Docs-website coverage: does not apply.** Per `CLAUDE.md`'s "Docs
+  Website Maintenance" section ("if no, no action is needed — do not pad
+  the site with updates for purely internal/backend-only changes that have
+  no user-visible surface"): Module 0 has no frontend phase, no nav entry,
+  and no end-user-visible concept of its own — it is a shared relationship/
+  sequence-numbering mechanism that other modules' own UIs surface (e.g. a
+  Decision's "Implements" link to a Requirement, or a Decision's own
+  `DEC-001` unique code), never a page or feature a user opens directly. A
+  docs-website page describing `artefact_links`/`ProjectSequenceCounter`
+  directly would document an implementation detail, not a product
+  capability — the content-module plans that consume this infrastructure
+  are where a user-facing relationship or unique-code concept actually gets
+  documented (see, e.g., Module 4's own Phase 6 scope, which documents its
+  Decision↔Requirement and Decision↔Decision relationships, not Module 0's
+  underlying table).
+
+**Screenshots note (2026-09-22):** the user asked for `docs/plans/
+docs-website-plan.md`'s screenshot standard (1440×900 viewport, seeded
+demo dataset, alt text plus a one-line caption) to be made explicit in
+every not-yet-built module plan's "Docs website coverage" phase —
+**Decided by: User**. This module's own determination above already
+stands for screenshots too: there is no docs-website page for Module 0
+(see "Docs-website coverage: does not apply" above), so there is nothing
+to screenshot — **Decided by: Agent**, not a reversal of the N/A finding
+above.

@@ -54,7 +54,8 @@ improvised).
 
 ## Status / Resume Here
 
-6 / 8 phases complete. Phase 6 (docs website coverage) is next.
+7 / 8 phases complete. Phase 7 is blocked on Module 1/Module 6; Phase 8 is
+blocked on Module 12 — neither is actionable right now.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -62,9 +63,9 @@ improvised).
 | 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
 | 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
 | 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [x] Complete (2026-09-21) — see "Phase 3 notes" below |
-| 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes" below |
+| 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes" and "Phase 4 addendum (2026-09-21) — MCP tools added" below |
 | 5 | Frontend — Decision list/detail/create/approve UI | [x] Complete (2026-09-21) — see "Phase 5 notes" below |
-| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping (now true); see note below |
+| 6 | Docs website coverage | [x] Complete (2026-09-21) — see "Phase 6 notes" below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
 | 8 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
 
@@ -292,6 +293,59 @@ the final pass/fail count) — plus a security review following the SOC 2
 change-management policy's identify→verify→remediate practice (recorded in
 that same `docs/decisions.md` entry).
 
+## Phase 4 addendum (2026-09-21) — MCP tools added
+
+**What changed:** Phase 4's own text above ("No MCP tools declared — nothing
+in this phase's scope calls for one... this module's mutating actions...
+are exactly the kind of accountable-human governance action Compliance's
+own `module.py` has repeatedly kept off the MCP tool surface by default")
+is reversed. The user explicitly asked, this session, for this module to
+get MCP tools. **Decided by: User.**
+
+**What was built — narrower than a full reversal:** seven read-only (`GET`)
+tools, declared in `backend/app/modules/decisions/module.py`'s new
+`mcp_tools` tuple: `list_decision_types`, `list_decisions`, `get_decision`,
+`list_decision_relationships`, `list_decision_comments`, `list_decision_files`
+(all project-scoped, mounted under `project_router.py`'s own prefix), and
+`list_decision_templates` (org-scoped, mounted under `router.py`'s own
+prefix). Zero mutating tools were added — no tool exists for create/
+propose/submit-for-review/approve/reject/supersede/link/comment/attach-file.
+This scope decision — read-only-only, mirroring Compliance's own precedent
+exactly (see that module's Phase 6/9/11/20/22 notes in `backend/app/modules/
+compliance/module.py`'s own docstring) rather than inventing a new
+convention for this module — is **Decided by: Agent**, not something the
+user specified beyond "add MCP tools."
+
+**Gap fixed as part of this:** `project_router.py`'s `approve_decision_
+endpoint`/`reject_decision_endpoint` had never been marked
+`APPROVAL_ACTION_ROUTE_EXTRA` (`app.modules.registry`) — Phase 4 had no MCP
+tools yet to need the defense-in-depth, so marking them was skipped at the
+time. Both routes are now marked, mirroring Compliance's own `approve_
+requirement` exactly, with a one-line docstring note on each explaining why.
+This is genuinely load-bearing now: the manifest builder mechanically
+excludes any tool that would resolve to a route carrying this marker,
+regardless of what `module.py` declares, so this closes the one gap that
+would otherwise have let a future accidental tool declaration for either
+action slip through.
+
+**Testing:** new `backend/app/modules/decisions/tests/test_decisions_mcp_
+tools.py` — mirrors `backend/tests/test_module_mcp_tools.py`'s own "against
+the REAL registry" integration section (the only prior precedent,
+written against Compliance): proves all seven declared tools resolve
+against real routes with the correct `path_template`/params/`mutates=False`,
+and — the actual defense-in-depth assertion this addendum exists for —
+proves the mechanical exclusion fires for this module's real `approve`
+route specifically, not just by the absence of a declaration: a test
+temporarily appends an `McpToolDefinition` pointing straight at the live
+`POST .../{decision_id}/approve` route to the real module's own `mcp_tools`
+tuple, rebuilds the registry, and confirms the manifest still excludes it,
+restoring the original definition afterwards regardless of outcome.
+`ruff check` clean. See `docs/decisions.md`'s "Module 4 (Decision
+Management) Phase 4 addendum — MCP tools" entry for the final backend-suite
+pass/fail count and the identify→verify→remediate review outcome (this
+change touches the approval-exclusion mechanism, a security-adjacent
+surface per the SOC 2 change-management policy).
+
 ## Phase 5 notes (2026-09-21)
 
 Built `frontend/src/modules/decisions/` as a new Tier A module, following
@@ -326,6 +380,135 @@ Management) Phase 5" entry rather than duplicated here — summarised:
 
 **Verified**: see `docs/decisions.md`'s own "Verified" paragraph for the
 full account and final backend-suite/Playwright pass counts.
+
+## Phase 6 notes (2026-09-21)
+
+Built `docs/website/docs/modules/decision-management-module/` — five pages
+(`overview.md`, `data-model-and-lifecycle.md`,
+`relationships-and-templates.md`, `mcp-integration.md`,
+`known-limitations.md`), following `compliance-module/`'s own structure,
+tone, and page-per-concern split as the only prior precedent for a module's
+docs-website coverage.
+
+- **Lifecycle diagram** — a validated `stateDiagram-v2` in `overview.md`,
+  drawn directly from `backend/app/modules/decisions/service.py`'s
+  `_ALLOWED_TRANSITIONS` and `enums.py`'s `DecisionStatus`, not assumed from
+  this plan's own prose (which only names the states, not every edge):
+  Draft → Proposed → Under Review → Approved, Proposed/Under Review → 
+  Rejected (terminal), Approved → Superseded (terminal, and only once the
+  superseding Decision is itself Approved — see `data-model-and-lifecycle
+  .md`'s own supersession section and sequence diagram).
+- **Reserved relationships corrected from six, not five** — this plan's own
+  Phase 3 spec (line 680 above) and `service.py`'s Phase 3 docstring both
+  list *six* reserved-but-not-built relationship targets (Open Question,
+  Pain Point, Strategy, Guiding Principle, **Compliance**, Design), not the
+  five the original task brief for this addendum named. `relationships-and-
+  templates.md` documents all six, including Compliance's own entry (
+  blocked on integration work between the two modules, not on Compliance's
+  own existence, which already shipped) — an inaccuracy in the brief this
+  session caught and corrected rather than propagated into the published
+  docs, per this repo's own validation-of-assumptions rule.
+- **`docs/website/docs/api-integrations/ai-assistants-mcp/overview.md`**
+  updated with Decision Management's own seven-tool table, alongside
+  Compliance's existing ten — this page enumerates every module's MCP
+  tools in one place, so adding tools without updating it would have left
+  it silently incomplete rather than just out of date in wording.
+- **"Only one module exists" framing fixed everywhere found**: `modules/
+  overview.md`, `modules/roadmap.md`, `modules/compliance-module/mcp-
+  integration.md`, `api-integrations/ai-assistants-mcp/overview.md`, and
+  `reference/glossary.md`'s "Module" entry all previously read as if
+  Compliance were the only module (e.g. "the one module shipped today",
+  "Compliance is the first module to use this") — all updated to name both
+  modules. `modules/roadmap.md`'s table also lost its own "Decision
+  Management" row, since it's shipped now, not merely proposed.
+- **Cross-link added, not forced**: `core-features/requirements-management
+  .md`'s existing "Traceability links" section gained one sentence pointing
+  at the new Decision↔Requirement relationship, since that section already
+  covers requirement-to-requirement traceability and the new Decision
+  relationship is a direct, natural sibling of it. `concepts/requirements-
+  versions-and-lifecycle.md` was checked but has no comparable natural
+  insertion point (it's about version/identity mechanics, not
+  relationships) — left unchanged rather than forcing a link in.
+- **Glossary entries not added (Decided by: Agent)** — checked whether
+  `reference/glossary.md` follows a per-module-concept-entry convention
+  first, per this addendum's own brief. It doesn't: Compliance itself never
+  added entries for "Standard", "Compliance Requirement", or "Required
+  Action" despite being the established precedent module, only the generic
+  "Module" entry got a one-line mention. Adding "Decision"/"Decision
+  Type"/"Decision Template" entries here would have started a new
+  convention Compliance's own docs never established, not followed an
+  existing one — flagged explicitly rather than silently either adding or
+  skipping.
+
+**Verified**: `cd docs/website && npm run build` — clean, zero broken-link/
+broken-anchor errors (`onBrokenLinks`/`onBrokenAnchors: 'throw'`), including
+every new cross-link added above. All four new Mermaid diagrams (the
+lifecycle `stateDiagram-v2`, the data-model `flowchart`, the supersession
+`sequenceDiagram`, and the relationships `flowchart`) rendered cleanly to
+SVG via `@mermaid-js/mermaid-cli` with no parse errors, dangling nodes, or
+broken fences, per this repo's Mermaid-validation requirement — inspected
+the rendered lifecycle SVG directly to confirm all six states and every
+labelled edge appear correctly, not just that the render command exited 0.
+
+## Phase 6 addendum (2026-09-22) — screenshots added
+
+**Decided by: User** — the user asked explicitly for this module's
+docs-website pages to carry real screenshots (this repo's own
+`docs/plans/docs-website-plan.md` "Screenshots" standard already required
+this — 1440×900 viewport, captured against the seeded demo dataset, stored
+under `docs/website/static/img/screenshots/`, real alt text plus a
+one-line caption — but Phase 6 above shipped with zero screenshots, all
+four pages' visuals coming from Mermaid diagrams alone; this addendum
+closes that gap). The user also asked for the same screenshot requirement
+to be made explicit in the other eleven not-yet-built module plans'
+docs-website-coverage phases — see the parallel changes made across
+`docs/plans/module-0{0,1,2,3,5,6,7,8,9,10}-*.md`/`module-1{1,2}-*.md`
+alongside this entry.
+
+**What was captured**: the rebuilt-from-scratch dev/test stack
+(`tests/container/`, rebuilt with `docker compose up -d --build backend
+frontend` first, per this repo's own "containers don't bind-mount source"
+rule) at the real 1440×900 viewport, against the seeded demo dataset
+(`backend/scripts/seed_demo_data.py`'s "Solstice Robotics" org). One real
+gap found along the way: that script's own Decision Management section
+(added in Phase 5, "enabling the module, then a superseded pair on
+Falcon-3") never actually ran against this developer's already-seeded
+database — the script's documented idempotent-by-skip design (`if
+"Solstice Robotics" already exists, exits without changes` — see the
+script's own module docstring) means a database seeded before Phase 5
+never picks up a section added after it, short of the documented full
+`down -v` reset. Rather than reset a database that might hold other
+in-progress local work, the Decision Management portion of that script
+was replayed by hand — identical calls, identical demo content (same
+titles/rationale text), through the real HTTP API, non-destructively
+additive — producing the same three-Decision demo state (a Superseded/
+Approved supersession pair plus one Draft) the script itself already
+specifies. Three Decision Templates (Nygard/MADR/Y-Statement — the same
+seeded-pack content `service.py`'s `DECISION_TEMPLATE_PACKS` defines) were
+also added to the org for the templates screenshots, since this
+particular org predates the org-creation-choices mechanism (Phase 0
+addendum item 1) and had never opted into any.
+
+Four screenshots, all 1440×900 (confirmed via `file`), added to
+`docs/website/static/img/screenshots/`: `decision-list.png` (the
+Decisions list, showing the Superseded/Approved/Draft mix), `decision-
+detail.png` (an Approved Decision's detail view — content fields, the
+Supersedes relationship, and the locked-attachments notice), `decision-
+templates.png` (the org-scoped Decision Templates admin panel), and
+`decision-create-template.png` (the New Decision form with "Start from a
+template" set to MADR). Embedded in `overview.md` (list + both template
+screenshots, mirroring `compliance-module/overview.md`'s own
+image-per-concept placement) and `data-model-and-lifecycle.md` (the detail
+view, placed directly under the "Content lock after approval" section it
+illustrates) — `relationships-and-templates.md`, `mcp-integration.md`, and
+`known-limitations.md` were left as they were (diagrams/tables only),
+matching Compliance's own precedent of not forcing a screenshot onto every
+single page (`compliance-module/mcp-integration.md` and `known-
+limitations.md` carry neither a screenshot nor a diagram either).
+
+**Verified**: `file` confirmed all four screenshots are exactly 1440×900;
+`cd docs/website && npm run build` re-run clean after embedding (zero
+broken-link/broken-image errors).
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
@@ -767,11 +950,8 @@ Phase 5's own scope.
   Management page wherever the site already documents Decision↔Requirement
   traceability links, if it does.
 
-**Status:** not started. Depends on Phase 5 (frontend) actually shipping —
-there is no real user-facing workflow to document accurately before then,
-the same reasoning `docs/website/` deferred Compliance's own docs-site page
-until its frontend phase (see Phase 4 notes above). Not a blocker for
-Phases 7–8.
+**Status:** [x] Complete (2026-09-21) — see "Phase 6 notes" near the top of
+this document for what was actually built.
 
 ## Phase 7 — Reserved-relationship wiring, once Context & Strategy / Engineering Design exist
 

@@ -60,6 +60,31 @@ enables this module. `default_enabled` stays `False`; an organisation still
 opts in explicitly. `nav_path` mirrors Compliance's own `"{project_id}"`
 placeholder convention, interpolated server-side before being sent to the
 frontend (`routers/projects.py::list_project_enabled_modules`).
+
+Phase 4 addendum (2026-09-21): Phase 4's original text above ("No MCP tools
+are declared this phase either...") is reversed — the user explicitly asked,
+this session, for this module to get MCP tools (**Decided by: User**). What
+was actually added is narrower than a full reversal, though: seven
+read-only (`GET`) tools — `list_decision_types`, `list_decisions`,
+`get_decision`, `list_decision_relationships`, `list_decision_comments`,
+`list_decision_files` (all project-scoped, `_PROJECT_ROUTER_PREFIX`), and
+`list_decision_templates` (org-scoped, `_ROUTER_PREFIX`) — with zero
+mutating tools. In particular, no tool exists for create/propose/submit-
+for-review/approve/reject/supersede/comment/attach-file: this module's
+mutating actions remain exactly the kind of accountable-human governance
+action Compliance's own module.py has consistently kept off the MCP tool
+surface (see that module's Phase 9/11/20/22 notes above), and this scope
+decision — read-only-only, mirroring Compliance's precedent exactly rather
+than inventing a new convention — is **Decided by: Agent**, not something
+the user specified beyond "add MCP tools." `project_router.py`'s
+`approve_decision_endpoint`/`reject_decision_endpoint` had never been marked
+`APPROVAL_ACTION_ROUTE_EXTRA` (`app.modules.registry`) — Phase 4 had no MCP
+tools yet to need the defense-in-depth, so it was skipped — and that gap is
+fixed as part of this addendum, now that a manifest actually exists for the
+mechanical exclusion to matter for. See docs/plans/module-04-decision-
+management-plan.md's "Phase 4 addendum (2026-09-21)" section for the full
+account, including the test added to verify the exclusion mechanically
+(not just by omission of a tool declaration).
 """
 
 from __future__ import annotations
@@ -72,9 +97,17 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
-from app.modules.registry import ModuleDefinition, ModuleFrontendManifest, ModuleRoleDefinition, OrgCreationChoiceOption
+from app.modules.registry import (
+    McpToolDefinition,
+    ModuleDefinition,
+    ModuleFrontendManifest,
+    ModuleRoleDefinition,
+    OrgCreationChoiceOption,
+)
 
 DECISIONS_MODULE_KEY = "decisions"
+_ROUTER_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{DECISIONS_MODULE_KEY}"
+_PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{DECISIONS_MODULE_KEY}"
 
 
 def get_router() -> APIRouter | None:
@@ -178,6 +211,92 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Governance-module policy mechanism rather than this module building its own."
             ),
             scope="project",
+        ),
+    ),
+    mcp_tools=(
+        McpToolDefinition(
+            name="list_decision_types",
+            description="Lists the Decision Types configured for a project (e.g. Architecture, Design, Strategy).",
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/decision-types",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose Decision Types to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_decisions",
+            description="Lists the Decision records in a project.",
+            method="GET",
+            path_template=_PROJECT_ROUTER_PREFIX,
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project whose Decisions to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="get_decision",
+            description="Fetches a single Decision record, including its current status and content.",
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision to fetch."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_decision_relationships",
+            description=(
+                "Lists a Decision's relationship links — supersession, Decision<->Requirement "
+                "(Implements/Affects), and Decision<->Decision (Depends on/Supersedes/Conflicts with)."
+            ),
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}/relationships",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision whose relationships to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_decision_comments",
+            description="Lists the comments on a Decision.",
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}/comments",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision whose comments to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_decision_files",
+            description="Lists the files directly attached to a Decision (not comment attachments).",
+            method="GET",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}/files",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision whose attached files to list."},
+            ],
+        ),
+        McpToolDefinition(
+            name="list_decision_templates",
+            description=(
+                "Lists an organisation's Decision Templates (e.g. Nygard/MADR/Y-Statement ADR packs) "
+                "available for use when creating a Decision."
+            ),
+            method="GET",
+            path_template=f"{_ROUTER_PREFIX}/templates",
+            params=[
+                {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The organisation whose Decision Templates to list."},
+            ],
         ),
     ),
 )

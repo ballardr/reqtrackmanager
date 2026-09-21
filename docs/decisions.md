@@ -7076,3 +7076,204 @@ System Boundary — new bullet on frontend constants/stylesheets),
 complete with its own notes section; Status table updated to 6/8),
 `docs/solution-architecture.md` (Decision Management module — frontend
 paragraph added), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 4 addendum — MCP tools, and Phase 6 — docs website coverage
+
+**Decided by: User** on the core ask — add MCP tools to Decision
+Management, reversing Phase 4's own explicit decision at the time ("No MCP
+tools declared — nothing in this phase's scope calls for one... this
+module's mutating actions are exactly the kind of accountable-human
+governance action Compliance's own `module.py` has repeatedly kept off the
+MCP tool surface by default"). The *scope* of which tools — read-only
+only, mirroring Compliance's own precedent exactly, no mutating/approval
+tool — is **Decided by: Agent**, following this codebase's already-
+established, repeatedly-documented convention rather than inventing a new
+one. Docs-website coverage (Phase 6, already the plan's next unstarted
+phase) was done in the same pass.
+
+### MCP tools
+
+`backend/app/modules/decisions/module.py`'s `MODULE_DEFINITION` gains a
+`mcp_tools` tuple of seven read-only (`GET`) tools: `list_decision_types`,
+`list_decisions`, `get_decision`, `list_decision_relationships`,
+`list_decision_comments`, `list_decision_files` (all project-scoped,
+mounted under `project_router.py`'s prefix), and `list_decision_templates`
+(org-scoped, under `router.py`'s prefix). Zero mutating tools — no tool for
+create/propose/submit-for-review/approve/reject/supersede/link/comment/
+attach-file, matching Compliance's own module.py's Phase 6/9/11/20/22
+precedent of narrow, deliberately read-only MCP surfaces.
+
+A real, latent gap was fixed as part of this: `project_router.py`'s
+`approve_decision_endpoint`/`reject_decision_endpoint` had never been
+marked `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` (`app.modules.registry`)
+— Phase 4 had no MCP tools yet to need the defense-in-depth, so it was
+skipped at the time. Both routes now carry the marker, mirroring
+Compliance's own `approve_requirement` exactly, with a one-line docstring
+note on each explaining why. This is genuinely load-bearing now that a
+manifest exists: the builder mechanically excludes any tool resolving to a
+route carrying this marker, regardless of what `module.py` declares.
+
+**Identify→verify→remediate** (SOC 2 change-management policy's practice
+for a security-sensitive change — this touches the approval-action
+exclusion mechanism, an authorization-adjacent control). *Identify*: the
+risk is a future `McpToolDefinition` accidentally declared for `approve`/
+`reject` (or any other mutating action) slipping into the manifest and
+exposing an accountable-human governance action to an AI caller. *Verify*:
+confirmed the two routes now carry `openapi_extra=APPROVAL_ACTION_ROUTE_
+EXTRA` by direct inspection; confirmed the seven declared tools' `path_
+template`s each match a real route on `project_router.py`/`router.py`
+(not just that the strings look right) via `test_decisions_mcp_tools.py`'s
+integration test against the real, built registry; and — the actual
+mechanical-exclusion proof, not just "no tool was declared" — added a test
+that temporarily appends a synthetic `McpToolDefinition` pointing straight
+at the live `POST .../{decision_id}/approve` route to the real module's
+own `mcp_tools` tuple, rebuilds the registry, and confirms the manifest
+still excludes it (restoring the original definition afterwards regardless
+of outcome), mirroring `backend/tests/test_module_mcp_tools.py`'s own
+fixture-module proof of the same mechanism, but against this module's real
+route rather than a synthetic fixture router. *Remediate*: the
+`APPROVAL_ACTION_ROUTE_EXTRA` gap on `approve`/`reject` (found during this
+same pass, since it only became relevant once tools existed to need it)
+was fixed as described above — no other gap found.
+
+**Verified**: new `backend/app/modules/decisions/tests/test_decisions_mcp_
+tools.py` (3 tests: real-registry tool resolution, approve/reject absence,
+and the synthetic-declaration mechanical-exclusion proof) — all passing.
+`ruff check` clean across the backend. `backend/tests/test_module_mcp_
+tools.py` (the general manifest-builder suite) re-run: 12 passed,
+unaffected. Full backend suite (host-level `python -m pytest -q` from
+`backend/`): **1149 passed, 14 failed in 1470.82s**. All 14 failures are
+`tests/test_invites_and_external_users.py`/`test_oidc_provisioning.py`/
+`test_org_export_import.py` cases failing on `aiosmtplib.errors.
+SMTPConnectError: Error connecting to mailhog on port 1025: nodename nor
+servname provided` — the already-known host-pytest-can't-resolve-`mailhog`
+limitation (that hostname only resolves inside the Docker Compose network;
+these invite/OIDC/email tests need the containerised stack, not bare host
+pytest), unrelated to this change and pre-existing regardless of it. Zero
+failures in `app/modules/decisions/` or `test_module_mcp_tools.py`; no
+regression introduced.
+
+### Docs website coverage (Phase 6)
+
+Built `docs/website/docs/modules/decision-management-module/` (five pages:
+`overview.md`, `data-model-and-lifecycle.md`, `relationships-and-templates
+.md`, `mcp-integration.md`, `known-limitations.md`), following
+`compliance-module/`'s own structure and tone as the only prior precedent.
+The lifecycle `stateDiagram-v2` in `overview.md` was drawn directly from
+`service.py`'s `_ALLOWED_TRANSITIONS`/`enums.py`'s `DecisionStatus`, not
+assumed from the plan's own prose. Caught and corrected one inaccuracy in
+the task brief along the way: the reserved-relationship list has **six**
+targets (Open Question, Pain Point, Strategy, Guiding Principle,
+**Compliance**, Design), not the five the brief named — `service.py`'s own
+Phase 3 docstring and the plan's Phase 3 spec both list all six; documented
+all six in `relationships-and-templates.md` rather than silently dropping
+the sixth to match the brief's undercount.
+
+Updated `docs/website/sidebars.ts` (new "Decision Management module"
+category), `modules/overview.md`, `modules/roadmap.md` (removed the now-
+shipped "Decision Management" row), `compliance-module/mcp-integration.md`,
+`api-integrations/ai-assistants-mcp/overview.md` (added Decision
+Management's own seven-tool table alongside Compliance's ten), and
+`reference/glossary.md`'s "Module" entry — every "only one module exists"
+framing found (`grep`'d across the whole `docs/website/docs/` tree) fixed
+to name both modules. Added one cross-link sentence from `core-features/
+requirements-management.md`'s existing "Traceability links" section to the
+new Decision↔Requirement relationship; checked `concepts/requirements-
+versions-and-lifecycle.md` too but found no natural insertion point there
+and left it unchanged rather than forcing one in.
+
+**Judgment call, Decided by: Agent**: did not add "Decision"/"Decision
+Type"/"Decision Template" entries to `reference/glossary.md` — checked
+first whether it follows a per-module-concept-entry convention, and it
+doesn't: Compliance itself never added entries for "Standard", "Compliance
+Requirement", or "Required Action" despite being the established
+precedent, only the generic "Module" entry mentions it by name. Adding
+Decision-specific entries would have started a new convention Compliance's
+own docs never established, not followed an existing one.
+
+**Verified**: `cd docs/website && npm run build` — clean, zero broken-
+link/broken-anchor errors (`onBrokenLinks`/`onBrokenAnchors: 'throw'`),
+including every new cross-link. All four new Mermaid diagrams (lifecycle
+`stateDiagram-v2`, data-model `flowchart`, supersession `sequenceDiagram`,
+relationships `flowchart`) rendered cleanly to SVG via `@mermaid-js/
+mermaid-cli` with no parse errors or dangling nodes; the lifecycle SVG was
+inspected directly to confirm all six states and every labelled edge
+render correctly, not just that the render command exited 0.
+
+### Files changed
+
+`backend/app/modules/decisions/module.py` (`mcp_tools` tuple added; module
+docstring paragraph documenting the reversal), `backend/app/modules/
+decisions/project_router.py` (`APPROVAL_ACTION_ROUTE_EXTRA` added to
+`approve_decision_endpoint`/`reject_decision_endpoint`, with docstring
+notes; import added), `backend/app/modules/decisions/tests/test_decisions_
+mcp_tools.py` (new), `docs/website/docs/modules/decision-management-module/`
+(new: `overview.md`, `data-model-and-lifecycle.md`, `relationships-and-
+templates.md`, `mcp-integration.md`, `known-limitations.md`),
+`docs/website/sidebars.ts`, `docs/website/docs/modules/overview.md`,
+`docs/website/docs/modules/roadmap.md`, `docs/website/docs/modules/
+compliance-module/mcp-integration.md`, `docs/website/docs/api-integrations/
+ai-assistants-mcp/overview.md`, `docs/website/docs/reference/glossary.md`,
+`docs/website/docs/core-features/requirements-management.md`,
+`docs/plans/module-04-decision-management-plan.md` (Phase 4 addendum and
+Phase 6 notes sections added; Status table updated to 7/8; Phase 6 spec
+section's own Status line updated), `docs/solution-architecture.md`
+(Decision Management module — MCP tools paragraph added), `docs/decisions
+.md` (this entry).
+
+## Module 4 (Decision Management) Phase 6 addendum — screenshots added
+
+**Decided by: User** — asked explicitly for real screenshots on this
+module's docs-website pages (Phase 6 had shipped with Mermaid diagrams
+only), plus the same requirement made explicit in the other eleven
+not-yet-built module plans' own docs-website-coverage phases. This entry
+covers the screenshots; see `docs/decisions.md`'s neighbouring entries (or
+each `docs/plans/module-0*-*.md` file directly) for the parallel plan-doc
+updates.
+
+**Real gap found, worked around non-destructively rather than deferred**:
+`backend/scripts/seed_demo_data.py`'s Decision Management section (added
+in Phase 5) never actually ran against this developer's already-seeded
+"Solstice Robotics" database — the script's own documented idempotent-by-
+skip design (exits immediately if the org already exists) means a database
+seeded before a given section was added to the script never picks that
+section up short of the documented full `docker compose down -v` reset.
+Rather than reset a database that might hold other in-progress local work
+without asking first, the Decision Management portion of that script was
+replayed by hand — identical API calls, identical demo content, purely
+additive — reaching the same end state the script itself already
+specifies (a Superseded/Approved supersession pair plus one Draft
+Decision on Falcon-3 Inspection Drone). This is not a script bug: the
+skip-entirely behaviour is deliberate and documented in the script's own
+module docstring, with the reset recipe already written down in
+`docs/deployment.md`. Flagged here, and in the plan doc, rather than
+silently worked around with no record.
+
+**What was captured**: rebuilt the dev/test stack first (`docker compose
+up -d --build backend frontend` from `tests/container/`, per this repo's
+"containers don't bind-mount source" rule) so the running app reflected
+this session's own code changes, then used the Playwright MCP browser
+tools at a 1440×900 viewport (confirmed via `file` on each output) against
+the real, running app. Four screenshots: `decision-list.png`, `decision-
+detail.png` (an Approved Decision, showing its locked content and
+Supersedes relationship), `decision-templates.png` (the org-scoped
+Decision Templates admin panel — three templates were added to the org
+first, since it predates the org-creation-choices opt-in mechanism and had
+none), and `decision-create-template.png` (the New Decision form with a
+template selected, showing the picker in use). Stored under
+`docs/website/static/img/screenshots/`, embedded in `overview.md` (three
+images) and `data-model-and-lifecycle.md` (one, placed under "Content lock
+after approval") — `relationships-and-templates.md`, `mcp-integration.md`,
+and `known-limitations.md` were left as-is (diagrams/tables only), matching
+Compliance's own precedent of not forcing an image onto every page.
+
+**Verified**: `file` confirmed all four PNGs are exactly 1440×900; `cd
+docs/website && npm run build` re-run clean (zero broken-link/broken-image
+errors) after embedding.
+
+**Files changed**: `docs/website/static/img/screenshots/decision-list.png`,
+`decision-detail.png`, `decision-templates.png`, `decision-create-
+template.png` (new), `docs/website/docs/modules/decision-management-module/
+overview.md` and `data-model-and-lifecycle.md` (screenshots embedded),
+`docs/plans/module-04-decision-management-plan.md` (Phase 6 addendum
+added), `docs/decisions.md` (this entry).

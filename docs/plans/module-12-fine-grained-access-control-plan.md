@@ -114,7 +114,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-0 / 6 phases complete. Phase 0 is next.
+0 / 7 phases complete. Phase 0 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -125,6 +125,7 @@ consulted at every phase below:
 | 4 | First real consumer migration (proof against a live surface) | [ ] Not started |
 | 5 | Decision Management: per-decision-type approver binding | [ ] Not started |
 | 6 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
+| 7 | Docs website coverage | [ ] Not started — depends on Phase 3 |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -308,6 +309,57 @@ create a role and grant it — this phase is what makes the mechanism
 real rather than theoretical, and is deliberately scoped to management
 only, not yet wired into any actual authorization check (that's Phase 4).
 
+**MCP tools (2026-09-21 addendum) — read-only, and narrower than this
+module's other read surfaces might suggest.** This session's general
+instruction that every not-yet-built module plan get an explicit MCP-tools
+commitment (**Decided by: User**) applies here, but Module 12's own
+security framing above ("This is a security-sensitive plan... graded
+against [tenant isolation / composition / no self-escalation]") means the
+default "expose the safe list/get endpoints" template needs its own check
+before being applied, not a mechanical copy of Compliance's or Decision
+Management's precedent. **Decided by: Agent, after that check:**
+
+- **Safe to expose read-only:** `list_permissions(organization_id)` (the
+  `get_all_permissions()` structural vocabulary — artefact types × levels,
+  plus the fixed administrative list) and `list_custom_roles
+  (organization_id)` / `get_custom_role(organization_id, role_id)`
+  **restricted to the role's own definition** (name, description,
+  permission-atom set) — analogous to Compliance's `compliance_
+  list_standards` or Decision Management's `list_decision_types`: this
+  describes what a role *is*, not who holds it.
+- **Not exposed — flagged rather than defaulted in.** Any endpoint listing
+  *grants* (who currently holds a given custom role, whether via
+  `UserCustomRoleGrant` or `GroupCustomRoleGrant`) is deliberately left off
+  this list, and this plan does not recommend adding one by default. Unlike
+  a standards catalogue or a decision-type list, a grant listing is an
+  org's internal privilege map — which named individuals hold which
+  elevated permissions. Handing that to an AI assistant caller is a real
+  reconnaissance-value disclosure (exactly the information a compromised or
+  over-trusted caller credential would most want) with no analogue in any
+  MCP tool this codebase has shipped so far: every existing read-only tool
+  exposes configuration or artefact data, never an access-control roster.
+  If a genuine need for this later arises (e.g. an admin asking an AI
+  assistant "who can approve Architecture decisions"), that should be a
+  deliberate, explicitly user-approved addition made at that time — with
+  the same identify → verify → remediate weight this plan's own Phase 6
+  already commits to for the module as a whole — not something this
+  addendum should pre-approve by extending the generic template
+  mechanically.
+- **Mutating endpoints** (`CustomRoleDefinition` create/update/delete,
+  grant/revoke for either target) are excluded from the MCP surface
+  entirely, per this codebase's unbroken read-only-only convention (`docs/
+  mcp-server.md`). Worth stating explicitly here given how directly a
+  grant/revoke action touches Design Principle 4 (no self-escalation): even
+  a hypothetical future write-mode tool for this action would need its own
+  dedicated review against that principle specifically, not just the
+  ordinary `MCP_WRITES_ENABLED` gate every other mutating tool would need.
+  `APPROVAL_ACTION_ROUTE_EXTRA` (`backend/app/modules/registry.py`) is not
+  applied to these routes — it is specifically an approval-action marker,
+  and a role grant is not an approval-shaped action — so the primary and
+  sufficient defence here is the same one every other module in this
+  codebase relies on first: simply declaring no `McpToolDefinition` for any
+  of them.
+
 ## Phase 4 — First real consumer migration (proof against a live surface)
 
 **Scope:** pick one or two existing, already-well-tested endpoints and
@@ -380,6 +432,83 @@ is run before this module is considered complete, with its outcome
 recorded in `docs/decisions.md`, the same weight Module 11's own plan
 commits to and every module-role-system extension to date
 (`docs/decisions.md`'s Phase 20/22/30 entries) has actually received.
+
+## Phase 7 — Docs website coverage
+
+**Goal:** add "Custom Roles" (naming per Phase 0 Q9) to `docs/website/` —
+what a custom role is, the permission-atom model, how it composes with
+existing fixed roles, and (once it exists) the per-decision-type approver
+binding from Phase 5 — following the site's existing structure, tone, and
+Mermaid-diagram conventions.
+
+This phase is added per this session's instruction that every not-yet-built
+module plan make explicit its docs-website coverage commitment (**Decided
+by: User**, 2026-09-21); the specific scope and placement below are
+**Decided by: Agent**.
+
+**Checked explicitly, per this task's own instruction not to assume: this
+module is not purely a backend/admin-config concern with no user-visible
+surface.** Phase 3 ships a real org-settings UI page (the "Custom Roles"
+picker extending `OrgAdminPage.tsx`) that an organisation admin — a user,
+even if not an end-content-author — directly operates; this is the same
+category of admin-facing surface the docs site already documents for
+module-role assignment, org groups, and SSO mapping (per Phase 0 Q8's own
+comparison to that precedent). It does not qualify for this repo's "no
+user-visible surface" exception the way, say, Module 9's pure
+relationship-wiring integration work does.
+
+**Scope:**
+
+- A docs-site page (grouped with the site's existing organisation-settings/
+  administration documentation) covering: what a permission atom is
+  (artefact type × View/Propose-Create/Manage/Approve-Baseline, per Phase 0
+  Q1), how a custom role composes with existing fixed roles (Design
+  Principle 3 — a broader existing tier always still satisfies a narrower
+  check; a custom role only ever adds capability, it never removes or
+  replaces the fixed roles) stated in plain, non-implementation language for
+  an org-admin reader; how to create a role and grant it to a user or
+  group; and the explicit invariant this plan itself is graded against — a
+  custom role can never grant more than an `ORG_ADMIN` already has, and is
+  never usable outside the organisation that defined it.
+- A short Mermaid diagram of the composed resolution shape: server admin →
+  org/project role → module-contributed role → custom-role grant, each an
+  independently-resolving path per `access-control-policy.md`'s own
+  role-resolution diagram note, adapted for a docs-site (non-implementation)
+  audience.
+- Once Phase 5 ships: a subsection on per-decision-type approver binding,
+  cross-linked from Decision Management's own docs-website page (which by
+  then documents the flat `decision_approver` role per its own Phase 6) —
+  updating that page's approval-model description to note the optional
+  narrower binding, rather than only adding a page here.
+- A brief pointer to `docs/soc2/policies/access-control-policy.md` for
+  readers who want the full authorization-policy account, mirroring the
+  docs-site/policy split Module 11's own Phase 4 draws.
+- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
+  here rather than leaving it implicit is **Decided by: User** (the same
+  instruction as the phase itself, applied specifically to screenshots this
+  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  bound this page to its standard, but this phase's Scope above never said
+  so in as many words). This page is subject to that standard in full:
+  1440×900 viewport, captured against the seeded demo dataset, stored
+  under `docs/website/static/img/screenshots/`, real alt text plus a
+  one-line caption. The clearest candidate screen (**Decided by: Agent**)
+  is the "Custom Roles" picker's role-definition/permission-atom-
+  composition screen (name, description, permission atoms) on
+  `OrgAdminPage.tsx`. **Caution, mirroring this plan's own MCP-tools
+  addendum above:** avoid a screenshot of a role's *grant list* (which
+  named users or groups currently hold it) — this plan already treats that
+  as a privilege-reconnaissance disclosure not safe to expose read-only via
+  MCP, and the same reasoning applies to publishing it as a docs-site
+  image. Capture the role-definition/creation view instead; if the
+  grant/assign flow itself needs illustrating, use a screen state with no
+  more than a single, clearly-fictional demo grant visible rather than a
+  full roster.
+
+**Status:** not started. Depends on Phase 3 (the custom-role management UI)
+shipping — there is no real user-facing workflow to document before then.
+The Phase 5 subsection depends additionally on Phase 5 shipping and can be
+added incrementally once it does, without blocking the rest of this page.
+Not a blocker for Phases 4–6.
 
 ## Documentation obligations specific to this module
 

@@ -51,7 +51,7 @@ its own Phase 0, and its own explicit sign-off gate.
 
 ## Status / Resume Here
 
-0 / 4 phases complete. Phase 0 is next.
+0 / 5 phases complete. Phase 0 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -59,6 +59,7 @@ its own Phase 0, and its own explicit sign-off gate.
 | 1 | Data model + evidence attachment + service helper (attribution-only path) | [ ] Not started |
 | 2 | Backend integration into existing + new approval-shaped endpoints | [ ] Not started |
 | 3 | Frontend UI | [ ] Not started |
+| 4 | Docs website coverage | [ ] Not started — depends on Phase 3 |
 
 *(Phase count and shape below assume Phase 0 resolves toward the
 recommended, lower-risk option. If the user instead chooses the
@@ -260,6 +261,56 @@ following a meeting is close to the literal scenario described); wiring
 those first proves the mechanism against real, already-tested code paths
 before extending it to every new module's own approval action.
 
+**MCP tools — flagged, not resolved here (2026-09-21 addendum).** This
+session's general instruction that every not-yet-built module plan get an
+explicit MCP-tools commitment (**Decided by: User**) is deliberately *not*
+applied to this module the same way it is to the others. This module has
+no router of its own to attach a `McpToolDefinition` to in the first
+place — Phase 2's own scope is additive fields on *existing* endpoints
+(`approve_requirement`, `decide_change_request`, Decision Management's
+`approve_decision_endpoint`), not a new module-owned surface, and `docs/
+modules.md` §6's path-prefix constraint (a tool's `path_template` must fall
+inside its *declaring* module's own router) means no tool could be
+declared "by" this module regardless of intent.
+
+The real question is narrower and more sensitive than "should this module
+get MCP tools," and per this plan's own security framing it is flagged
+here rather than defaulted either way (**Decided by: Agent, deliberately
+unresolved**): should the `on_behalf_of_user_id`/`reasoning` fields Phase 2
+adds to those existing endpoints' *response* schemas become visible
+through the read-only MCP tools those artefacts already have or will have
+(e.g. Decision Management's own `get_decision` tool, `backend/app/modules/
+decisions/module.py`'s Phase 4 addendum)? Exposing "this was approved by
+X, recorded as representing Y's decision, because Z" to an AI assistant
+caller is a materially different disclosure than exposing the approval
+itself: it can reveal internal delegation/command relationships (who is
+really making calls behind whom) that may be sensitive independent of who
+is authorized to view the underlying artefact, and unlike a plain approval
+record it names a *second* person — the on-behalf-of subject — who took no
+action visible anywhere else in that artefact's own fields. Handing that
+to an automated caller is exactly the kind of exposure this plan's own
+access-control framing above says must be checked before it ships, not
+assumed safe because the underlying artefact read is already permitted.
+
+This plan does **not** recommend silently including these fields in any
+existing MCP-tool response schema by default. Before Phase 2 ships,
+whichever phase actually owns the response schema being extended
+(`requirements.py`, `change_requests.py`, or Decision Management's own
+`schemas.py`) must explicitly decide, with the user, whether
+`on_behalf_of_user_id`/`reasoning` (and any attached evidence file
+metadata) should be: (a) included in the ordinary authenticated REST
+response only, with that module's existing MCP-tool response left
+unchanged from today (an MCP caller effectively doesn't see it — the
+current default, requiring no action from this phase); (b) included, with
+a documentation note added to `docs/mcp-server.md` that an AI assistant
+reading this field must not treat it as more private than the approval it
+annotates; or (c) deliberately stripped from whatever DTO the read-only
+MCP path serves, even while the full REST response includes it for the
+human-facing UI. This decision must be made explicitly at that point, not
+defaulted to "expose everything the REST endpoint already returns," per
+`CLAUDE.md`'s rule that a security-sensitive judgment call in this area
+gets flagged to the user rather than shipped silently.
+
 ## Phase 3 — Frontend UI
 
 **Scope:** an optional, collapsed-by-default "Recording on behalf of
@@ -276,6 +327,81 @@ new one (per the UX style guide's "one component per pattern" rule).
 Playwright e2e + Storybook coverage per standing testing requirements,
 including a case with an attached evidence file, not just the text-only
 path.
+
+## Phase 4 — Docs website coverage
+
+**Goal:** add "Acting on Behalf Of" to `docs/website/` (the published docs
+site, `docs/plans/docs-website-plan.md`) — what the annotation records,
+when to use it, and its explicit boundary (it never grants authority, only
+attributes an already-authorized action to someone else) — following the
+site's existing structure, tone, and Mermaid-diagram conventions.
+
+This phase is added per this session's instruction that every not-yet-built
+module plan make explicit its docs-website coverage commitment (**Decided
+by: User**, 2026-09-21); the specific scope below is **Decided by: Agent**.
+
+**Why this is its own tracked phase, not folded silently into Phase 3:**
+this feature's core value proposition is easy to misread as "delegated
+authority" if documented casually — the site's own explanation needs to
+state the Option A boundary as plainly as this plan itself does (see "The
+central fork" above), so a reader doesn't come away believing this lets
+one user act with another's permissions. A dedicated, checklist-visible
+phase makes that framing an explicit exit criterion rather than an
+afterthought bundled into a general approval-workflow page.
+
+**Scope:**
+
+- A docs-site page or section (wherever the site already documents
+  approval workflows for Requirements, Change Requests, and — once it
+  ships — Decision Management) covering: what recording "on behalf of"
+  means and does not mean (explicitly, in the site's own words: it never
+  grants the recording user or the named on-behalf-of user any capability
+  neither already had — this plan's own first acceptance criterion); when
+  to use it (the meeting-decision scenario that motivated this module);
+  the required reasoning field and optional evidence attachment; and where
+  it becomes visible (the artefact's own detail page, alongside the
+  standard audit trail).
+- A short Mermaid sequence diagram: actor performs an already-authorized
+  action → normal RBAC check (unchanged) → optional on-behalf-of annotation
+  recorded → both the mutation and the annotation land in the audit trail.
+- Cross-link from wherever the site already documents Requirement approval,
+  Change Request decisions, and (once it ships) Decision Management's own
+  approval workflow, to this page — the annotation is only ever additive
+  to an approval action those pages already describe, never a separate
+  workflow of its own.
+- A brief pointer, matching this plan's own "Documentation obligations"
+  section below, to `docs/soc2/policies/access-control-policy.md`: the
+  docs-site page covers *how a user uses it*, the SOC 2 policy covers
+  *why it's safe*; the two are not duplicates of each other.
+- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
+  here rather than leaving it implicit is **Decided by: User** (the same
+  instruction as the phase itself, applied specifically to screenshots this
+  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  bound this page to its standard, but this phase's Scope above never said
+  so in as many words). This page is subject to that standard in full:
+  1440×900 viewport, captured against the seeded demo dataset, stored
+  under `docs/website/static/img/screenshots/`, real alt text plus a
+  one-line caption. Plausible candidate screens (**Decided by: Agent**) are
+  the expanded "Recording on behalf of someone else?" section on an
+  approval UI (user picker, reasoning field) and the resulting "Approved by
+  X on behalf of Y — reason: ..." display on the artefact's detail page.
+  **Caution, mirroring this plan's own MCP-tools flag above:** unlike an
+  ordinary approval record, that display names a second person who took no
+  visible action of their own — the same category of disclosure this plan
+  already treats as sensitive enough to gate behind an explicit decision
+  for the read-only MCP path, rather than assumed safe because the
+  underlying artefact read is already permitted. Even against the
+  fictional seed dataset, whoever captures this screenshot should use a
+  generic, business-neutral reasoning string (e.g. "attending an external
+  meeting") rather than one that reads as personal, medical, or otherwise
+  sensitive, so a screenshot meant to illustrate the feature doesn't itself
+  model the kind of disclosure this plan is otherwise careful about.
+
+**Status:** not started. Depends on Phase 3 (frontend) shipping — there is
+no real user-facing workflow to document accurately before then, the same
+reasoning Decision Management's own Phase 6 and Compliance's own
+docs-website page each deferred to their frontend phase. Not a blocker for
+this plan's own completion criteria beyond the ordinary docs-website rule.
 
 ## Documentation obligations specific to this module
 

@@ -33,7 +33,7 @@ whole report type on every other module finishing.
 
 ## Status / Resume Here
 
-0 / 7 phases complete. Phase 0 is next.
+0 / 8 phases complete. Phase 0 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -45,6 +45,7 @@ whole report type on every other module finishing.
 | 5 | Engineering Change Impact | [ ] Not started |
 | 6 | Remaining report types (matrices, registers, packages, adoption/audit reports) | [ ] Not started |
 | 7 | AI-assisted analysis (exploratory extension) | [ ] Not started |
+| 8 | Docs website coverage | [ ] Not started — incremental, see Phase 8 |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -112,6 +113,28 @@ render → stamp provenance → store/export).
 infrastructure; building report-type-specific generation logic before this
 exists would mean re-deriving provenance/templating four separate times
 across Phases 2–5.
+
+**MCP tools (2026-09-21 addendum).** This session, the user asked that
+every not-yet-built module plan make explicit that it will get narrow,
+read-only MCP tools once its backend API ships (**Decided by: User**); the
+specifics below are **Decided by: Agent**, following `docs/modules.md` §6
+and the Compliance/Decision-Management precedent (`backend/app/modules/
+compliance/module.py`; `backend/app/modules/decisions/module.py`'s Phase 4
+addendum) rather than re-explaining the mechanism inline. Once this
+phase's endpoints exist, declare narrow, read-only (`GET`)
+`McpToolDefinition` entries for the safe list/get surfaces — candidates:
+`list_report_templates(project_id)`, `get_report_template(project_id,
+template_id)`, `list_generated_reports(project_id)` (the provenance-record
+listing from Phase 0 activity 3), and `get_generated_report(project_id,
+report_id)` (a single provenance record and a pointer to its stored
+output). Explicitly excluded: the generation action itself (however Phase
+0 ultimately shapes its endpoint), template create/update/delete, and any
+future report-type-specific generation endpoint Phases 2–6 add — triggering
+generation is a mutating, potentially resource-intensive action, not a
+read, so it gets the same treatment this codebase gives every other
+mutating action: no `McpToolDefinition` declared for it at all. Exact tool
+names may shift once Phase 0 settles the real API shape (output format,
+template CRUD surface); this is a scope commitment, not a final contract.
 
 ## Phase 2 — Business Requirements Document
 
@@ -199,6 +222,83 @@ everything else in this roadmap existing first to have enough real data to
 analyze meaningfully. This phase's own Phase-0-equivalent work (what
 exactly gets automated, what human review gate wraps each finding type)
 should happen close to when it's actually picked up, not speculatively now.
+
+## Phase 8 — Docs website coverage
+
+**Goal:** add Reporting & Analysis's user-facing surface to
+`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`)
+— what the reporting engine is, the provenance model, and each shipped
+report type — following the site's existing structure, tone, and
+Mermaid-diagram conventions (per this repo's Documentation Requirements:
+prefer diagrams, validate they render before finalising).
+
+This phase is added per this session's instruction that every not-yet-built
+module plan make explicit its docs-website coverage commitment
+(**Decided by: User**, 2026-09-21); its specific incremental shape below is
+**Decided by: Agent**, adapted to this module's own "Incremental delivery"
+framing rather than copied from another module's single-shot version of
+this phase.
+
+**Why this is its own tracked phase, and incremental rather than a single
+pass:** this module's own "Incremental delivery" section above means there
+is no single point at which "the frontend" ships — Phase 1 builds the
+engine, then each report type (Phases 2–6) and the AI-assisted extension
+(Phase 7) lands independently, potentially with real time gaps between
+them. A docs-website phase gated on all of them finishing at once would
+mean the site describes nothing for a long time after several report types
+are already usable, or gets written once and silently drifts as later
+report types ship undocumented. This phase is instead a standing
+commitment revisited at each source phase's own completion, the same
+incremental spirit as the feature it documents.
+
+**Scope, performed incrementally as each source phase ships:**
+
+- On Phase 1 shipping: a docs-site page introducing the reporting engine —
+  what a report template and a generated report are, the provenance model
+  (§47.2: project, generation timestamp, baseline/version, included
+  artefact versions, template definition, generator/report version,
+  filters/config), and the "reports do not silently become a second source
+  of truth" principle — as a short Mermaid diagram of generation →
+  provenance stamping → storage/export.
+- On each of Phases 2–6 shipping: a subsection for that report type — what
+  it contains, which source modules it draws from, and (per §47.5's own
+  auditability requirement, most sharply for the Executive Gap Analysis)
+  how a finding traces back to its supporting artefacts — plus an update to
+  the site's module/feature index wherever other report types are already
+  listed.
+- On Phase 7 shipping: a subsection explaining that AI-assisted analysis
+  findings are always clearly distinguishable from approved project
+  information (§47.9), never presented as authoritative on their own.
+- Cross-link from each source module's own docs-website page (e.g.
+  Decision Management's, Compliance's) to the report type(s) that consume
+  its data, wherever the site already cross-links traceability/consumption
+  relationships elsewhere.
+- **Screenshot requirement (2026-09-22 addendum).** Making this explicit
+  here rather than leaving it implicit is **Decided by: User** (the same
+  instruction as the phase itself, applied specifically to screenshots this
+  time — `docs/plans/docs-website-plan.md`'s "Screenshots" section already
+  bound this page to its standard, but this phase's Scope above never said
+  so in as many words). Each slice above is subject to that standard in
+  full — 1440×900 viewport, captured against the seeded demo dataset,
+  stored under `docs/website/static/img/screenshots/`, real alt text plus a
+  one-line caption — and to its "at least one screenshot or diagram per
+  page, not forced onto every page" bar (**Decided by: Agent** for how it
+  applies here, since this module's own UI isn't concrete yet beyond the
+  engine/report-type split): the Phase 1 engine-introduction slice is
+  well served by the provenance-stamping Mermaid diagram already scoped
+  above and doesn't need a screenshot of its own, but each Phase 2–6
+  report-type subsection should carry at least one screenshot of that
+  report type's own rendered output (e.g. a generated Business Requirements
+  Document, or the Executive Gap Analysis view with a finding traced back
+  to its supporting artefact) once that phase actually ships and there is a
+  real screen to capture — a generic commitment for now, not a named
+  screen, since none of Phases 2–6 have built their actual UI yet.
+
+**Status:** not started. The first slice (Phase 1's own engine
+introduction) depends on Phase 1 shipping; each report-type subsection
+depends only on that specific phase, not on every other phase in this
+plan — consistent with "Incremental delivery" above. Not a blocker for any
+other phase.
 
 ## Acceptance criteria (from overview §48, Reporting & Analysis subset)
 

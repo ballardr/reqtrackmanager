@@ -24,6 +24,7 @@ Design as "Phase 5" (built together, after Requirements & Libraries).
 | 3 | Risk-to-engineering relationships (mitigation vs. mere linkage) | [ ] Not started |
 | 4 | Risk reviews + reassessment scheduling | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
+| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -182,6 +183,36 @@ requirement/design it depends on changes underneath it; without this
 notification, "our mitigations are current" becomes an assumption rather
 than a monitored fact.
 
+**MCP tools.** Added 2026-09-21 at the user's explicit instruction, applied
+across every not-yet-built module plan (**Decided by: User**) — see
+`docs/modules.md` §6 and [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+shipped `mcp_tools` (`backend/app/modules/decisions/module.py`) as the
+precedent to follow. This module has no single dedicated "backend API"
+phase the way Decision Management's later, more granular plan does — Phase
+1 stands up Risk's own data model, configurable scoring, and RBAC together
+with its CRUD endpoints, and Phases 2–4 progressively add lifecycle,
+relationship, and review endpoints on top, so the full REST surface is
+only complete once this phase's review/reassessment endpoints land,
+immediately before Phase 5's frontend consumes it. Attaching the
+commitment here, at the last purely-backend phase, rather than
+retroactively to Phase 1 alone, is a judgment call (**Decided by: Agent**)
+— revisit if a future pass splits Phase 1's own endpoints out explicitly
+from its data-model work. Once this phase (and the endpoints it depends on
+from Phases 1–3) exists, declare narrow, **read-only-only**
+`McpToolDefinition` entries for the safe list/get endpoints — candidates
+made concrete by each phase's own scope text: `list_risks`/`get_risk`
+(Phase 1, including the risk's current inherent/residual rating), and
+`list_risk_reviews`/`get_risk_review` (this phase). Explicitly excluded:
+anything mutating, and any endpoint that approves/decides/accepts
+something — in particular whatever endpoint moves a Risk to
+`Mitigated/Accepted` (Phase 2's lifecycle, and Phase 0's own open question
+about whether accepting residual risk needs a distinct Approve-level role)
+must be marked with `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
+(`backend/app/modules/registry.py`) as defence-in-depth, the same
+mechanism Compliance and Decision Management already use, so such a route
+can never be exposed as an MCP tool even by accident, regardless of how
+Phase 0 ultimately resolves that role question.
+
 ## Phase 5 — Frontend UI
 
 List/detail/create UI for Risks (with the configured matrix rendered as an
@@ -190,6 +221,74 @@ most of its communicative value), risk register view, review-due
 notifications surfaced consistently with existing notification patterns.
 Playwright e2e + Storybook coverage per standing requirements; enum/status
 values through label maps.
+
+## Phase 6 — Docs website coverage
+
+Added 2026-09-21 at the user's explicit instruction, applied across every
+not-yet-built module plan (**Decided by: User**); the specific scope and
+placement below are this session's own judgment (**Decided by: Agent**),
+modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+Phase 6 of the same name.
+
+**Goal:** add Risk Management's user-facing surface to `docs/website/` (the
+published docs site, `docs/plans/docs-website-plan.md`) — what a Risk
+record is, its lifecycle, the configurable scoring matrix, and how it
+relates to Requirements, Designs, Actions, and Decisions — following the
+site's existing structure, tone, and Mermaid-diagram conventions (per this
+repo's Documentation Requirements: prefer diagrams, validate they render
+before finalising).
+
+**Why this is its own tracked phase, not folded silently into Phase 5:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, performed in the same change
+rather than deferred — so in the ordinary case this would just be part of
+Phase 5's own work. It's broken out explicitly here, mirroring Decision
+Management's own Phase 6 reasoning, because this module's user-facing
+surface is unusually broad for one phase — a configurable risk matrix, a
+branching lifecycle with multiple valid terminal states, five relationship
+kinds distinguishing "linked to" from "effectively treats," and a
+review/reassessment workflow all land in the same Phase 5 UI at once — so
+a dedicated, checklist-visible phase makes the docs-site update harder to
+under-scope or miss amid everything else Phase 5 ships.
+
+**Scope:**
+
+- A new docs-site page or section (matching whatever grouping the site
+  already uses for other project-scoped modules, e.g. Compliance and
+  Decision Management) covering: what a Risk record is and when to use one;
+  the configurable scoring model (Phase 0 Q1's `RiskMatrixDefinition`/
+  `RiskRatingBand` shape) with a worked example matrix rendered as a
+  Mermaid diagram or table; the risk lifecycle as a validated Mermaid state
+  diagram, including its branching terminal outcomes (`Mitigated/Accepted`,
+  `Transferred`, `Avoided`, `Realised`, `Rejected`, per §11.4); the
+  distinction between a risk being merely "linked to" a Requirement/Design
+  versus "effectively treated" by it (Phase 0 Q3/Phase 3); the relationship
+  kinds wired in Phase 3 (Mitigated by, Treated by, Verified by, Related to
+  Compliance), including which targets (Decision) are reserved pending
+  Module 4; and the review/reassessment scheduling from Phase 4.
+- Update the site's module/feature index or nav to include Risk Management
+  alongside the other installed modules it already lists.
+- Cross-link from the Requirements documentation to the new page wherever
+  the site already documents how a Requirement can exist specifically to
+  mitigate a Risk, if it does.
+- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
+  every not-yet-built module plan's own "Docs website coverage" phase,
+  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  "Screenshots" standard (1440×900 viewport, captured against the seeded
+  demo dataset, stored under `docs/website/static/img/screenshots/`, real
+  alt text plus a one-line caption, no surrounding "what this shows/why it
+  matters" prose) and its "every Concepts, Core Features, Workflows, and
+  Modules page needs at least one screenshot or diagram" bar — not forced
+  onto a page whose content is genuinely diagram/table-only. Candidate
+  screens for this module's own page — **Decided by: Agent**: the Risk
+  list view, a Risk detail page showing its scoring matrix and lifecycle
+  state, and the review/reassessment scheduling UI.
+
+**Status:** not started — depends on Phase 5 (frontend) actually shipping;
+there is no real user-facing workflow to document accurately before then,
+the same reasoning Decision Management's own Phase 6 and Compliance's
+docs-site page both used. Not a blocker for any other phase.
 
 ## Acceptance criteria (from overview §48, Risk Management subset)
 

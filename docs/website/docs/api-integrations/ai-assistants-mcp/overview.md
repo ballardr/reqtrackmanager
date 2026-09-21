@@ -71,7 +71,9 @@ Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` 
 
 Beyond the tools above, a backend module can declare its own tools that this server registers automatically, without any module-specific code living in the MCP server itself — see [Modules → Building your own module](../../modules/building-your-own-module.md#module-contributed-mcp-tools) for the mechanism.
 
-**Compliance is the first module to use this**, contributing ten read-only tools:
+**Compliance and Decision Management are the modules that use this so far**, both contributing exclusively read-only tools.
+
+Compliance contributes ten read-only tools:
 
 | Tool | Purpose |
 | --- | --- |
@@ -87,6 +89,20 @@ Beyond the tools above, a backend module can declare its own tools that this ser
 | `compliance_get_standard_version_diff` | Computes the added/removed/modified/replaced/re-mapped requirement diff between two versions of a standard |
 
 No mutating tool is declared anywhere in Compliance's MCP surface — not for the standards lifecycle, evidence, approvals, review scheduling, requirement mappings, or (most notably) the project version-migration action that touches every requirement row on an assignment. Unlike `approve_requirement`/`decide_change_request`/`complete_requirement` above, Compliance's own approval/sign-off action has no equivalent org-and-project opt-in gate built for it yet, so it stays fully excluded regardless of write mode or either AI-approval setting; `approve`/`reject` specifically are additionally marked so that even a future accidental attempt to declare a tool for either would be mechanically excluded rather than relying on someone remembering not to.
+
+Decision Management contributes seven read-only tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `decisions_list_decision_types` | Lists the Decision Types configured for a project |
+| `decisions_list_decisions` | Lists the Decision records in a project |
+| `decisions_get_decision` | Fetches a single Decision record, including its current status and content |
+| `decisions_list_decision_relationships` | Lists a Decision's relationship links (supersession, Decision↔Requirement, Decision↔Decision) |
+| `decisions_list_decision_comments` | Lists the comments on a Decision |
+| `decisions_list_decision_files` | Lists the files directly attached to a Decision |
+| `decisions_list_decision_templates` | Lists an organisation's Decision Templates |
+
+Same principle as Compliance, applied deliberately rather than by oversight: no tool exists for creating a Decision, proposing/submitting it for review, approving, rejecting, superseding, commenting, or attaching a file — this module's mutating actions are exactly the kind of accountable-human governance action this whole mechanism keeps off the tool surface by default. `approve_decision`/`reject_decision` are additionally marked so a future accidental tool declaration for either would be mechanically excluded, the same defense-in-depth as Compliance's own `approve`/`reject`.
 
 **How it works, briefly:** the backend's `GET /api/v1/system/modules/mcp-tools` returns a manifest of every currently-registered module tool, built with the registered tool name always prefixed by its declaring module's key (e.g. `compliance_list_standards`), `mutates` derived from the HTTP method rather than declared by the module, and any tool that would resolve to an approval/decision action excluded from the manifest entirely — the module-tool mechanism has no gate equivalent to the two AI-approval settings described in [Write mode](#write-mode) above, so it enforces its own, currently absolute, exclusion instead. This server fetches that manifest lazily and authenticated (never at an unauthenticated boot-time call), caching it in-process for up to 10 minutes by default (`MODULE_TOOLS_REFRESH_SECONDS`). Each declarative tool is a plain proxy call to the module's own REST endpoint — no module code ever runs inside this server's own process. A mutating module tool is only ever registered when write mode is enabled, the same gate this server's own write tools use.
 

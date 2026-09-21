@@ -121,6 +121,7 @@ from app.modules.decisions.service import (
     reject_decision,
     submit_decision_for_review,
 )
+from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
@@ -544,11 +545,15 @@ def submit_decision_for_review_endpoint(
     return _decision_to_out(decision)
 
 
-@router.post("/{decision_id}/approve", response_model=DecisionOut)
+@router.post("/{decision_id}/approve", response_model=DecisionOut, openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA)
 def approve_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
     current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
 ):
+    """Marked `APPROVAL_ACTION_ROUTE_EXTRA` so the module MCP-tool manifest
+    builder can never expose this as a tool, regardless of what a future
+    `module.py` declares (added alongside this module's Phase 6 MCP tools —
+    see `module.py`'s own docstring)."""
     decision = _get_decision_in_project(db, project_id, decision_id)
     _apply_value_error_as_conflict(approve_decision, db, decision, current_user.id, comment=payload.comment)
     db.commit()
@@ -556,7 +561,7 @@ def approve_decision_endpoint(
     return _decision_to_out(decision)
 
 
-@router.post("/{decision_id}/reject", response_model=DecisionOut)
+@router.post("/{decision_id}/reject", response_model=DecisionOut, openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA)
 def reject_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
     current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
@@ -565,7 +570,8 @@ def reject_decision_endpoint(
     mandatory-comment-on-`FAILED` rule (`routers.requirements.py`) and
     `reject_requirement`'s mandatory `decision_note`
     (`modules.compliance.project_router`): a rejection must never appear
-    with no indication of why."""
+    with no indication of why. Marked `APPROVAL_ACTION_ROUTE_EXTRA` for the
+    same reason as `approve_decision_endpoint` above."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Decision.")
     decision = _get_decision_in_project(db, project_id, decision_id)
