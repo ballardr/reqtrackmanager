@@ -18,6 +18,48 @@ Architectural Decision Records, the fuller format), and Y-Statement (the
 compressed single-sentence form). Each pack's prompt text is guidance
 shown to a user filling in a new Decision from that template (Phase 5) —
 not validation, not enforced structure.
+
+Phase 2 (docs/plans/module-04-decision-management-plan.md) adds the
+approval/rejection/supersession workflow, entirely at this service layer —
+no router exists until Phase 4, and per that plan's Phase 0 addendum item 8
+supersession is deliberately built now rather than deferred to Phase 3:
+
+- `propose_decision` / `submit_decision_for_review` / `approve_decision` /
+  `reject_decision` — the `DecisionStatus` transitions
+  (`DRAFT -> PROPOSED -> UNDER_REVIEW -> APPROVED`, with `REJECTED`
+  reachable from `PROPOSED`/`UNDER_REVIEW`), each validated against
+  `_ALLOWED_TRANSITIONS` and recorded via `services.audit.log_event`
+  (Phase 0 activity 3 — reusing the audit-log pattern rather than a
+  bespoke approval-history table), mirroring `services.stages.
+  complete_stage`'s shape: a plain service function that mutates status and
+  writes the audit event in one call, without committing (the eventual
+  Phase 4 router owns the transaction, same as every other service
+  function in this codebase).
+- `create_supersession` — creates the typed `ArtefactLink` (Module 0's
+  polymorphic relationship model, `services.relationships.create_link`)
+  recording that one Decision supersedes another, using a `"Supersedes"` /
+  `"Is superseded by"` `RequirementLinkTypeDefinition` row this module
+  fetches-or-creates on demand for the owning organisation (that table is
+  already a generic, org-shared vocabulary — see its own module docstring
+  — so this is an ordinary consumer of an existing extension point, not a
+  new core mechanism; no `DEFAULT_LINK_TYPES` core-file edit or migration
+  backfill is needed since it's created lazily, the first time any Decision
+  in that organisation is actually superseded).
+- Per Phase 0 addendum item 8, the *old* Decision's status only flips to
+  `SUPERSEDED` once the supersession link exists **and** the *new* Decision
+  itself reaches `APPROVED` — not before, and not automatically for a
+  predecessor that isn't currently `APPROVED` (e.g. one already `REJECTED`
+  or itself `SUPERSEDED`). This condition is checked from both directions
+  it can become true: `create_supersession` (the link is created after the
+  new Decision is already approved) and `approve_decision` (the new
+  Decision is approved after the link already exists) — see `_maybe_
+  supersede`/`_supersede_predecessors`.
+- Content-field immutability once a Decision reaches `APPROVED`/
+  `SUPERSEDED` (source overview §13/10.6) is deliberately **not** enforced
+  here — every existing lock-after-approval check in this codebase
+  (`services.requirements.is_locked`'s call sites) lives at the router
+  layer, and no Decision router/update endpoint exists until Phase 4. It
+  belongs there, not in this phase.
 """
 
 from __future__ import annotations
@@ -25,10 +67,15 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.modules.decisions.models import DecisionTemplateDefinition, DecisionTypeDefinition
+from app.models.project import Project
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
+from app.modules.decisions.enums import DecisionStatus
+from app.modules.decisions.models import Decision, DecisionTemplateDefinition, DecisionTypeDefinition
+from app.services.audit import log_event
+from app.services.relationships import create_link, get_link_between, get_links_from
 
 # Source overview §13/10.2's default list, seeded per new project — a
 # project's own admin may add/rename/reorder/remove from there.
@@ -176,3 +223,225 @@ def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_ke
             )
         )
         next_sort_order += 1
+
+
+# --- Phase 2: approval, rejection, and supersession workflow --------------
+
+# Legal `DecisionStatus` transitions (Phase 0 addendum Q1/Q4, `enums.
+# DecisionStatus`'s own docstring): forward through the four "in-flight"
+# states, `REJECTED` reachable from either `PROPOSED` or `UNDER_REVIEW`,
+# `SUPERSEDED` reachable only from `APPROVED` and only via `_maybe_
+# supersede`/`_supersede_predecessors` below, never a direct caller choice.
+_ALLOWED_TRANSITIONS: dict[DecisionStatus, frozenset[DecisionStatus]] = {
+    DecisionStatus.DRAFT: frozenset({DecisionStatus.PROPOSED}),
+    DecisionStatus.PROPOSED: frozenset({DecisionStatus.UNDER_REVIEW, DecisionStatus.REJECTED}),
+    DecisionStatus.UNDER_REVIEW: frozenset({DecisionStatus.APPROVED, DecisionStatus.REJECTED}),
+    DecisionStatus.APPROVED: frozenset({DecisionStatus.SUPERSEDED}),
+    DecisionStatus.REJECTED: frozenset(),
+    DecisionStatus.SUPERSEDED: frozenset(),
+}
+
+# This module's own `RequirementLinkTypeDefinition` name for the typed
+# supersession link `create_supersession` creates/reuses — see module
+# docstring for why that (already generic, org-shared) table is the right
+# extension point rather than a new mechanism.
+SUPERSEDES_LINK_TYPE_FORWARD_NAME = "Supersedes"
+SUPERSEDES_LINK_TYPE_REVERSE_NAME = "Is superseded by"
+
+
+def _transition_status(
+    db: Session, decision: Decision, new_status: DecisionStatus, actor_id: uuid.UUID, *,
+    action: str, comment: str | None = None,
+) -> Decision:
+    """Validates and applies a `Decision.status` transition, then records it
+    via `services.audit.log_event` (not committed — caller's transaction).
+
+    Raises:
+        ValueError: if `new_status` isn't reachable from `decision.status`
+            per `_ALLOWED_TRANSITIONS` — mirrors `services.relationships.
+            create_link`'s own convention of a plain `ValueError` for a
+            service-layer validation failure, for the eventual Phase 4
+            router to translate into an HTTP 409.
+    """
+    if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
+        raise ValueError(f"Cannot move a Decision from '{decision.status.value}' to '{new_status.value}'.")
+    decision.status = new_status
+    log_event(
+        db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision.id, action=action,
+        actor_id=actor_id, project_id=decision.project_id,
+        detail={"comment": comment} if comment else None,
+    )
+    db.flush()
+    return decision
+
+
+def propose_decision(db: Session, decision: Decision, actor_id: uuid.UUID) -> Decision:
+    """`DRAFT` -> `PROPOSED`: the decision is ready for others to review."""
+    return _transition_status(db, decision, DecisionStatus.PROPOSED, actor_id, action="proposed")
+
+
+def submit_decision_for_review(db: Session, decision: Decision, actor_id: uuid.UUID) -> Decision:
+    """`PROPOSED` -> `UNDER_REVIEW`: formal review/approval has started."""
+    return _transition_status(db, decision, DecisionStatus.UNDER_REVIEW, actor_id, action="submitted_for_review")
+
+
+def reject_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+    """`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`. Rejected Decisions remain
+    queryable (source overview §13/10.6) — never hard-deleted, same as
+    every other soft-delete convention in this codebase; this is a status
+    value, not an archive."""
+    return _transition_status(db, decision, DecisionStatus.REJECTED, actor_id, action="rejected", comment=comment)
+
+
+def approve_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+    """`UNDER_REVIEW` -> `APPROVED`. Also flips any predecessor Decision
+    this one already supersedes (a `create_supersession` link created
+    before this approval) to `SUPERSEDED`, per Phase 0 addendum item 8 —
+    see `_supersede_predecessors`."""
+    _transition_status(db, decision, DecisionStatus.APPROVED, actor_id, action="approved", comment=comment)
+    _supersede_predecessors(db, decision, actor_id)
+    return decision
+
+
+def _project_organization_id(db: Session, project_id: uuid.UUID) -> uuid.UUID:
+    """Resolves a project's owning organisation — needed because
+    `RequirementLinkTypeDefinition` (the supersession link type's home
+    table) is org-scoped while `Decision` is project-scoped."""
+    organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+    if organization_id is None:
+        raise ValueError(f"Project {project_id} not found.")
+    return organization_id
+
+
+def _get_or_create_supersedes_link_type(db: Session, organization_id: uuid.UUID) -> RequirementLinkTypeDefinition:
+    """Returns this organisation's `"Supersedes"` link type, creating it on
+    first use (see module docstring — deliberately lazy, no core-file
+    default-list edit or migration backfill needed)."""
+    link_type = db.scalar(
+        select(RequirementLinkTypeDefinition).where(
+            RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.forward_name == SUPERSEDES_LINK_TYPE_FORWARD_NAME,
+        )
+    )
+    if link_type is not None:
+        return link_type
+    next_sort_order = db.scalar(
+        select(func.count())
+        .select_from(RequirementLinkTypeDefinition)
+        .where(RequirementLinkTypeDefinition.organization_id == organization_id)
+    )
+    link_type = RequirementLinkTypeDefinition(
+        organization_id=organization_id,
+        forward_name=SUPERSEDES_LINK_TYPE_FORWARD_NAME,
+        reverse_name=SUPERSEDES_LINK_TYPE_REVERSE_NAME,
+        sort_order=next_sort_order,
+    )
+    db.add(link_type)
+    db.flush()
+    return link_type
+
+
+def _maybe_supersede(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID) -> None:
+    """Flips `old_decision` to `SUPERSEDED` if both halves of Phase 0
+    addendum item 8's condition are already true at this exact moment: the
+    supersession link exists (implied — this is only ever called once it
+    does) and `new_decision` is already `APPROVED`. A no-op otherwise
+    (including if `old_decision` isn't currently `APPROVED` — superseding
+    only ever overwrites a previously-approved decision's status, never a
+    `DRAFT`/`REJECTED`/already-`SUPERSEDED` one)."""
+    if new_decision.status == DecisionStatus.APPROVED and old_decision.status == DecisionStatus.APPROVED:
+        old_decision.status = DecisionStatus.SUPERSEDED
+        log_event(
+            db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=old_decision.id, action="superseded",
+            actor_id=actor_id, project_id=old_decision.project_id,
+            detail={"superseded_by_decision_id": str(new_decision.id)},
+        )
+        db.flush()
+
+
+def _supersede_predecessors(db: Session, decision: Decision, actor_id: uuid.UUID) -> None:
+    """Called once `decision` itself reaches `APPROVED` (from
+    `approve_decision`): flips every still-`APPROVED` Decision it already
+    supersedes (an outgoing `"Supersedes"`-typed link created earlier, back
+    when this Decision wasn't approved yet) to `SUPERSEDED` — the other
+    direction of Phase 0 addendum item 8's condition than `_maybe_
+    supersede` handles."""
+    organization_id = _project_organization_id(db, decision.project_id)
+    link_type = db.scalar(
+        select(RequirementLinkTypeDefinition).where(
+            RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.forward_name == SUPERSEDES_LINK_TYPE_FORWARD_NAME,
+        )
+    )
+    if link_type is None:
+        return  # No Decision in this organisation has ever been superseded yet.
+    predecessor_ids = {
+        link.target_id
+        for link in get_links_from(db, DECISION_ARTEFACT_TYPE, decision.id)
+        if link.target_type == DECISION_ARTEFACT_TYPE and link.link_type_id == link_type.id
+    }
+    if not predecessor_ids:
+        return
+    predecessors = db.scalars(
+        select(Decision).where(Decision.id.in_(predecessor_ids), Decision.status == DecisionStatus.APPROVED)
+    ).all()
+    for predecessor in predecessors:
+        predecessor.status = DecisionStatus.SUPERSEDED
+        log_event(
+            db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=predecessor.id, action="superseded",
+            actor_id=actor_id, project_id=predecessor.project_id,
+            detail={"superseded_by_decision_id": str(decision.id)},
+        )
+    db.flush()
+
+
+def create_supersession(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID):
+    """Records that `new_decision` supersedes `old_decision`: creates the
+    typed `"Supersedes"` `ArtefactLink` (source overview §13/10.6), then
+    immediately flips `old_decision` to `SUPERSEDED` if `new_decision` is
+    already `APPROVED` (see `_maybe_supersede`) — otherwise the flip
+    happens later, when/if `new_decision` itself reaches `APPROVED` via
+    `approve_decision`.
+
+    Args:
+        db: Active session; not committed (caller's transaction).
+        new_decision: The superseding Decision (the link's source).
+        old_decision: The superseded Decision (the link's target).
+        actor_id: The user recording this relationship.
+
+    Returns:
+        The created `ArtefactLink`.
+
+    Raises:
+        ValueError: if `new_decision`/`old_decision` are the same row, are
+            in different projects (supersession is scoped to one project's
+            Decision set, same as `DecisionTypeDefinition`), `old_decision`
+            is already `SUPERSEDED`, or this exact supersession link
+            already exists.
+    """
+    if new_decision.id == old_decision.id:
+        raise ValueError("A Decision cannot supersede itself.")
+    if new_decision.project_id != old_decision.project_id:
+        raise ValueError("A Decision can only supersede another Decision in the same project.")
+    if old_decision.status == DecisionStatus.SUPERSEDED:
+        raise ValueError("This Decision has already been superseded.")
+
+    organization_id = _project_organization_id(db, new_decision.project_id)
+    link_type = _get_or_create_supersedes_link_type(db, organization_id)
+
+    if (
+        get_link_between(
+            db, source_type=DECISION_ARTEFACT_TYPE, source_id=new_decision.id,
+            target_type=DECISION_ARTEFACT_TYPE, target_id=old_decision.id, link_type_id=link_type.id,
+        )
+        is not None
+    ):
+        raise ValueError("This Decision already supersedes that one.")
+
+    link = create_link(
+        db, source_type=DECISION_ARTEFACT_TYPE, source_id=new_decision.id,
+        target_type=DECISION_ARTEFACT_TYPE, target_id=old_decision.id,
+        link_type_id=link_type.id, created_by=actor_id,
+    )
+    _maybe_supersede(db, new_decision=new_decision, old_decision=old_decision, actor_id=actor_id)
+    return link

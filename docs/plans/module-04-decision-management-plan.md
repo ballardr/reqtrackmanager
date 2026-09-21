@@ -54,17 +54,63 @@ improvised).
 
 ## Status / Resume Here
 
-2 / 6 phases complete. Phase 2 (approval/rejection/supersession workflow) is next.
+3 / 6 phases complete. Phase 3 (relationships to Requirements/other Decisions) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: requirements clarification | [x] Complete (2026-09-21) — see addendum below |
 | 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
-| 2 | Approval, rejection, and supersession workflow | [ ] Not started |
+| 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
 | 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [ ] Not started — no longer blocked, Module 0 shipped 2026-09-21 |
 | 4 | Backend API + audit logging | [ ] Not started |
 | 5 | Frontend — Decision list/detail/create/approve UI | [ ] Not started |
 | 6 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
+
+## Phase 2 notes (2026-09-21)
+
+Implemented entirely in `backend/app/modules/decisions/service.py` — no
+router exists until Phase 4, so this phase is service-layer functions Phase
+4 will later call from behind RBAC (`require_module_role`, per every other
+module's own precedent — see this file's module docstring), not HTTP
+endpoints of its own:
+
+- `propose_decision` / `submit_decision_for_review` / `approve_decision` /
+  `reject_decision` validate the transition against `_ALLOWED_TRANSITIONS`
+  and record it via `services.audit.log_event` (`entity_type="decision"`),
+  mirroring `services.stages.complete_stage`'s shape (mutate + audit, no
+  commit — caller's transaction). An illegal transition raises a plain
+  `ValueError`, the same convention `services.relationships.create_link`
+  already uses, for Phase 4's router to translate into an HTTP 409.
+- `create_supersession` creates the typed `"Supersedes"` `ArtefactLink`
+  (Module 0's relationship model) between two Decisions in the same
+  project, using a `RequirementLinkTypeDefinition` row this module
+  fetches-or-creates on demand per organisation — that table is already a
+  generic, org-shared vocabulary (not requirement-specific despite its
+  name), so this is an ordinary consumer of an existing extension point,
+  not a new mechanism; no core-file default-list edit or migration
+  backfill needed, since it's created lazily on first use.
+- Per Phase 0 addendum item 8, the *old* Decision only flips to
+  `SUPERSEDED` once the link exists **and** the *new* Decision reaches
+  `APPROVED` — checked from both directions this can become true
+  (`_maybe_supersede` when the link is created after the new Decision is
+  already approved; `_supersede_predecessors` when the new Decision is
+  approved after the link already exists), and only ever overwrites a
+  predecessor that's currently `APPROVED` itself.
+- Content-field immutability once a Decision reaches `APPROVED`/
+  `SUPERSEDED` (§13/10.6) is deliberately deferred to Phase 4 — every
+  existing lock-after-approval check in this codebase
+  (`services.requirements.is_locked`'s call sites) lives at the router
+  layer, and no Decision update endpoint exists yet.
+
+**Verified**: `app/modules/decisions/tests/test_decisions_workflow.py` (new,
+11 tests) — full legal transition sequence with audit trail assertions,
+rejection with comment recorded in audit `detail`, a parametrized illegal-
+transition matrix, both supersession-flip orderings (link-then-approve and
+approve-then-link), link-type reuse across multiple supersessions in one
+org, and the validation errors (self-supersession, cross-project, already-
+superseded, duplicate link). `ruff check` clean. Full backend suite run
+after this change (see this entry's own `docs/decisions.md` counterpart for
+the final pass/fail count).
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
