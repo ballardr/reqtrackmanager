@@ -18,14 +18,21 @@
  * re-fetches on `refreshToken` changing instead (a generic plumbing signal
  * `RequirementDetailPage.tsx` bumps whenever any link involving this
  * requirement changes, core-to-core or module-contributed).
+ *
+ * Its own accent colour (the left-border stripe below) comes from this
+ * module's own `module.ts` registration (`entityAccentColor`) via
+ * `useEntityAccentColor("compliance")`, not a core `ENTITY_ACCENT_COLOR`
+ * map entry — see `modules/entityAccentColor.ts`'s own docstring for why a
+ * `"compliance"` entry briefly lived in that core map and was corrected
+ * back out.
  */
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 
-import { ENTITY_ACCENT_COLOR } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useEntityAccentColor } from "../entityAccentColor";
 import * as complianceApi from "./api";
 import type { ComplianceRequirementTraceabilityLink } from "./types";
 
@@ -39,6 +46,7 @@ interface Props {
 export function RequirementTraceabilityLinksSection({ projectId, requirementId, refreshToken }: Props) {
   const strings = useStrings();
   const { showToast } = useToast();
+  const accentColor = useEntityAccentColor("compliance");
   const [links, setLinks] = useState<ComplianceRequirementTraceabilityLink[]>([]);
   const [linkToRemove, setLinkToRemove] = useState<ComplianceRequirementTraceabilityLink | null>(null);
 
@@ -71,7 +79,7 @@ export function RequirementTraceabilityLinksSection({ projectId, requirementId, 
           style={{
             justifyContent: "space-between",
             paddingLeft: "0.5rem",
-            ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.compliance,
+            ["--entity-accent-color" as string]: accentColor,
           }}
         >
           <span>

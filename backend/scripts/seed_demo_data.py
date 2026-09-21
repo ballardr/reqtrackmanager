@@ -933,6 +933,77 @@ def seed_project(
     return by_name
 
 
+# --- Decision Management module helpers (docs/plans/module-04-decision-
+# management-plan.md Phase 5) --------------------------------------------
+#
+# `Decision.decision_type_id` is a required FK, but every project already
+# has 5 default `DecisionTypeDefinition` rows seeded by `on_project_created`
+# (Architecture/Design/Engineering/Strategy/Operational) unconditionally,
+# regardless of this module's own `enabled` state — so `list_decision_types`
+# always has something to pick from without this script creating any itself.
+
+
+def enable_module(headers: dict, org_id: str, module_key: str) -> None:
+    """`default_enabled=False` modules (Decision Management) need this;
+    `default_enabled=True` ones (Compliance) never call it — see `docs/
+    modules.md`'s "Effective enabled" formula."""
+    r = httpx.put(f"{BASE}/orgs/{org_id}/modules/{module_key}", json={"enabled": True}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
+    r = httpx.get(f"{BASE}/projects/{project_id}/modules/decisions/decision-types", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {t["name"]: t for t in r.json()}
+
+
+def create_decision(
+    headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
+    owner_id: str, decision_maker_id: str | None = None, context: str = "", options_considered: str = "",
+    chosen_option: str = "", rationale: str = "", consequences: str = "",
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/decisions",
+        json={
+            "title": title, "decision_statement": decision_statement, "decision_type_id": decision_type_id,
+            "owner_id": owner_id, "decision_maker_id": decision_maker_id, "context": context,
+            "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
+            "consequences": consequences,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_decision(headers: dict, project_id: str, decision_id: str, *, approval_comment: str = "") -> dict:
+    """Walks a Decision through its full lifecycle to `Approved` in one
+    call — `Draft -> Proposed -> Under Review -> Approved` (source overview
+    §13/10.4) — for demo Decisions meant to already read as settled."""
+    httpx.post(f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(
+        f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/submit-for-review", headers=headers, timeout=30
+    ).raise_for_status()
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/decisions/{decision_id}/approve",
+        json={"comment": approval_comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_decision_supersession(headers: dict, project_id: str, new_decision_id: str, old_decision_id: str) -> dict:
+    """`new_decision_id` supersedes `old_decision_id` — both must already be
+    `Approved` for the old one to flip to `Superseded` immediately (source
+    overview §13/10.6; see `service.py`'s own `_maybe_supersede`)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/decisions/{new_decision_id}/supersessions",
+        json={"old_decision_id": old_decision_id}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1520,6 +1591,64 @@ def main() -> None:
     )
     update_standard_applicability_default(h_pm, org["id"], infosec_standard["id"], "applies_to_all_projects")
 
+    print("Seeding Decision Management (Module 4) — enabling the module, then a superseded pair on Falcon-3...")
+    # default_enabled=False (docs/plans/module-04-decision-management-plan.md
+    # Phase 1/4) — an org must opt in explicitly, same as a real admin would
+    # from Org Admin's Modules tab.
+    enable_module(h_pm, org["id"], "decisions")
+    drone_decision_types = list_decision_types(h_pm, drone["id"])
+    single_fc_decision = create_decision(
+        h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
+        decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"
+        " swapped in by ground crew between flights, rather than dual-redundant boards flying together.",
+        decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_admin["user_id"],
+        decision_maker_id=demo_admin["user_id"],
+        context="Early Falcon-3 prototypes carried a single flight controller with no in-flight redundancy.",
+        options_considered="(1) Single controller, cold-spare swapped between flights. (2) Dual-redundant"
+        " controllers flying together with in-flight failover.",
+        chosen_option="Option 1 — single controller with a cold-spare.",
+        rationale="Dual-redundant hardware wasn't available within the initial flight-test budget or"
+        " schedule; a cold-spare gets most of the reliability benefit for ground-based utility inspection"
+        " flights, where an in-flight failure can safely abort to a landing.",
+        consequences="Loses in-flight recovery from a controller failure; acceptable for the initial"
+        " operating envelope but revisit once flights move over populated areas.",
+    )
+    propose_and_approve_decision(
+        h_pm, drone["id"], single_fc_decision["id"],
+        approval_comment="Approved for the initial flight-test campaign; revisit before BVLOS operations.",
+    )
+    dual_fc_decision = create_decision(
+        h_pm, drone["id"], title="Adopt dual-redundant flight controller architecture for Falcon-3",
+        decision_statement="Falcon-3 will fly with two flight controller boards in an active/standby"
+        " arrangement, with automatic in-flight failover, superseding the earlier single-controller design.",
+        decision_type_id=drone_decision_types["Architecture"]["id"], owner_id=demo_engineer["user_id"],
+        decision_maker_id=demo_admin["user_id"],
+        context="Planned operations now include inspection routes over populated infrastructure corridors,"
+        " where a single controller failure could mean an uncontrolled descent rather than a safe abort.",
+        options_considered="(1) Keep the single-controller/cold-spare design. (2) Dual-redundant controllers"
+        " with automatic failover. (3) Triple modular redundancy.",
+        chosen_option="Option 2 — dual-redundant with automatic failover.",
+        rationale="Matches the reliability bar for flight over populated areas without the cost/weight"
+        " penalty of full triple modular redundancy, which the airframe's payload budget can't absorb.",
+        consequences="Adds airframe weight and BOM cost per unit; avionics firmware needs an active/standby"
+        " handover path that didn't exist before (tracked as its own firmware requirement).",
+    )
+    propose_and_approve_decision(
+        h_pm, drone["id"], dual_fc_decision["id"],
+        approval_comment="Approved ahead of the populated-corridor inspection contract; supersedes the"
+        " single-controller decision.",
+    )
+    create_decision_supersession(h_pm, drone["id"], dual_fc_decision["id"], single_fc_decision["id"])
+    print("  Leaving a third Decision in Draft (undecided) — demonstrates the list's mixed-status filtering...")
+    create_decision(
+        h_pm, drone["id"], title="Migrate firmware OTA update channel to signed images",
+        decision_statement="Not yet decided — evaluating whether to require cryptographically signed"
+        " firmware images for over-the-air updates before the next fleet-wide rollout.",
+        decision_type_id=drone_decision_types["Engineering"]["id"], owner_id=demo_engineer["user_id"],
+        context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
+        " internal test fleet but not for a customer-operated one.",
+    )
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -1541,6 +1670,9 @@ def main() -> None:
     print("  Compliance standards: ASA-1 (assigned to Falcon-3 only), EN 60529 (opt-in, unassigned),"
           " ISO/IEC 27001 (applies to all projects — auto-assigned to Falcon-3 and Solstice Cloud,"
           " Falcon-3 Avionics Subsystem excepted)")
+    print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
+          " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
+          " and an OTA-signing decision left in Draft")
 
 
 if __name__ == "__main__":

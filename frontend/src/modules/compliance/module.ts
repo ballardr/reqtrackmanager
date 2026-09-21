@@ -221,4 +221,15 @@ export const moduleDefinition: TierAModuleDefinition = {
         createElement(ComplianceRequirementLinkPickerTab, { projectId, requirementId, organizationId, onLinked }),
     },
   ],
+  // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`
+  // core map (a `"compliance"` entry there, plus a matching
+  // `--color-entity-compliance` variable in `theme.css`, was this module's
+  // own colour hand-added to a core file/map — the exact same boundary
+  // violation CLAUDE.md documents for `ProjectSequenceCounter.artefact_type`,
+  // applied to a display colour instead of an artefact-type string) into
+  // this module's own registration instead, per `modules/entityAccentColor
+  // .ts`'s own docstring. Same hex values as before, unchanged visually —
+  // `RequirementTraceabilityLinksSection.tsx` now resolves them via
+  // `useEntityAccentColor("compliance")` rather than a core CSS variable.
+  entityAccentColor: { light: "#c2410c", dark: "#fdba74" },
 };

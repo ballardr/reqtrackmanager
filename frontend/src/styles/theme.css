@@ -43,13 +43,17 @@
      with things that actually need attention (e.g. an applicability
      override, an overdue review). See docs/decisions.md. */
   --color-info: #0e7490;
-  /* Entity-type accent (Phase 4, item 2) — v1, 4 kinds. A future module
-     adds its own token here + one ENTITY_ACCENT_COLOR entry
-     (frontend/src/api/types.ts); it does not redesign this set. */
+  /* Entity-type accent (Phase 4, item 2) — the 3 entity kinds core itself
+     owns (requirement/action/change_request) only. A *module's* own accent
+     colour (e.g. Compliance's) is never a variable here — see
+     frontend/src/modules/entityAccentColor.ts's own docstring for why a
+     `--color-entity-compliance` var briefly lived here and was corrected
+     back out: a module's colour is registered on its own `module.ts`
+     (`TierAModuleDefinition.entityAccentColor`) and resolved client-side,
+     not declared in this core stylesheet. */
   --color-entity-requirement: #3b5bdb;
   --color-entity-action: #0f766e;
   --color-entity-change-request: #7c3aed;
-  --color-entity-compliance: #c2410c;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -70,7 +74,6 @@
   --color-entity-requirement: #7c96f0;
   --color-entity-action: #5eead4;
   --color-entity-change-request: #c4b5fd;
-  --color-entity-compliance: #fdba74;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 

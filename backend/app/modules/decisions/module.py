@@ -51,6 +51,15 @@ actions Compliance's own module.py has repeatedly kept off the MCP tool
 surface by default (see that module's Phase 9 notes); a future phase can
 add narrow, read-only tools the same deliberate way Compliance did, if a
 real need for one arises.
+
+Phase 5 (docs/plans/module-04-decision-management-plan.md — Frontend) adds
+`frontend_manifest` (Tier A — `frontend/src/modules/decisions/module.ts`
+registers the matching route/nav entry, `ProjectDecisionsPage`), so the
+project nav rail actually gets a "Decisions" entry once an organisation
+enables this module. `default_enabled` stays `False`; an organisation still
+opts in explicitly. `nav_path` mirrors Compliance's own `"{project_id}"`
+placeholder convention, interpolated server-side before being sent to the
+frontend (`routers/projects.py::list_project_enabled_modules`).
 """
 
 from __future__ import annotations
@@ -63,7 +72,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
-from app.modules.registry import ModuleDefinition, ModuleRoleDefinition, OrgCreationChoiceOption
+from app.modules.registry import ModuleDefinition, ModuleFrontendManifest, ModuleRoleDefinition, OrgCreationChoiceOption
 
 DECISIONS_MODULE_KEY = "decisions"
 
@@ -144,6 +153,11 @@ MODULE_DEFINITION = ModuleDefinition(
     on_project_created=_seed_new_project,
     org_creation_choices=_ORG_CREATION_CHOICES,
     on_org_created_with_choices=_seed_org_templates,
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Decisions",
+        nav_path=f"/projects/{{project_id}}/modules/{DECISIONS_MODULE_KEY}",
+    ),
     artefact_types=(DECISION_ARTEFACT_TYPE,),
     roles=(
         ModuleRoleDefinition(

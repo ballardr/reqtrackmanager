@@ -6824,3 +6824,255 @@ router`/`resolve_file_owner_project_id` wired in; `implemented=True`),
 complete with its own notes section; Status table updated to 5/7),
 `docs/solution-architecture.md` (Decision Management module — backend API
 paragraph added), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 5 — Frontend, and a second core-boundary correction
+
+**Decided by: Agent** — continuing the module's own plan
+(`docs/plans/module-04-decision-management-plan.md`) to its next unstarted
+phase, per the user's own standing instruction to build this module ahead
+of the overview's own recommended order.
+
+Built `frontend/src/modules/decisions/` as a new Tier A module, following
+`modules/compliance/`'s own established shape: `module.ts` (registration —
+one project-scoped route, one `orgOverviewSections` entry), `types.ts`
+(mirrors the backend schemas field-for-field, plus `DECISION_STATUS_LABEL`/
+`_TONE` maps — plain string literals, not routed through `useStrings()`/
+`i18n/strings.ts`, since "Decision" isn't one of this app's customisable
+terminology keys), `api.ts` (one wrapper function per backend endpoint,
+mirroring `modules/compliance/api.ts`'s own per-module-file precedent),
+`ProjectDecisionsPage.tsx` (Decisions list — `DirectoryTable`/`FilterPanel`,
+create `Modal`, detail `SidePanel`; a "Decision Types" tab reusing
+`DefinitionList`), `DecisionFormModal.tsx` (create/edit, shared via
+`initial`, with a Decision Template picker in create mode that pre-fills
+the seven free-text fields from a template's guidance prompts),
+`DecisionDetailPanel.tsx` (fields, lifecycle action buttons gated on
+`status`, archive/unarchive, relationships, attachments, comments — every
+mutating control always renders regardless of the caller's actual role,
+the backend enforces and a 403 surfaces as a toast, mirroring
+`ProjectCompliancePage.tsx`'s own posture; edit/archive/attach are hidden,
+not just toast-blocked, once `is_locked`, since that's a state the client
+already has), `DecisionRelationshipsSection.tsx` (lists and creates
+supersession/Requirement/Decision links from the Decision's own side — the
+only side Phase 5 builds, see below), `DecisionCommentsSection.tsx` (a
+trimmed, module-local sibling of `components/CommentThread.tsx` —
+`DecisionCommentOut` has no reaction mechanism, and widening the shared,
+widely-used core component's mandatory `onToggleReaction` prop to
+accommodate one module was rejected in favour of a small sibling),
+`DecisionTypesPanel.tsx` (project-scoped `DefinitionList` wrapper, mirrors
+`ActionTypesPanel.tsx`), `DecisionTemplatesPanel.tsx`/
+`DecisionTemplateFormModal.tsx` (org-scoped Decision Template CRUD, this
+module's `orgOverviewSections` contribution — the org-creation-time
+picker Phase 1 already built is unrelated and untouched; this is where an
+admin manages the library afterward). `backend/app/modules/decisions/
+module.py` gained a `frontend_manifest` (`nav_label="Decisions"`) so an
+org that enables the module gets a real project nav entry — the one
+backend change this phase needed. `default_enabled` stays `False`
+(Phase 1/4's deliberate opt-in design, unchanged).
+
+**Scoping call, Decided by: Agent**: no `requirementDetailSections`/
+`requirementLinkPickerTabs` contribution (showing/adding Decision links
+from the *Requirement* Detail page's own Links card — the reverse
+direction from this phase's own Decision-side relationship creation). The
+backend's Phase 4 API has no "list Decision links touching a given
+Requirement" endpoint (only `GET /{decision_id}/relationships`,
+decision-centric); building that reverse-listing endpoint too would be
+scope creep beyond this plan's own Phase 5 text ("project-scoped Decision
+list, detail page, create/edit form, and an approve/reject/supersede
+action flow"). Every relationship is still fully visible and creatable
+from the Decision's own detail panel in both directions — this only
+affects where in the UI it can be *seen from*. Mirrors Compliance's own
+identical Phase 34 one-direction-only scoping call
+(`RequirementTraceabilityLinksSection.tsx`'s own docstring). Revisit if a
+real need for the reverse direction surfaces.
+
+**A second core-boundary violation, caught by the user mid-implementation
+(Decided by: User)**: while styling `DecisionRelationshipsSection.tsx`'s
+relationship rows to match `RequirementTraceabilityLinksSection.tsx`'s own
+"entity accent colour" left-border-stripe convention, the agent added a
+`"decision"` entry directly to `frontend/src/api/types.ts`'s
+`ENTITY_ACCENT_COLOR`/`EntityAccentKind` map and a matching
+`--color-entity-decision` variable to the core `theme.css` — only to
+discover, on inspection, that map already carried a `"compliance"` entry
+(and matching `--color-entity-compliance` variable) added the same way
+when Compliance itself first used this pattern, unnoticed until a second
+module attempted the identical addition. The user identified this as the
+exact same failure mode CLAUDE.md already documents for `ProjectSequenceCounter
+.artefact_type` (Module 4 Phase 1's own correction) — a per-module value
+hand-added to a core, closed-set map — just one layer further out (a
+display colour, not a database enum), and asked for both the immediate fix
+and CLAUDE.md itself to be strengthened so the pattern is caught
+proactively next time, for *any* module, not just re-discovered per
+instance.
+
+Fixed at the root, not routed around: reverted both attempted `"decision"`
+additions, then corrected the pre-existing `"compliance"` one out too.
+`frontend/src/modules/entityAccentColor.ts` (new) is the generic resolver:
+the 3 genuinely core-owned entity kinds (requirement/action/change_request)
+stay in `api/types.ts`'s `ENTITY_ACCENT_COLOR` (CSS-variable-backed, no
+module concern), and a module now registers its own colour as a literal
+`{ light, dark }` hex pair on its own `TierAModuleDefinition
+.entityAccentColor` (new generic field, `modules/types.ts`), resolved
+client-side via `useEntityAccentColor()` against the viewer's current
+effective theme (`context/ThemeContext.tsx`) rather than a `:root[data-
+theme="dark"]` CSS override. `modules/compliance/module.ts` now carries its
+own colour this way (identical hex values — no visual change), and
+`RequirementTraceabilityLinksSection.tsx` was updated to consume it, with
+`--color-entity-compliance`/`--color-entity-decision` removed from
+`theme.css`. Decision Management itself declares no `entityAccentColor`
+yet, per the reverse-direction scoping call above — nothing currently
+renders a mixed list that would need to tell a Decision apart from
+anything else. `CLAUDE.md`'s "Modular Feature System Boundary" section
+gained a new bullet generalising the existing enum/column guidance to
+cover "a plain frontend constant or stylesheet" explicitly, naming this
+incident alongside `ProjectSequenceCounter.artefact_type` as a second,
+independent instance of the same rule — see that file for the exact text.
+
+Two smaller Storybook/Playwright-testability corrections found while
+building this phase's own tests, fixed in the same pass: (1) `Modal`/
+`ConfirmDialog`/`SidePanel` all portal to `document.body` (`createPortal`)
+— every new story asserting on their content queries `within(document
+.body)`, not `canvasElement`, mirroring `modules/compliance/StandardFormModal
+.stories.tsx`'s own existing convention, which a first draft of these
+stories initially got wrong (assertions found nothing, since portalled
+content renders outside the story's own root element). `testing/storybook-
+helpers.tsx` gained a shared `withThemeProvider` decorator (`PreferencesPage
+.stories.tsx` had a local, unshared copy of the same wrapper) — needed once
+`RequirementTraceabilityLinksSection.tsx` started calling `useTheme()` via
+`useEntityAccentColor`, which also required adding it to `pages/
+RequirementDetailPage.stories.tsx`'s own decorators (two of its stories
+render that section). (2) A `<label><span>X</span><input aria-label="Y">
+</label>` wrapping pattern where the visible span text (`X`) differs from
+the control's own `aria-label` (`Y`) is a latent Playwright-specific
+footgun, not just a cosmetic inconsistency — Playwright's `internal:label=`
+selector engine resolves `getByLabel` against the wrapping `<label>`
+element's own full text content, not the inner control's `aria-label`
+(the opposite of Testing Library's accessible-name computation, which is
+why this passed every Storybook interaction test cleanly while still being
+wrong for Playwright) — `modules/compliance/helpers.ts`'s own
+`selectFilterOption` already documents and works around the identical
+quirk for `FilterField`. Found and fixed at the source instead of worked
+around: `DecisionFormModal.tsx`'s "Title" field and `DecisionTemplateFormModal
+.tsx`'s "Name" field now show the same text as their own `aria-label`
+("Decision title"/"Template name"), and `DecisionDetailPanel.tsx`'s
+approve/reject comment fields likewise. `ProjectDecisionsPage.tsx`'s
+Status/Decision-type filters were also switched from a `LabeledSelect`
+nested inside `FilterField` (two nested native `<label>` elements — invalid
+HTML, and not this codebase's own established filter-select shape) to a
+bare `<select>`, matching `RequirementsPage.tsx`'s own precedent
+directly. `tests/playwright/tests/modules/decisions/helpers.ts` still
+needed its own `selectLabeledOption` for `LabeledSelect`'s remaining,
+unavoidable label/option-text ambiguity (the relationship-kind and target-
+Decision/Requirement pickers) — same underlying quirk, no visible-text
+mismatch to fix this time since `LabeledSelect` always sets its own
+`aria-label` from the same `label` prop it renders.
+
+**Seed data (Decided by: Agent, per the Phase 4 notes' own "revisit this
+when Phase 5 ships" flag)**: `backend/scripts/seed_demo_data.py` now
+enables Decision Management for the demo org and seeds three Decisions on
+the Falcon-3 project — a single-flight-controller decision (Approved, then
+flipped to Superseded), the dual-redundant decision that supersedes it
+(Approved), and an OTA-image-signing decision left in Draft — so the demo
+instance actually demonstrates the feature rather than shipping a UI
+nobody's data ever exercises (this repo's own "a backend capability isn't
+done until a UI actually calls it" verification standard, extended to "a
+UI isn't done until the demo data actually shows it working").
+`backend/scripts/seed_e2e_dataset.py` was deliberately **not** touched:
+Decision Management stays `default_enabled=False`, and the new Playwright
+spec below creates its own fully disposable org/admin/project via the API
+specifically so its own module-enablement toggle can't leak into or
+collide with any other spec's shared org state — the same reasoning
+`org-admin-modules.spec.ts` already gives for abandoning a shared org for
+its own module-toggle test. No persona/project needs Decisions
+pre-enabled.
+
+**A real bug the Playwright spec caught, fixed in the same pass**:
+`DecisionRelationshipsSection.tsx`'s `addRelationship` only ever refreshed
+its own component-local relationships list — a supersession's side effect
+on the *other* Decision (flipping it to `SUPERSEDED`) was correctly
+persisted server-side but never surfaced anywhere in the frontend: neither
+`ProjectDecisionsPage.tsx`'s own Decisions list (only refreshed on create,
+or via a detail panel's `onChanged` after a lifecycle transition/edit — a
+relationship add on a *different* Decision's own panel triggered neither)
+nor a freshly reopened detail panel for that other Decision (its status
+badge would keep showing stale data until some unrelated action happened
+to trigger a list reload). Found by the Playwright spec's own final
+assertion — reopening DEC-001 after superseding it from DEC-002's panel
+showed it still `Approved`, not `Superseded` — not by any unit-level
+Storybook story, since none of them exercise the cross-Decision list
+refresh this only shows up in. Fixed by giving `DecisionRelationshipsSection`
+an optional `onChanged` callback, invoked after a successful relationship
+add; `DecisionDetailPanel.tsx` wires it to its own existing `onChanged`
+prop (the same one lifecycle transitions and edits already use), which
+`ProjectDecisionsPage.tsx` already treats as "something changed, reload
+the whole list" — reusing an existing signal rather than inventing a
+second, parallel refresh mechanism.
+
+**Verified**: `frontend`: `tsc -b --noEmit` clean, `eslint .` clean (0
+errors, 74 warnings repo-wide; the pre-existing, codebase-wide
+`react-hooks/set-state-in-effect` warning class appears on the new files
+exactly as it already does on ~30+ unmodified ones, not a regression
+introduced here). Storybook: 332 tests across 45 files all passing
+(`vitest run --project=storybook`) — 46 new tests across the 8 Decisions
+module files, the existing Compliance suite (33 files, 202 tests) and the
+4 core pages touched by the `entityAccentColor` refactor
+(`RequirementDetailPage`/`RequirementsPage`/`ChangeRequestsPage`/
+`ProjectActionsPage`, 84 tests) all still passing unchanged. `backend`:
+`ruff check` clean on both changed files; `docker compose exec backend
+pytest -q app/modules/decisions/tests tests/test_module_registry.py
+tests/test_module_frontend_integration.py` — 118 passed, confirming the
+new `frontend_manifest` field doesn't disturb module-registry validation
+or the existing Decisions backend suite; full backend suite —
+**1160 passed, 0 failed** (unchanged from Phase 4's own count, confirming
+zero regressions from this phase's one backend change), run via `docker
+compose exec backend pytest -q` against a freshly rebuilt `backend` image.
+New Playwright coverage (`tests/modules/decisions/decision-lifecycle
+.spec.ts`, run standalone with `--no-deps` — this repo's `default` project
+otherwise depends on `global-state-mutators`, which includes several
+Keycloak-dependent SSO specs that fail in any environment without a
+running Keycloak container, unrelated to this change) — **passing**,
+end to end against a freshly rebuilt live stack, exercising this plan's
+own Phase 5 exit criteria journey: create -> propose -> approve ->
+supersede. Getting it green also required fixing three Playwright-specific
+locator issues in the spec itself, not the app (a single-org admin's
+`/orgs` auto-redirects past the org list `OrgListPage.tsx` already handles,
+no link to click; `getByRole("link", {name: "Decisions"})` substring-matched
+the header's own user-menu link since this persona's display name happens
+to contain "Decisions" too; `getByRole("button", {name: "Add"})` substring-
+matched the comment form's own "Add comment" button) — plus the real
+application bug above, caught only once the spec ran against a live app
+rather than mocked Storybook interactions. Also directly validated
+`backend/scripts/seed_demo_data.py`'s new Decision Management helpers
+end to end against a disposable org (the pre-existing "Solstice Robotics"
+demo org already exists in this dev stack, so the idempotent-skip guard
+means actually running the full script wouldn't have reached the new code)
+— `enable_module`/`create_decision`/`propose_and_approve_decision`/
+`create_decision_supersession` all behaved exactly as intended, including
+the supersession flip.
+
+### Files changed
+
+`frontend/src/modules/decisions/` (new: `module.ts`, `types.ts`, `api.ts`,
+`ProjectDecisionsPage.tsx`, `DecisionFormModal.tsx`, `DecisionDetailPanel
+.tsx`, `DecisionRelationshipsSection.tsx`, `DecisionCommentsSection.tsx`,
+`DecisionTypesPanel.tsx`, `DecisionTemplatesPanel.tsx`,
+`DecisionTemplateFormModal.tsx`, and a `.stories.tsx` file for each),
+`frontend/src/modules/entityAccentColor.ts` (new), `frontend/src/modules/
+types.ts` (`entityAccentColor` field added to `TierAModuleDefinition`),
+`frontend/src/modules/compliance/module.ts` (`entityAccentColor` added),
+`frontend/src/modules/compliance/RequirementTraceabilityLinksSection.tsx`
+(consumes `useEntityAccentColor` instead of the core map),
+`frontend/src/modules/compliance/RequirementTraceabilityLinksSection
+.stories.tsx`/`frontend/src/pages/RequirementDetailPage.stories.tsx`
+(`withThemeProvider` decorator added), `frontend/src/api/types.ts`
+(`ENTITY_ACCENT_COLOR`/`EntityAccentKind` narrowed back to the 3 core
+kinds), `frontend/src/styles/theme.css` (`--color-entity-compliance`
+removed), `frontend/src/testing/storybook-helpers.tsx` (`withThemeProvider`
+added), `backend/app/modules/decisions/module.py` (`frontend_manifest`
+added), `backend/scripts/seed_demo_data.py` (Decision Management helpers
+and seeding), `tests/playwright/tests/modules/decisions/` (new:
+`decision-lifecycle.spec.ts`, `helpers.ts`), `CLAUDE.md` (Modular Feature
+System Boundary — new bullet on frontend constants/stylesheets),
+`docs/plans/module-04-decision-management-plan.md` (Phase 5 marked
+complete with its own notes section; Status table updated to 6/8),
+`docs/solution-architecture.md` (Decision Management module — frontend
+paragraph added), `docs/decisions.md` (this entry).

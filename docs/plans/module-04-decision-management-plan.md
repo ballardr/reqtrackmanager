@@ -54,7 +54,7 @@ improvised).
 
 ## Status / Resume Here
 
-5 / 8 phases complete. Phase 5 (frontend) is next.
+6 / 8 phases complete. Phase 6 (docs website coverage) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -63,8 +63,8 @@ improvised).
 | 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
 | 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [x] Complete (2026-09-21) — see "Phase 3 notes" below |
 | 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes" below |
-| 5 | Frontend — Decision list/detail/create/approve UI | [ ] Not started |
-| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping; see note below |
+| 5 | Frontend — Decision list/detail/create/approve UI | [x] Complete (2026-09-21) — see "Phase 5 notes" below |
+| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping (now true); see note below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
 | 8 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
 
@@ -291,6 +291,41 @@ after this change (see this entry's own `docs/decisions.md` counterpart for
 the final pass/fail count) — plus a security review following the SOC 2
 change-management policy's identify→verify→remediate practice (recorded in
 that same `docs/decisions.md` entry).
+
+## Phase 5 notes (2026-09-21)
+
+Built `frontend/src/modules/decisions/` as a new Tier A module, following
+`modules/compliance/`'s own established shape. Full account, including a
+second core-boundary correction found and fixed mid-implementation (the
+`ENTITY_ACCENT_COLOR` core map briefly grew per-module entries, the same
+failure mode as `ProjectSequenceCounter.artefact_type`, generalised into a
+new `frontend/src/modules/entityAccentColor.ts` extension point and a new
+CLAUDE.md bullet), lives in `docs/decisions.md`'s "Module 4 (Decision
+Management) Phase 5" entry rather than duplicated here — summarised:
+
+- **UI shipped**: project-scoped Decision list (filterable by type/status,
+  searchable, archived toggle), a "Decision Types" tab, create/edit
+  `Modal` (with a Decision Template picker in create mode), a `SidePanel`
+  detail view (fields, lifecycle action buttons gated on `status`,
+  relationships, direct attachments, comments), and the org-scoped
+  Decision Template CRUD panel (`orgOverviewSections`).
+- **Scoping call (Decided by: Agent)**: no `requirementDetailSections`/
+  `requirementLinkPickerTabs` contribution yet (showing/adding Decision
+  links from the *Requirement* side) — the backend has no "list Decision
+  links touching a given Requirement" endpoint, and building one wasn't in
+  this phase's own scope text. Every relationship is still fully visible
+  and creatable from the Decision's own detail panel in both directions.
+  Mirrors Compliance's own identical Phase 34 scoping call.
+- **Testing**: 46 new Storybook interaction tests (8 files, all passing),
+  new Playwright coverage (`tests/modules/decisions/decision-lifecycle
+  .spec.ts`) for this phase's own exit-criteria journey — create -> propose
+  -> approve -> supersede — against a live stack, `tsc`/`eslint` clean.
+  `backend/scripts/seed_demo_data.py` updated to enable the module and
+  seed 3 demonstration Decisions (Phase 4's own "revisit this when Phase 5
+  ships" flag on that script).
+
+**Verified**: see `docs/decisions.md`'s own "Verified" paragraph for the
+full account and final backend-suite/Playwright pass counts.
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
