@@ -342,14 +342,19 @@ Phase 8 design decisions:
   required actions at once (§13's own "a single piece of evidence should
   be capable of supporting multiple compliance requirements"). That
   multi-linkage is a genuine many-to-many, not a foreign key on either
-  side — see `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
-  below, which deliberately point at the project-specific assessment rows
-  (`ProjectComplianceRequirement`/`ComplianceRequiredActionAssessment`),
-  not the reusable `ComplianceRequirement`/`ComplianceRequiredAction`
-  definitions — the same §31 "state belongs to the project-specific
-  assessment layer, not the reusable definition" principle this file's
-  own Phase 7 notes already apply to `ComplianceStatus`/
-  `ComplianceApplicability`, extended one concept further to evidence.
+  side — originally two dedicated join tables (`ComplianceEvidenceRequirementLink`/
+  `ComplianceEvidenceActionLink`), folded (Module 0 — Platform Foundations,
+  Phase 3) into the core `app.models.relationship.ArtefactLink` table
+  instead, `source_type=ArtefactType.COMPLIANCE_EVIDENCE` pointing at
+  `target_type=ArtefactType.PROJECT_COMPLIANCE_REQUIREMENT`/
+  `ArtefactType.COMPLIANCE_REQUIRED_ACTION_ASSESSMENT` — deliberately the
+  project-specific assessment rows (`ProjectComplianceRequirement`/
+  `ComplianceRequiredActionAssessment`), not the reusable
+  `ComplianceRequirement`/`ComplianceRequiredAction` definitions — the same
+  §31 "state belongs to the project-specific assessment layer, not the
+  reusable definition" principle this file's own Phase 7 notes already
+  apply to `ComplianceStatus`/`ComplianceApplicability`, extended one
+  concept further to evidence.
 - `ComplianceEvidence.expiry_date` is this row's *current* effective
   expiry — revalidating (§15) updates it in place. `ComplianceEvidenceRevalidation`
   is a separate, append-only table recording what it previously was: §15's
@@ -369,8 +374,8 @@ Phase 8 design decisions:
   every other compliance entity's soft-delete convention exactly, and is
   this model's answer to §13's own listed attribute "Whether it remains
   applicable" — deliberately not a hard delete, since that would silently
-  sever `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
-  rows that other assessments' own audit trail (§16) may still depend on.
+  sever the `ArtefactLink` rows that other assessments' own audit trail
+  (§16) may still depend on.
 
 Phase 10 design decisions:
 - `ComplianceReview` has exactly one of `standard_id`/`project_compliance_id`
@@ -398,15 +403,18 @@ Phase 10 design decisions:
   rows instead of `AuditEvent`, since a review's own recurrence naturally
   produces one row per cycle already).
 - `ComplianceReviewEvidenceLink` (§17's "Notes/evidence associated with the
-  review") is a many-to-many, mirroring `ComplianceEvidenceRequirementLink`'s
-  exact shape (§13's own established evidence-linkage convention) rather
-  than a single nullable FK — the same "a piece of evidence may support
-  more than one thing at once" reasoning Phase 8 already applied to
-  requirements/required actions, extended to reviews. Enforced at the API
-  layer only (not a DB constraint) that a link's evidence and review share
-  the same project — a standard-level review (no `project_id` of its own)
-  cannot be linked to project-scoped evidence at all, since it has no
-  project to share.
+  review") is a many-to-many, mirroring Phase 8's original evidence-linkage
+  join-table shape (§13's own established convention) rather than a single
+  nullable FK — the same "a piece of evidence may support more than one
+  thing at once" reasoning Phase 8 already applied to requirements/required
+  actions, extended to reviews. Unlike Phase 8's own two evidence-link
+  tables, this one was **not** folded into the generic `ArtefactLink` table
+  by Module 0 (Platform Foundations) Phase 3 — out of that phase's explicit
+  scope (evidence<->requirement and evidence<->action assessment only) — so
+  it remains its own dedicated table. Enforced at the API layer only (not a
+  DB constraint) that a link's evidence and review share the same project —
+  a standard-level review (no `project_id` of its own) cannot be linked to
+  project-scoped evidence at all, since it has no project to share.
 - Evidence-expiry/required-action-due/target-date reminder "already sent"
   bookkeeping (`*_reminder_sent_at`/`*_notified_at` pairs on `ComplianceEvidence`/
   `ComplianceRequiredActionAssessment`/`ProjectCompliance`) lives on each
@@ -1198,49 +1206,27 @@ class ComplianceEvidenceFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-class ComplianceEvidenceRequirementLink(UUIDPKMixin, Base):
-    """Links one `ComplianceEvidence` row to one
-    `ProjectComplianceRequirement` row (§13's "a requirement... should be
-    able to reference supporting evidence" / "a single piece of evidence
-    should be capable of supporting multiple compliance requirements").
-    Deliberately points at the project-specific assessment row, not the
-    reusable `ComplianceRequirement` definition — see this module's own
-    docstring. No `index=True` on either foreign key, mirroring
-    `RequirementFile`'s own convention for this exact join-table shape
-    (and avoiding this exact table/column combination's auto-generated
-    index name exceeding Postgres's 63-byte identifier limit, the same
-    class of problem `ComplianceRequiredActionAssessment`'s own comment
-    already documents for a different table)."""
-
-    __tablename__ = "compliance_evidence_requirement_links"
-    __table_args__ = (UniqueConstraint("evidence_id", "project_compliance_requirement_id"),)
-
-    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
-    project_compliance_requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_compliance_requirements.id", ondelete="CASCADE")
-    )
-    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-
-class ComplianceEvidenceActionLink(UUIDPKMixin, Base):
-    """Links one `ComplianceEvidence` row to one
-    `ComplianceRequiredActionAssessment` row (§13's "...or Required Action
-    should be able to reference supporting evidence") — the required-
-    action-assessment equivalent of `ComplianceEvidenceRequirementLink`
-    above; see that model's own docstring for why this points at the
-    project-specific assessment layer, not the reusable definition, and
-    for why neither foreign key here is indexed."""
-
-    __tablename__ = "compliance_evidence_action_links"
-    __table_args__ = (UniqueConstraint("evidence_id", "required_action_assessment_id"),)
-
-    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("compliance_evidence.id", ondelete="CASCADE"))
-    required_action_assessment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("compliance_required_action_assessments.id", ondelete="CASCADE")
-    )
-    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+# `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` used to
+# be defined here (Evidence<->ProjectComplianceRequirement and
+# Evidence<->ComplianceRequiredActionAssessment, both untyped many-to-many
+# join tables). Module 0 (Platform Foundations) Phase 3 folded both into
+# the core `app.models.relationship.ArtefactLink` table — see this file's
+# own docstring above ("Phase 8 design decisions") and
+# `app.services.relationships` for the generic replacement. Removed rather
+# than kept as compatibility shims, per migration 0043.
+#
+# This module's own registered artefact-type values (declared on
+# `module.MODULE_DEFINITION.artefact_types`, `app.modules.registry.
+# ModuleDefinition`) — the canonical constants every internal call site
+# below (service.py/reports.py/export.py/project_router.py) imports,
+# rather than re-typing the raw strings. `module.py`'s own
+# `MODULE_DEFINITION` construction mirrors these three values as local
+# literals rather than importing them from here, for the same
+# zero-import-cycle reason its own `_ORG_MERGE_RESOLUTION_CHOICES`
+# documents.
+ARTEFACT_TYPE_EVIDENCE = "compliance_evidence"
+ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT = "project_compliance_requirement"
+ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT = "compliance_required_action_assessment"
 
 
 # --- Phase 10: Scheduled reviews --------------------------------------------------
@@ -1319,12 +1305,19 @@ class ComplianceReview(UUIDPKMixin, TimestampMixin, Base):
 
 class ComplianceReviewEvidenceLink(UUIDPKMixin, Base):
     """Links one `ComplianceEvidence` row to one `ComplianceReview` (§17's
-    "Notes/evidence associated with the review") — the review equivalent of
-    `ComplianceEvidenceRequirementLink`; see that model's own docstring for
-    why neither foreign key here is indexed. Only ever created for a
-    project-scoped review (`ComplianceReview.project_compliance_id` set) —
-    enforced at the API layer, since evidence is inherently project-scoped
-    and a standard-level review has no project to share with it."""
+    "Notes/evidence associated with the review") — an untyped many-to-many
+    join table, the same shape Phase 8's own evidence-requirement/
+    evidence-action links used before Module 0 (Platform Foundations)
+    Phase 3 folded those two into the generic `ArtefactLink` table (this
+    table was out of that phase's scope, so it remains dedicated). No
+    `index=True` on either foreign key, avoiding this exact table/column
+    combination's auto-generated index name exceeding Postgres's 63-byte
+    identifier limit, the same class of problem
+    `ComplianceRequiredActionAssessment`'s own comment documents for a
+    different table. Only ever created for a project-scoped review
+    (`ComplianceReview.project_compliance_id` set) — enforced at the API
+    layer, since evidence is inherently project-scoped and a
+    standard-level review has no project to share with it."""
 
     __tablename__ = "compliance_review_evidence_links"
     __table_args__ = (UniqueConstraint("evidence_id", "review_id"),)

@@ -161,9 +161,10 @@ from app.modules.compliance.labels import (
     compliance_status_label,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
     ComplianceEvidence,
-    ComplianceEvidenceActionLink,
-    ComplianceEvidenceRequirementLink,
     ComplianceMappingRelationshipTypeDefinition,
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
@@ -184,6 +185,7 @@ from app.modules.compliance.service import (
     list_pending_approvals_for_project,
     load_pcrs_and_applicability,
 )
+from app.services import relationships
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.csv_safety import csv_safe
 
@@ -505,33 +507,35 @@ def collect_project_compliance_report(
         assessment_by_action_id = {a.required_action_id: a for a in assessments}
         assessment_ids = [a.id for a in assessments]
 
-        req_evidence_links = list(
-            db.scalars(
-                select(ComplianceEvidenceRequirementLink).where(
-                    ComplianceEvidenceRequirementLink.project_compliance_requirement_id.in_(pcr_ids)
-                )
-            ).all()
-        ) if pcr_ids else []
-        action_evidence_links = list(
-            db.scalars(
-                select(ComplianceEvidenceActionLink).where(
-                    ComplianceEvidenceActionLink.required_action_assessment_id.in_(assessment_ids)
-                )
-            ).all()
-        ) if assessment_ids else []
-        evidence_ids = {link.evidence_id for link in req_evidence_links} | {link.evidence_id for link in action_evidence_links}
+        # Evidence links now live in the generic `ArtefactLink` table
+        # (Module 0 — Platform Foundations, Phase 3), evidence as source;
+        # filtering to `source_type == COMPLIANCE_EVIDENCE` keeps this
+        # correct by construction even though it's the only source type
+        # that targets these two target types today (mirrors
+        # `routers.requirements.list_links`'s established precedent).
+        req_evidence_links = [
+            link for link in relationships.get_links_to_many(db, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr_ids)
+            if link.source_type == ARTEFACT_TYPE_EVIDENCE
+        ]
+        action_evidence_links = [
+            link for link in relationships.get_links_to_many(
+                db, ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, assessment_ids
+            )
+            if link.source_type == ARTEFACT_TYPE_EVIDENCE
+        ]
+        evidence_ids = {link.source_id for link in req_evidence_links} | {link.source_id for link in action_evidence_links}
         evidence_rows_for_ids = (
             db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.id.in_(evidence_ids))).all() if evidence_ids else []
         )
         evidence_title_by_id = {e.id: e.title for e in evidence_rows_for_ids}
         evidence_ids_by_pcr: dict[uuid.UUID, set[uuid.UUID]] = {}
         for link in req_evidence_links:
-            evidence_ids_by_pcr.setdefault(link.project_compliance_requirement_id, set()).add(link.evidence_id)
+            evidence_ids_by_pcr.setdefault(link.target_id, set()).add(link.source_id)
         assessment_pcr_by_id = {a.id: a.project_compliance_requirement_id for a in assessments}
         for link in action_evidence_links:
-            pcr_id = assessment_pcr_by_id.get(link.required_action_assessment_id)
+            pcr_id = assessment_pcr_by_id.get(link.target_id)
             if pcr_id is not None:
-                evidence_ids_by_pcr.setdefault(pcr_id, set()).add(link.evidence_id)
+                evidence_ids_by_pcr.setdefault(pcr_id, set()).add(link.source_id)
 
         approver_emails = _emails_by_id(
             db, {pcr.approval_decided_by for pcr in pcrs if pcr.approval_decided_by}

@@ -52,35 +52,46 @@ has two separate constraints instead of one — see `__table_args__` below.
 This module intentionally does not perform authorization/tenant-scoping
 checks anywhere — see `services.relationships`' own module docstring for
 why that responsibility stays at the router layer.
+
+**Revised by Module 0 Phase 3**: `source_type`/`target_type` were
+originally a closed `ArtefactType` enum column, extended with new members
+directly by whichever module introduced an artefact type. That still
+required a core file to be hand-edited per module, so Phase 3 changed both
+columns to plain, validated strings instead — see `app.models.enums.
+ArtefactType`'s own docstring and `app.modules.registry.ModuleDefinition.
+artefact_types`/`get_all_registered_artefact_types` for the registration
+mechanism that replaced it.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import ArtefactType
+from app.models.base import TimestampMixin, UUIDPKMixin
 from app.models.requirement_link_type import RequirementLinkTypeDefinition  # noqa: F401  (FK target, for clarity)
 
 
 class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
-    """A relationship between two artefacts of any registered
-    `ArtefactType`, replacing both the old `RequirementLink`
-    (requirement-to-requirement traceability) and `RequirementActionLink`
+    """A relationship between two artefacts of any registered artefact
+    type, replacing both the old `RequirementLink` (requirement-to-
+    requirement traceability) and `RequirementActionLink`
     (action-to-requirement membership) tables, which this Phase 1 migration
     folds into this one.
 
     Attributes:
         source_type / source_id: The link's origin artefact. No FK on
-            `source_id` — see this module's docstring for why.
+            `source_id` — see this module's docstring for why. `source_type`
+            is a plain string (not a closed `ArtefactType` enum, as of
+            Module 0 Phase 3) — see `app.services.relationships.
+            create_link`'s docstring for where it's validated.
         target_type / target_id: The link's destination artefact. Same
-            no-FK caveat as `source_id`.
+            no-FK caveat and plain-string type as `source_id`/`source_type`.
         link_type_id: Null for an untyped/structural link (e.g. what
             `RequirementActionLink` used to represent); non-null for a
             typed traceability link, pointing at a
@@ -121,9 +132,17 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
         Index("ix_artefact_links_target", "target_type", "target_id"),
     )
 
-    source_type: Mapped[ArtefactType] = mapped_column(str_enum(ArtefactType, 20))
+    # Plain strings, not a `str_enum(ArtefactType, ...)` column (unlike
+    # every other enum-typed column in this codebase) — deliberately, as
+    # of migration 0043 (Module 0 Phase 3): a closed Python `enum.Enum`
+    # can't gain members at runtime, so it can't represent every module's
+    # own registered artefact types, only the two this app owns outright.
+    # Validated at the service layer instead — see `app.services.
+    # relationships.create_link`. Widened from 20 to 40 chars at the same
+    # time, to fit the longest currently-registered value.
+    source_type: Mapped[str] = mapped_column(String(40))
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    target_type: Mapped[ArtefactType] = mapped_column(str_enum(ArtefactType, 20))
+    target_type: Mapped[str] = mapped_column(String(40))
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     link_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id"), nullable=True

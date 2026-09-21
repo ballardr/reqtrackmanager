@@ -6371,3 +6371,146 @@ Implements the Phase 0 decision record's sequence-numbering fork (above): a shar
 ### Files changed
 
 Backend: `app/models/sequence.py` (new, `ProjectSequenceCounter`), `app/models/__init__.py`, `app/services/sequences.py` (new), `app/services/rbac.py` (`lock_project_for_update` docstring extended with the new caller), `alembic/versions/0042_project_sequence_counters.py` (new), `tests/test_project_sequence_counters.py` (new — per-type/per-project isolation and concurrency coverage), `tests/test_artefact_links.py` (bug fix, see above). Docs: `docs/solution-architecture.md` (`PROJECT_SEQUENCE_COUNTER` added to the core ER diagram and table inventory; three pre-existing missing tables and the stale table-count sentence fixed in the same pass, see above), `docs/plans/module-00-platform-foundations-plan.md` (Phase 2 marked complete), `docs/decisions.md` (this entry). `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py` checked — neither references `next_requirement_seq`/`next_action_seq` directly (both go through the REST API), and no new artefact type exists yet for this table to seed, so no change needed. `docs/website/` checked — this is internal infrastructure with no user-facing surface, so no update made.
+
+---
+
+## Module 0 (Platform Foundations) Phase 3: compliance evidence links migrated onto `ArtefactLink`; `ArtefactType` vocabulary redesigned as a module registry
+
+Implements the plan's Phase 3 (replace the compliance module's own
+`ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` join
+tables with rows in the core `artefact_links` table). Mid-implementation,
+the user gave two direct corrections that changed the design significantly
+from Phase 1's original approach — both **Decided by: User** — recorded
+here in full since they revise a previously-shipped design, not just this
+phase's own new code.
+
+**Correction 1: core files must not name "Compliance" in prose/comments,
+even in a shared vocabulary enum a module extends.** Phase 1's original
+`ArtefactType` design (mirroring `ReviewTargetType`'s precedent) had each
+consuming module extend the enum directly in `app/models/enums.py`, with
+comments naming the contributing module and the old table/class names it
+replaced. The user flagged this directly while this phase's first-draft
+comments were still in `app/models/enums.py`/`app/models/relationship.py`:
+a core file's *comments*, not just its imports, should not reference a
+specific module by name — even though CLAUDE.md's "Modular Feature System
+Boundary" section is written in terms of imports, not comments, the user's
+instruction is stricter and takes precedence for this codebase going
+forward.
+
+**Correction 2, prompted by the same review: `ArtefactType` needed a real
+registry mechanism, not just cleaner comments.** The user asked directly
+why modules didn't have "registry functions" to contribute their own
+`ArtefactType` values, having noticed `COMPLIANCE_EVIDENCE` etc. still
+hardcoded as enum members in the core file. Presented two concrete
+options (a declarative field on `ModuleDefinition`, mirroring the existing
+`roles`/`scheduled_jobs`/bundle-hook pattern; or an imperative `register()`
+call at module import time) — the user chose the declarative option.
+Implemented as:
+
+- `app.models.enums.ArtefactType` is now a `str, enum.Enum` with **only**
+  the two values this app owns outright — `REQUIREMENT`/
+  `REQUIREMENT_ACTION`. A fixed Python `enum.Enum` cannot gain members at
+  runtime, which is precisely why it can no longer be where a module
+  declares its own artefact type.
+- `app.modules.registry.ModuleDefinition` gained a new field,
+  `artefact_types: tuple[str, ...]` — a module declares its own linkable
+  artefact-type string values here (Compliance's `module.py` declares
+  `"compliance_evidence"`/`"project_compliance_requirement"`/
+  `"compliance_required_action_assessment"` as local literals, mirroring
+  `_ORG_MERGE_RESOLUTION_CHOICES`'s existing zero-import-cycle-risk
+  convention in that same file rather than importing them from its own
+  `models.py`).
+- A new `get_all_registered_artefact_types()` in the same file merges the
+  two built-in core values with every registered module's own declared
+  tuple into the one set `services.relationships.create_link` validates
+  `source_type`/`target_type` against, raising `ValueError` on an
+  unregistered value (a caller-side bug, never end-user-triggerable, since
+  both are always internal literals).
+- `app.models.relationship.ArtefactLink.source_type`/`target_type` changed
+  from `Mapped[ArtefactType]` (`str_enum(ArtefactType, ...)`, a
+  DB/ORM-level closed-enum column) to plain `Mapped[str]`
+  (`String(40)`) — the enum-level guarantee is gone, replaced by the
+  service-layer validation above. Compliance's own internal code (
+  `service.py`/`reports.py`/`export.py`/`project_router.py`) references its
+  own three values via named constants defined once in its own
+  `models.py` (`ARTEFACT_TYPE_EVIDENCE` etc.), not `ArtefactType.X`
+  attributes, since those no longer exist on the core enum.
+
+This is a genuine, user-directed reversal of part of Phase 1's own
+"Decided by: Agent" implementation choice (the "mirrors `ReviewTargetType`'s
+precedent" comment that shipped with Phase 1) — not a re-litigation of
+anything the user had themselves decided in Phase 0, which only covered
+the polymorphic-table-vs-per-pair-tables and sequence-numbering forks, not
+this specific vocabulary-registration mechanism.
+
+**Column widening, Decided by: Agent.** `artefact_links.source_type`/
+`target_type` were `VARCHAR(20)`, sized only for the two original core
+values. Compliance's three values are wider — the longest,
+`compliance_required_action_assessment`, is 37 characters — so migration
+0043 widens both columns to `VARCHAR(40)` before backfilling, giving
+modest headroom for the rest of the future-modules roadmap's shorter
+anticipated values (`decision`, `design`, `risk`, `pain_point`, etc., all
+well under 40).
+
+**Bulk query helper added to `services.relationships`, Decided by:
+Agent.** `reports.py`/`export.py` both originally ran a single
+`IN (pcr_ids)`/`IN (assessment_ids)`-filtered query per link table to
+build a project-wide evidence report/export — a real bulk-lookup need the
+existing single-target `get_links_to` didn't serve. Added
+`get_links_to_many(db, target_type, target_ids)` (empty list short-circuits
+without a query) rather than having each call site query `ArtefactLink`
+directly, keeping every compliance call site genuinely repointed through
+the shared service layer rather than partially bypassing it.
+
+**Migration 0043 lives in `app/modules/compliance/migrations/`, not
+`alembic/versions/`, Decided by: Agent** — mirroring migration 0038's own
+precedent (a compliance-module migration that also touches a core-adjacent
+concern reads more coherently colocated with the rest of this module's own
+code, per `docs/plans/compliance-module-plan.md`'s Phase 11 follow-up
+rationale already on file for `migrations_dir`), even though this
+migration's first two statements alter the core `artefact_links` table's
+column widths.
+
+**Row ids preserved across the backfill**, matching migration 0041's own
+precedent, even though a full-codebase grep found no external FK
+referencing either old table's `id` column (free, and consistent).
+
+**Verification**: full compliance test suite (all 201 tests across
+`app/modules/compliance/tests/`) plus `tests/test_artefact_links.py`,
+`tests/test_project_sequence_counters.py`, and
+`tests/test_schema_migrations_match_models.py` pass unchanged (same
+external REST behaviour — idempotent link/unlink, 404-on-missing-unlink,
+initial links at evidence-creation time, report/export inclusion — all
+preserved exactly); full backend suite (1114+ tests) run clean. Confirmed
+via `information_schema.tables` on a live migrated database that dropping
+`compliance_evidence_requirement_links`/`compliance_evidence_action_links`
+(no replacement table added, since `artefact_links` already existed) takes
+the schema from 75 to 73 tables — see `docs/solution-architecture.md`'s
+own updated table-count note.
+
+### Files changed
+
+Backend: `app/models/enums.py` (`ArtefactType` reduced to its two core
+values), `app/models/relationship.py` (`source_type`/`target_type` changed
+to plain validated strings, widened to `VARCHAR(40)`), `app/services/
+relationships.py` (type hints widened from `ArtefactType` to `str`;
+`create_link` now validates against the module registry; new
+`get_links_to_many`), `app/modules/registry.py` (new `ModuleDefinition.
+artefact_types` field; new `get_all_registered_artefact_types()`),
+`app/modules/compliance/module.py` (`MODULE_DEFINITION.artefact_types`
+declared), `app/modules/compliance/models.py` (`ComplianceEvidenceRequirementLink`/
+`ComplianceEvidenceActionLink` removed; three new `ARTEFACT_TYPE_*`
+constants added; docstrings updated), `app/modules/compliance/service.py`,
+`app/modules/compliance/reports.py`, `app/modules/compliance/export.py`,
+`app/modules/compliance/project_router.py` (all repointed onto
+`services.relationships`), `app/modules/compliance/migrations/
+0043_evidence_links_on_artefact_links.py` (new). Docs:
+`docs/solution-architecture.md` (compliance ER diagram's two link entities
+removed with a cross-reference note to the core `ARTEFACT_LINK` table;
+table inventory and count updated to 73), `docs/plans/
+module-00-platform-foundations-plan.md` (Phase 3 marked complete),
+`docs/decisions.md` (this entry). `backend/scripts/seed_demo_data.py`/
+`seed_e2e_dataset.py` checked — neither references either removed model
+directly (both go through the REST API), no change needed. `docs/website/`
+checked — pure internal storage refactor, no user-facing behaviour change,
+no update made.

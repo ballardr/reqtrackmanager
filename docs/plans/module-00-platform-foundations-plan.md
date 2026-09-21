@@ -14,9 +14,9 @@ Management) and every other module too, not something specific to Context
 module gets built first no longer determines when this gets built — it
 just has to come before all of them.
 
-**Status:** Proposed. Not started. **This should be the first thing built**
-in the whole roadmap, ahead of every numbered module, including whichever
-one the user picks first.
+**Status:** Complete (2026-09-21), all 4 phases. This was built first in
+the roadmap, ahead of every numbered module, as intended — see "Status /
+Resume Here" below for the full per-phase record.
 
 **Decided by: Agent** — the decision to split this out as its own
 plan/module is a structural response to the user's question ("does there
@@ -27,14 +27,44 @@ point at it.
 
 ## Status / Resume Here
 
-3 / 4 phases complete (Phase 0 + Phase 1 + Phase 2). Phase 3 is next.
+4 / 4 phases complete (Phase 0 + Phase 1 + Phase 2 + Phase 3). Plan complete.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: relationship-model decision + sequence-numbering decision (the two forks below) | [x] Complete (2026-09-21) |
 | 1 | Build the generic cross-artefact relationship model | [x] Complete (2026-09-21) |
 | 2 | Per-project sequence-number / unique-code generation | [x] Complete (2026-09-21) |
-| 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [ ] Not started |
+| 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [x] Complete (2026-09-21) |
+
+**Phase 3 outcome (2026-09-21), Decided by: User (both corrections below) /
+Agent (remaining implementation details)** — see `docs/decisions.md`'s
+"Module 0 (Platform Foundations) Phase 3" entry for the full record:
+
+- Migrated `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink`
+  into `artefact_links` (migration 0043, in `app/modules/compliance/
+  migrations/`), dropping both old tables; every call site in `service.py`/
+  `reports.py`/`export.py`/`project_router.py` repointed onto
+  `services.relationships`, REST shapes unchanged.
+- **Mid-phase user correction #1**: core files must not name "Compliance"
+  in comments/docstrings, even when extending a shared vocabulary enum —
+  stricter than CLAUDE.md's import-only module-boundary wording, now the
+  standing rule.
+- **Mid-phase user correction #2, a real design change**: `ArtefactType`
+  redesigned from "modules extend this core enum directly" (Phase 1's
+  original approach) to a declarative registry —
+  `ModuleDefinition.artefact_types` (`app.modules.registry`) plus
+  `get_all_registered_artefact_types()`, mirroring the existing `roles`/
+  `scheduled_jobs` pattern. `ArtefactType` itself now holds only the two
+  core values; `ArtefactLink.source_type`/`target_type` are plain
+  service-layer-validated strings, not a closed enum column, since a fixed
+  `enum.Enum` can't gain members at runtime.
+- `artefact_links.source_type`/`target_type` widened `VARCHAR(20)` ->
+  `VARCHAR(40)` to fit Compliance's longest value (37 chars).
+- New `services.relationships.get_links_to_many` (bulk target lookup) for
+  `reports.py`/`export.py`'s project-wide queries.
+- Full compliance suite (201 tests) + Module 0's own tests + full backend
+  suite (1114+ tests) all pass. `docs/solution-architecture.md`'s ER
+  diagram/table inventory updated (75 -> 73 tables).
 
 **Phase 2 outcome (2026-09-21), Decided by: Agent (implementation details) /
 User (Phase 0 design)** — see `docs/decisions.md`'s "Module 0 (Platform
@@ -375,7 +405,13 @@ creation of two artefacts of the same type in the same project never
 produces a duplicate code (mirroring whatever concurrency guarantee
 `next_requirement_seq`'s existing increment already relies on).
 
-## Phase 3 — Migrate the compliance module's own evidence-link tables onto the new relationship model
+## Phase 3 — Migrate the compliance module's own evidence-link tables onto the new relationship model — COMPLETE
+
+**Status: complete (2026-09-21).** See "Phase 3 outcome" in "Status /
+Resume Here" above and `docs/decisions.md`'s "Module 0 (Platform
+Foundations) Phase 3" entry for the full record, including two mid-phase
+design corrections from the user that revised part of Phase 1's own
+original `ArtefactType` design.
 
 **Added 2026-09-21, at the user's explicit request** once Phase 1 was under
 way, on discovering during Phase 1's own call-site audit that the

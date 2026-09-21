@@ -206,22 +206,23 @@ class ReviewTargetType(str, enum.Enum):
 
 
 class ArtefactType(str, enum.Enum):
-    """What a polymorphic `ArtefactLink` (`models.relationship`) points at,
-    on either its source or target end (Module 0 — Platform Foundations,
-    Phase 1).
+    """The two built-in, app-owned values a polymorphic `ArtefactLink`
+    (`models.relationship`) may hold on either its source or target end
+    (Module 0 — Platform Foundations, Phase 1).
 
-    Mirrors `ReviewTargetType`'s existing precedent exactly (a shared
-    vocabulary enum in a core file, extended with new members by whichever
-    module introduces the artefact type) rather than inventing a new
-    pattern for a second polymorphic type+id pair — see
+    A fixed Python `enum.Enum` can't gain members at runtime, so this is
+    deliberately *not* where every module's own linkable artefact type is
+    declared (Module 0 Phase 3 revised the original Phase 1 design, which
+    had modules extend this enum directly, after finding that read too
+    much like a core file needing per-module edits). `ArtefactLink.source_
+    type`/`target_type` are plain validated strings, not this enum's own
+    type — a module declares its own artefact-type values on its
+    `ModuleDefinition.artefact_types` (`app.modules.registry`) instead;
+    `get_all_registered_artefact_types` (same module) merges every
+    registered module's own values with this enum's two built-in ones into
+    the set `services.relationships.create_link` validates against. See
     `models.relationship.ArtefactLink`'s own docstring for the table this
-    backs. Future modules (Decision, Design, Risk, Pain Point, Strategy,
-    Guiding Principle, Open Question, Stakeholder/Persona, per
-    docs/plans/module-00-platform-foundations-plan.md) add their own
-    members here as they ship — this is a value in a shared vocabulary, not
-    an import of module-owned code, so extending it from a future module's
-    own migration does not violate this project's module-boundary rule
-    (CLAUDE.md "Modular Feature System Boundary").
+    backs.
     """
 
     REQUIREMENT = "requirement"
