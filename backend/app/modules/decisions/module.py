@@ -10,9 +10,9 @@ module`'s own registration shape.
 the Phase 0 addendum Q2/2a "simple placeholder role") are declared here as
 module-contributed roles, not additions to `ProjectRole`.
 
-Phase 1 is data model only: `get_router()` returns `None` (no HTTP
-endpoints yet — Phase 4), `implemented=False` and `default_enabled=False`
-reflect that nothing here is usable by an end user yet.
+Phase 1 was data model only: `get_router()` returned `None` (no HTTP
+endpoints yet), `implemented=False` and `default_enabled=False` reflected
+that nothing was usable by an end user yet.
 
 `on_project_created` seeds this project's default `DecisionTypeDefinition`
 rows unconditionally (mirrors Compliance's own `on_org_created` seeding —
@@ -22,11 +22,41 @@ with_choices` are this module's first use of the org-creation-choices
 extension point (`app.modules.registry`) — the three seeded ADR template
 packs, opted into per-organisation rather than always seeded (Phase 0
 addendum Q1).
+
+Phase 4 (docs/plans/module-04-decision-management-plan.md — Backend API +
+audit logging) adds this module's first real HTTP surface: `get_router()`
+now returns the org-scoped `router.py` (Decision Template CRUD), and
+`get_project_router()` (a new field this phase is the first to populate)
+returns `project_router.py` (Decision CRUD, lifecycle transitions,
+relationships, comments, files, Decision Type management) — mirroring
+`app.modules.compliance.module`'s own `get_router()`/`get_project_router()`
+split shape, including the lazy, inside-the-function imports (avoids any
+import-cycle risk with this module's own registration, same reasoning as
+every other module). `resolve_file_owner_project_id` is also added, for
+the same reason Compliance's own Phase 8 added one: so the core, module-
+agnostic `GET /api/v1/files/{id}` download endpoint can authorize a
+`DecisionFile`/`DecisionCommentFile` attachment without importing anything
+from this module directly.
+
+`implemented` flips to `True` this phase — Phase 4's own testing bar
+(full backend suite green, `ruff check` clean, new endpoint coverage) is
+met (see the plan's "Phase 4 notes" section) and a real, working API now
+exists, even though no frontend does yet (Phase 5). `default_enabled`
+stays `False`: an organisation must still opt in explicitly until Phase 5
+ships a UI to actually use it. **Decided by: Agent** — see Phase 4 notes.
+No MCP tools are declared this phase either — nothing in this phase's own
+scope calls for one, and this module's mutating actions (create/approve/
+reject/supersede) are exactly the kind of accountable-human governance
+actions Compliance's own module.py has repeatedly kept off the MCP tool
+surface by default (see that module's Phase 9 notes); a future phase can
+add narrow, read-only tools the same deliberate way Compliance did, if a
+real need for one arises.
 """
 
 from __future__ import annotations
 
 import uuid
+from uuid import UUID
 
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
@@ -39,8 +69,32 @@ DECISIONS_MODULE_KEY = "decisions"
 
 
 def get_router() -> APIRouter | None:
-    """No HTTP endpoints yet — Phase 4 (Backend API + audit logging)."""
-    return None
+    """This module's org-scoped `APIRouter` (Phase 4 — Decision Template
+    CRUD). Imported inside the function body, not at module top-level, to
+    avoid any import-cycle risk with this module's own registration (see
+    this module's own docstring)."""
+    from app.modules.decisions.router import router as decisions_router
+
+    return decisions_router
+
+
+def get_project_router() -> APIRouter | None:
+    """This module's project-scoped `APIRouter` (Phase 4 — Decision CRUD,
+    lifecycle transitions, relationships, comments, files, Decision Type
+    management). Imported inside the function body for the same import-
+    cycle reason as `get_router()`."""
+    from app.modules.decisions.project_router import router as decisions_project_router
+
+    return decisions_project_router
+
+
+def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
+    """This module's `ModuleDefinition.resolve_file_owner_project_id` hook
+    (Phase 4) — imported lazily for the same import-cycle reason as
+    `get_router()`."""
+    from app.modules.decisions.service import resolve_decision_file_project_id
+
+    return resolve_decision_file_project_id(db, file_id)
 
 
 def _seed_new_project(db: Session, project: Project, actor_id: uuid.UUID) -> None:
@@ -81,8 +135,10 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     version="0.1.0",
     default_enabled=False,
-    implemented=False,
+    implemented=True,
     get_router=get_router,
+    get_project_router=get_project_router,
+    resolve_file_owner_project_id=resolve_file_owner_project_id,
     models_import_path="app.modules.decisions.models",
     migrations_dir="app/modules/decisions/migrations",
     on_project_created=_seed_new_project,

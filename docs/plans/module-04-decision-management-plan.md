@@ -38,7 +38,7 @@ possible, with exactly one real prerequisite.
   plan having to independently invent the same infrastructure Module 1
   would otherwise have owned. **Module 0 must exist before this module's
   Phase 3; everything before that (Phases 0–2) can start immediately.**
-- **Soft dependency: Module 1 (Context & Strategy)**, only for Phase 6
+- **Soft dependency: Module 1 (Context & Strategy)**, only for Phase 7
   below (five reserved relationship targets — Open Question, Pain Point,
   Strategy, Guiding Principle — plus the "Create Decision from Open
   Question" workflow itself, §9.5). None of this blocks Phases 1–5; it's
@@ -54,7 +54,7 @@ improvised).
 
 ## Status / Resume Here
 
-4 / 7 phases complete. Phase 4 (backend API + audit logging) is next.
+5 / 8 phases complete. Phase 5 (frontend) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -62,10 +62,11 @@ improvised).
 | 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
 | 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
 | 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [x] Complete (2026-09-21) — see "Phase 3 notes" below |
-| 4 | Backend API + audit logging | [ ] Not started |
+| 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes" below |
 | 5 | Frontend — Decision list/detail/create/approve UI | [ ] Not started |
-| 6 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
-| 7 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
+| 6 | Docs website coverage | [ ] Not started — depends on Phase 5 shipping; see note below |
+| 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
+| 8 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
 
 ## Phase 2 notes (2026-09-21)
 
@@ -151,8 +152,8 @@ no router exists until Phase 4, so this is service-layer functions only:
   convention as `create_supersession`'s own duplicate check.
 - The five other relationship targets in this phase's original scope (Open
   Question, Pain Point, Strategy, Guiding Principle, Compliance, Design)
-  remain reserved but deferred to Phase 6, blocked on modules that don't
-  exist yet — not built here, per this plan's own Phase 3/Phase 6 split.
+  remain reserved but deferred to Phase 7, blocked on modules that don't
+  exist yet — not built here, per this plan's own Phase 3/Phase 7 split.
 
 **Verified**: new `app/modules/decisions/tests/test_decisions_relationships.py`
 (9 tests) — Implements/Affects link creation (including link-type
@@ -161,6 +162,135 @@ the validation errors (cross-project for both relationship groups, self-link
 for Decision<->Decision, duplicate link for both). `ruff check` clean. Full
 backend suite run after this change (see this entry's own `docs/decisions.md`
 counterpart for the final pass/fail count).
+
+## Phase 4 notes (2026-09-21)
+
+Builds the module's first real HTTP surface — everything from here down was
+already possible to write with only what Phases 0-3 built, and needed no
+new core extension point (`get_router`/`get_project_router`/`resolve_file_
+owner_project_id` all already existed, added by Compliance's own Phase 7/8).
+
+**New files**: `backend/app/modules/decisions/schemas.py` (Pydantic request/
+response models), `backend/app/modules/decisions/project_router.py`
+(project-scoped: Decision CRUD, lifecycle transitions, relationships,
+comments, files, Decision Type management — mounted at `/api/v1/projects/
+{project_id}/modules/decisions`), `backend/app/modules/decisions/router.py`
+(org-scoped: Decision Template CRUD — mounted at `/api/v1/orgs/
+{organization_id}/modules/decisions`). `service.py` gained one new function,
+`resolve_decision_file_project_id` (this module's `resolve_file_owner_
+project_id` hook), mirroring `modules.compliance.service.resolve_evidence_
+file_project_id`'s exact shape for both attachment kinds (`DecisionFile`
+direct, `DecisionCommentFile` via its comment).
+
+**Scope decisions, each tagged inline in `project_router.py`'s own module
+docstring too, summarised here:**
+
+- **RBAC composition (Decided by: Agent, reading `module.py`'s own role
+  docstrings literally since this is the first phase with code to attach
+  them to)**: creating a Decision, proposing/submitting-for-review one's
+  *own* Decision, and adding a comment only need `require_project_module_
+  enabled("decisions")` — module.py's own text ("ordinary project members
+  get View + Propose") settles this directly. `decision_owner` is required
+  for editing an existing Decision's content, archiving, direct file
+  attach/detach, relationship creation, and Decision Type management.
+  `decision_approver` is required for `approve`/`reject`, per Phase 0
+  addendum item 3's placeholder role. `propose`/`submit-for-review` accept
+  **either** `decision_owner` **or** the Decision's own `owner_id` — a
+  judgment call the task brief flagged explicitly as open, resolved this
+  way so an ordinary member can move their own Decision through the
+  pre-approval part of its lifecycle without needing a project-wide grant.
+  Relationship-creation endpoints (supersession, Decision<->Requirement,
+  Decision<->Decision) are gated on `decision_owner`, mirroring `routers.
+  requirements.create_link`'s own precedent of gating traceability-link
+  creation behind the same role that gates other requirement edits, not
+  opening it to any viewer.
+- **Reject requires a comment (Decided by: Agent)**: resolved the task
+  brief's own open question by precedent — `RequirementReviewOutcome.
+  FAILED` (`routers/requirements.py:755`) and Compliance's `reject_
+  requirement` (`decision_note`) both make a mandatory-comment-on-rejection
+  a settled convention in this codebase; `reject_decision_endpoint` 400s if
+  `comment` is blank. `approve` keeps `comment` optional, per Phase 2's own
+  service-layer signature.
+- **Decision Type deletion (Decided by: Agent)**: unlike `Decision
+  Template` (org-scoped, no persistent FK — Phase 0 addendum item 6),
+  `Decision.decision_type_id` **is** a real, non-null FK, so
+  `delete_decision_type` uses `services.definitions.delete_definition_
+  with_reassignment` exactly like `ActionTypeDefinition`'s own delete
+  endpoint — 409 naming the in-use count if `reassign_to_id` is omitted,
+  bulk-reassign-then-delete if provided. `allow_empty=False`: unlike
+  `ActionTypeDefinition`, Decision Types have no hierarchical-project
+  fallback, so a project must always retain at least one.
+- **Org-scoped Decision Template CRUD RBAC (Decided by: Agent)**: gated on
+  plain `OrgRole.ORG_ADMIN`, not a new org-scoped module role. Decision
+  Management's two declared roles are both `scope="project"` — there is no
+  natural "org-scoped Decision Owner" the way Compliance's `compliance_
+  manager` is, since a Decision itself is always project-scoped and only
+  its *templates* live at the org level. Inventing a new org-scoped role
+  solely to gate a small, low-traffic CRUD surface was rejected as
+  premature; this can be revisited if a real need for a distinct org-scoped
+  role ever appears.
+- **List/filter endpoint (Decided by: Agent, scope containment)**: filters
+  by `decision_type_id`/`status`/`owner_id`/`decision_maker_id`/`search`
+  (title/decision_statement/unique_code) and `include_archived`, mirroring
+  `routers.requirements.list_requirements`'s filtering style. No `limit`/
+  `offset` pagination yet — a project's Decision set is expected to be
+  small relative to its Requirement set, and nothing in this phase's scope
+  asked for it; can be added later without a breaking change, the same way
+  `list_requirements` added it.
+- **`DecisionLinkOut` is a new, module-local schema (Decided by: Agent)** —
+  checked `app.schemas`/`services.relationships` first per the task brief's
+  own instruction; no generic `ArtefactLink` presentation schema exists to
+  reuse, and `RequirementLinkOut` is hard-coded to a requirement-to-
+  requirement shape. `DecisionLinkOut` stays polymorphic (`other_type`/
+  `other_id`, with best-effort `other_display_code`/`other_display_name`
+  resolution for the two target types this module currently produces:
+  `"decision"` and core `"requirement"`) rather than assuming one target
+  type.
+- **`unarchive_decision` endpoint added (Decided by: Agent)** — not named
+  in the task brief's own list, but mirrors `routers.requirements.restore_
+  requirement`'s "every archive has an unarchive" convention; a one-line
+  addition once `archive_decision` existed.
+- **`implemented` flips to `True` (Decided by: Agent)** — this phase's own
+  testing bar (full backend suite green, `ruff check` clean, comprehensive
+  new endpoint coverage) is met, and a real, working API now exists, even
+  without a frontend yet (Phase 5). `default_enabled` stays `False`: an
+  organisation must still opt in until Phase 5 ships a UI. No MCP tools
+  declared — nothing in this phase's scope calls for one, and this module's
+  mutating actions (create/approve/reject/supersede) are exactly the kind
+  of accountable-human governance action Compliance's own `module.py` has
+  repeatedly kept off the MCP tool surface by default.
+- **Seed scripts left untouched (Decided by: Agent)** — checked both
+  `backend/scripts/seed_demo_data.py` and `seed_e2e_dataset.py` explicitly;
+  neither mentions Decision Management. Since the module is still `default_
+  enabled=False` and has no frontend yet, seeding demo/e2e Decision data
+  now would populate rows nobody can see without manually enabling the
+  module and calling the API directly — not worth doing until Phase 5.
+  Revisit this when Phase 5 ships.
+- **Docs website left untouched (Decided by: Agent)** — checked `docs/
+  website/` explicitly per this repo's docs-website-maintenance rule. Phase
+  4 is a pure backend API with no user-visible surface (no frontend until
+  Phase 5); Compliance's own docs-website page wasn't added until its
+  frontend phase either. No update warranted this phase.
+
+**Verified**: new `app/modules/decisions/tests/test_decisions_api.py`
+(41 tests) — through the real HTTP API (`client` fixture), covering: CRUD/
+list/filter, the content lock (409 once `APPROVED`/`SUPERSEDED`), lifecycle
+transitions (including the mandatory-comment-on-reject 400 and an illegal-
+transition 409), the RBAC composition (disabled-module-is-404 vs.
+wrong-role-is-403, ordinary-member-can-propose-own-decision-but-not-edit,
+decision_approver gating), relationship endpoints (supersession with the
+predecessor status flip, Decision<->Requirement, Decision<->Decision, each
+with their own duplicate/self-link 409s), Decision Type CRUD and delete-
+with-reassignment, comments/comment-files (author-only edit/attach),
+direct file attachments (with the lock check), cross-project 404s, the
+org-scoped Decision Template CRUD (`OrgRole.ORG_ADMIN`-gated, cross-org
+isolation), and the `resolve_decision_file_project_id` hook end-to-end
+through the real, unmodified `GET /api/v1/files/{id}` download endpoint.
+`ruff check` clean across the whole backend. Full backend suite run once
+after this change (see this entry's own `docs/decisions.md` counterpart for
+the final pass/fail count) — plus a security review following the SOC 2
+change-management policy's identify→verify→remediate practice (recorded in
+that same `docs/decisions.md` entry).
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
@@ -513,7 +643,7 @@ isolation.
 - Decision ↔ Decision: `Depends on`, `Supersedes`, `Conflicts with`.
 
 **Scope, reserved but not built until the target artefact exists**
-(tracked in Phase 6, blocked on other modules):
+(tracked in Phase 7, blocked on other modules):
 
 - Decision → Resolves → Open Question (needs Module 1)
 - Decision → Addresses → Pain Point (needs Module 1)
@@ -530,7 +660,7 @@ isolation.
 If Module 0 chose the polymorphic relationship model, these reserved types
 cost nothing extra to declare now (just relationship-type rows with no
 valid target rows yet); if per-pair join tables, these are simply deferred
-table creations in Phase 6. Either way, Decision's own schema doesn't need
+table creations in Phase 7. Either way, Decision's own schema doesn't need
 to change later — only the relationship layer does.
 
 ## Phase 4 — Backend API + audit logging
@@ -555,7 +685,60 @@ Required alongside: Playwright e2e coverage for create → propose → approve
 → supersede, and Storybook stories for every new component, per this
 project's standing testing requirements.
 
-## Phase 6 — Reserved-relationship wiring, once Context & Strategy / Engineering Design exist
+## Phase 6 — Docs website coverage
+
+**Goal:** add Decision Management's user-facing surface to `docs/website/`
+(the published docs site, `docs/plans/docs-website-plan.md`) — what a
+Decision is, its lifecycle/approval/supersession model, Decision Types and
+Templates, and how it relates to Requirements and other Decisions —
+following the site's existing structure, tone, and Mermaid-diagram
+conventions (per this repo's Documentation Requirements: prefer diagrams,
+validate they render before finalising).
+
+**Why this is its own tracked phase, not folded silently into Phase 5:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, performed in the same change
+rather than deferred — so in the ordinary case this would just be part of
+Phase 5's own work, not a separate phase. It's broken out explicitly here
+at the user's request, specifically because this module's user-facing
+surface is unusually broad for one phase (lifecycle states, approval/
+rejection/supersession, two relationship groups, Decision Types, and
+Decision Templates all land in the same Phase 5 UI at once) — a dedicated,
+checklist-visible phase makes it harder for the docs-site update to be
+under-scoped or missed amid everything else Phase 5 ships, and gives it its
+own explicit exit criteria rather than being an implicit sub-bullet of
+Phase 5's own scope.
+
+**Scope:**
+
+- A new docs-site page (or section of an existing one, matching whatever
+  grouping the site already uses for other project-scoped modules e.g.
+  Compliance) covering: what a Decision Record is and when to use one: the
+  lifecycle diagram (Draft → Proposed → Under Review → Approved, with
+  Rejected and Superseded as terminal-ish states) as a validated Mermaid
+  diagram; the approval model (today's flat, placeholder `decision_approver`
+  project role — Phase 0 addendum item 3 — not yet the per-type binding
+  Phase 8 will add); supersession semantics (§13/10.6: a new Decision links
+  back to the old one, which only flips to `Superseded` once that new
+  Decision is itself `Approved`); Decision Types (seeded defaults,
+  project-configurable) and Decision Templates (org-scoped, opt-in at
+  organisation creation, the seeded Nygard/MADR/Y-Statement ADR packs);
+  the two Phase 3 relationship groups (Decision↔Requirement,
+  Decision↔Decision) with a short Mermaid diagram of how a Decision sits
+  relative to a Requirement and another Decision.
+- Update the site's module/feature index or nav (wherever other installed
+  modules like Compliance are listed) to include Decision Management.
+- Cross-link from the Requirements documentation to the new Decision
+  Management page wherever the site already documents Decision↔Requirement
+  traceability links, if it does.
+
+**Status:** not started. Depends on Phase 5 (frontend) actually shipping —
+there is no real user-facing workflow to document accurately before then,
+the same reasoning `docs/website/` deferred Compliance's own docs-site page
+until its frontend phase (see Phase 4 notes above). Not a blocker for
+Phases 7–8.
+
+## Phase 7 — Reserved-relationship wiring, once Context & Strategy / Engineering Design exist
 
 **Goal:** two independent sub-parts, each unblocked by a different module
 and doable in either order relative to the other:
@@ -569,14 +752,14 @@ and doable in either order relative to the other:
 - Once Module 6 ships Design: wire the Decision → Selects/Constrains/
   Influences → Design relationship from Phase 3. Given how frequently the
   design/decision doc describes these two artefacts being created together
-  (§3), this is likely the first of Phase 6's reserved relationships to
+  (§3), this is likely the first of Phase 7's reserved relationships to
   actually see real use, once Module 6 exists.
 
 **Status:** blocked until Module 1 and/or Module 6 exist, respectively —
 each sub-part unblocks independently of the other. Neither is a blocker
-for Phases 1–5.
+for Phases 1–6.
 
-## Phase 7 — Per-decision-type approver binding
+## Phase 8 — Per-decision-type approver binding
 
 **Goal:** let an organisation restrict who may approve Decisions of a
 specific Decision Type (e.g. only an "Architecture Approver" may approve
@@ -606,7 +789,7 @@ unset (the default), behaviour is unchanged — this is strictly additive,
 per Module 12's own Design Principle 1. Full detail lives in Module 12's
 own plan, Phase 5, rather than duplicated here.
 
-**Status:** blocked until Module 12 exists. Not a blocker for Phases 1–6.
+**Status:** blocked until Module 12 exists. Not a blocker for Phases 1–7.
 Superseded, not duplicated, if/when Module 8 (Governance) later ships its
 own generic per-artefact-type Approval Policies (Module 8 Phase 2) — see
 Module 12's Phase 5 note.
@@ -619,5 +802,5 @@ Module 12's Phase 5 note.
 - Decisions can be approved.
 - Approved Decisions retain historical integrity.
 - Decisions can supersede previous Decisions.
-- Decisions can resolve Open Questions. *(Phase 6, deferred)*
+- Decisions can resolve Open Questions. *(Phase 7, deferred)*
 - Decisions can record rationale, options and consequences.

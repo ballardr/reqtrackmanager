@@ -6665,3 +6665,162 @@ and enablement-independence exclusion note — all four places Module 11
 required an equivalent update when it was added), `docs/plans/module-04-decision-management-plan.md`
 (new Phase 7, Status table updated to 4/7), `docs/decisions.md` (this
 entry).
+
+## Module 4 (Decision Management) Phase 4 — Backend API + audit logging
+
+**Decided by: Agent** — continuing the module's own plan
+(`docs/plans/module-04-decision-management-plan.md`) to its next unstarted
+phase, per the user's instruction to pick up "the next phase of module 4."
+
+Phase 4 gives Decision Management its first real HTTP surface. Unlike
+Phases 2/3, this needed no new core extension point at all: `get_router`/
+`get_project_router`/`resolve_file_owner_project_id` all already existed on
+`ModuleDefinition` (added by Compliance's own Phase 7/8), so this phase is
+purely this module's own two new routers plus one new `service.py`
+function consuming them — no core-file edit, migration, or registry change.
+
+- **New files**: `backend/app/modules/decisions/schemas.py`, `project_
+  router.py` (project-scoped: Decision CRUD, lifecycle transitions,
+  relationships, comments, files, Decision Type management, mounted at
+  `/api/v1/projects/{project_id}/modules/decisions`), `router.py`
+  (org-scoped: Decision Template CRUD, mounted at `/api/v1/orgs/
+  {organization_id}/modules/decisions`). `service.py` gained `resolve_
+  decision_file_project_id`, mirroring `modules.compliance.service.
+  resolve_evidence_file_project_id`'s exact shape for both `DecisionFile`
+  (direct) and `DecisionCommentFile` (via its comment).
+- **RBAC composition** (each also tagged inline in `project_router.py`'s
+  own module docstring): creating a Decision, proposing/submitting-for-
+  review one's *own* Decision, and commenting only need the module
+  enabled — `module.py`'s own role docstrings already say "ordinary
+  project members get View + Propose." `decision_owner` gates editing an
+  existing Decision's content, archiving, direct file attach/detach,
+  relationship creation, and Decision Type management. `decision_approver`
+  gates `approve`/`reject` (Phase 0 addendum item 3's placeholder role,
+  consumed here for the first time now a router exists to gate).
+  `propose`/`submit-for-review` accept **either** `decision_owner` **or**
+  the Decision's own `owner_id` — an open call the task brief flagged
+  explicitly, resolved so a plain member can move their own Decision
+  through the pre-approval part of its lifecycle without a project-wide
+  grant. Relationship-creation endpoints are gated on `decision_owner`,
+  mirroring `routers.requirements.create_link`'s own precedent of gating
+  link creation behind an edit-capable role rather than opening it to any
+  viewer.
+- **Reject requires a comment** (resolved by precedent, per the task
+  brief's own pointer): `RequirementReviewOutcome.FAILED`
+  (`routers/requirements.py:755`) and Compliance's `reject_requirement`
+  (`decision_note`) both already make this a settled codebase convention.
+- **Decision Type deletion** uses `services.definitions.delete_definition_
+  with_reassignment` (like `ActionTypeDefinition`), resolved independently
+  of `Decision Template`'s plain-delete answer per the task brief's own
+  instruction not to copy it blindly: `Decision.decision_type_id` is a
+  real, non-null FK (unlike a template, which nothing references), so an
+  in-use type needs an explicit `reassign_to_id` (409 naming the count
+  otherwise). `allow_empty=False` — no hierarchical-project fallback exists
+  for Decision Types the way `ActionTypeDefinition` has.
+- **Org-scoped Decision Template CRUD** is gated on plain `OrgRole.
+  ORG_ADMIN`, not a new org-scoped module role — Decision Management's two
+  roles are both `scope="project"`, and there's no natural "org-scoped
+  Decision Owner" the way Compliance's `compliance_manager` is (a Decision
+  is always project-scoped; only its templates live at the org level).
+  Inventing a role solely to gate a small CRUD surface was rejected as
+  premature.
+- **`DecisionLinkOut`** is a new, module-local presentation schema over the
+  generic `ArtefactLink` — checked `app.schemas`/`services.relationships`
+  first, per the task brief's own instruction to reuse before inventing;
+  no generic link schema exists, and `RequirementLinkOut` is hard-coded to
+  a requirement-to-requirement shape. Stays polymorphic (`other_type`/
+  `other_id`, with best-effort display resolution for `"decision"` and
+  core `"requirement"` targets).
+- **`implemented` flips to `True`** — this phase's own testing bar is met
+  (see Verification below) and a real, working API now exists, even
+  without a frontend yet. `default_enabled` stays `False` until Phase 5.
+  No MCP tools declared (nothing in scope calls for one, and this module's
+  mutating actions are exactly the kind of accountable-human governance
+  action Compliance's own `module.py` keeps off the MCP surface by
+  default).
+- **Seed scripts and docs website left untouched**, both checked
+  explicitly and both recorded as deliberate no-ops in the plan's own
+  Phase 4 notes: neither seed script mentions Decision Management yet
+  (still `default_enabled=False`, no frontend to demo), and Compliance's
+  own docs-website page wasn't added until its frontend phase either.
+
+**Identify→verify→remediate** (SOC 2 change-management policy's practice
+for a security-sensitive change — this phase touches authorization/RBAC
+and file-download authorization for the first time in this module).
+*Identify*: the things that could regress an existing control or open a
+new gap here are (a) a mutating endpoint accidentally gated by the weaker
+`require_project_module_enabled`/`require_org_module_enabled` instead of
+the role-checking dependency it needs; (b) a cross-project/cross-org id
+substitution attack (one project's/org's Decision, Decision Type, comment,
+or template id guessed against a different project's/org's path); (c) the
+new `resolve_decision_file_project_id` hook leaking a file to a caller with
+no real project access; (d) `owner_id`/`decision_maker_id` on create/update
+being usable to grant the *caller* extra privilege rather than just
+attributing the record to someone else. *Verify*: every mutating endpoint
+in `project_router.py`/`router.py` was checked against the gate it actually
+declares — `create`/`update`/`archive`/`unarchive`/relationship-creation/
+file-attach all resolve through `_require_edit_role`
+(`user_satisfies_module_role("decisions","decision_owner")`) after the
+weaker `_require_view` dependency; `approve`/`reject` resolve through the
+strict `_require_approver` dependency directly; Decision Type mutations
+resolve through `_require_owner_role` directly; template mutations resolve
+through the inline `_require_template_manage` (`OrgRole.ORG_ADMIN`) check
+after `_require_view` — no mismatches found (all 41 new tests in
+`test_decisions_api.py` exercise at least one gate each, including the
+explicit disabled-module-is-404-vs-wrong-role-is-403 distinction). Every
+id-addressed endpoint routes through `_get_decision_in_project`/`_get_
+decision_type_in_project`/`_get_template_in_org` (or an inline equivalent
+for comment/comment-file ids), each of which checks the referenced row's
+own scope column against the path's `project_id`/`organization_id` before
+returning it — covered by `test_cross_project_access_is_404` and the
+template suite's own cross-org case. `resolve_decision_file_project_id`
+was checked against `resolve_evidence_file_project_id`'s already-reviewed
+shape line-for-line (Compliance Phase 8) and exercised end-to-end through
+the real, unmodified `GET /api/v1/files/{id}` in `test_resolve_decision_
+file_project_id_hook` — that endpoint's own existing `get_effective_
+project_roles` check (unchanged by this phase) is what actually gates the
+download, so no new authorization logic was introduced there at all.
+`owner_id`/`decision_maker_id` were checked against `_require_org_member_
+or_none`: this only validates organisation membership, the same as every
+comparable assignee/owner field elsewhere in this codebase (e.g.
+Compliance's `_require_project_member_or_none`) — and `Decision.owner_id`
+itself carries no privilege of its own beyond the propose/submit-for-review
+override already covered above, so naming another real org member as owner
+can at most let *that* member act on the record, never the caller. *Remediate*:
+no gap found requiring a code change — every gate composed correctly on
+first implementation, which is itself the recorded outcome of the pass,
+not a skipped step, the same conclusion Compliance's own Phase 6/Phase 7
+reviews reached when reusing an already-hardened mechanism rather than
+opening a genuinely new trust boundary.
+
+**Verified**: new `app/modules/decisions/tests/test_decisions_api.py`
+(41 tests, through the real HTTP API) — CRUD/list/filter, the content lock
+(409 once `APPROVED`/`SUPERSEDED`), lifecycle transitions (mandatory-
+comment-on-reject 400, illegal-transition 409), the full RBAC composition
+described above, relationship endpoints (supersession with the predecessor
+status flip, Decision<->Requirement, Decision<->Decision, each with their
+own duplicate/self-link 409s), Decision Type CRUD and delete-with-
+reassignment, comments/comment-files (author-only edit/attach),
+direct file attachments (with the lock check), cross-project 404s, the
+org-scoped Decision Template CRUD (cross-org isolation), and the `resolve_
+decision_file_project_id` hook end-to-end. `ruff check` clean across the
+whole backend. Full backend suite: **1160 passed, 0 failed** (run via
+`docker compose exec backend python -m pytest -q` against `tests/container`,
+after rebuilding the `backend` image to pick up this phase's new files —
+confirmed independently, since the implementing agent session was cut off
+by a rate limit before it could report this number itself; see "Files
+changed" below).
+
+### Files changed
+
+`backend/app/modules/decisions/schemas.py` (new), `backend/app/modules/
+decisions/project_router.py` (new), `backend/app/modules/decisions/
+router.py` (new), `backend/app/modules/decisions/service.py` (new
+`resolve_decision_file_project_id` function and module docstring section),
+`backend/app/modules/decisions/module.py` (`get_router`/`get_project_
+router`/`resolve_file_owner_project_id` wired in; `implemented=True`),
+`backend/app/modules/decisions/tests/test_decisions_api.py` (new),
+`docs/plans/module-04-decision-management-plan.md` (Phase 4 marked
+complete with its own notes section; Status table updated to 5/7),
+`docs/solution-architecture.md` (Decision Management module — backend API
+paragraph added), `docs/decisions.md` (this entry).

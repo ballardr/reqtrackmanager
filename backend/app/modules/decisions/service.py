@@ -78,6 +78,17 @@ The five other relationship targets in the plan's Phase 3 scope (Open
 Question, Pain Point, Strategy, Guiding Principle, Compliance, Design) are
 reserved but deferred to Phase 6, blocked on modules that don't exist yet —
 deliberately not built here.
+
+Phase 4 (docs/plans/module-04-decision-management-plan.md) adds the backend
+API (`project_router.py`/`router.py`) and one more small helper here:
+`resolve_decision_file_project_id`, this module's `ModuleDefinition.
+resolve_file_owner_project_id` hook (`module.py`), mirroring `modules.
+compliance.service.resolve_evidence_file_project_id`'s exact shape/reasoning
+— resolves a `FileAsset` id to its owning project if it's attached to a
+`Decision` directly (`DecisionFile`) or via a `DecisionComment`
+(`DecisionCommentFile`), so the core, module-agnostic `GET /api/v1/files/
+{id}` download endpoint can authorize either attachment kind without
+importing anything from this module directly.
 """
 
 from __future__ import annotations
@@ -95,7 +106,14 @@ from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.decisions.enums import DecisionStatus
-from app.modules.decisions.models import Decision, DecisionTemplateDefinition, DecisionTypeDefinition
+from app.modules.decisions.models import (
+    Decision,
+    DecisionComment,
+    DecisionCommentFile,
+    DecisionFile,
+    DecisionTemplateDefinition,
+    DecisionTypeDefinition,
+)
 from app.services.audit import log_event
 from app.services.relationships import create_link, get_link_between, get_links_from
 
@@ -625,3 +643,35 @@ def create_decision_decision_link(
         target_type=DECISION_ARTEFACT_TYPE, target_id=target_decision.id,
         link_type_id=link_type.id, created_by=actor_id,
     )
+
+
+# --- Phase 4: file-ownership resolution hook -------------------------------
+
+
+def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
+    """Resolves a `FileAsset` id to the project it belongs to, if it is
+    attached to a Decision directly (`DecisionFile`) or via a
+    `DecisionComment` (`DecisionCommentFile`) — this module's own
+    `ModuleDefinition.resolve_file_owner_project_id` hook (`module.py`),
+    mirroring `modules.compliance.service.resolve_evidence_file_project_id`'s
+    exact shape, called generically by `routers.files.download_file`
+    without that core router needing to import anything from this module
+    directly.
+
+    Returns:
+        The owning project's id, or `None` if `file_id` isn't attached to
+        a Decision or a Decision's comment at all.
+    """
+    direct_link = db.scalar(select(DecisionFile).where(DecisionFile.file_id == file_id))
+    if direct_link is not None:
+        decision = db.get(Decision, direct_link.decision_id)
+        return decision.project_id if decision is not None else None
+
+    comment_link = db.scalar(select(DecisionCommentFile).where(DecisionCommentFile.file_id == file_id))
+    if comment_link is not None:
+        comment = db.get(DecisionComment, comment_link.comment_id)
+        if comment is not None:
+            decision = db.get(Decision, comment.decision_id)
+            return decision.project_id if decision is not None else None
+
+    return None
