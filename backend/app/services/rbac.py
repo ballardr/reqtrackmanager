@@ -1457,6 +1457,12 @@ def lock_project_for_update(db: Session, project_id: UUID) -> None:
     — can each independently observe the other as still-present backup and
     both proceed, leaving the project with zero managers even though each
     individual check correctly enforced C-U-08 against the state it saw.
+
+    Also reused (Module 0 — Platform Foundations, Phase 2) by
+    `services.sequences._next_sequence` to serialize concurrent per-project
+    sequence-number generation the same way — the same "two transactions
+    both read the pre-increment value, both increment, one overwrites the
+    other's write" race, just for a counter instead of a manager count.
     """
     db.execute(select(Project.id).where(Project.id == project_id).with_for_update())
 

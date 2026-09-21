@@ -112,11 +112,12 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
     ComplianceActionTypeDefinition,
     ComplianceEvidence,
-    ComplianceEvidenceActionLink,
     ComplianceEvidenceFile,
-    ComplianceEvidenceRequirementLink,
     ComplianceMappingRelationshipTypeDefinition,
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
@@ -150,6 +151,7 @@ from app.modules.compliance.schemas import (
     ReplacedRequirementOut,
     StandardVersionDiffOut,
 )
+from app.services import relationships
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
 
@@ -825,31 +827,32 @@ def invalidate_approval_if_in_flight(pcr: ProjectComplianceRequirement) -> Compl
 
 def find_pcrs_linked_to_evidence(db: Session, *, evidence_id: uuid.UUID) -> list[ProjectComplianceRequirement]:
     """Every `ProjectComplianceRequirement` that a piece of evidence
-    supports — directly (`ComplianceEvidenceRequirementLink`) or via one of
-    its required-action assessments (`ComplianceEvidenceActionLink` ->
-    `ComplianceRequiredActionAssessment.project_compliance_requirement_id`)
+    supports — directly, or via one of its required-action assessments
+    (`ComplianceRequiredActionAssessment.project_compliance_requirement_id`)
     — de-duplicated by id. Used by `archive_evidence`/`revalidate_evidence`
     to find every approval `invalidate_approval_if_in_flight` should be
     checked against when that evidence materially changes (§13's "a single
     piece of evidence should be capable of supporting multiple compliance
-    requirements," extended to required actions of those requirements too)."""
-    direct_ids = set(
-        db.scalars(
-            select(ComplianceEvidenceRequirementLink.project_compliance_requirement_id).where(
-                ComplianceEvidenceRequirementLink.evidence_id == evidence_id
-            )
-        ).all()
-    )
-    via_action_ids = set(
-        db.scalars(
-            select(ComplianceRequiredActionAssessment.project_compliance_requirement_id)
-            .join(
-                ComplianceEvidenceActionLink,
-                ComplianceEvidenceActionLink.required_action_assessment_id == ComplianceRequiredActionAssessment.id,
-            )
-            .where(ComplianceEvidenceActionLink.evidence_id == evidence_id)
-        ).all()
-    )
+    requirements," extended to required actions of those requirements too).
+
+    Reads via `services.relationships` (Module 0 — Platform Foundations,
+    Phase 3): this evidence's own `ArtefactLink` rows as source replace the
+    old dedicated `ComplianceEvidenceRequirementLink`/
+    `ComplianceEvidenceActionLink` tables."""
+    links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence_id)
+    direct_ids = {link.target_id for link in links if link.target_type == ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT}
+    action_assessment_ids = {
+        link.target_id for link in links if link.target_type == ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT
+    }
+    via_action_ids = set()
+    if action_assessment_ids:
+        via_action_ids = set(
+            db.scalars(
+                select(ComplianceRequiredActionAssessment.project_compliance_requirement_id).where(
+                    ComplianceRequiredActionAssessment.id.in_(action_assessment_ids)
+                )
+            ).all()
+        )
     pcr_ids = direct_ids | via_action_ids
     if not pcr_ids:
         return []
@@ -918,21 +921,16 @@ def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceE
     state`) and its current linked requirement/required-action-assessment
     ids (§13's multi-linkage) — used by every `project_router.py` endpoint
     that returns one or more evidence rows, so these two derived/joined
-    fields are never built ad hoc per call site."""
-    requirement_ids = list(
-        db.scalars(
-            select(ComplianceEvidenceRequirementLink.project_compliance_requirement_id).where(
-                ComplianceEvidenceRequirementLink.evidence_id == evidence.id
-            )
-        ).all()
-    )
-    action_ids = list(
-        db.scalars(
-            select(ComplianceEvidenceActionLink.required_action_assessment_id).where(
-                ComplianceEvidenceActionLink.evidence_id == evidence.id
-            )
-        ).all()
-    )
+    fields are never built ad hoc per call site.
+
+    Reads via `services.relationships` (Module 0 — Platform Foundations,
+    Phase 3) — see `find_pcrs_linked_to_evidence` above for the same
+    replacement applied to a different query shape."""
+    links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence.id)
+    requirement_ids = [link.target_id for link in links if link.target_type == ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT]
+    action_ids = [
+        link.target_id for link in links if link.target_type == ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT
+    ]
     return ComplianceEvidenceOut(
         id=evidence.id,
         project_id=evidence.project_id,

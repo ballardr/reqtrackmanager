@@ -43,8 +43,8 @@ class ProjectFileOut(BaseModel):
     `action_id`/`action_unique_code`/`action_title` (and, redundantly,
     `comment_id`) are set for `action_attachment`/`comment_attachment` rows
     respectively. An action attachment carries no `requirement_id` — an
-    action may be linked to zero, one, or several requirements
-    (`RequirementActionLink`), so it has no single owning requirement to
+    action may be linked to zero, one, or several requirements (via untyped
+    `ArtefactLink` rows), so it has no single owning requirement to
     attribute the file to; it's attributed to the action itself instead.
     """
 

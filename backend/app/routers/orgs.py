@@ -29,7 +29,8 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, Pend
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project, ProjectGroup, ProjectGroupMember, UserProjectRole
 from app.models.project_status import ProjectStatusDefinition
-from app.models.requirement import Requirement, RequirementLink
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
@@ -3179,7 +3180,7 @@ def rename_link_type(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
     """Renames both directional names of a link type at once. Every
-    `RequirementLink.link_type_id` reference points at this row's id,
+    `ArtefactLink.link_type_id` reference points at this row's id,
     never its names, so renaming has zero effect on any existing link
     using this type — see `services.definitions`' module docstring."""
     link_type = db.get(RequirementLinkTypeDefinition, link_type_id)
@@ -3211,17 +3212,25 @@ def delete_link_type(
     """Deletes a link type, applying the shared rename/delete/reassign
     rules (§4.0): refuses to leave the organisation with zero link types
     (409), and requires an explicit `reassign_to_id` to delete a type
-    that's currently in use by any `RequirementLink` (409 naming the count
+    that's currently in use by any `ArtefactLink` (409 naming the count
     if omitted; bulk-reassigns then deletes if provided). Reassignment here
     changes each affected link's asserted meaning, which is exactly why
     it's the admin's explicit choice rather than an automatic cascade or
     silent delete — see `services.definitions.delete_definition_with_reassignment`'s
     docstring for the exact behaviour.
+
+    Filtering by `referencing_fk_column` alone (no `source_type`/
+    `target_type` filter) is still correct here: in this phase, only
+    requirement-to-requirement links ever have a non-null `link_type_id`
+    (untyped action links always have `link_type_id IS NULL`), so every
+    `ArtefactLink` row this reassigns/counts is, in practice, a
+    requirement-to-requirement traceability link — the same set the old
+    `RequirementLink`-scoped query returned.
     """
     delete_definition_with_reassignment(
         db, definition_model=RequirementLinkTypeDefinition, scope_column=RequirementLinkTypeDefinition.organization_id,
         scope_id=organization_id, item_id=link_type_id, reassign_to_id=reassign_to_id,
-        referencing_model=RequirementLink, referencing_fk_column=RequirementLink.link_type_id,
+        referencing_model=ArtefactLink, referencing_fk_column=ArtefactLink.link_type_id,
         referencing_fk_name="link_type_id", entity_type="requirement_link_type_definition", noun="link type",
         plural_noun="link(s)", reassign_verb="convert",
         min_count_message="An organisation must always have at least one requirement link type.",

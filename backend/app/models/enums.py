@@ -205,6 +205,30 @@ class ReviewTargetType(str, enum.Enum):
     ACTION = "action"
 
 
+class ArtefactType(str, enum.Enum):
+    """The two built-in, app-owned values a polymorphic `ArtefactLink`
+    (`models.relationship`) may hold on either its source or target end
+    (Module 0 — Platform Foundations, Phase 1).
+
+    A fixed Python `enum.Enum` can't gain members at runtime, so this is
+    deliberately *not* where every module's own linkable artefact type is
+    declared (Module 0 Phase 3 revised the original Phase 1 design, which
+    had modules extend this enum directly, after finding that read too
+    much like a core file needing per-module edits). `ArtefactLink.source_
+    type`/`target_type` are plain validated strings, not this enum's own
+    type — a module declares its own artefact-type values on its
+    `ModuleDefinition.artefact_types` (`app.modules.registry`) instead;
+    `get_all_registered_artefact_types` (same module) merges every
+    registered module's own values with this enum's two built-in ones into
+    the set `services.relationships.create_link` validates against. See
+    `models.relationship.ArtefactLink`'s own docstring for the table this
+    backs.
+    """
+
+    REQUIREMENT = "requirement"
+    REQUIREMENT_ACTION = "requirement_action"
+
+
 class RequirementActionOutcome(str, enum.Enum):
     """Lifecycle/outcome state of a `RequirementAction`.
 

@@ -221,6 +221,20 @@ _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{COMPLIANCE_M
 # lazy, inside-the-function imports.
 _ORG_MERGE_RESOLUTION_CHOICES = {"compliance_standard": frozenset({"skip", "import_as_copy"})}
 
+# Mirrors `models.ARTEFACT_TYPE_EVIDENCE`/`ARTEFACT_TYPE_PROJECT_COMPLIANCE_
+# REQUIREMENT`/`ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT` exactly — defined
+# locally (not imported from models.py) for the same zero-import-cycle
+# reason `_ORG_MERGE_RESOLUTION_CHOICES` above documents. This module's own
+# contribution to the shared `ArtefactType` vocabulary (Module 0 — Platform
+# Foundations, Phase 3): `app.models.relationship.ArtefactLink` rows with
+# `source_type="compliance_evidence"` point at either target type below,
+# replacing the old dedicated evidence-link join tables.
+_ARTEFACT_TYPES = (
+    "compliance_evidence",
+    "project_compliance_requirement",
+    "compliance_required_action_assessment",
+)
+
 
 def get_router() -> APIRouter | None:
     """Returns this module's org-scoped `APIRouter` (Phase 6 — Standards
@@ -414,6 +428,7 @@ MODULE_DEFINITION = ModuleDefinition(
     project_nav_visible=_project_nav_visible,
     on_project_created=_reconcile_new_project,
     validate_org_group_member_removal=_validate_org_group_member_removal,
+    artefact_types=_ARTEFACT_TYPES,
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=_export_org_data,
         import_=_import_org_data,

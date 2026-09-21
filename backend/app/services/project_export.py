@@ -71,6 +71,7 @@ from app.models.change_request import (
 )
 from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind, CustomFieldType
 from app.models.enums import (
+    ArtefactType,
     ChangeRequestKind,
     ChangeRequestStatus,
     ChangeRequestVoteChoice,
@@ -93,12 +94,12 @@ from app.models.project import (
     ProjectStage,
     UserProjectRole,
 )
+from app.models.relationship import ArtefactLink
 from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
     RequirementKeyword,
-    RequirementLink,
     RequirementReview,
     RequirementVersion,
 )
@@ -116,6 +117,7 @@ from app.services.bundle_common import (
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.rbac import get_effective_project_managers
+from app.services.relationships import create_link as create_artefact_link
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -200,7 +202,19 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         ).all():
             keywords_by_req.setdefault(req_id, []).append(keyword)
 
-    links = list(db.scalars(select(RequirementLink).where(RequirementLink.source_requirement_id.in_(req_ids))) if req_ids else [])
+    # Requirement-to-requirement traceability links only (not untyped
+    # action links, which also live in `artefact_links` but aren't part of
+    # this bundle's own requirement-links section) — filtering on
+    # `source_type == REQUIREMENT` already excludes those, since an action
+    # link's source is always a `RequirementAction`, never a `Requirement`.
+    links = list(
+        db.scalars(
+            select(ArtefactLink).where(
+                ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+            )
+        )
+        if req_ids else []
+    )
     # Link types are exported/matched by name, not id — like every other
     # cross-tenant reference in this bundle (users by email, custom fields
     # by name), an id from the source deployment's
@@ -377,12 +391,12 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     requirement_links_json = [
         {
-            "source_unique_code": req_code_by_id.get(link.source_requirement_id),
-            "target_unique_code": req_code_by_id.get(link.target_requirement_id),
+            "source_unique_code": req_code_by_id.get(link.source_id),
+            "target_unique_code": req_code_by_id.get(link.target_id),
             "link_type_forward_name": link_type_forward_name_by_id.get(link.link_type_id),
             "created_by_email": email(link.created_by),
         }
-        for link in links if link.source_requirement_id in req_code_by_id and link.target_requirement_id in req_code_by_id
+        for link in links if link.source_id in req_code_by_id and link.target_id in req_code_by_id
     ]
 
     requirement_comments_json = [
@@ -810,10 +824,11 @@ def apply_project_data(
         target_id = requirement_id_by_code.get(link["target_unique_code"])
         link_type_id = link_type_id_by_name.get(link.get("link_type_forward_name"))
         if source_id and target_id and link_type_id is not None:
-            db.add(RequirementLink(
-                source_requirement_id=source_id, target_requirement_id=target_id, link_type_id=link_type_id,
+            create_artefact_link(
+                db, source_type=ArtefactType.REQUIREMENT, source_id=source_id,
+                target_type=ArtefactType.REQUIREMENT, target_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
-            ))
+            )
         elif source_id and target_id:
             warnings.add(
                 f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "

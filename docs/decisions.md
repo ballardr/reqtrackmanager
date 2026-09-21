@@ -6307,3 +6307,226 @@ Added an explicit acceptance criterion, prompted by this codebase's own access-c
 ### Files changed
 
 `docs/website/docs/introduction/overview.md` (`title`/`sidebar_label` front matter added; `Head` import + `SoftwareApplication` JSON-LD block added), `docs/decisions.md` (this entry).
+
+---
+
+## Module 0 (Platform Foundations) Phase 0: relationship model, sequence numbering, and type-list pattern forks resolved
+
+**Decided by: User** on all three forks, each discussed and elaborated on before the final choice — see [docs/plans/module-00-platform-foundations-plan.md](plans/module-00-platform-foundations-plan.md) Phase 0 for the full trade-off writeup this session's elaboration was based on.
+
+**Relationship model: polymorphic table.** A single generic relationship table (`source_type`/`source_id`, `target_type`/`target_id`, `link_type_id`) will be built, giving every module in the roadmap one query surface for "what links to X" regardless of artefact type — the access pattern Traceability (Module 7) and Reporting (Module 10) need most. The trade-off surfaced and accepted: a polymorphic `target_id` cannot carry a real database foreign key (a known structural limit of polymorphic associations in SQL), so if a module's tables are ever fully removed (not just disabled via the module registry — disabling leaves data untouched either way), cleaning up orphaned relationship rows is an app-level responsibility, not something the database enforces the way per-pair join tables with real FKs would. Accepted because cross-type queries are the far more common operation than module removal.
+
+**Existing `RequirementLink` rows: migrate into the new table**, rather than leaving `RequirementLink` as a requirement-only fast path alongside the new table. Chosen specifically to preserve the single-query-surface benefit above for `Requirement` — the most heavily-linked existing artefact — at the accepted cost of a migration touching a proven, already-in-production table and its existing call sites, which Phase 1 must handle carefully (data migration path, verifying existing query call sites are repointed, testing against the pre-migration data shape).
+
+**`RequirementActionLink` folds into the same polymorphic table.** An `Action` (assignee, due date, outcome status) becomes just another `source_type` pointing at any target artefact type, rather than keeping its own dedicated linking table family — the natural consequence of picking polymorphic for the general case rather than special-casing actions.
+
+**Sequence numbering: shared `ProjectSequenceCounter` table.** A `(project_id, artefact_type, next_seq)` table plus one shared `generate_unique_code()` helper will back every *new* artefact type this roadmap introduces (Decision, Design, Risk, Pain Point, Strategy, Guiding Principle, Open Question, Stakeholder/Persona). Existing `Requirement.next_requirement_seq`/`RequirementAction.next_action_seq` columns on `Project` are left exactly as-is — not migrated. This was the opposite of the user's initial instinct (a per-type column, for perceived modularity/multi-tenancy benefit); resolved after checking the specifics against this codebase: a per-type column requires every new content module's migration to `ALTER TABLE projects ADD COLUMN`, i.e. edit a **core file** (`backend/app/models/project.py`) per module — the exact core-file-per-module-edit coupling `CLAUDE.md`'s module-boundary rule exists to prevent for imports, and the same coupling concern applies to schema. The counter table needs zero core-file changes for any future module. Multi-tenancy isolation is equivalent either way (both are `project_id`-scoped). The counter table also avoids row-lock contention between concurrent creates of *different* artefact types in the *same* project, which a per-type-column approach would introduce (both would `UPDATE` the same `projects` row).
+
+**Type-list pattern ("configurable type list" — Pain Point Type, Decision Type, Risk Type, Requirement Type, Stakeholder/Persona Type, Design Type): shared frontend component only.** One shared `TypeDefinitionManager`-style component (list/add/rename/reorder/enable-disable) will be built once and reused by all six modules' admin UIs, matching the UX style guide's "one component per pattern" principle. Backend stays separate tables per domain, one per module, following the existing `RequirementLinkTypeDefinition`/`ActionTypeDefinition` convention — no shared polymorphic types table, to avoid a second polymorphic surface layered on top of the relationships table and to keep FK integrity simple per domain.
+
+### Files changed
+
+`docs/plans/module-00-platform-foundations-plan.md` (Phase 0 marked complete, decisions recorded inline), `docs/decisions.md` (this entry).
+
+---
+
+## Module 0 (Platform Foundations) Phase 1: generic relationship model built, `RequirementLink`/`RequirementActionLink` folded in
+
+Implements the Phase 0 decision record above. The five points below are concrete implementation choices made while building it that weren't already dictated by that record.
+
+**Table/constraint names, Decided by: Agent.** The new table is `artefact_links` (model `app.models.relationship.ArtefactLink`), matching the spec exactly. Two constraints rather than one, per a correctness issue caught before writing the migration: Postgres treats multiple `NULL`s in a unique constraint as distinct from each other, so a single 5-column `UNIQUE(source_type, source_id, target_type, target_id, link_type_id)` would **not** stop duplicate untyped (action) links the way `RequirementActionLink`'s old `UniqueConstraint(requirement_id, action_id)` did. `uq_artefact_links_typed` (an ordinary unique constraint) covers the non-null case; `ux_artefact_links_untyped` (a partial unique index, `WHERE link_type_id IS NULL`) covers the null case — this is the one that actually replaces `RequirementActionLink`'s old duplicate-prevention guarantee. `ix_artefact_links_target` is a plain index on `(target_type, target_id)` for reverse lookups. All three names kept short and explicit, following `RequirementLinkTypeDefinition`'s and migration 0009's established fix for Postgres's 63-byte `NAMEDATALEN` limit on auto-generated names for wide constraints.
+
+**Row ids preserved across the backfill; `change_request_versions.proposed_link_id`'s FK repointed rather than dropped, Decided by: Agent.** Not called out explicitly in the task brief, and material enough to flag: `change_request_versions.proposed_link_id` (added by migration 0039, Platform review 2026-09 Phase 8's `REMOVE_LINK` change-request kind) holds a live FK reference to a specific `requirement_links.id` row — a full-codebase grep confirmed it's the *only* external FK into either old table (`requirement_action_links.id` has none). Simply dropping `requirement_links` would have either orphaned that reference or forced a separate remapping pass. Instead, migration 0041 backfills `artefact_links` with `INSERT ... SELECT id, ...` (preserving each row's original id, not a fresh `gen_random_uuid()`), then repoints the FK constraint at `artefact_links(id)` — every existing `proposed_link_id` value (including on any REMOVE_LINK change request still pending decision at migration time) remains valid with no data rewrite needed, only the constraint's target table changes. `requirement_action_links.id` values were also preserved during backfill, though not strictly required, for consistency and because it cost nothing extra.
+
+**Migration 0012 required a small additive fix to keep a from-scratch migration chain runnable, Decided by: Agent.** `alembic/versions/0001_initial.py` builds its baseline via `Base.metadata.create_all()` against the *current* model classes at whatever time it runs (not a frozen snapshot — see that file's own docstring), so `requirement_links`'s existence on a genuinely fresh database depended entirely on the now-deleted `RequirementLink` model being present when 0001 ran. Deleting that model meant 0001 would stop creating the table at all, which would make migration 0012 (the first migration to `ALTER TABLE requirement_links`) fail outright on a fresh chain run with "relation does not exist" — confirmed by this being exactly how the test suite runs (`tests/conftest.py`'s session fixture does `DROP SCHEMA public CASCADE` then `alembic upgrade head` from 0001, every session). Fixed by adding a guarded `CREATE TABLE IF NOT EXISTS requirement_links (...)` (the table's pre-0012 shape, old `link_type` column included) as the first statement 0012 runs against that table — a no-op on every already-migrated database (which is every real deployment), and exactly the same `IF NOT EXISTS`-guard convention that migration's own docstring already uses throughout for the identical "0001's create_all already handles this on a fresh DB" reasoning. This is the one instance in this phase where an already-shipped migration file needed editing rather than only adding a new one; `requirement_action_links` needed no equivalent fix since 0012 already created that table with its own explicit `CREATE TABLE IF NOT EXISTS` (it was new in that migration, not carried over from 0001).
+
+**`services.relationships` gained one more generic helper than the brief's illustrative list, Decided by: Agent.** `get_link_between(db, source_type, source_id, target_type, target_id, link_type_id=None)` — the "does this exact link already exist" pre-check every mutating call site needs before creating a link (to return a clean 400 instead of a raw `IntegrityError`), used by `routers.requirements`'s `link_action`/`unlink_action` and `routers.change_requests`'s ADD_ACTION/REMOVE_ACTION/apply-on-approval branches (six call sites total previously re-deriving the same query). `delete_link(db, link)` takes the already-resolved `ArtefactLink` object rather than a bare id (the brief's own signature was "something like," not a fixed contract) — every existing call site had already loaded and IDOR-checked the specific row before deciding to delete it, so taking the object avoids a redundant second fetch and keeps "the row the router validated" and "the row that gets deleted" the same object, not two separate lookups that could in principle diverge.
+
+**`routers.requirements.list_links` filters the generic union by `source_type`/`target_type`, not just `link_type_id IS NOT NULL`, Decided by: Agent.** The generic `get_all_links(db, ArtefactType.REQUIREMENT, requirement_id)` helper returns every `ArtefactLink` touching that requirement in either direction — which now also includes untyped action links (an action's `target_type` is `REQUIREMENT` too). `list_links` (the traceability-links endpoint) filters to `source_type == target_type == ArtefactType.REQUIREMENT` explicitly, rather than the weaker but currently-equivalent `link_type_id is not None`, so the filter stays correct by construction if a future artefact type ever adds its own typed link touching a requirement, instead of relying on today's coincidence that only requirement-to-requirement links are ever typed.
+
+**Compliance module required no functional changes.** Confirmed by grep before and after: `app/modules/compliance/*.py` never imports `RequirementLink`/`RequirementActionLink` — only prose docstring comparisons mention them (e.g. `project_router.py`'s `ComplianceRequirementTraceabilityLink`, a wholly separate Requirement↔ComplianceRequirement table, reuses `RequirementLinkTypeDefinition` but was never built on `RequirementLink`/`RequirementActionLink` itself). Migrating the compliance module's own `ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` tables onto `ArtefactLink` remains Phase 3, untouched here, per the plan's explicit scope boundary.
+
+**Tenant-isolation checks preserved.** Every router call site repointed to the generic service keeps performing its own authorization/scoping exactly as before: `routers.requirements.create_link`/`list_links`/`delete_link`/`link_action`/`create_and_link_action`/`unlink_action` still call `_get_requirement_in_project`/`get_requirement_action_in_project` before touching a link, and `delete_link` still 404s unless the resolved artefact link's source or target is the URL's own `requirement_id` (now also checking `source_type`/`target_type == REQUIREMENT` explicitly, tightening rather than loosening that check). `routers.change_requests`'s REMOVE_LINK validation/apply paths keep the same `requirement.id in (link.source_id, link.target_id)` check. `services.relationships` itself performs no authorization, by design — see its own module docstring.
+
+### Files changed
+
+Backend: `app/models/enums.py` (new `ArtefactType`), `app/models/relationship.py` (new, `ArtefactLink`), `app/models/__init__.py`, `app/models/requirement.py` (`RequirementLink` removed), `app/models/requirement_action.py` (`RequirementActionLink` removed), `app/models/change_request.py` (`proposed_link_id`'s FK comment/target updated), `app/models/project.py` (comment wording), `app/services/relationships.py` (new), `app/services/requirements.py` (docstring), `app/services/project_export.py`, `app/services/requirement_csv.py`, `app/routers/requirements.py`, `app/routers/change_requests.py`, `app/routers/orgs.py`, `app/routers/files.py` (comment), `app/routers/projects.py` (comment), `app/schemas/action.py` (docstring), `app/schemas/file.py` (docstring), `alembic/versions/0012_project_statuses_link_types_actions.py` (additive `CREATE TABLE IF NOT EXISTS requirement_links` guard, see above), `alembic/versions/0041_artefact_links.py` (new), `tests/test_artefact_links.py` (new — cross-artefact-type + duplicate-prevention coverage). Docs: `docs/solution-architecture.md` (ER diagrams and table inventory updated), `docs/plans/module-00-platform-foundations-plan.md` (Phase 1 marked complete), `docs/decisions.md` (this entry). `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py` checked — both only call the REST API for links, no direct model references, no change needed. `docs/website/` checked — this is a pure internal storage refactor with no user-facing API/behaviour change, so no update made.
+
+---
+
+## Module 0 (Platform Foundations) Phase 2: generic per-project sequence counter built
+
+Implements the Phase 0 decision record's sequence-numbering fork (above): a shared `ProjectSequenceCounter` table plus one `generate_unique_code()` helper, additive alongside the untouched `Requirement.next_requirement_seq`/`RequirementAction.next_action_seq` columns. The points below are concrete implementation choices made while building it that weren't already dictated by that record.
+
+**Model location and shape, Decided by: Agent.** `app.models.sequence.ProjectSequenceCounter` (table `project_sequence_counters`): `project_id` (FK `projects.id`, `ON DELETE CASCADE`), `artefact_type` (reuses `models.enums.ArtefactType` — the same shared vocabulary `ArtefactLink` already extends per new module, rather than a second parallel "kind of artefact" enum), `next_seq`. One `UNIQUE(project_id, artefact_type)` constraint (`uq_project_sequence_counters_project_type`), naming it explicitly per this codebase's established short-name convention for multi-column constraints (`RequirementLinkTypeDefinition`, migration 0009, `ArtefactLink`). Lands in `app/services/sequences.py`/`app/models/sequence.py`, outside every content module's own directory, mirroring Phase 1's neutral-location reasoning.
+
+**Concurrency: reused `services.rbac.lock_project_for_update` rather than inventing a new locking helper, Decided by: Agent.** The plan's verification bar explicitly calls for proving concurrent creation of the same artefact type in the same project never produces a duplicate code — a real race exists without a lock: two transactions can each read the same pre-increment `next_seq`, both advance it in memory, and the second `UPDATE` (which blocks on the row until the first commits, then simply overwrites) silently loses the increment, handing out the same code twice. This is exactly the "two transactions both read, both increment, one overwrites the other's write" shape `lock_project_for_update` was already written to close for the project's last-manager checks (`services.rbac`) — `services.sequences._next_sequence` now locks the owning project row before reading/advancing the counter (and before the lazy get-or-create, which also sidesteps a separate first-use insert race), reusing that existing function rather than adding a second, near-identical locking helper. Its docstring was extended to name this second caller. Proven with a real multi-threaded test (`tests/test_project_sequence_counters.py::test_concurrent_generation_never_produces_duplicate_codes`) using a `threading.Barrier` to force two genuinely overlapping transactions, not just two sequential calls that happen to pass.
+
+**Migration is purely additive — no data backfill, unlike Phase 1.** `alembic/versions/0042_project_sequence_counters.py` only creates the new table; no existing rows migrate onto it (there is nothing to migrate — no artefact type uses it yet, since no roadmap module has shipped). Counter rows are created lazily, one per `(project, artefact_type)`, on first call to `generate_unique_code`.
+
+**Incidental bug found and fixed while verifying: `tests/test_artefact_links.py::test_untyped_link_partial_unique_index_rejects_duplicate` (Phase 1, unmodified by this phase) was failing deterministically, Decided by: Agent (fix, not deferred, per this repo's standing "fix issues found mid-task" rule).** Its `try/except IntegrityError` wrapped only the second `db.commit()` call, but `services.relationships.create_link` flushes immediately (its own docstring says so), and Postgres enforces `ux_artefact_links_untyped` (a plain `CREATE UNIQUE INDEX`, not a deferrable constraint) at statement time — so the violation actually raised on the flush inside the second `create_link` call itself, outside the guarded block, failing the test with an uncaught `IntegrityError` rather than exercising the intended assertion. Fixed by moving the try/except to wrap the `create_link` call directly. Full backend suite (1114 tests) passes after the fix.
+
+**A second, larger incidental drift found and fixed while updating `docs/solution-architecture.md`'s exhaustive table list for this phase's new table, Decided by: Agent (same "fix, don't defer" rule).** That list's own running total (71) was checked, per its established habit, against a live migrated database's real table count — which came back 74 (before this phase's own new table), not 71. Three pre-existing tables had never been added to the exhaustive list despite already being present in their respective ER diagrams/models: `group_module_roles` (module system Phase 30), `compliance_org_settings` (compliance module Phase 22), `compliance_requirement_traceability_links` (compliance module Phase 34) — the same category of drift that document's own inline correction history already lists seven prior instances of. Added all three, plus this phase's `project_sequence_counters`, taking the verified total to 75; also fixed the "One diagram covering all 52 tables" sentence, stale since at least the Phase 1 update.
+
+### Files changed
+
+Backend: `app/models/sequence.py` (new, `ProjectSequenceCounter`), `app/models/__init__.py`, `app/services/sequences.py` (new), `app/services/rbac.py` (`lock_project_for_update` docstring extended with the new caller), `alembic/versions/0042_project_sequence_counters.py` (new), `tests/test_project_sequence_counters.py` (new — per-type/per-project isolation and concurrency coverage), `tests/test_artefact_links.py` (bug fix, see above). Docs: `docs/solution-architecture.md` (`PROJECT_SEQUENCE_COUNTER` added to the core ER diagram and table inventory; three pre-existing missing tables and the stale table-count sentence fixed in the same pass, see above), `docs/plans/module-00-platform-foundations-plan.md` (Phase 2 marked complete), `docs/decisions.md` (this entry). `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py` checked — neither references `next_requirement_seq`/`next_action_seq` directly (both go through the REST API), and no new artefact type exists yet for this table to seed, so no change needed. `docs/website/` checked — this is internal infrastructure with no user-facing surface, so no update made.
+
+---
+
+## Module 0 (Platform Foundations) Phase 3: compliance evidence links migrated onto `ArtefactLink`; `ArtefactType` vocabulary redesigned as a module registry
+
+Implements the plan's Phase 3 (replace the compliance module's own
+`ComplianceEvidenceRequirementLink`/`ComplianceEvidenceActionLink` join
+tables with rows in the core `artefact_links` table). Mid-implementation,
+the user gave two direct corrections that changed the design significantly
+from Phase 1's original approach — both **Decided by: User** — recorded
+here in full since they revise a previously-shipped design, not just this
+phase's own new code.
+
+**Correction 1: core files must not name "Compliance" in prose/comments,
+even in a shared vocabulary enum a module extends.** Phase 1's original
+`ArtefactType` design (mirroring `ReviewTargetType`'s precedent) had each
+consuming module extend the enum directly in `app/models/enums.py`, with
+comments naming the contributing module and the old table/class names it
+replaced. The user flagged this directly while this phase's first-draft
+comments were still in `app/models/enums.py`/`app/models/relationship.py`:
+a core file's *comments*, not just its imports, should not reference a
+specific module by name — even though CLAUDE.md's "Modular Feature System
+Boundary" section is written in terms of imports, not comments, the user's
+instruction is stricter and takes precedence for this codebase going
+forward.
+
+**Correction 2, prompted by the same review: `ArtefactType` needed a real
+registry mechanism, not just cleaner comments.** The user asked directly
+why modules didn't have "registry functions" to contribute their own
+`ArtefactType` values, having noticed `COMPLIANCE_EVIDENCE` etc. still
+hardcoded as enum members in the core file. Presented two concrete
+options (a declarative field on `ModuleDefinition`, mirroring the existing
+`roles`/`scheduled_jobs`/bundle-hook pattern; or an imperative `register()`
+call at module import time) — the user chose the declarative option.
+Implemented as:
+
+- `app.models.enums.ArtefactType` is now a `str, enum.Enum` with **only**
+  the two values this app owns outright — `REQUIREMENT`/
+  `REQUIREMENT_ACTION`. A fixed Python `enum.Enum` cannot gain members at
+  runtime, which is precisely why it can no longer be where a module
+  declares its own artefact type.
+- `app.modules.registry.ModuleDefinition` gained a new field,
+  `artefact_types: tuple[str, ...]` — a module declares its own linkable
+  artefact-type string values here (Compliance's `module.py` declares
+  `"compliance_evidence"`/`"project_compliance_requirement"`/
+  `"compliance_required_action_assessment"` as local literals, mirroring
+  `_ORG_MERGE_RESOLUTION_CHOICES`'s existing zero-import-cycle-risk
+  convention in that same file rather than importing them from its own
+  `models.py`).
+- A new `get_all_registered_artefact_types()` in the same file merges the
+  two built-in core values with every registered module's own declared
+  tuple into the one set `services.relationships.create_link` validates
+  `source_type`/`target_type` against, raising `ValueError` on an
+  unregistered value (a caller-side bug, never end-user-triggerable, since
+  both are always internal literals).
+- `app.models.relationship.ArtefactLink.source_type`/`target_type` changed
+  from `Mapped[ArtefactType]` (`str_enum(ArtefactType, ...)`, a
+  DB/ORM-level closed-enum column) to plain `Mapped[str]`
+  (`String(40)`) — the enum-level guarantee is gone, replaced by the
+  service-layer validation above. Compliance's own internal code (
+  `service.py`/`reports.py`/`export.py`/`project_router.py`) references its
+  own three values via named constants defined once in its own
+  `models.py` (`ARTEFACT_TYPE_EVIDENCE` etc.), not `ArtefactType.X`
+  attributes, since those no longer exist on the core enum.
+
+This is a genuine, user-directed reversal of part of Phase 1's own
+"Decided by: Agent" implementation choice (the "mirrors `ReviewTargetType`'s
+precedent" comment that shipped with Phase 1) — not a re-litigation of
+anything the user had themselves decided in Phase 0, which only covered
+the polymorphic-table-vs-per-pair-tables and sequence-numbering forks, not
+this specific vocabulary-registration mechanism.
+
+**Column widening, Decided by: Agent.** `artefact_links.source_type`/
+`target_type` were `VARCHAR(20)`, sized only for the two original core
+values. Compliance's three values are wider — the longest,
+`compliance_required_action_assessment`, is 37 characters — so migration
+0043 widens both columns to `VARCHAR(40)` before backfilling, giving
+modest headroom for the rest of the future-modules roadmap's shorter
+anticipated values (`decision`, `design`, `risk`, `pain_point`, etc., all
+well under 40).
+
+**Bulk query helper added to `services.relationships`, Decided by:
+Agent.** `reports.py`/`export.py` both originally ran a single
+`IN (pcr_ids)`/`IN (assessment_ids)`-filtered query per link table to
+build a project-wide evidence report/export — a real bulk-lookup need the
+existing single-target `get_links_to` didn't serve. Added
+`get_links_to_many(db, target_type, target_ids)` (empty list short-circuits
+without a query) rather than having each call site query `ArtefactLink`
+directly, keeping every compliance call site genuinely repointed through
+the shared service layer rather than partially bypassing it.
+
+**Migration 0043 lives in `app/modules/compliance/migrations/`, not
+`alembic/versions/`, Decided by: Agent** — mirroring migration 0038's own
+precedent (a compliance-module migration that also touches a core-adjacent
+concern reads more coherently colocated with the rest of this module's own
+code, per `docs/plans/compliance-module-plan.md`'s Phase 11 follow-up
+rationale already on file for `migrations_dir`), even though this
+migration's first two statements alter the core `artefact_links` table's
+column widths.
+
+**Row ids preserved across the backfill**, matching migration 0041's own
+precedent, even though a full-codebase grep found no external FK
+referencing either old table's `id` column (free, and consistent).
+
+**Verification**: full compliance test suite (all 201 tests across
+`app/modules/compliance/tests/`) plus `tests/test_artefact_links.py`,
+`tests/test_project_sequence_counters.py`, and
+`tests/test_schema_migrations_match_models.py` pass unchanged (same
+external REST behaviour — idempotent link/unlink, 404-on-missing-unlink,
+initial links at evidence-creation time, report/export inclusion — all
+preserved exactly); full backend suite (1114+ tests) run clean. Confirmed
+via `information_schema.tables` on a live migrated database that dropping
+`compliance_evidence_requirement_links`/`compliance_evidence_action_links`
+(no replacement table added, since `artefact_links` already existed) takes
+the schema from 75 to 73 tables — see `docs/solution-architecture.md`'s
+own updated table-count note.
+
+### Files changed
+
+Backend: `app/models/enums.py` (`ArtefactType` reduced to its two core
+values), `app/models/relationship.py` (`source_type`/`target_type` changed
+to plain validated strings, widened to `VARCHAR(40)`), `app/services/
+relationships.py` (type hints widened from `ArtefactType` to `str`;
+`create_link` now validates against the module registry; new
+`get_links_to_many`), `app/modules/registry.py` (new `ModuleDefinition.
+artefact_types` field; new `get_all_registered_artefact_types()`),
+`app/modules/compliance/module.py` (`MODULE_DEFINITION.artefact_types`
+declared), `app/modules/compliance/models.py` (`ComplianceEvidenceRequirementLink`/
+`ComplianceEvidenceActionLink` removed; three new `ARTEFACT_TYPE_*`
+constants added; docstrings updated), `app/modules/compliance/service.py`,
+`app/modules/compliance/reports.py`, `app/modules/compliance/export.py`,
+`app/modules/compliance/project_router.py` (all repointed onto
+`services.relationships`), `app/modules/compliance/migrations/
+0043_evidence_links_on_artefact_links.py` (new). Docs:
+`docs/solution-architecture.md` (compliance ER diagram's two link entities
+removed with a cross-reference note to the core `ARTEFACT_LINK` table;
+table inventory and count updated to 73), `docs/plans/
+module-00-platform-foundations-plan.md` (Phase 3 marked complete),
+`docs/decisions.md` (this entry). `backend/scripts/seed_demo_data.py`/
+`seed_e2e_dataset.py` checked — neither references either removed model
+directly (both go through the REST API), no change needed. `docs/website/`
+checked — pure internal storage refactor, no user-facing behaviour change,
+no update made.
+
+---
+
+## Docs website: root URL (`/`) now serves real content instead of a client-side-only redirect
+
+**Decided by: User** — reported that Google Search Console doesn't like the site's `/` → `/docs/introduction/overview` redirect and asked for a fix. Root cause: GitHub Pages is static hosting with no server-side redirect support, so the existing `@docusaurus/plugin-client-redirects` redirect at `/` (added in the "homepage redirects straight into the docs" decision above) was only ever a `<meta http-equiv="refresh">` + JS shell returning HTTP 200 with no crawlable content of its own — exactly what Google's indexing pipeline flags as a "page with redirect" with nothing indexable at the property's root URL.
+
+Two fixes were possible: (a) move the docs plugin's `routeBasePath` from `docs` to `/` so the introduction/overview doc's `slug: /` front matter serves it, with real static content, directly at the site root — previously blocked by `src/pages/index.tsx` owning `/`, a blocker removed by the earlier homepage-redirect decision itself; or (b) bring back a minimal `src/pages/index.tsx` with real visible content and a `rel=canonical` pointing at `/docs/introduction/overview`. **User chose (a)**, matching what the earlier "homepage redirects straight into the docs" decision already wanted (`/` landing straight on the docs front page, no separate hero page) but couldn't fully achieve at the time.
+
+**Decided by: Agent** on mechanism: `docusaurus.config.ts`'s `docs` preset option gained `routeBasePath: '/'`; `docs/website/docs/introduction/overview.md` gained `slug: /` front matter, so it alone resolves to the literal site root (every other doc keeps its own path, just without the `/docs` prefix — e.g. `/docs/workflows/signing-in` → `/workflows/signing-in`). Every doc's URL therefore lost its `/docs` prefix, so the `plugin-client-redirects` config was rewritten from a single hardcoded `/` redirect to a `createRedirects(existingPath)` callback that aliases every old `/docs/...` URL back to its new location (`/search` and `/404.html`, which never lived under `/docs`, are excluded) — this keeps existing bookmarks, external links, and anything Google already indexed under the old paths redirecting instead of 404ing, at the cost of those old paths now being the ones classified as "page with redirect" (expected and harmless, since they were never the property's root). `navbar.logo.href` moved from `/docs/introduction/overview` back to `/`.
+
+Verified: `npm run build` (clean, zero broken links/anchors — `onBrokenLinks: 'throw'` re-validated all internal doc-to-doc links resolve correctly under the new URL scheme with no manual edits needed, since they resolve by doc ID/relative file path, not hardcoded URL strings) and `npm run typecheck` (needed one fix: the `createRedirects` callback's `existingPath` parameter needed an explicit `: string` annotation — the plugin's option type isn't inferred against the generic `plugins` array in `docusaurus.config.ts`). Confirmed via the built output directly: `build/index.html` (22KB, full rendered Overview page, self-referential canonical) vs. `build/docs/introduction/overview/index.html` (316-byte redirect shell, now aliasing the old path). Also built and ran the project's `docs/website/Dockerfile` image and `curl`'d it live: `/reqtrackmanager/` returns 200 with real content, `/reqtrackmanager/docs/introduction/overview` redirects, `/reqtrackmanager/concepts/organisations-and-projects` (a URL that moved) serves correctly. `README.md`'s docs-website link already pointed at the bare root, so needed no change; no other file in the repo hardcoded a `/docs/...` website URL.
+
+### Files changed
+
+`docs/website/docusaurus.config.ts` (`docs.routeBasePath`, `plugin-client-redirects` config, `navbar.logo.href`), `docs/website/docs/introduction/overview.md` (`slug: /` front matter), `docs/decisions.md` (this entry).

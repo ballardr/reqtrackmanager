@@ -109,7 +109,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
             requirement to link to and which org-defined link type, mirroring
             `RequirementLinkCreate`'s own two fields.
         proposed_link_id: REMOVE_LINK-only (Platform review 2026-09, Phase
-            8) — the existing `RequirementLink` row to remove on approval.
+            8) — the existing `ArtefactLink` row to remove on approval.
             `ondelete="SET NULL"` since the link could in principle be
             removed by some other path between submission and approval;
             `decide_change_request` re-checks it still exists before acting,
@@ -183,8 +183,13 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_link_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_link_type_definitions.id", ondelete="SET NULL"), nullable=True
     )
+    # References `artefact_links.id` (Module 0, Platform Foundations Phase
+    # 1) — originally `requirement_links.id`; repointed by migration 0041
+    # when that table was folded into the generic `ArtefactLink` table,
+    # preserving each migrated row's original id so this FK never needed
+    # its stored values to change, only its target.
     proposed_link_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_links.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("artefact_links.id", ondelete="SET NULL"), nullable=True
     )
     changed_fields: Mapped[list[str]] = mapped_column(JSONB, default=list)
     reason: Mapped[str] = mapped_column(Text)

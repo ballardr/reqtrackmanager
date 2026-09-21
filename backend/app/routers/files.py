@@ -144,8 +144,9 @@ def download_file(
                     # upload/list/delete all worked. `RequirementAction` has
                     # its own direct `project_id` (unlike a requirement
                     # attachment, an action isn't owned by exactly one
-                    # requirement — RequirementActionLink is many-to-many —
-                    # so there's no single requirement to resolve through).
+                    # requirement — it can be linked to several via an
+                    # untyped `ArtefactLink` row — so there's no single
+                    # requirement to resolve through).
                     action_link = db.scalar(select(RequirementActionFile).where(RequirementActionFile.file_id == file_id))
                     if action_link is not None:
                         action = db.get(RequirementAction, action_link.action_id)

@@ -28,6 +28,7 @@ from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
 from app.models.enums import (
+    ArtefactType,
     ChangeRequestStatus,
     ProjectRole,
     RequirementLevel,
@@ -39,8 +40,9 @@ from app.models.enums import (
 from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementLink, RequirementReview, RequirementVersion
-from app.models.requirement_action import RequirementAction, RequirementActionLink
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement, RequirementReview, RequirementVersion
+from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.schemas.action import RequirementActionCreate, RequirementActionLinkCreate, RequirementActionOut
@@ -77,6 +79,10 @@ from app.services.rbac import (
     require_project_manage,
     require_project_view,
 )
+from app.services.relationships import create_link as create_artefact_link
+from app.services.relationships import delete_link as delete_artefact_link
+from app.services.relationships import get_all_links as get_all_artefact_links
+from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirement_csv import (
     CUSTOM_FIELD_COLUMN_PREFIX,
     custom_field_definitions_for_export,
@@ -986,27 +992,35 @@ def _get_requirement_in_project(db: Session, project_id: UUID, requirement_id: U
     return requirement
 
 
-def _link_to_out(db: Session, link: RequirementLink, viewpoint_requirement_id: UUID) -> RequirementLinkOut:
-    """Resolves a `RequirementLink` into the API shape from the perspective
-    of `viewpoint_requirement_id` — whichever requirement `GET
+def _link_to_out(db: Session, link: ArtefactLink, viewpoint_requirement_id: UUID) -> RequirementLinkOut:
+    """Resolves an `ArtefactLink` (requirement-to-requirement, per this
+    endpoint's own scope) into the API shape from the perspective of
+    `viewpoint_requirement_id` — whichever requirement `GET
     /{requirement_id}/links` was called for. Direction and the
     other-requirement's display fields can only be resolved server-side
     (per-request), since a link row alone doesn't say which end the caller
     is looking from (see `schemas.requirement.RequirementLinkOut`'s
-    docstring)."""
+    docstring).
+
+    `source_id`/`target_id` here are read as requirement ids — this
+    endpoint only ever creates/lists links where both
+    `source_type`/`target_type` are `ArtefactType.REQUIREMENT` (see
+    `create_link` below), so that's a safe assumption for any row this
+    function is handed.
+    """
     link_type = db.get(RequirementLinkTypeDefinition, link.link_type_id)
-    if link.source_requirement_id == viewpoint_requirement_id:
+    if link.source_id == viewpoint_requirement_id:
         direction = "outgoing"
         display_name = link_type.forward_name if link_type is not None else ""
-        other_id = link.target_requirement_id
+        other_id = link.target_id
     else:
         direction = "incoming"
         display_name = link_type.reverse_name if link_type is not None else ""
-        other_id = link.source_requirement_id
+        other_id = link.source_id
     other = db.get(Requirement, other_id)
     other_version = get_current_version(db, other_id) if other is not None else None
     return RequirementLinkOut(
-        id=link.id, source_requirement_id=link.source_requirement_id, target_requirement_id=link.target_requirement_id,
+        id=link.id, source_requirement_id=link.source_id, target_requirement_id=link.target_id,
         link_type_id=link.link_type_id, direction=direction, display_name=display_name,
         other_requirement_id=other_id,
         other_requirement_unique_code=other.unique_code if other is not None else "",
@@ -1022,8 +1036,9 @@ def create_link(
     """Creates a traceability link between two requirements (C-G-09).
 
     Not gated by either requirement's lock state by default — see
-    `RequirementLink`'s model docstring for why traceability metadata sits
-    outside C-G-12's change-log boundary. Platform review 2026-09, Phase 8
+    `models.relationship.ArtefactLink`'s docstring for why traceability
+    metadata sits outside C-G-12's change-log boundary. Platform review
+    2026-09, Phase 8
     deliberately supersedes that default for a project (or org) that opts
     in: once `requirement_id`'s current version is locked (approved) *and*
     `services.requirements.requires_change_request_for_links` is true for
@@ -1042,12 +1057,11 @@ def create_link(
     link_type = db.get(RequirementLinkTypeDefinition, payload.link_type_id)
     if link_type is None or link_type.organization_id != project.organization_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "link_type_id must be a link type defined in this project's organisation.")
-    link = RequirementLink(
-        source_requirement_id=requirement_id, target_requirement_id=target.id,
+    link = create_artefact_link(
+        db, source_type=ArtefactType.REQUIREMENT, source_id=requirement_id,
+        target_type=ArtefactType.REQUIREMENT, target_id=target.id,
         link_type_id=payload.link_type_id, created_by=current_user.id,
     )
-    db.add(link)
-    db.flush()
     log_event(db, entity_type="requirement_link", entity_id=link.id, action="created",
               actor_id=current_user.id, project_id=project_id,
               detail={"source_requirement_id": str(requirement_id), "target_requirement_id": str(target.id),
@@ -1063,12 +1077,17 @@ def list_links(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     _get_requirement_in_project(db, project_id, requirement_id)
-    links = db.scalars(
-        select(RequirementLink).where(
-            (RequirementLink.source_requirement_id == requirement_id)
-            | (RequirementLink.target_requirement_id == requirement_id)
-        )
-    ).all()
+    # `get_all_artefact_links` returns every link touching this requirement
+    # in either direction, which also includes untyped `ArtefactLink` rows
+    # where a `RequirementAction` links to this requirement (`link_action`,
+    # below) — those aren't requirement-to-requirement traceability links,
+    # so they're filtered out here rather than by `link_type_id is not
+    # None` alone, to stay correct even if a future artefact type ever adds
+    # its own typed link to a requirement.
+    links = [
+        link for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT, requirement_id)
+        if link.source_type == ArtefactType.REQUIREMENT and link.target_type == ArtefactType.REQUIREMENT
+    ]
     return [_link_to_out(db, link, requirement_id) for link in links]
 
 
@@ -1094,14 +1113,19 @@ def delete_link(
             status.HTTP_409_CONFLICT,
             "This requirement is approved and this project requires links to be removed via a change request.",
         )
-    link = db.get(RequirementLink, link_id)
-    if link is None or requirement_id not in (link.source_requirement_id, link.target_requirement_id):
+    link = db.get(ArtefactLink, link_id)
+    if (
+        link is None
+        or link.source_type != ArtefactType.REQUIREMENT
+        or link.target_type != ArtefactType.REQUIREMENT
+        or requirement_id not in (link.source_id, link.target_id)
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
     log_event(db, entity_type="requirement_link", entity_id=link.id, action="deleted",
               actor_id=current_user.id, project_id=project_id,
-              detail={"source_requirement_id": str(link.source_requirement_id),
-                      "target_requirement_id": str(link.target_requirement_id)})
-    db.delete(link)
+              detail={"source_requirement_id": str(link.source_id),
+                      "target_requirement_id": str(link.target_id)})
+    delete_artefact_link(db, link)
     db.commit()
 
 
@@ -1422,16 +1446,17 @@ def link_action(
             "This requirement is approved; actions can only be added via a change request.",
         )
     action = get_requirement_action_in_project(db, project_id, payload.action_id)
-    existing = db.scalar(
-        select(RequirementActionLink).where(
-            RequirementActionLink.requirement_id == requirement_id, RequirementActionLink.action_id == action.id
-        )
+    existing = get_artefact_link_between(
+        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+        target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
     )
     if existing is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is already linked to this requirement.")
-    db.add(RequirementActionLink(
-        requirement_id=requirement_id, action_id=action.id, linked_by=current_user.id, created_at=datetime.now(UTC),
-    ))
+    create_artefact_link(
+        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+        target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
+        link_type_id=None, created_by=current_user.id,
+    )
     log_event(db, entity_type="requirement_action_link", entity_id=action.id, action="linked",
               actor_id=current_user.id, project_id=project_id,
               detail={"requirement_id": str(requirement_id), "action_id": str(action.id)})
@@ -1470,9 +1495,11 @@ def create_and_link_action(
     )
     db.add(action)
     db.flush()
-    db.add(RequirementActionLink(
-        requirement_id=requirement_id, action_id=action.id, linked_by=current_user.id, created_at=datetime.now(UTC),
-    ))
+    create_artefact_link(
+        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
+        target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
+        link_type_id=None, created_by=current_user.id,
+    )
     log_event(db, entity_type="requirement_action", entity_id=action.id, action="created",
               actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
               detail={"unique_code": action.unique_code, "title": action.title, "linked_requirement_id": str(requirement_id)})
@@ -1488,11 +1515,15 @@ def list_requirement_actions(
 ):
     """Lists every action linked to this requirement."""
     _get_requirement_in_project(db, project_id, requirement_id)
+    action_ids = [
+        link.source_id
+        for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT, requirement_id)
+        if link.source_type == ArtefactType.REQUIREMENT_ACTION
+    ]
+    if not action_ids:
+        return []
     actions = db.scalars(
-        select(RequirementAction)
-        .join(RequirementActionLink, RequirementActionLink.action_id == RequirementAction.id)
-        .where(RequirementActionLink.requirement_id == requirement_id)
-        .order_by(RequirementAction.unique_code)
+        select(RequirementAction).where(RequirementAction.id.in_(action_ids)).order_by(RequirementAction.unique_code)
     ).all()
     return [action_to_out(db, a) for a in actions]
 
@@ -1521,15 +1552,14 @@ def unlink_action(
             status.HTTP_409_CONFLICT,
             "This requirement is approved; actions can only be removed via a change request.",
         )
-    link = db.scalar(
-        select(RequirementActionLink).where(
-            RequirementActionLink.requirement_id == requirement_id, RequirementActionLink.action_id == action_id
-        )
+    link = get_artefact_link_between(
+        db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action_id,
+        target_type=ArtefactType.REQUIREMENT, target_id=requirement_id,
     )
     if link is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This action is not linked to this requirement.")
     log_event(db, entity_type="requirement_action_link", entity_id=action_id, action="unlinked",
               actor_id=current_user.id, project_id=project_id,
               detail={"requirement_id": str(requirement_id), "action_id": str(action_id)})
-    db.delete(link)
+    delete_artefact_link(db, link)
     db.commit()

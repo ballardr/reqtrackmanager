@@ -982,6 +982,21 @@ class ModuleDefinition:
             endpoint 400s with it) or `None` to allow the removal. `None`
             for a module with no group-based floor concept of its own
             (every module before Compliance's Phase 22).
+        artefact_types: Module-contributed values for the shared
+            `ArtefactType` vocabulary (Module 0 — Platform Foundations,
+            Phase 3) that `app.models.relationship.ArtefactLink.source_
+            type`/`target_type` (a plain validated string column, not a
+            closed Python `enum.Enum`, precisely so it can hold values no
+            core file has to know about ahead of time) may hold. A module
+            introducing its own linkable artefact type declares its string
+            values here rather than a core enum being hand-edited per
+            module — `get_all_registered_artefact_types` (below) merges
+            every registered module's own tuple with the two built-in core
+            values (`ArtefactType.REQUIREMENT`/`REQUIREMENT_ACTION`) into
+            the one set `services.relationships.create_link` validates
+            against. Empty tuple for a module that introduces no linkable
+            artefact type of its own (every module before Compliance's own
+            evidence-linkage migration).
     """
 
     key: str
@@ -1007,6 +1022,7 @@ class ModuleDefinition:
     project_nav_visible: Callable[[Session, Project], bool] | None = None
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
+    artefact_types: tuple[str, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1800,6 +1816,28 @@ def run_org_group_member_removal_hooks(db: Session, org_group_id: uuid.UUID, mem
         if message is not None:
             return message
     return None
+
+
+def get_all_registered_artefact_types() -> set[str]:
+    """Every valid `ArtefactType` value — the two built-in core values
+    (`ArtefactType.REQUIREMENT`/`REQUIREMENT_ACTION`) plus every registered
+    module's own declared `artefact_types` (Module 0 — Platform
+    Foundations, Phase 3). `services.relationships.create_link` validates
+    `source_type`/`target_type` against this set, since `ArtefactLink`'s
+    own columns are plain strings rather than a closed Python enum (a
+    fixed `enum.Enum` can't gain members at runtime the way this registry
+    can). A module with no `artefact_types` of its own (the default empty
+    tuple) simply contributes nothing.
+
+    Returns:
+        The full set of currently-valid artefact-type string values.
+    """
+    from app.models.enums import ArtefactType
+
+    types = {ArtefactType.REQUIREMENT.value, ArtefactType.REQUIREMENT_ACTION.value}
+    for definition in get_module_registry().values():
+        types.update(definition.artefact_types)
+    return types
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

@@ -1,4 +1,5 @@
 ---
+slug: /
 sidebar_position: 1
 title: Open Source Requirements Management Software (IBM DOORS Alternative)
 sidebar_label: Overview

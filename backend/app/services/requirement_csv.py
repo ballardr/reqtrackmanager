@@ -21,9 +21,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind
+from app.models.enums import ArtefactType
 from app.models.file import FileAsset, RequirementFile
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementKeyword, RequirementLink, RequirementVersion
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.services.csv_safety import csv_safe
@@ -116,15 +118,26 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
     code_by_id = {r.id: r.unique_code for r in requirements}
     links_by_req: dict[UUID, list[str]] = {}
     if req_ids:
-        link_rows = list(db.scalars(select(RequirementLink).where(RequirementLink.source_requirement_id.in_(req_ids))).all())
-        missing_target_ids = {link.target_requirement_id for link in link_rows} - set(code_by_id)
+        # Requirement-to-requirement traceability links only — filtering on
+        # `source_type == REQUIREMENT` excludes untyped action links, which
+        # also live in `artefact_links` but were never part of this CSV's
+        # links column (an action's source is always a `RequirementAction`,
+        # never a `Requirement`).
+        link_rows = list(
+            db.scalars(
+                select(ArtefactLink).where(
+                    ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(req_ids)
+                )
+            ).all()
+        )
+        missing_target_ids = {link.target_id for link in link_rows} - set(code_by_id)
         if missing_target_ids:
             for r in db.scalars(select(Requirement).where(Requirement.id.in_(missing_target_ids))).all():
                 code_by_id[r.id] = r.unique_code
         # Displayed by the link's forward name (this requirement is always
         # the link's source in this export, since `link_rows` was queried by
-        # `source_requirement_id`) — a plain informational column, not
-        # re-imported by CSV import (which has no notion of links).
+        # `source_id`) — a plain informational column, not re-imported by
+        # CSV import (which has no notion of links).
         link_type_forward_name_by_id = {
             lt.id: lt.forward_name
             for lt in db.scalars(
@@ -132,9 +145,9 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
             )
         }
         for link in link_rows:
-            target_code = code_by_id.get(link.target_requirement_id, "?")
+            target_code = code_by_id.get(link.target_id, "?")
             type_name = link_type_forward_name_by_id.get(link.link_type_id, "?")
-            links_by_req.setdefault(link.source_requirement_id, []).append(f"{type_name}:{target_code}")
+            links_by_req.setdefault(link.source_id, []).append(f"{type_name}:{target_code}")
 
     attachments_by_req: dict[UUID, list[str]] = {}
     if req_ids:

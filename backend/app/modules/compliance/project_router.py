@@ -148,10 +148,11 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
     ComplianceEvidence,
-    ComplianceEvidenceActionLink,
     ComplianceEvidenceFile,
-    ComplianceEvidenceRequirementLink,
     ComplianceEvidenceRevalidation,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
@@ -222,7 +223,7 @@ from app.modules.compliance.service import (
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.audit import AuditEventOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
-from app.services import notifications
+from app.services import notifications, relationships
 from app.services.audit import log_event
 from app.services.downloads import filename_safe
 from app.services.files import delete_file, upload_file
@@ -1092,11 +1093,8 @@ def list_requirement_evidence(
     requirements and/or standards") — this is a read-only, filtered view
     onto that same data."""
     _project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
-    evidence_ids = db.scalars(
-        select(ComplianceEvidenceRequirementLink.evidence_id).where(
-            ComplianceEvidenceRequirementLink.project_compliance_requirement_id == pcr.id
-        )
-    ).all()
+    links = relationships.get_links_to(db, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr.id)
+    evidence_ids = [link.source_id for link in links if link.source_type == ARTEFACT_TYPE_EVIDENCE]
     if not evidence_ids:
         return []
     evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.id.in_(evidence_ids))).all()
@@ -1241,11 +1239,8 @@ def list_required_action_assessment_evidence(
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
-    evidence_ids = db.scalars(
-        select(ComplianceEvidenceActionLink.evidence_id).where(
-            ComplianceEvidenceActionLink.required_action_assessment_id == assessment.id
-        )
-    ).all()
+    links = relationships.get_links_to(db, ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, assessment.id)
+    evidence_ids = [link.source_id for link in links if link.source_type == ARTEFACT_TYPE_EVIDENCE]
     if not evidence_ids:
         return []
     evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.id.in_(evidence_ids))).all()
@@ -1281,15 +1276,17 @@ def create_evidence(
     db.add(evidence)
     db.flush()
     for pcr_id in payload.project_compliance_requirement_ids:
-        db.add(ComplianceEvidenceRequirementLink(
-            evidence_id=evidence.id, project_compliance_requirement_id=pcr_id, linked_by=current_user.id,
-            created_at=now,
-        ))
+        relationships.create_link(
+            db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+            target_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, target_id=pcr_id,
+            link_type_id=None, created_by=current_user.id,
+        )
     for assessment_id in payload.required_action_assessment_ids:
-        db.add(ComplianceEvidenceActionLink(
-            evidence_id=evidence.id, required_action_assessment_id=assessment_id, linked_by=current_user.id,
-            created_at=now,
-        ))
+        relationships.create_link(
+            db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+            target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment_id,
+            link_type_id=None, created_by=current_user.id,
+        )
     log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="created",
               actor_id=current_user.id, project_id=project_id, detail={"title": evidence.title})
     db.commit()
@@ -1458,17 +1455,16 @@ def link_evidence_to_requirement(
     already-linked pair is a no-op, not a 409/duplicate error)."""
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
     pcr = _get_pcr_for_project_or_404(db, project_id, payload.project_compliance_requirement_id)
-    existing = db.scalar(
-        select(ComplianceEvidenceRequirementLink).where(
-            ComplianceEvidenceRequirementLink.evidence_id == evidence.id,
-            ComplianceEvidenceRequirementLink.project_compliance_requirement_id == pcr.id,
-        )
+    existing = relationships.get_link_between(
+        db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+        target_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, target_id=pcr.id,
     )
     if existing is None:
-        db.add(ComplianceEvidenceRequirementLink(
-            evidence_id=evidence.id, project_compliance_requirement_id=pcr.id, linked_by=current_user.id,
-            created_at=datetime.now(UTC),
-        ))
+        relationships.create_link(
+            db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+            target_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, target_id=pcr.id,
+            link_type_id=None, created_by=current_user.id,
+        )
         log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="requirement_linked",
                   actor_id=current_user.id, project_id=project_id,
                   detail={"project_compliance_requirement_id": str(pcr.id)})
@@ -1482,15 +1478,13 @@ def unlink_evidence_from_requirement(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
-    link = db.scalar(
-        select(ComplianceEvidenceRequirementLink).where(
-            ComplianceEvidenceRequirementLink.evidence_id == evidence.id,
-            ComplianceEvidenceRequirementLink.project_compliance_requirement_id == pcr_id,
-        )
+    link = relationships.get_link_between(
+        db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+        target_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, target_id=pcr_id,
     )
     if link is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This evidence is not linked to that requirement.")
-    db.delete(link)
+    relationships.delete_link(db, link)
     log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="requirement_unlinked",
               actor_id=current_user.id, project_id=project_id, detail={"project_compliance_requirement_id": str(pcr_id)})
     db.commit()
@@ -1507,17 +1501,16 @@ def link_evidence_to_action_assessment(
     """The required-action equivalent of `link_evidence_to_requirement`."""
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
     assessment = _get_assessment_for_project_or_404(db, project_id, payload.required_action_assessment_id)
-    existing = db.scalar(
-        select(ComplianceEvidenceActionLink).where(
-            ComplianceEvidenceActionLink.evidence_id == evidence.id,
-            ComplianceEvidenceActionLink.required_action_assessment_id == assessment.id,
-        )
+    existing = relationships.get_link_between(
+        db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+        target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment.id,
     )
     if existing is None:
-        db.add(ComplianceEvidenceActionLink(
-            evidence_id=evidence.id, required_action_assessment_id=assessment.id, linked_by=current_user.id,
-            created_at=datetime.now(UTC),
-        ))
+        relationships.create_link(
+            db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+            target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment.id,
+            link_type_id=None, created_by=current_user.id,
+        )
         log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="action_linked",
                   actor_id=current_user.id, project_id=project_id,
                   detail={"required_action_assessment_id": str(assessment.id)})
@@ -1531,15 +1524,13 @@ def unlink_evidence_from_action_assessment(
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
-    link = db.scalar(
-        select(ComplianceEvidenceActionLink).where(
-            ComplianceEvidenceActionLink.evidence_id == evidence.id,
-            ComplianceEvidenceActionLink.required_action_assessment_id == assessment_id,
-        )
+    link = relationships.get_link_between(
+        db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
+        target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment_id,
     )
     if link is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This evidence is not linked to that required action assessment.")
-    db.delete(link)
+    relationships.delete_link(db, link)
     log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="action_unlinked",
               actor_id=current_user.id, project_id=project_id,
               detail={"required_action_assessment_id": str(assessment_id)})

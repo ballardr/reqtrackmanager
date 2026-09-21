@@ -161,6 +161,36 @@ def upgrade() -> None:
         """
     )
 
+    # Module 0 (Platform Foundations), Phase 1 (2026-09-21) removed the
+    # `RequirementLink` model entirely (folded into the generic
+    # `ArtefactLink` table — see migration 0041) — before that, this table's
+    # existence on a brand-new database relied entirely on 0001's
+    # `create_all()` reflecting the *then-current* `RequirementLink` model
+    # (per this migration's own docstring above: "0001's create_all()
+    # already creates all of this against the current model classes").
+    # With that model gone, 0001 no longer creates `requirement_links` at
+    # all, so a genuinely fresh migration chain run would fail on the very
+    # next statement ("relation \"requirement_links\" does not exist") —
+    # this guard recreates its pre-0012 shape (the old fixed `link_type`
+    # column included) so every statement below through this migration's
+    # end still has a table to operate on, exactly as it did against a
+    # pre-0012 database. A no-op (IF NOT EXISTS) on every database that
+    # migrated through this revision before 2026-09-21, i.e. every real
+    # deployment.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS requirement_links (
+            id UUID PRIMARY KEY,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            source_requirement_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+            target_requirement_id UUID NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+            link_type VARCHAR(30) NOT NULL,
+            created_by UUID NOT NULL REFERENCES users(id)
+        )
+        """
+    )
+
     op.execute("ALTER TABLE requirement_links ADD COLUMN IF NOT EXISTS link_type_id UUID")
     # See this migration's module docstring for the full explanation of this
     # guarded backfill: only a pre-0012 database ever has the old

@@ -81,11 +81,12 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
     ComplianceActionTypeDefinition,
     ComplianceEvidence,
-    ComplianceEvidenceActionLink,
     ComplianceEvidenceFile,
-    ComplianceEvidenceRequirementLink,
     ComplianceEvidenceRevalidation,
     ComplianceMappingRelationshipTypeDefinition,
     ComplianceRequiredAction,
@@ -100,6 +101,7 @@ from app.modules.compliance.models import (
     ProjectComplianceRequirement,
 )
 from app.modules.compliance.service import materialize_assessment_rows
+from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 
 if TYPE_CHECKING:
@@ -1094,30 +1096,29 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             assessments_by_pcr_id.setdefault(a.project_compliance_requirement_id, []).append(a)
         action_by_id = {a.id: a for actions in actions_by_requirement_id.values() for a in actions}
 
-        req_evidence_links = list(
-            db.scalars(
-                select(ComplianceEvidenceRequirementLink).where(
-                    ComplianceEvidenceRequirementLink.project_compliance_requirement_id.in_(pcr_ids)
-                )
-            ).all()
-        ) if pcr_ids else []
+        # Evidence links now live in the generic `ArtefactLink` table
+        # (Module 0 — Platform Foundations, Phase 3), evidence as source;
+        # filtering to `source_type == COMPLIANCE_EVIDENCE` keeps this
+        # correct by construction (mirrors `routers.requirements.
+        # list_links`'s established precedent for the same filter shape).
+        req_evidence_links = [
+            link for link in relationships.get_links_to_many(db, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, pcr_ids)
+            if link.source_type == ARTEFACT_TYPE_EVIDENCE
+        ]
         req_evidence_refs_by_pcr_id: dict[UUID, list[str]] = {}
         for link in req_evidence_links:
-            req_evidence_refs_by_pcr_id.setdefault(link.project_compliance_requirement_id, []).append(
-                evidence_ref_by_id[link.evidence_id]
-            )
+            req_evidence_refs_by_pcr_id.setdefault(link.target_id, []).append(evidence_ref_by_id[link.source_id])
         assessment_ids = [a.id for a in assessments]
-        action_evidence_links = list(
-            db.scalars(
-                select(ComplianceEvidenceActionLink).where(
-                    ComplianceEvidenceActionLink.required_action_assessment_id.in_(assessment_ids)
-                )
-            ).all()
-        ) if assessment_ids else []
+        action_evidence_links = [
+            link for link in relationships.get_links_to_many(
+                db, ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, assessment_ids
+            )
+            if link.source_type == ARTEFACT_TYPE_EVIDENCE
+        ]
         action_evidence_refs_by_assessment_id: dict[UUID, list[str]] = {}
         for link in action_evidence_links:
-            action_evidence_refs_by_assessment_id.setdefault(link.required_action_assessment_id, []).append(
-                evidence_ref_by_id[link.evidence_id]
+            action_evidence_refs_by_assessment_id.setdefault(link.target_id, []).append(
+                evidence_ref_by_id[link.source_id]
             )
 
         requirements_json = []
@@ -1412,10 +1413,11 @@ def import_project_data(
             for ref in r_data.get("evidence_refs", []):
                 evidence_id = evidence_id_by_ref.get(ref)
                 if evidence_id is not None:
-                    db.add(ComplianceEvidenceRequirementLink(
-                        evidence_id=evidence_id, project_compliance_requirement_id=pcr.id,
-                        linked_by=current_user.id, created_at=datetime.now(UTC),
-                    ))
+                    relationships.create_link(
+                        db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence_id,
+                        target_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, target_id=pcr.id,
+                        link_type_id=None, created_by=current_user.id,
+                    )
 
             actions = list(
                 db.scalars(select(ComplianceRequiredAction).where(ComplianceRequiredAction.requirement_id == requirement_id)).all()
@@ -1454,10 +1456,11 @@ def import_project_data(
                 for ref in a_data.get("evidence_refs", []):
                     evidence_id = evidence_id_by_ref.get(ref)
                     if evidence_id is not None:
-                        db.add(ComplianceEvidenceActionLink(
-                            evidence_id=evidence_id, required_action_assessment_id=assessment.id,
-                            linked_by=current_user.id, created_at=datetime.now(UTC),
-                        ))
+                        relationships.create_link(
+                            db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence_id,
+                            target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment.id,
+                            link_type_id=None, created_by=current_user.id,
+                        )
 
         for rv_data in pc_data.get("reviews", []):
             review = ComplianceReview(
