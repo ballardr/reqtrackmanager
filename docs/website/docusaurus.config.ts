@@ -49,6 +49,10 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/ballardr/reqtrackmanager/tree/main/docs/website/',
+          // Docs live at the site root rather than under `/docs/` - see the
+          // `plugin-client-redirects` config below for why and how old
+          // `/docs/...` URLs keep working.
+          routeBasePath: '/',
         },
         // Documentation, not a blog.
         blog: false,
@@ -70,17 +74,30 @@ const config: Config = {
     [
       '@docusaurus/plugin-client-redirects',
       {
-        // No separate homepage - `/` should land a visitor straight on the
-        // docs' own front page rather than a hero/"Read the docs" page in
-        // between. The navbar logo's `href` below is pointed at the same
-        // target rather than left at its `/` default, so nothing else in
-        // the site links to `/` itself for onBrokenLinks to validate.
-        redirects: [
-          {
-            from: '/',
-            to: '/docs/introduction/overview',
-          },
-        ],
+        // The docs plugin's `routeBasePath` moved from `docs` to `/` (see
+        // above) so the introduction/overview doc's `slug: /` front matter
+        // puts it, with real static content, directly at the site root -
+        // no client-side-only redirect sits at `/` for Google Search
+        // Console to flag as a "page with redirect" with nothing crawlable
+        // of its own (GitHub Pages can't issue a real HTTP 3xx, so the
+        // previous `/` -> `/docs/introduction/overview` redirect here was
+        // only a meta-refresh + JS shell page).
+        //
+        // Every doc's URL lost its `/docs` prefix as a result, so this
+        // aliases each old `/docs/...` URL back to its new home - existing
+        // bookmarks, external links, and whatever Google already indexed
+        // under the old paths redirect instead of 404ing. `/search` and
+        // `/404.html` never lived under `/docs`, so they're left alone.
+        createRedirects(existingPath: string) {
+          if (existingPath === '/search' || existingPath === '/404.html') {
+            return [];
+          }
+          return [
+            existingPath === '/'
+              ? '/docs/introduction/overview'
+              : `/docs${existingPath}`,
+          ];
+        },
       },
     ],
   ],
@@ -94,7 +111,7 @@ const config: Config = {
       title: 'ReqTrackManager',
       logo: {
         alt: 'ReqTrackManager logo',
-        href: '/docs/introduction/overview',
+        href: '/',
         src: 'img/logo.svg',
         // Matches the app's own header logo height (Layout.tsx's
         // `style={{height: 24}}` on the same mark) rather than Infima's
