@@ -6579,3 +6579,89 @@ Phase 2 has no router yet (Phase 4 adds the API), so this is implemented entirel
 ### Files changed
 
 `backend/app/modules/decisions/service.py` (new Phase 2 functions and module docstring section), `backend/app/modules/decisions/tests/test_decisions_workflow.py` (new), `docs/plans/module-04-decision-management-plan.md` (Phase 2 marked complete with its own notes section; Status table updated), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 3 — relationships to Requirements and other Decisions
+
+**Decided by: Agent** — continuing the module's own plan (`docs/plans/module-04-decision-management-plan.md`) to its next unstarted phase, per the user's instruction to pick up "the next phase of module 4."
+
+Phase 3 has no router yet (Phase 4 adds the API), so — same as Phase 2 — this is new functions in `app/modules/decisions/service.py` only, wiring `Decision` into Module 0's `ArtefactLink` model for the two relationship groups the plan's own Phase 3 scope marks as buildable now (the other five — Open Question, Pain Point, Strategy, Guiding Principle, Compliance, Design — stay reserved for Phase 6, blocked on modules that don't exist yet):
+
+- **Generalised Phase 2's link-type helper** rather than duplicating it: `_get_or_create_supersedes_link_type` became `_get_or_create_link_type(db, organization_id, *, forward_name, reverse_name)`, parameterised on the link type's names instead of hardcoding `"Supersedes"`. `create_supersession` was updated to call the generic form with the same two names — behaviour unchanged, still covered by Phase 2's own tests (all still pass).
+- **`create_decision_requirement_link`** — Decision -> Requirement, `"Implements"` or `"Affects"` (source overview §13/10.7, `DecisionRequirementLinkKind`). `target_type=ArtefactType.REQUIREMENT.value`, one of the two built-in core artefact types `services.relationships.create_link` already validates against — no registry or core-file change needed.
+- **`create_decision_decision_link`** — Decision -> Decision, `"Depends on"` or `"Conflicts with"` (`DecisionDecisionLinkKind`). `"Supersedes"` keeps its own dedicated `create_supersession` rather than folding into this function, since only it drives the predecessor status-flip side effect Phase 2 built; these two relationships have no such side effect.
+- Both new functions follow `create_supersession`'s exact validation shape: same-project check (`ValueError` otherwise), self-link check for the Decision<->Decision case, and a `get_link_between` duplicate pre-check before calling `create_link` — all raising plain `ValueError` for the eventual Phase 4 router to translate into an HTTP 409, matching every other service-layer convention in this codebase.
+- "Implements", "Depends on", and "Conflicts with" already exist in `services.definitions.DEFAULT_LINK_TYPES` (seeded per new organisation); "Affects" does not. All four go through the same lazy fetch-or-create path regardless, since an org's admin may have renamed/deleted a seeded row and nothing should assume the seeded name still exists under it.
+
+**Verification**: new `app/modules/decisions/tests/test_decisions_relationships.py` (9 tests) — Implements/Affects link creation including link-type lazy-creation on first use, Depends-on/Conflicts-with link creation, and validation errors (cross-project for both relationship groups, self-link for Decision<->Decision, duplicate link for both). `ruff check` clean. Full backend suite run inside the container (`docker compose exec backend pytest -q`, not on the host): 1144 passed, 0 failed — run in-container rather than on the host, so the mailhog-SMTP-DNS-dependent tests that show as pre-existing failures under host pytest (per the Phase 2 entry above) pass here too; not a discrepancy, just a different, cleaner execution environment. Also fixed one unrelated, pre-existing `ruff` import-order nit in `backend/app/routers/orgs.py` (an `OrgCreationChoiceOut` entry out of alphabetical order, left over from this module's own Phase 1 org-creation-choices work) while running a repo-wide `ruff check` as part of this change.
+
+### Files changed
+
+`backend/app/modules/decisions/service.py` (generalised link-type helper; new Phase 3 functions and module docstring section), `backend/app/modules/decisions/tests/test_decisions_relationships.py` (new), `backend/app/routers/orgs.py` (unrelated pre-existing import-order fix), `docs/plans/module-04-decision-management-plan.md` (Phase 3 marked complete with its own notes section; Status table updated; new reserved Phase 7 added per a follow-up user request), `docs/plans/module-12-fine-grained-access-control-plan.md` (new — see its own `docs/decisions.md` entry below), `docs/plans/future-modules-2026-09-index.md` (Module 12 registered), `docs/decisions.md` (this entry and the next).
+
+## New plan: Module 12 — Fine-Grained Access Control (Custom Roles & Permissions)
+
+**Decided by: User** — the request to plan a general, Azure-style
+composable-permission/custom-role system came directly from the user,
+prompted by asking whether Decision Management could restrict who
+approves which Decision Type. **Decided by: Agent** — that per-decision-
+type approval should *not* be built directly inside Decision Management,
+and instead required a new, general module: Module 4's own Phase 0
+addendum item 3 already recorded the reasoning for deferring exactly this
+("avoids building a bespoke policy engine here that the future Governance
+module will likely replace outright"); building a narrower, decision-
+type-only version of the same policy engine now would repeat that
+avoided mistake. Also **Decided by: Agent**: numbering it Module 12
+(outside the ten/eleven-module sequence, alongside Module 11, both for the
+same reason — cross-cutting, authorization-sensitive, requested directly
+by the user rather than sourced from the overview) and every specific
+design choice within the new plan (permission-atom shape, scope model,
+phase breakdown) — flagged individually as recommendations for the user
+to confirm at that plan's own Phase 0, not decided unilaterally here.
+
+**Grounding check performed before drafting** (per `CLAUDE.md`'s "before
+recommending, verify" rule and its authorization-change policy-consultation
+requirement): read `docs/soc2/policies/access-control-policy.md` in full,
+`backend/app/services/rbac.py` in full, `backend/app/models/enums.py`, and
+`backend/app/modules/registry.py`'s `ModuleRoleDefinition` mechanism,
+rather than designing from assumption. Two load-bearing findings shaped
+the plan directly:
+
+- `backend/app/models/enums.py`'s own module docstring already states
+  "Ossa (v1) intentionally uses a small, fixed set of organisation and
+  project roles rather than a customisable permission system (customisable
+  roles/attributes are a Pelion (v2) concern per docs/requirements.md)" —
+  this is not new scope invented from nothing, it is a documented, deferred
+  concern this plan now picks up.
+- `docs/requirements.md` C-U-01/C-U-03 both describe the existing fixed
+  roles as a floor ("must have **at minimum** the permission roles
+  of...."), not a ceiling — an additive custom-role system does not
+  contradict the requirements document, which this plan cannot itself
+  edit.
+- The module-contributed-role mechanism (`ModuleRoleDefinition`/
+  `UserModuleRole`/`GroupModuleRole`/`require_module_role`) is already the
+  most composable piece of the existing RBAC system (scopes, override
+  composition, group grants) and is the recommended extension point the
+  new plan builds custom roles alongside, rather than inventing a second,
+  unrelated permission concept.
+- Module 8 (Governance)'s own Phase 2 ("Approval policies... policies
+  reference roles") already assumes a fixed role vocabulary to reference —
+  it configures *which* role approves what, generically per artefact type,
+  but does not let an organisation *define* a new role. The new module and
+  Governance are complementary, not overlapping: confirmed explicitly in
+  the new plan's "Why this is not another module's problem" section so a
+  future reader doesn't need to re-derive this distinction.
+
+Module 4 (Decision Management)'s own plan gained a new, explicitly blocked
+**Phase 7 — Per-decision-type approver binding**, pointing at Module 12
+rather than duplicating any of its design — this is the concrete mechanism
+that answers the user's original question, once Module 12 exists.
+
+### Files changed
+
+`docs/plans/module-12-fine-grained-access-control-plan.md` (new),
+`docs/plans/future-modules-2026-09-index.md` (Module 12 added to the intro
+paragraph, module table, build-order note, dependency-graph omission note,
+and enablement-independence exclusion note — all four places Module 11
+required an equivalent update when it was added), `docs/plans/module-04-decision-management-plan.md`
+(new Phase 7, Status table updated to 4/7), `docs/decisions.md` (this
+entry).

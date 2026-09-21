@@ -2,18 +2,22 @@
 
 This document is the entry point for the ten-module roadmap proposed in
 [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
-("the overview"), plus two modules this planning pass added that aren't
+("the overview"), plus three modules this planning pass added that aren't
 part of the overview's own ten: **Module 0 — Platform Foundations**, the
 shared infrastructure (a generic cross-artefact relationship model and
 per-project sequence numbering) the overview assumes exists but never
-itself proposes; and **Module 11 — Acting on Behalf Of**, a cross-cutting,
+itself proposes; **Module 11 — Acting on Behalf Of**, a cross-cutting,
 optional capability requested directly by the user, deliberately numbered
 outside the ten-module sequence and outside Module 0 given its own
 authorization-sensitive design questions (see that plan's "Why this is not
-Module 0's problem"). This document does not restate the overview's
-content — it records the cross-cutting architecture every module plan
-below depends on, the dependency graph between all twelve plans, and links
-to each one.
+Module 0's problem"); and **Module 12 — Fine-Grained Access Control
+(Custom Roles & Permissions)**, another cross-cutting, optional,
+authorization-sensitive capability requested directly by the user,
+numbered outside the sequence for the same reason as Module 11 (see that
+plan's own "Why this is not another module's problem"). This document does
+not restate the overview's content — it records the cross-cutting
+architecture every module plan below depends on, the dependency graph
+between all thirteen plans, and links to each one.
 
 **Status:** Proposed. No module in this roadmap has started implementation.
 Each module plan's Phase 0 is an **exploratory phase** — it re-examines the
@@ -67,6 +71,7 @@ explicitly), not something this plan does on its own.
 | 9 | Compliance Integration | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7, Module 8 | Risk (3), Decisions (4) — reserved relationship targets | §37 |
 | 10 | Reporting & Analysis | [module-10-reporting-and-analysis-plan.md](module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
 | 11 | Acting on Behalf Of | [module-11-acting-on-behalf-of-plan.md](module-11-acting-on-behalf-of-plan.md) | — (depends on nothing; enriches everything) | Every approval-shaped action across the product, existing and new — Requirement/ChangeRequest approval today, Decision/Design/Risk/Strategy/Compliance approval once those modules exist | not in the overview at all — requested directly by the user 2026-09-16, security-sensitive (see that plan's SOC 2 policy consultation) |
+| 12 | Fine-Grained Access Control (Custom Roles & Permissions) | [module-12-fine-grained-access-control-plan.md](module-12-fine-grained-access-control-plan.md) | — (depends on nothing; enriches everything) | Every existing and future role-gated action across the product; Decision Management (4)'s Phase 5 per-decision-type approver binding; Governance (8)'s own Phase 2 approval policies, once both exist, gain an organisation-definable role to reference | not in the overview at all — requested directly by the user 2026-09-21, security-sensitive (see that plan's SOC 2 policy consultation) |
 
 **Recommended build order** (from overview §46, with Module 0 inserted
 ahead of everything as this session's own addition): 0 → 1 → 2 → 4 → 5 →
@@ -74,9 +79,10 @@ ahead of everything as this session's own addition): 0 → 1 → 2 → 4 → 5 �
 (Decision Management) is the one to pick up first after Module 0 exists,
 ahead of Module 1 and 2 in strict overview order — see "Is building Module
 4 first actually possible?" below, and that plan's own Status section, for
-the resulting dependency note. **Module 11 is deliberately left out of
-this sequence** — it depends on nothing and blocks nothing, so it can be
-picked up whenever, independent of everywhere else in the list.
+the resulting dependency note. **Modules 11 and 12 are deliberately left out of
+this sequence** — neither depends on anything nor blocks anything, so
+either can be picked up whenever, independent of everywhere else in the
+list.
 
 ## Is building Module 4 (Decision Management) first actually possible?
 
@@ -120,13 +126,14 @@ dependencies (the source enriches or extends the target once available, but
 the target ships and works without it — usually a reserved relationship
 type sitting unused until its target artefact exists). Grey nodes are
 already-shipped, existing capability this roadmap builds on rather than
-replaces. **Module 11 is omitted from this diagram deliberately** — like
-Traceability (7) and Reporting (10) in the compatibility matrix further
-below, it has no single meaningful pairwise relationship to draw: it
-depends on nothing, and it enriches essentially every approval-shaped
-action in every other module (plus existing, already-shipped
-functionality), so drawing it would mean an edge into nearly every node
-on the page for no added signal.
+replaces. **Modules 11 and 12 are omitted from this diagram deliberately**
+— like Traceability (7) and Reporting (10) in the compatibility matrix
+further below, neither has a single meaningful pairwise relationship to
+draw: each depends on nothing, and each enriches essentially every other
+module (Module 11 every approval-shaped action, Module 12 every
+role-gated action, plus existing, already-shipped functionality in both
+cases), so drawing either would mean an edge into nearly every node on the
+page for no added signal.
 
 ```mermaid
 flowchart TD
@@ -212,11 +219,11 @@ is core platform infrastructure (the relationship model), not a
 project-facing toggle in `docs/modules.md`'s sense — every module needs it
 compiled in, the same way every module needs the database to exist; it
 isn't part of the "can I turn this on without that" question at all. It
-also excludes **Module 11**, for the opposite reason: Module 11 *would* be
-an ordinary project-facing toggle, but trivially so — it depends on
-nothing, so the answer to "can Module 11 be enabled without Module X" is
-always yes, for every X, including every existing feature that predates
-this roadmap entirely.
+also excludes **Modules 11 and 12**, for the opposite reason: each *would*
+be an ordinary project-/org-facing toggle, but trivially so — each depends
+on nothing, so the answer to "can Module 11 (or 12) be enabled without
+Module X" is always yes, for every X, including every existing feature
+that predates this roadmap entirely.
 
 ### The enablement-dependency graph
 

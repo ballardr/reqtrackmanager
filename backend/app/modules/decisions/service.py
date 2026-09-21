@@ -60,17 +60,39 @@ supersession is deliberately built now rather than deferred to Phase 3:
   (`services.requirements.is_locked`'s call sites) lives at the router
   layer, and no Decision router/update endpoint exists until Phase 4. It
   belongs there, not in this phase.
+
+Phase 3 (docs/plans/module-04-decision-management-plan.md) adds the two
+buildable-now relationship groups, both plain `ArtefactLink` (Module 0)
+consumers using the same lazy fetch-or-create `RequirementLinkTypeDefinition`
+pattern `create_supersession` already established — generalised here into
+`_get_or_create_link_type` rather than duplicated four more times:
+
+- `create_decision_requirement_link` — Decision -> Requirement, either
+  `"Implements"` or `"Affects"` (source overview §13/10.7).
+- `create_decision_decision_link` — Decision -> Decision, either
+  `"Depends on"` or `"Conflicts with"` (`"Supersedes"` already has its own
+  dedicated `create_supersession`, above, because it also drives the
+  status-flip side effect these two plain relationships don't have).
+
+The five other relationship targets in the plan's Phase 3 scope (Open
+Question, Pain Point, Strategy, Guiding Principle, Compliance, Design) are
+reserved but deferred to Phase 6, blocked on modules that don't exist yet —
+deliberately not built here.
 """
 
 from __future__ import annotations
 
+import enum
 import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.enums import ArtefactType
 from app.models.project import Project
+from app.models.relationship import ArtefactLink
+from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision, DecisionTemplateDefinition, DecisionTypeDefinition
@@ -313,14 +335,22 @@ def _project_organization_id(db: Session, project_id: uuid.UUID) -> uuid.UUID:
     return organization_id
 
 
-def _get_or_create_supersedes_link_type(db: Session, organization_id: uuid.UUID) -> RequirementLinkTypeDefinition:
-    """Returns this organisation's `"Supersedes"` link type, creating it on
-    first use (see module docstring — deliberately lazy, no core-file
-    default-list edit or migration backfill needed)."""
+def _get_or_create_link_type(
+    db: Session, organization_id: uuid.UUID, *, forward_name: str, reverse_name: str
+) -> RequirementLinkTypeDefinition:
+    """Returns this organisation's link type identified by `forward_name`,
+    creating it on first use (see module docstring — deliberately lazy, no
+    core-file default-list edit or migration backfill needed). Generalised
+    from `create_supersession`'s original single-purpose helper so Phase 3's
+    Implements/Affects/Depends-on/Conflicts-with links reuse the exact same
+    fetch-or-create logic rather than duplicating it four more times —
+    `RequirementLinkTypeDefinition` is already a generic, org-shared
+    vocabulary table (see its own module docstring), not something to grow a
+    dedicated helper per link type."""
     link_type = db.scalar(
         select(RequirementLinkTypeDefinition).where(
             RequirementLinkTypeDefinition.organization_id == organization_id,
-            RequirementLinkTypeDefinition.forward_name == SUPERSEDES_LINK_TYPE_FORWARD_NAME,
+            RequirementLinkTypeDefinition.forward_name == forward_name,
         )
     )
     if link_type is not None:
@@ -332,8 +362,8 @@ def _get_or_create_supersedes_link_type(db: Session, organization_id: uuid.UUID)
     )
     link_type = RequirementLinkTypeDefinition(
         organization_id=organization_id,
-        forward_name=SUPERSEDES_LINK_TYPE_FORWARD_NAME,
-        reverse_name=SUPERSEDES_LINK_TYPE_REVERSE_NAME,
+        forward_name=forward_name,
+        reverse_name=reverse_name,
         sort_order=next_sort_order,
     )
     db.add(link_type)
@@ -427,7 +457,10 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         raise ValueError("This Decision has already been superseded.")
 
     organization_id = _project_organization_id(db, new_decision.project_id)
-    link_type = _get_or_create_supersedes_link_type(db, organization_id)
+    link_type = _get_or_create_link_type(
+        db, organization_id,
+        forward_name=SUPERSEDES_LINK_TYPE_FORWARD_NAME, reverse_name=SUPERSEDES_LINK_TYPE_REVERSE_NAME,
+    )
 
     if (
         get_link_between(
@@ -445,3 +478,150 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
     )
     _maybe_supersede(db, new_decision=new_decision, old_decision=old_decision, actor_id=actor_id)
     return link
+
+
+# --- Phase 3: relationships to Requirements and other Decisions -----------
+
+# Source overview §13/10.7's Decision<->Requirement relationship names.
+# Both already exist in `services.definitions.DEFAULT_LINK_TYPES` except
+# "Affects" — `_get_or_create_link_type` creates on miss regardless (an org
+# admin may have renamed/deleted a seeded row, or the org may predate it).
+IMPLEMENTS_LINK_TYPE_FORWARD_NAME = "Implements"
+IMPLEMENTS_LINK_TYPE_REVERSE_NAME = "Is implemented by"
+AFFECTS_LINK_TYPE_FORWARD_NAME = "Affects"
+AFFECTS_LINK_TYPE_REVERSE_NAME = "Is affected by"
+
+# Decision<->Decision relationship names other than "Supersedes" (which has
+# its own dedicated `create_supersession`, above, for the status-flip side
+# effect these two plain relationships don't have).
+DEPENDS_ON_LINK_TYPE_FORWARD_NAME = "Depends on"
+DEPENDS_ON_LINK_TYPE_REVERSE_NAME = "Is a dependency of"
+CONFLICTS_WITH_LINK_TYPE_FORWARD_NAME = "Conflicts with"
+CONFLICTS_WITH_LINK_TYPE_REVERSE_NAME = "Conflicts with"
+
+
+class DecisionRequirementLinkKind(str, enum.Enum):
+    """Which of source overview §13/10.7's two Decision -> Requirement
+    relationship names `create_decision_requirement_link` should use."""
+
+    IMPLEMENTS = "implements"
+    AFFECTS = "affects"
+
+
+_DECISION_REQUIREMENT_LINK_NAMES: dict[DecisionRequirementLinkKind, tuple[str, str]] = {
+    DecisionRequirementLinkKind.IMPLEMENTS: (IMPLEMENTS_LINK_TYPE_FORWARD_NAME, IMPLEMENTS_LINK_TYPE_REVERSE_NAME),
+    DecisionRequirementLinkKind.AFFECTS: (AFFECTS_LINK_TYPE_FORWARD_NAME, AFFECTS_LINK_TYPE_REVERSE_NAME),
+}
+
+
+class DecisionDecisionLinkKind(str, enum.Enum):
+    """Which of the two plain (non-supersession) Decision -> Decision
+    relationship names `create_decision_decision_link` should use."""
+
+    DEPENDS_ON = "depends_on"
+    CONFLICTS_WITH = "conflicts_with"
+
+
+_DECISION_DECISION_LINK_NAMES: dict[DecisionDecisionLinkKind, tuple[str, str]] = {
+    DecisionDecisionLinkKind.DEPENDS_ON: (DEPENDS_ON_LINK_TYPE_FORWARD_NAME, DEPENDS_ON_LINK_TYPE_REVERSE_NAME),
+    DecisionDecisionLinkKind.CONFLICTS_WITH: (
+        CONFLICTS_WITH_LINK_TYPE_FORWARD_NAME, CONFLICTS_WITH_LINK_TYPE_REVERSE_NAME,
+    ),
+}
+
+
+def create_decision_requirement_link(
+    db: Session, *, decision: Decision, requirement: Requirement, kind: DecisionRequirementLinkKind,
+    actor_id: uuid.UUID,
+) -> ArtefactLink:
+    """Records that `decision` either `Implements` or `Affects`
+    `requirement` (source overview §13/10.7): creates the typed
+    `ArtefactLink`, with `decision` as the source, using the same lazy
+    fetch-or-create `RequirementLinkTypeDefinition` pattern
+    `create_supersession` established.
+
+    Args:
+        db: Active session; not committed (caller's transaction).
+        decision: The linking Decision (the link's source).
+        requirement: The target Requirement.
+        kind: Which relationship name to use.
+        actor_id: The user recording this relationship.
+
+    Returns:
+        The created `ArtefactLink`.
+
+    Raises:
+        ValueError: if `decision` and `requirement` are in different
+            projects, or this exact link already exists.
+    """
+    if decision.project_id != requirement.project_id:
+        raise ValueError("A Decision can only link to a Requirement in the same project.")
+
+    organization_id = _project_organization_id(db, decision.project_id)
+    forward_name, reverse_name = _DECISION_REQUIREMENT_LINK_NAMES[kind]
+    link_type = _get_or_create_link_type(db, organization_id, forward_name=forward_name, reverse_name=reverse_name)
+
+    if (
+        get_link_between(
+            db, source_type=DECISION_ARTEFACT_TYPE, source_id=decision.id,
+            target_type=ArtefactType.REQUIREMENT.value, target_id=requirement.id, link_type_id=link_type.id,
+        )
+        is not None
+    ):
+        raise ValueError(f"This Decision already has a '{forward_name}' link to that Requirement.")
+
+    return create_link(
+        db, source_type=DECISION_ARTEFACT_TYPE, source_id=decision.id,
+        target_type=ArtefactType.REQUIREMENT.value, target_id=requirement.id,
+        link_type_id=link_type.id, created_by=actor_id,
+    )
+
+
+def create_decision_decision_link(
+    db: Session, *, source_decision: Decision, target_decision: Decision, kind: DecisionDecisionLinkKind,
+    actor_id: uuid.UUID,
+) -> ArtefactLink:
+    """Records a `Depends on` or `Conflicts with` relationship from
+    `source_decision` to `target_decision` — the two plain Decision<->
+    Decision relationships (`"Supersedes"` has its own dedicated
+    `create_supersession`, above, for the status-flip side effect these two
+    don't have).
+
+    Args:
+        db: Active session; not committed (caller's transaction).
+        source_decision: The linking Decision (the link's source).
+        target_decision: The target Decision.
+        kind: Which relationship name to use.
+        actor_id: The user recording this relationship.
+
+    Returns:
+        The created `ArtefactLink`.
+
+    Raises:
+        ValueError: if `source_decision`/`target_decision` are the same
+            row, are in different projects, or this exact link already
+            exists.
+    """
+    if source_decision.id == target_decision.id:
+        raise ValueError("A Decision cannot link to itself.")
+    if source_decision.project_id != target_decision.project_id:
+        raise ValueError("A Decision can only link to another Decision in the same project.")
+
+    organization_id = _project_organization_id(db, source_decision.project_id)
+    forward_name, reverse_name = _DECISION_DECISION_LINK_NAMES[kind]
+    link_type = _get_or_create_link_type(db, organization_id, forward_name=forward_name, reverse_name=reverse_name)
+
+    if (
+        get_link_between(
+            db, source_type=DECISION_ARTEFACT_TYPE, source_id=source_decision.id,
+            target_type=DECISION_ARTEFACT_TYPE, target_id=target_decision.id, link_type_id=link_type.id,
+        )
+        is not None
+    ):
+        raise ValueError(f"This Decision already has a '{forward_name}' link to that Decision.")
+
+    return create_link(
+        db, source_type=DECISION_ARTEFACT_TYPE, source_id=source_decision.id,
+        target_type=DECISION_ARTEFACT_TYPE, target_id=target_decision.id,
+        link_type_id=link_type.id, created_by=actor_id,
+    )

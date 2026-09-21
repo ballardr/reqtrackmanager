@@ -54,17 +54,18 @@ improvised).
 
 ## Status / Resume Here
 
-3 / 6 phases complete. Phase 3 (relationships to Requirements/other Decisions) is next.
+4 / 7 phases complete. Phase 4 (backend API + audit logging) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: requirements clarification | [x] Complete (2026-09-21) — see addendum below |
 | 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
 | 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
-| 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [ ] Not started — no longer blocked, Module 0 shipped 2026-09-21 |
+| 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [x] Complete (2026-09-21) — see "Phase 3 notes" below |
 | 4 | Backend API + audit logging | [ ] Not started |
 | 5 | Frontend — Decision list/detail/create/approve UI | [ ] Not started |
 | 6 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
+| 7 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
 
 ## Phase 2 notes (2026-09-21)
 
@@ -111,6 +112,55 @@ org, and the validation errors (self-supersession, cross-project, already-
 superseded, duplicate link). `ruff check` clean. Full backend suite run
 after this change (see this entry's own `docs/decisions.md` counterpart for
 the final pass/fail count).
+
+## Phase 3 notes (2026-09-21)
+
+Implemented in `backend/app/modules/decisions/service.py`, same as Phase 2 —
+no router exists until Phase 4, so this is service-layer functions only:
+
+- `_get_or_create_supersedes_link_type` (Phase 2) was generalised into
+  `_get_or_create_link_type(db, organization_id, *, forward_name,
+  reverse_name)` rather than duplicated four more times — the exact same
+  fetch-or-create logic against the org-shared, generic
+  `RequirementLinkTypeDefinition` table, now parameterised on the link
+  type's forward/reverse names. `create_supersession` was updated to call
+  it with the `"Supersedes"`/`"Is superseded by"` names; behaviour is
+  unchanged (covered by the existing Phase 2 tests, which still pass).
+- `create_decision_requirement_link(db, *, decision, requirement, kind,
+  actor_id)` — Decision -> Requirement, `kind` one of
+  `DecisionRequirementLinkKind.IMPLEMENTS`/`AFFECTS` (source overview
+  §13/10.7). Validates same-project (`ValueError` otherwise, mirroring
+  `create_supersession`'s convention), then creates the typed `ArtefactLink`
+  with `target_type=ArtefactType.REQUIREMENT.value` — no registry change
+  needed, since `REQUIREMENT` is one of the two built-in core artefact
+  types `services.relationships.create_link` already accepts.
+- `create_decision_decision_link(db, *, source_decision, target_decision,
+  kind, actor_id)` — Decision -> Decision, `kind` one of
+  `DecisionDecisionLinkKind.DEPENDS_ON`/`CONFLICTS_WITH`. Validates
+  self-link and same-project, exactly like `create_supersession`.
+  `"Supersedes"` itself keeps its own dedicated function rather than
+  folding into this one, since only it drives the status-flip side effect.
+- "Implements", "Depends on", and "Conflicts with" already exist in
+  `services.definitions.DEFAULT_LINK_TYPES` (seeded per new organisation);
+  "Affects" does not. Both cases go through the same lazy fetch-or-create
+  helper regardless — an org's admin may have renamed/deleted a seeded row,
+  or the org may predate a given default, so nothing here relies on the
+  seeded rows still existing under their original names.
+- Both new functions pre-check with `services.relationships.
+  get_link_between` and raise `ValueError` on an exact duplicate, same
+  convention as `create_supersession`'s own duplicate check.
+- The five other relationship targets in this phase's original scope (Open
+  Question, Pain Point, Strategy, Guiding Principle, Compliance, Design)
+  remain reserved but deferred to Phase 6, blocked on modules that don't
+  exist yet — not built here, per this plan's own Phase 3/Phase 6 split.
+
+**Verified**: new `app/modules/decisions/tests/test_decisions_relationships.py`
+(9 tests) — Implements/Affects link creation (including link-type
+lazy-creation on first use), Depends-on/Conflicts-with link creation, and
+the validation errors (cross-project for both relationship groups, self-link
+for Decision<->Decision, duplicate link for both). `ruff check` clean. Full
+backend suite run after this change (see this entry's own `docs/decisions.md`
+counterpart for the final pass/fail count).
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
@@ -525,6 +575,41 @@ and doable in either order relative to the other:
 **Status:** blocked until Module 1 and/or Module 6 exist, respectively —
 each sub-part unblocks independently of the other. Neither is a blocker
 for Phases 1–5.
+
+## Phase 7 — Per-decision-type approver binding
+
+**Goal:** let an organisation restrict who may approve Decisions of a
+specific Decision Type (e.g. only an "Architecture Approver" may approve
+an Architecture decision), rather than today's single, flat, project-wide
+`decision_approver` module role from Phase 0 addendum item 3.
+
+**Why this is its own phase, blocked, rather than built into Phase 2 or
+Phase 4:** Phase 0 addendum item 3 already considered this exact
+requirement ("Decision Maker may vary by Decision," overview §13/10.5) and
+deliberately built only the flat placeholder role instead, specifically
+"to avoid building a bespoke policy engine here that the future Governance
+module will likely replace outright." Building per-type restriction
+directly into this module without a general mechanism to express "which
+role can do what" would repeat exactly the mistake that decision already
+avoided once. [Module 12 — Fine-Grained Access Control](module-12-fine-grained-access-control-plan.md)
+(requested by the user 2026-09-21, itself partly motivated by this exact
+question) is that general mechanism: an organisation-definable custom
+role, composed of atomic permissions, that this phase can bind to a
+specific `DecisionTypeDefinition` row.
+
+**Scope, once Module 12 exists:** add an optional `approver_role`
+reference to `DecisionTypeDefinition` (a role/permission identifier —
+either a fixed role or a Module-12 custom role); when set, the approval
+endpoint (Phase 4) requires the caller to hold that specific role for the
+Decision's own type, instead of the flat `decision_approver` role. Left
+unset (the default), behaviour is unchanged — this is strictly additive,
+per Module 12's own Design Principle 1. Full detail lives in Module 12's
+own plan, Phase 5, rather than duplicated here.
+
+**Status:** blocked until Module 12 exists. Not a blocker for Phases 1–6.
+Superseded, not duplicated, if/when Module 8 (Governance) later ships its
+own generic per-artefact-type Approval Policies (Module 8 Phase 2) — see
+Module 12's Phase 5 note.
 
 ## Acceptance criteria (from overview §48, Decisions subset)
 
