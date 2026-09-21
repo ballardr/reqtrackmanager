@@ -19,6 +19,12 @@ from app.schemas.report import ReportChapter
 
 class OrganizationCreate(BaseModel):
     name: str = Field(min_length=1)
+    # Module 4 (Decision Management) Phase 1 — `None` (the default) means
+    # "caller didn't specify," resolved to every module's `default_selected`
+    # org-creation choice by `app.modules.registry.run_on_org_created_hooks`;
+    # an explicit list (including `[]`) is used exactly as given. See
+    # `GET /orgs/creation-choices` for the available options.
+    module_choice_keys: list[str] | None = None
 
     @field_validator("name")
     @classmethod
@@ -34,6 +40,18 @@ class OrganizationCreate(BaseModel):
         if not stripped:
             raise ValueError("Organisation name cannot be blank.")
         return stripped
+
+
+class OrgCreationChoiceOut(BaseModel):
+    """One `app.modules.registry.OrgCreationChoiceOption`, as returned by
+    `GET /orgs/creation-choices` for the org-creation form to render
+    generically — see that dataclass's own docstring for field meanings."""
+
+    key: str
+    group_label: str
+    label: str
+    description: str
+    default_selected: bool
 
 
 class OrganizationRename(BaseModel):

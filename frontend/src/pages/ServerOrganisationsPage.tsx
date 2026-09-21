@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { Organization, OrgImportResult } from "../api/types";
+import type { Organization, OrgCreationChoice, OrgImportResult } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
@@ -43,6 +43,13 @@ export function ServerOrganisationsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
+  // Module 4 (Decision Management) Phase 1 — every registered module's
+  // optional org-creation seeding choices (e.g. Decision Management's ADR
+  // template packs), fetched once and rendered generically; this page has
+  // no hardcoded knowledge of what any of them are. `null` selected keys
+  // means "not yet initialised from the fetched defaults."
+  const [creationChoices, setCreationChoices] = useState<OrgCreationChoice[] | null>(null);
+  const [selectedChoiceKeys, setSelectedChoiceKeys] = useState<Set<string> | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -61,6 +68,26 @@ export function ServerOrganisationsPage() {
     reload();
   }, []);
 
+  useEffect(() => {
+    // Fetched once, independent of the modal opening — the checkboxes only
+    // need to be ready by the time a server admin opens the "New Org" form,
+    // and this page's own load is a rare, admin-only action so the extra
+    // request is not worth deferring behind `showNewForm`.
+    api.get<OrgCreationChoice[]>("/api/v1/orgs/creation-choices").then((choices) => {
+      setCreationChoices(choices);
+      setSelectedChoiceKeys(new Set(choices.filter((c) => c.default_selected).map((c) => c.key)));
+    });
+  }, []);
+
+  function toggleChoiceKey(key: string) {
+    setSelectedChoiceKeys((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function createOrg() {
     setCreateError(null);
     try {
@@ -69,7 +96,9 @@ export function ServerOrganisationsPage() {
         // — creates a brand-new organisation from an exported bundle
         // (settings, members, report templates, and every project's
         // structure/history), for backup restore, offboarding, or
-        // cross-instance migration.
+        // cross-instance migration. Module-contributed org-creation
+        // choices don't apply here — an imported bundle carries its own
+        // already-existing settings, there is nothing fresh to seed.
         const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", importFile, { name: newName });
         if (result.warnings.length > 0) setImportWarnings(result.warnings);
         setNewName("");
@@ -79,7 +108,10 @@ export function ServerOrganisationsPage() {
         showToast(strings.serverOrgs.createdToast(orgLabelCap));
         return;
       }
-      await api.post("/api/v1/orgs", { name: newName });
+      await api.post("/api/v1/orgs", {
+        name: newName,
+        module_choice_keys: selectedChoiceKeys ? Array.from(selectedChoiceKeys) : undefined,
+      });
       setNewName("");
       setShowNewForm(false);
       reload();
@@ -169,6 +201,32 @@ export function ServerOrganisationsPage() {
                 onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
               />
             </label>
+            {/* Module 4 (Decision Management) Phase 1 — every registered
+                module's optional org-creation seeding choices, grouped by
+                `group_label`; this page has no hardcoded knowledge of what
+                any of them are. Hidden for the import path (above), which
+                carries its own already-existing settings instead. */}
+            {!importFile && creationChoices && creationChoices.length > 0 && (
+              <div className="stack" style={{ gap: "0.5rem" }}>
+                {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
+                  <div key={groupLabel} className="stack" style={{ gap: "0.25rem" }}>
+                    <strong>{groupLabel}</strong>
+                    {creationChoices
+                      .filter((c) => c.group_label === groupLabel)
+                      .map((choice) => (
+                        <label key={choice.key} className="row" title={choice.description}>
+                          <input
+                            type="checkbox"
+                            checked={selectedChoiceKeys?.has(choice.key) ?? false}
+                            onChange={() => toggleChoiceKey(choice.key)}
+                          />
+                          {choice.label}
+                        </label>
+                      ))}
+                  </div>
+                ))}
+              </div>
+            )}
             {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setShowNewForm(false)}>

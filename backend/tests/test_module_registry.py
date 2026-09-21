@@ -30,8 +30,11 @@ from app.models.user import User
 from app.modules import registry as module_registry
 from app.modules.registry import (
     ModuleDefinition,
+    OrgCreationChoiceOption,
     apply_external_module_migrations,
     build_registry,
+    default_org_creation_choice_keys,
+    get_org_creation_choices,
     import_all_module_models,
     run_on_org_created_hooks,
 )
@@ -724,3 +727,105 @@ def test_run_on_org_created_hooks_skips_modules_with_no_hook(org_id, fake_module
         run_on_org_created_hooks(db, uuid_lib.UUID(org_id))
     finally:
         db.close()
+
+
+# --- `org_creation_choices` / `on_org_created_with_choices` (Module 4, Decision Management, Phase 1) ---
+
+
+def _register_fake_choice_module(*, default_selected: bool):
+    calls: list[frozenset[str]] = []
+    module = _fake_module(
+        org_creation_choices=(
+            OrgCreationChoiceOption(
+                key="fake_test_module:opt_a", group_label="Fake Choices", label="Option A",
+                description="Fake choice A.", default_selected=default_selected,
+            ),
+        ),
+        on_org_created_with_choices=lambda db, organization_id, selected_keys: calls.append(selected_keys),
+    )
+    module_registry.INSTALLED_MODULES.append(module)
+    build_registry(force=True)
+    return calls
+
+
+def _unregister_fake_module():
+    module_registry.INSTALLED_MODULES[:] = [
+        m for m in module_registry.INSTALLED_MODULES if m.key != FAKE_MODULE_KEY
+    ]
+    build_registry(force=True)
+
+
+def test_get_org_creation_choices_includes_a_registered_modules_options():
+    calls = _register_fake_choice_module(default_selected=True)
+    try:
+        keys = {option.key for option in get_org_creation_choices()}
+        assert "fake_test_module:opt_a" in keys
+    finally:
+        _unregister_fake_module()
+    assert calls == []  # sanity: listing options never calls the seeding hook
+
+
+def test_default_org_creation_choice_keys_includes_only_default_selected_options():
+    _register_fake_choice_module(default_selected=True)
+    try:
+        assert "fake_test_module:opt_a" in default_org_creation_choice_keys()
+    finally:
+        _unregister_fake_module()
+
+    _register_fake_choice_module(default_selected=False)
+    try:
+        assert "fake_test_module:opt_a" not in default_org_creation_choice_keys()
+    finally:
+        _unregister_fake_module()
+
+
+def test_run_on_org_created_hooks_falls_back_to_defaults_when_no_keys_given(org_id):
+    """`selected_choice_keys=None` (the parameter's default — what a caller
+    that predates this mechanism, e.g. `services.bootstrap.run_bootstrap`,
+    implicitly passes) resolves to every `default_selected` option, not to
+    an empty set — this is what keeps this mechanism backward compatible."""
+    calls = _register_fake_choice_module(default_selected=True)
+    try:
+        db = SessionLocal()
+        try:
+            run_on_org_created_hooks(db, uuid_lib.UUID(org_id))
+        finally:
+            db.close()
+        # The resolved set is every module's own default-selected options
+        # merged together (real registered modules, e.g. Decision
+        # Management's own seeded ADR packs, participate in the same
+        # fallback resolution) — a module is expected to filter to its own
+        # keys itself, so this only asserts the fake module's key made it
+        # into what it received, not that it received *only* its own key.
+        assert len(calls) == 1
+        assert "fake_test_module:opt_a" in calls[0]
+    finally:
+        _unregister_fake_module()
+
+
+def test_run_on_org_created_hooks_respects_an_explicit_empty_selection(org_id):
+    """An explicit empty set (a caller/form that unchecked every box) is
+    honoured exactly — it must not be treated the same as `None`."""
+    calls = _register_fake_choice_module(default_selected=True)
+    try:
+        db = SessionLocal()
+        try:
+            run_on_org_created_hooks(db, uuid_lib.UUID(org_id), frozenset())
+        finally:
+            db.close()
+        assert calls == [frozenset()]
+    finally:
+        _unregister_fake_module()
+
+
+def test_run_on_org_created_hooks_respects_an_explicit_selection(org_id):
+    calls = _register_fake_choice_module(default_selected=False)
+    try:
+        db = SessionLocal()
+        try:
+            run_on_org_created_hooks(db, uuid_lib.UUID(org_id), frozenset({"fake_test_module:opt_a"}))
+        finally:
+            db.close()
+        assert calls == [frozenset({"fake_test_module:opt_a"})]
+    finally:
+        _unregister_fake_module()

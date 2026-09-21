@@ -29,5 +29,7 @@ submodule some other piece of code imports first.
 
 from app.modules import registry as _registry
 from app.modules.compliance.module import MODULE_DEFINITION as _COMPLIANCE_MODULE
+from app.modules.decisions.module import MODULE_DEFINITION as _DECISIONS_MODULE
 
 _registry.INSTALLED_MODULES.append(_COMPLIANCE_MODULE)
+_registry.INSTALLED_MODULES.append(_DECISIONS_MODULE)

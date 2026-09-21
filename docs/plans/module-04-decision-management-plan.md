@@ -54,17 +54,172 @@ improvised).
 
 ## Status / Resume Here
 
-0 / 6 phases complete. Phase 0 is next.
+2 / 6 phases complete. Phase 2 (approval/rejection/supersession workflow) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Exploratory: requirements clarification | [ ] Not started |
-| 1 | Data model: Decision, Decision Type, lifecycle, module RBAC | [ ] Not started |
+| 0 | Exploratory: requirements clarification | [x] Complete (2026-09-21) — see addendum below |
+| 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
 | 2 | Approval, rejection, and supersession workflow | [ ] Not started |
-| 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [ ] Blocked on Module 0 |
+| 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [ ] Not started — no longer blocked, Module 0 shipped 2026-09-21 |
 | 4 | Backend API + audit logging | [ ] Not started |
 | 5 | Frontend — Decision list/detail/create/approve UI | [ ] Not started |
 | 6 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
+
+## Phase 0 addendum (2026-09-21) — resolved open questions
+
+Module 0 is confirmed complete (all 4 phases, 2026-09-21) — the one hard
+dependency this plan's build-order note flagged. Phase 3 is therefore no
+longer blocked; it's simply not started yet, same as every other phase.
+
+**New requirement surfaced when this phase actually ran**: the user asked
+for **Decision Templates** (custom, org-managed templates plus seeded
+standard ADR formats referencing
+[github.com/architecture-decision-record/architecture-decision-record](https://github.com/architecture-decision-record/architecture-decision-record)),
+with the ability to seed an organisation with a template set at creation
+time. This did not exist anywhere in the source overview (§13/10.x has no
+"template" concept at all) — it's a genuinely new scope addition, not a
+gap-fill of something the overview already specified. Resolved below
+alongside the plan's own original 7 open questions.
+
+**Decided by: User** (via clarifying questions this session):
+
+1. **Template seeding UX**: opt-in picker at organisation-creation time,
+   not always-auto-seed. The org-creation form/endpoint offers named
+   template-pack choices; only checked ones are seeded. Chosen over
+   always-seed-then-let-admin-delete specifically to keep an org's template
+   library free of packs its admin never wanted, at the cost of a new,
+   generic core extension point (org-creation choices — see Phase 1 scope
+   below) that mirrors `on_org_created`/`project_nav_visible`'s existing
+   "core file never imports a specific module" pattern rather than
+   special-casing Decision Management's own choices into `routers/orgs.py`.
+2. **Template shape**: per-field guidance text, not a single free-text
+   skeleton. A `DecisionTemplateDefinition` stores placeholder/example
+   prompt text for each of Decision's existing free-text fields (context,
+   options_considered, chosen_option, rationale, consequences, assumptions,
+   constraints). Picking a template at Decision-creation time (Phase 5)
+   pre-fills those fields with editable guidance text. No new fields are
+   needed on `Decision` itself — a template is a creation-time convenience,
+   not a persistent relationship, so `Decision` holds no FK back to the
+   template it was created from (see rationale below).
+3. **Approval model (original Q2/2a)**: simple placeholder role for now —
+   a single configurable `decision_approver` module role per project — not
+   a full per-Decision approver-assignment mechanism. Matches the plan's
+   own original recommendation: avoids building a bespoke policy engine
+   here that the future Governance module (§29-36, Approval Policies) will
+   likely replace outright.
+4. **Lifecycle (original Q1)**: `Rejected` is a real, explicit status
+   value, not just an audit event layered on `Draft`/`Under Review`. Final
+   enum: `Draft -> Proposed -> Under Review -> Approved`, with `Rejected`
+   and `Superseded` as the two other reachable terminal-ish states —
+   `DecisionStatus` in `app.modules.decisions.models`, its own enum, not a
+   reuse of `RequirementStatus` (per the plan's original framing).
+
+**Decided by: Agent** (lower-risk, reversible, or already effectively
+settled by the overview's own explicit text — flagged here rather than
+re-asked):
+
+5. **Decision Type scope (original Q3)**: project-scoped, mirroring
+   `ActionTypeDefinition` exactly (id, project_id, name, sort_order; no
+   `is_enabled` flag — no existing definition table in this codebase has
+   one, and introducing a new column shape not used anywhere else for a
+   "disable without deleting" behaviour the overview only mentions in
+   passing isn't justified yet). The overview's own text settles this
+   directly ("Types should be configurable **per project**... Projects
+   should be able to add/rename/reorder/disable/remove types") — this
+   was flagged as an open question mainly out of caution, not real
+   ambiguity. Seeded 5 defaults (Architecture, Design, Engineering,
+   Strategy, Operational) via `on_project_created`, plus a one-time
+   migration backfill for every project that already exists, mirroring
+   migration 0032's identical backfill for compliance action types.
+6. **Decision Template scope and no persistent FK**: org-scoped (matches
+   the chosen opt-in-at-org-creation seeding model) and *not* associated
+   with a specific Decision Type — `DecisionTypeDefinition` is
+   project-scoped while templates are org-scoped, so a template-to-type FK
+   would be ambiguous about which project's types it means. A template is
+   therefore a pure, decoupled starting-point convenience: pick any
+   template with any type at Decision-creation time. `Decision` holds no
+   FK to the template used to create it, so deleting a template never
+   needs the `delete_definition_with_reassignment` machinery
+   statuses/link-types/action-types use — a plain delete, and an org may
+   have zero templates without issue (unlike those three, nothing requires
+   at least one to exist).
+7. **Seeded template packs**: three, all `default_selected=True` on the
+   org-creation picker (so "create org, accept the defaults" reproduces
+   today's closest equivalent of always-seeding): **Nygard (Classic ADR)**
+   — Michael Nygard's original minimal format (Context/Decision/
+   Consequences; no Options Considered/Rationale section, prompts say so
+   explicitly rather than being left silently blank); **MADR (Markdown
+   Architectural Decision Records)** — the fuller format with drivers,
+   considered options, and pros/cons; **Y-Statement** — the compressed
+   "in the context of X, facing Y, we decided Z to achieve Q, accepting
+   R" form. Content lives in `app.modules.decisions.service` as
+   `DECISION_TEMPLATE_PACKS`.
+8. **Supersession semantics (original Q5)**: adopting the plan's own
+   recommendation as written — superseding is a relationship the *new*
+   Decision creates back to the old one, and the old Decision's status
+   flips to `Superseded` only once that relationship exists *and* the new
+   Decision itself reaches `Approved`. Implemented in Phase 2, not Phase 1;
+   noted here only so Phase 1's `DecisionStatus` enum is built against the
+   agreed final shape.
+9. **Comments/attachments (original Q6) — corrected mid-Phase-1, Decided
+   by: User**: an earlier version of this addendum proposed reusing
+   `ReviewComment`/`CommentFile` via a new `ReviewTargetType.DECISION`
+   member and justified it as "the same accepted pattern already used for
+   `ArtefactType`." That justification was wrong on inspection — grepping
+   confirmed no module has ever extended `ReviewTargetType` before
+   (Compliance has its own separate mechanism), so this would have been a
+   first precedent, not a followed one, and the user correctly stopped it:
+   core files must only grow generic *extension points* for module
+   behaviour, never module-specific *data*. Decision Management instead
+   gets its own module-local `DecisionComment`/`DecisionCommentFile`/
+   `DecisionFile` tables (`app.modules.decisions.models`), with a direct
+   `decision_id` FK rather than a polymorphic `target_type` — actually
+   simpler than reusing the core machinery would have been, not just more
+   boundary-correct, since a Decision comment never needs to target
+   anything else. `app.models.enums.ReviewTargetType` is untouched.
+10. **Nav placement (original Q7)**: deferred to Phase 5 — no UI exists
+    yet in Phase 1, so there's nothing to place. Not resolved here.
+
+**Unique code generation — corrected mid-Phase-1, Decided by: User**: an
+earlier version of this addendum proposed adding `DECISION = "decision"`
+directly to the core `ArtefactType` enum (`app.models.enums`), reasoning
+that `ProjectSequenceCounter.artefact_type`'s own docstring anticipated
+exactly this. The user rejected that too, for the same reason as Q6 above,
+and pointed out the deeper issue: Module 0 Phase 2 built
+`ProjectSequenceCounter.artefact_type` bound to the fixed `ArtefactType`
+enum instead of giving it the same dynamic, module-registrable treatment
+`ArtefactLink.source_type`/`target_type` already got one phase earlier —
+a real gap in Module 0's own work, not something to route around per
+module. **Fixed at the root** instead: `ProjectSequenceCounter.
+artefact_type` (and `services.sequences.generate_unique_code`'s signature)
+now take a plain string, validated against `app.modules.registry.
+get_all_registered_artefact_types()` — the exact same merged core-plus-
+every-module set `ArtefactLink` already validates against — rather than a
+closed Python enum. `Decision.unique_code` uses this corrected mechanism
+with `"decision"` declared on `ModuleDefinition.artefact_types`
+(`app.modules.decisions.module`), the ordinary way any module declares an
+artefact-type string, with zero further edits to any core file required
+for this or any future module. See `docs/decisions.md`'s "Module 4
+(Decision Management) Phase 1 — ProjectSequenceCounter made
+module-registrable" entry and the new `feedback_module_boundary_dynamic_
+registration` memory this incident produced.
+
+**New core extension point (Phase 1 scope, beyond this plan's original
+text)**: `ModuleDefinition` gains `org_creation_choices: tuple[
+OrgCreationChoiceOption, ...]` (declarative: key, group_label, label,
+description, default_selected) and `on_org_created_with_choices:
+Callable[[Session, UUID, frozenset[str]], None] | None`, plus registry
+functions `get_org_creation_choices()` / `default_org_creation_choice_keys()`.
+`run_on_org_created_hooks` gains an optional `selected_choice_keys`
+parameter (`None` — the default, used by `services.bootstrap.run_bootstrap`
+and any caller that predates this — resolves to every `default_selected`
+option, so this is purely additive and never breaks an existing caller).
+`routers.orgs.create_organization` gains an optional `module_choice_keys`
+field on `OrganizationCreate` and a new `GET` endpoint listing the
+available choices generically, so the frontend can render the picker
+without hardcoding Decision Management's own pack names. See
+`docs/modules.md` for the documented contract.
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 

@@ -37,6 +37,7 @@ from app.models.user import User
 from app.modules.registry import (
     get_frontend_manifest,
     get_module_registry,
+    get_org_creation_choices,
     is_module_enabled,
     is_module_entitled,
     list_enabled_module_roles,
@@ -72,6 +73,7 @@ from app.schemas.org import (
     ModuleRoleDefinitionOut,
     ModuleRoleGrantOut,
     OrgAdvancedSettingsOut,
+    OrgCreationChoiceOut,
     OrgAdvancedSettingsUpdate,
     OrganizationCreate,
     OrganizationDeleteConfirm,
@@ -145,6 +147,17 @@ router = APIRouter(prefix="/api/v1/orgs", tags=["organizations"])
 settings = get_settings()
 
 
+@router.get("/creation-choices", response_model=list[OrgCreationChoiceOut])
+def list_org_creation_choices(current_user: User = Depends(require_server_admin)):
+    """Lists every registered module's optional org-creation seeding
+    choices (`ModuleDefinition.org_creation_choices`, e.g. Decision
+    Management's ADR template packs) for the org-creation form to render
+    generically — this core router never imports a specific module's own
+    choice list. Server-admin only, matching `POST /orgs` (only a server
+    admin ever creates an organisation)."""
+    return get_org_creation_choices()
+
+
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def create_organization(
     payload: OrganizationCreate,
@@ -158,11 +171,16 @@ def create_organization(
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
     # Generic module-contributed org-creation seeding (e.g. Compliance's
-    # `seed_compliance_action_types`) — this core router never imports a
-    # specific module; see `ModuleDefinition.on_org_created`'s own docstring
-    # for why org-creation time, not a module-enable hook, is where this
-    # has to run.
-    run_on_org_created_hooks(db, org.id)
+    # `seed_compliance_action_types`, or a module's opt-in `org_creation_
+    # choices`, e.g. Decision Management's ADR template packs) — this core
+    # router never imports a specific module; see `ModuleDefinition.
+    # on_org_created`'s own docstring for why org-creation time, not a
+    # module-enable hook, is where this has to run. `module_choice_keys`
+    # of `None` (the field's default) falls back to every module's
+    # `default_selected` choice — see `run_on_org_created_hooks`'s own
+    # docstring.
+    selected_keys = None if payload.module_choice_keys is None else frozenset(payload.module_choice_keys)
+    run_on_org_created_hooks(db, org.id, selected_keys)
     log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
     db.commit()
     db.refresh(org)

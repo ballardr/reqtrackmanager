@@ -367,6 +367,18 @@ export interface OrgImportResult {
   warnings: string[];
 }
 
+// Module 4 (Decision Management) Phase 1 — a module's optional org-creation
+// seeding choice (`app.modules.registry.OrgCreationChoiceOption`), listed
+// generically by `GET /orgs/creation-choices` so this page never hardcodes
+// a specific module's own choices.
+export interface OrgCreationChoice {
+  key: string;
+  group_label: string;
+  label: string;
+  description: string;
+  default_selected: boolean;
+}
+
 export interface MergeConflict {
   id: string;
   kind: "project" | "report_template";

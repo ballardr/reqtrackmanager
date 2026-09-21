@@ -298,6 +298,48 @@ project_id` tries every registered module's hook, in registry order,
 until one matches. Leave this `None` if your module has no file
 attachments of its own.
 
+**If your module needs to seed its own org-scoped defaults**, set
+`on_org_created: Callable[[Session, UUID], None]` — called once,
+unconditionally, right after a brand-new `Organization` row is flushed
+(`app.routers.orgs.create_organization`/`app.services.bootstrap.
+run_bootstrap` both call `run_on_org_created_hooks`, never importing your
+module directly). Add rows, don't commit — the caller commits once for the
+whole org-creation transaction. This is for defaults every organisation
+should simply have (Compliance's own default action types are the
+existing example) — there is no "on module enabled" callback to hook into
+instead, so org-creation time is the one deterministic point that can't
+race or double-seed regardless of your module's own `default_enabled`
+policy.
+
+**If your module has *optional* seeding a human should choose, not
+unconditional defaults** (Decision Management's three seeded ADR template
+packs are the first example — plans/module-04-decision-management-plan.md
+Phase 1), use `org_creation_choices`/`on_org_created_with_choices` instead
+of `on_org_created`:
+
+```python
+org_creation_choices: tuple[OrgCreationChoiceOption, ...] = ()
+on_org_created_with_choices: Callable[[Session, UUID, frozenset[str]], None] | None = None
+```
+
+Declare each option as an `OrgCreationChoiceOption` (`key`, `group_label`,
+`label`, `description`, `default_selected`) — `key` should be namespaced
+with your module's own key (e.g. `"decisions:adr_madr"`) so it can never
+collide with another module's choice. `GET /orgs/creation-choices` returns
+every registered module's options (via `get_org_creation_choices()`) for
+the org-creation form to render generically, grouped by `group_label`;
+`POST /orgs`'s `module_choice_keys` field carries back whichever keys the
+caller checked. Your `on_org_created_with_choices` hook receives the full
+resolved set of selected keys across *every* module, not just your own —
+filter to your own prefix before acting. If the caller creates an
+organisation without passing `module_choice_keys` at all (an API caller,
+script, or `services.bootstrap.run_bootstrap` that predates your module),
+the resolved set falls back to every option with `default_selected=True`
+(`default_org_creation_choice_keys()`), so your module still gets sensible
+defaults without that caller needing to know your choices exist. Leave
+both fields at their defaults (empty tuple, `None`) if your module has
+nothing optional to offer at org-creation time — most modules never will.
+
 ---
 
 ## 4. Module-contributed RBAC
