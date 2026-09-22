@@ -91,21 +91,21 @@ Same optional `limit`/`offset` pagination convention as the requirements list, w
 
 ## Pull a report
 
-Both report endpoints are `POST` with a JSON body — never `GET` — because report generation accepts filters and content options (`ReportRequest`: `component_id`, `category_id`, `status`, `keyword`, `include_archived`, extra Markdown chapters, a branding template id, and more), all optional. An empty object is a valid minimal body:
+There is one report endpoint, `POST /api/v1/projects/$PROJECT_ID/reports` — never `GET` — because report generation accepts filters and content options (`ReportRequest`: `format`, `component_id`, `category_id`, `status`, `keyword`, `include_archived`, extra Markdown chapters, a branding template id, and more). `format` (`"pdf"` or `"csv"`) is the only required field; everything else is optional:
 
 ```bash
 # PDF
-curl -s -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID/reports/pdf" \
+curl -s -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID/reports" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{}' -o report.pdf
+  -d '{"format": "pdf"}' -o report.pdf
 
 # CSV
-curl -s -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID/reports/csv" \
+curl -s -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID/reports" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{}' -o report.csv
+  -d '{"format": "csv"}' -o report.csv
 ```
 
-The PDF endpoint returns `application/pdf`; the CSV endpoint returns `text/csv`. Both, with no filters supplied, include every non-archived requirement in the project — see [Core Features → Reports and export](../core-features/reports-and-export.md) for the full option set (branding templates, chapter layout, appended shared-resource sections).
+`format: "pdf"` returns `application/pdf`; `format: "csv"` returns `text/csv`. Both, with no filters supplied, include every non-archived requirement in the project — see [Core Features → Reports and export](../core-features/reports-and-export.md) for the full option set (branding templates, chapter layout, appended shared-resource sections).
 
 ## Where this fits
 

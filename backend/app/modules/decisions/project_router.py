@@ -87,6 +87,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_request_channel
 from app.models.enums import ArtefactType
 from app.models.file import FileAsset
 from app.models.project import Project
@@ -122,7 +123,6 @@ from app.modules.decisions.service import (
     resolve_effective_decision_types,
     submit_decision_for_review,
 )
-from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
@@ -131,6 +131,7 @@ from app.services.files import delete_file, upload_file
 from app.services.ordering import move_ordered
 from app.services.rbac import (
     get_effective_org_roles,
+    require_ai_approvals_enabled,
     require_module_role,
     require_project_module_enabled,
     user_satisfies_module_role,
@@ -582,37 +583,64 @@ def submit_decision_for_review_endpoint(
     return _decision_to_out(decision)
 
 
-@router.post("/{decision_id}/approve", response_model=DecisionOut, openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA)
+@router.post("/{decision_id}/approve", response_model=DecisionOut)
 def approve_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
     current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
-    """Marked `APPROVAL_ACTION_ROUTE_EXTRA` so the module MCP-tool manifest
-    builder can never expose this as a tool, regardless of what a future
-    `module.py` declares (added alongside this module's Phase 6 MCP tools —
-    see `module.py`'s own docstring)."""
+    """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`) — gated
+    the same as every other mutating endpoint this router names as
+    approval-type (the flat `decision_approver` module role).
+
+    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
+    docs/decisions.md's "Decision Management MCP approval gate" entry,
+    following up on the compliance module's identical "Compliance MCP
+    write tools + generalized AI approval gate" entry): this is now MCP-
+    reachable exactly like core's `requirements.approve_requirement`/
+    `complete_requirement`, `change_requests.decide_change_request`, and
+    `modules.compliance.project_router.approve_requirement` — when reached
+    through the MCP server (`channel == "mcp"`), additionally requires
+    this project and its organisation to both have explicitly enabled AI
+    approval (`require_ai_approvals_enabled`); a plain UI/API call is
+    unaffected by that flag either way."""
+    project = db.get(Project, project_id)
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project(db, project_id, decision_id)
-    _apply_value_error_as_conflict(approve_decision, db, decision, current_user.id, comment=payload.comment)
+    _apply_value_error_as_conflict(
+        approve_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
+    )
     db.commit()
     db.refresh(decision)
     return _decision_to_out(decision)
 
 
-@router.post("/{decision_id}/reject", response_model=DecisionOut, openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA)
+@router.post("/{decision_id}/reject", response_model=DecisionOut)
 def reject_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
     current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
-    """Rejection requires a comment — mirrors `record_review_outcome`'s
+    """Formally rejects a Decision (`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`).
+    Rejection requires a comment — mirrors `record_review_outcome`'s
     mandatory-comment-on-`FAILED` rule (`routers.requirements.py`) and
     `reject_requirement`'s mandatory `decision_note`
     (`modules.compliance.project_router`): a rejection must never appear
-    with no indication of why. Marked `APPROVAL_ACTION_ROUTE_EXTRA` for the
-    same reason as `approve_decision_endpoint` above."""
+    with no indication of why.
+
+    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see
+    `approve_decision_endpoint`'s docstring above; gated the same way when
+    reached through the MCP server."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Decision.")
+    project = db.get(Project, project_id)
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project(db, project_id, decision_id)
-    _apply_value_error_as_conflict(reject_decision, db, decision, current_user.id, comment=payload.comment)
+    _apply_value_error_as_conflict(
+        reject_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
+    )
     db.commit()
     db.refresh(decision)
     return _decision_to_out(decision)

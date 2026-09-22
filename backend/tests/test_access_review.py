@@ -125,6 +125,19 @@ def test_system_users_has_org_membership_field_reflects_reality(client, admin_to
     assert by_email["admin@example.com"]["has_org_membership"] is True
 
 
+def test_orphaned_user_status_rejects_missing_or_invalid_action(client, admin_token, org_id):
+    """The merged `/status` endpoint's `action` is required (no default)
+    and restricted to the four known transitions — a missing or bogus value
+    must 422, not silently do nothing or pick a default action."""
+    orphaned_id = _make_orphaned_user(client, admin_token, org_id, "orphaned_bad_action@example.com")
+    missing = client.post(f"/api/v1/system/users/{orphaned_id}/status", json={}, headers=auth_headers(admin_token))
+    assert missing.status_code == 422
+    invalid = client.post(
+        f"/api/v1/system/users/{orphaned_id}/status", json={"action": "delete"}, headers=auth_headers(admin_token)
+    )
+    assert invalid.status_code == 422
+
+
 def test_deactivate_and_reactivate_orphaned_user(client, admin_token, org_id):
     """Hardening-review finding: an orphaned account could not be acted on
     by anyone at all — org-scoped `deactivate_org_user` requires the target
@@ -132,13 +145,13 @@ def test_deactivate_and_reactivate_orphaned_user(client, admin_token, org_id):
     doesn't. These new system-level endpoints close that gap."""
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, "orphaned_to_deactivate@example.com")
 
-    resp = client.post(f"/api/v1/system/users/{orphaned_id}/deactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
     assert client.post(
         "/api/v1/auth/login", json={"email": "orphaned_to_deactivate@example.com", "password": "Password123!"}
     ).status_code == 401
 
-    resp = client.post(f"/api/v1/system/users/{orphaned_id}/reactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "reactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
     assert client.post(
         "/api/v1/auth/login", json={"email": "orphaned_to_deactivate@example.com", "password": "Password123!"}
@@ -150,22 +163,22 @@ def test_cannot_deactivate_or_reactivate_an_org_member_via_the_system_endpoint(c
     that organisation's own admin console, not the system-wide endpoint —
     a server admin's authority is tenancy-wide but content-free (I-M-05)."""
     member_id = create_org_user(client, admin_token, org_id, "still_a_member@example.com", role="member")
-    resp = client.post(f"/api/v1/system/users/{member_id}/deactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{member_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 400
-    resp = client.post(f"/api/v1/system/users/{member_id}/reactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{member_id}/status", json={"action": "reactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 400
 
 
 def test_cannot_deactivate_own_account_via_system_endpoint(client, admin_token):
     self_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
-    resp = client.post(f"/api/v1/system/users/{self_id}/deactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{self_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 400
 
 
 def test_ban_deactivates_and_blocks_future_role_grants(client, admin_token, org_id):
     banned_id = _make_orphaned_user(client, admin_token, org_id, "to_be_banned@example.com")
 
-    resp = client.post(f"/api/v1/system/users/{banned_id}/ban", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
     assert client.post(
         "/api/v1/auth/login", json={"email": "to_be_banned@example.com", "password": "Password123!"}
@@ -188,9 +201,9 @@ def test_ban_deactivates_and_blocks_future_role_grants(client, admin_token, org_
 
 def test_unban_allows_role_grants_again_but_does_not_reactivate(client, admin_token, org_id):
     unbanned_id = _make_orphaned_user(client, admin_token, org_id, "to_be_unbanned@example.com")
-    client.post(f"/api/v1/system/users/{unbanned_id}/ban", headers=auth_headers(admin_token))
+    client.post(f"/api/v1/system/users/{unbanned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
 
-    resp = client.post(f"/api/v1/system/users/{unbanned_id}/unban", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{unbanned_id}/status", json={"action": "unban"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
 
     org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "Org For Unban Regrant")
@@ -216,10 +229,10 @@ def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):
     were to flip is_active back on" (models/user.py). The correct sequence
     is unban, then reactivate."""
     banned_id = _make_orphaned_user(client, admin_token, org_id, "reactivate_bypass@example.com")
-    resp = client.post(f"/api/v1/system/users/{banned_id}/ban", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert resp.status_code == 204
 
-    resp = client.post(f"/api/v1/system/users/{banned_id}/reactivate", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "reactivate"}, headers=auth_headers(admin_token))
     assert resp.status_code == 400
     assert "banned" in resp.json()["detail"].lower()
     assert client.post(
@@ -227,9 +240,9 @@ def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):
     ).status_code == 401
 
     # Unban first, then reactivate succeeds.
-    assert client.post(f"/api/v1/system/users/{banned_id}/unban", headers=auth_headers(admin_token)).status_code == 204
+    assert client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "unban"}, headers=auth_headers(admin_token)).status_code == 204
     assert client.post(
-        f"/api/v1/system/users/{banned_id}/reactivate", headers=auth_headers(admin_token)
+        f"/api/v1/system/users/{banned_id}/status", json={"action": "reactivate"}, headers=auth_headers(admin_token)
     ).status_code == 204
     assert client.post(
         "/api/v1/auth/login", json={"email": "reactivate_bypass@example.com", "password": "Password123!"}
@@ -238,10 +251,10 @@ def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):
 
 def test_cannot_ban_own_account_or_an_org_member(client, admin_token, org_id):
     self_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
-    assert client.post(f"/api/v1/system/users/{self_id}/ban", headers=auth_headers(admin_token)).status_code == 400
+    assert client.post(f"/api/v1/system/users/{self_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token)).status_code == 400
 
     member_id = create_org_user(client, admin_token, org_id, "member_not_bannable@example.com", role="member")
-    assert client.post(f"/api/v1/system/users/{member_id}/ban", headers=auth_headers(admin_token)).status_code == 400
+    assert client.post(f"/api/v1/system/users/{member_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token)).status_code == 400
 
 
 def test_system_users_org_names_reflect_membership(client, admin_token, org_id):
@@ -318,7 +331,7 @@ def test_system_users_search_combines_with_view_and_active_filters(client, admin
 
     # `includeDeactivated` unchecked maps to `is_active=true` — combined with
     # search, a deactivated match is excluded while an active one still shows.
-    client.post(f"/api/v1/system/users/{orphan_id}/deactivate", headers=auth_headers(admin_token))
+    client.post(f"/api/v1/system/users/{orphan_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token))
     resp = client.get("/api/v1/system/users?is_active=true&search=combo", headers=auth_headers(admin_token))
     assert resp.status_code == 200
     emails = {u["email"] for u in resp.json()}

@@ -21,7 +21,7 @@ can never grant itself or others a role).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -132,6 +132,25 @@ class ServerRoleAssign(BaseModel):
     """
 
     role: ServerRole
+
+
+class OrphanedUserStatusUpdate(BaseModel):
+    """Payload for `POST /users/{user_id}/status` — merges the four
+    formerly-separate `deactivate`/`reactivate`/`ban`/`unban` orphaned-user
+    endpoints (2026-09-22, see docs/decisions.md) into one, following the
+    same "action discriminates the transition" shape `ChangeRequestDecision`
+    already uses for approve/reject. `deactivate_reactivate_ban_or_unban_
+    orphaned_user` dispatches on `action`, applying the exact same per-branch
+    guards and field writes the four original endpoints each had — see that
+    function's own docstring for each branch's asymmetries (self-targeting,
+    the banned/reactivate interaction, which fields `ban`/`unban` touch).
+
+    Attributes:
+        action: Which status transition to apply to the target orphaned
+            account.
+    """
+
+    action: Literal["deactivate", "reactivate", "ban", "unban"]
 
 
 class ModuleEntitlementPolicyOut(BaseModel):
@@ -492,101 +511,86 @@ def _require_orphaned_user(db: Session, user_id: UUID) -> User:
     return user
 
 
-@router.post("/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
-def deactivate_orphaned_user(
+@router.post("/users/{user_id}/status", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_reactivate_ban_or_unban_orphaned_user(
     user_id: UUID,
+    payload: OrphanedUserStatusUpdate,
     current_user: User = Depends(require_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Deactivates an orphaned account (C-U-04; C-A-13's "should be
-    deactivated" clarification) — the one category of user no organisation
-    admin can ever reach, since `deactivate_org_user` requires the target to
-    already belong to that org. See `_require_orphaned_user` for the scoping
-    rule this shares with `reactivate_orphaned_user`.
-    """
-    if user_id == current_user.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot deactivate your own account.")
-    user = _require_orphaned_user(db, user_id)
-    user.is_active = False
-    user.deactivated_at = datetime.now(UTC)
-    log_event(db, entity_type="user", entity_id=user_id, action="deactivated", actor_id=current_user.id)
-    db.commit()
+    """Applies a status transition to an orphaned account — merges the
+    formerly-separate `deactivate`/`reactivate`/`ban`/`unban` endpoints
+    (2026-09-22, see docs/decisions.md) into one, dispatching on
+    `payload.action`. Each branch below preserves its original endpoint's
+    exact guards and field writes; none were weakened by the merge:
 
+    - `deactivate` (C-U-04; C-A-13's "should be deactivated" clarification)
+      — the one category of user no organisation admin can ever reach,
+      since `deactivate_org_user` requires the target to already belong to
+      that org. Refuses to deactivate the caller's own account (400).
+    - `reactivate` — reverses a deactivation. No user-facing lifecycle
+      action currently reverses a deactivation at all (org-scoped or
+      otherwise) — added alongside `deactivate` so a server admin who
+      deactivates an orphaned account by mistake, or whose owner turns out
+      to still need it, isn't left with no way back short of direct
+      database access. Refuses (400) if the account is currently banned —
+      `unban` must be applied first; otherwise this would let a banned
+      account back in without ever going through that step, contradicting
+      `User.is_banned`'s own documented invariant that a ban "survives even
+      if something else were to flip `is_active` back on." Hardening-review
+      finding: this was previously unchecked. Does *not* forbid
+      self-targeting (unlike `deactivate`/`ban`) — reactivating your own
+      account is harmless.
+    - `ban` — deactivates the account (same effect as `deactivate`) and
+      also flags it so `assign_org_role` refuses to let any org admin grant
+      it a role again later — closing the gap a plain deactivation leaves
+      open, where the same account could quietly be re-admitted through a
+      different organisation without a server admin ever being asked
+      again. Refuses to ban the caller's own account (400).
+    - `unban` — reverses a ban. Deliberately does *not* also reactivate the
+      account (`is_active` stays False) — unbanning just means "this
+      account may be granted org roles again," a separate decision from
+      "this account may log in again," which stays a distinct, explicit
+      `reactivate` action. Does *not* forbid self-targeting.
 
-@router.post("/users/{user_id}/reactivate", status_code=status.HTTP_204_NO_CONTENT)
-def reactivate_orphaned_user(
-    user_id: UUID,
-    current_user: User = Depends(require_server_admin),
-    db: Session = Depends(get_db),
-):
-    """Reactivates a previously-deactivated orphaned account. No user-facing
-    lifecycle action currently reverses a deactivation at all (org-scoped or
-    otherwise) — added alongside `deactivate_orphaned_user` so a server admin
-    who deactivates an orphaned account by mistake, or whose owner turns out
-    to still need it, isn't left with no way back short of direct database
-    access.
+    All four actions are scoped to orphaned/system-level accounts (see
+    `_require_orphaned_user`) and log the same audit `action` string
+    (`"deactivated"`/`"reactivated"`/`"banned"`/`"unbanned"`) their original,
+    separate endpoints did — mirroring how `change_requests.decide_change_
+    request` already computes its own audit action string from a merged
+    payload (`action="approved" if payload.approve else "rejected"`).
 
     Raises:
-        HTTPException: 400 if the account is currently banned — `unban`
-            must be called first (a separate, deliberate action, see its
-            docstring); otherwise this endpoint would let a banned account
-            back in without ever going through that step, contradicting
-            `User.is_banned`'s own documented invariant that ban "survives
-            even if something else were to flip `is_active` back on."
-            Hardening-review finding: this was previously unchecked.
+        HTTPException: 404 if `user_id` doesn't exist; 400 if they belong to
+            any organisation (`_require_orphaned_user`); 400 for the
+            self-targeting/still-banned guards above, per action.
     """
+    if payload.action in ("deactivate", "ban") and user_id == current_user.id:
+        verb = "deactivate" if payload.action == "deactivate" else "ban"
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"You cannot {verb} your own account.")
     user = _require_orphaned_user(db, user_id)
-    if user.is_banned:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This account is banned. Unban it before reactivating.")
-    user.is_active = True
-    user.deactivated_at = None
-    log_event(db, entity_type="user", entity_id=user_id, action="reactivated", actor_id=current_user.id)
-    db.commit()
 
+    if payload.action == "deactivate":
+        user.is_active = False
+        user.deactivated_at = datetime.now(UTC)
+    elif payload.action == "reactivate":
+        if user.is_banned:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This account is banned. Unban it before reactivating.")
+        user.is_active = True
+        user.deactivated_at = None
+    elif payload.action == "ban":
+        user.is_active = False
+        user.deactivated_at = datetime.now(UTC)
+        user.is_banned = True
+        user.banned_at = datetime.now(UTC)
+        user.banned_by = current_user.id
+    else:  # "unban"
+        user.is_banned = False
+        user.banned_at = None
+        user.banned_by = None
 
-@router.post("/users/{user_id}/ban", status_code=status.HTTP_204_NO_CONTENT)
-def ban_orphaned_user(
-    user_id: UUID,
-    current_user: User = Depends(require_server_admin),
-    db: Session = Depends(get_db),
-):
-    """Bans an orphaned account: deactivates it (same effect as
-    `deactivate_orphaned_user`) and also flags it so `assign_org_role`
-    refuses to let any org admin grant it a role again later — closing the
-    gap a plain deactivation leaves open, where the same account could
-    quietly be re-admitted through a different organisation without a
-    server admin ever being asked again. Scoped to orphaned accounts only,
-    same rationale as `deactivate_orphaned_user`: a user who already
-    belongs to an organisation is that organisation's own admin's call.
-    """
-    if user_id == current_user.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot ban your own account.")
-    user = _require_orphaned_user(db, user_id)
-    user.is_active = False
-    user.deactivated_at = datetime.now(UTC)
-    user.is_banned = True
-    user.banned_at = datetime.now(UTC)
-    user.banned_by = current_user.id
-    log_event(db, entity_type="user", entity_id=user_id, action="banned", actor_id=current_user.id)
-    db.commit()
-
-
-@router.post("/users/{user_id}/unban", status_code=status.HTTP_204_NO_CONTENT)
-def unban_orphaned_user(
-    user_id: UUID,
-    current_user: User = Depends(require_server_admin),
-    db: Session = Depends(get_db),
-):
-    """Reverses a ban. Deliberately does *not* also reactivate the account
-    (`is_active` stays False) — unbanning just means "this account may be
-    granted org roles again," a separate decision from "this account may
-    log in again," which stays a distinct, explicit `reactivate` action.
-    """
-    user = _require_orphaned_user(db, user_id)
-    user.is_banned = False
-    user.banned_at = None
-    user.banned_by = None
-    log_event(db, entity_type="user", entity_id=user_id, action="unbanned", actor_id=current_user.id)
+    action_past_tense = {"deactivate": "deactivated", "reactivate": "reactivated", "ban": "banned", "unban": "unbanned"}
+    log_event(db, entity_type="user", entity_id=user_id, action=action_past_tense[payload.action], actor_id=current_user.id)
     db.commit()
 
 

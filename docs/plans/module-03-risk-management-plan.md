@@ -198,20 +198,30 @@ commitment here, at the last purely-backend phase, rather than
 retroactively to Phase 1 alone, is a judgment call (**Decided by: Agent**)
 — revisit if a future pass splits Phase 1's own endpoints out explicitly
 from its data-model work. Once this phase (and the endpoints it depends on
-from Phases 1–3) exists, declare narrow, **read-only-only**
-`McpToolDefinition` entries for the safe list/get endpoints — candidates
-made concrete by each phase's own scope text: `list_risks`/`get_risk`
-(Phase 1, including the risk's current inherent/residual rating), and
-`list_risk_reviews`/`get_risk_review` (this phase). Explicitly excluded:
-anything mutating, and any endpoint that approves/decides/accepts
-something — in particular whatever endpoint moves a Risk to
-`Mitigated/Accepted` (Phase 2's lifecycle, and Phase 0's own open question
-about whether accepting residual risk needs a distinct Approve-level role)
-must be marked with `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
-(`backend/app/modules/registry.py`) as defence-in-depth, the same
-mechanism Compliance and Decision Management already use, so such a route
-can never be exposed as an MCP tool even by accident, regardless of how
-Phase 0 ultimately resolves that role question.
+from Phases 1–3) exists, declare `McpToolDefinition` entries for the safe
+list/get endpoints — candidates made concrete by each phase's own scope
+text: `list_risks`/`get_risk` (Phase 1, including the risk's current
+inherent/residual rating), and `list_risk_reviews`/`get_risk_review` (this
+phase).
+
+**2026-09-22 update (Decided by: User):** this plan originally committed to
+**read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — CRUD/lifecycle tools for Risks and
+Risk Reviews declared normally (gated by `MCP_WRITES_ENABLED` + the calling
+account's own RBAC role, no special treatment). Whatever endpoint moves a
+Risk to `Mitigated`/`Accepted` remains the one exception: it is an
+approve/decide-type action, so it should use the generalized org+project
+`allow_ai_approvals` gate (`app.services.rbac.require_ai_approvals_
+enabled`) rather than staying hard-excluded via `openapi_extra=
+APPROVAL_ACTION_ROUTE_EXTRA` — defaulting to this option for consistency
+with Compliance's new posture, regardless of how Phase 0's own open
+question about a distinct Approve-level role is ultimately resolved (the
+gate is orthogonal to which RBAC role may call the endpoint). This is a
+judgment call at plan-time (**Decided by: Agent**) about *which* option
+(a)/(b) to pick; the underlying instruction to move this plan off
+read-only-only is **Decided by: User** (2026-09-22).
 
 ## Phase 5 — Frontend UI
 

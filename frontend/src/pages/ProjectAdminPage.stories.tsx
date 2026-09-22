@@ -740,14 +740,18 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
   },
 };
 
-/** The Members section's own "add a direct member" control
- * (`UserAutocomplete` + a role `<select>`) grants a direct role via
- * `POST .../roles` — distinct from the Groups tab's per-group add flow,
- * which grants group membership instead. Style guide "Pattern: modal
- * dialog for entity create/rename" (Principle 3) — as of PR3 of the
- * members/groups directory rework, this is no longer permanently visible
- * above the table; "Add member" opens it in a `Modal`, mirroring
- * `GroupsTabCreateGroupViaModal` above. */
+/** The Members section's own "add a direct member" control — the shared
+ * `AddMembersModal` (staged multi-add) — grants a direct role via
+ * `POST .../roles` once committed, distinct from the Groups tab's
+ * per-group add flow, which grants group membership instead. Style guide
+ * "Pattern: modal dialog for entity create/rename" (Principle 3) — as of
+ * PR3 of the members/groups directory rework, this is no longer
+ * permanently visible above the table; "Add member" opens it in a `Modal`,
+ * mirroring `GroupsTabCreateGroupViaModal` above. Each staged entry gets
+ * its own per-row role `<select>` now (see `AddMembersModal`'s own module
+ * docstring for why the old page-level "Role to grant" combobox moved
+ * there), so this story checks the picker input and the commit button's
+ * disabled-when-empty state instead. */
 export const MembersTabAddDirectMember: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -763,11 +767,11 @@ export const MembersTabAddDirectMember: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
     const dialog = body.getByRole("dialog", { name: "Add member" });
-    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Role to grant" }), "stakeholder");
     // The add control's own `UserAutocomplete` — no server-side search
     // wired in this story, so this just confirms the control renders and
-    // is reachable, inside the modal, with the chosen role alongside it.
+    // is reachable, with nothing staged yet (commit button disabled).
     await expect(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+    await expect(within(dialog).getByRole("button", { name: "Add member(s)" })).toBeDisabled();
   },
 };
 
@@ -807,9 +811,11 @@ export const MembersTabAddMemberModalOpen: Story = {
 /** PR5 of the members/groups directory rework plan: the same "Add member"
  * autocomplete also matches org groups by name (client-side, against
  * `orgGroups` — always loaded for the Groups tab regardless), rendered with
- * an "Org group" badge distinguishing it from a user match. Picking one grants
- * the role directly via PR4's `POST .../group-roles`, not
- * `POST .../roles` — no `ProjectGroup` wrapper, no nesting. */
+ * an "Org group" badge distinguishing it from a user match. Picking one
+ * stages it (`AddMembersModal`'s staged multi-add); the role itself is set
+ * on the staged row, then the grant (`POST .../group-roles`, not
+ * `POST .../roles` — no `ProjectGroup` wrapper, no nesting) fires once
+ * committed. */
 export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -821,19 +827,24 @@ export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add member" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Add member" });
 
-    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Role to grant" }), "stakeholder");
     await userEvent.type(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
     const groupOption = await within(dialog).findByRole("option", { name: /Engineering/ });
     await expect(groupOption).toHaveTextContent("Org group");
-
     await userEvent.click(groupOption);
+
+    // Staged with the default role ("member") — change it on the staged
+    // row itself before committing.
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Role for Engineering" }), "stakeholder");
+    expect(api.post).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add 1 member" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/group-roles`,
         { org_group_id: "og1", role: "stakeholder" },
       )
     );
-    // Closes the same way a user pick does.
+    // Closes once every staged entry has committed successfully.
     await expect(within(document.body).queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
   },
 };

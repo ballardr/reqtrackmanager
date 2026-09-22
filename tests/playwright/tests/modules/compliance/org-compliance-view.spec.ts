@@ -144,7 +144,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // dedicated filter test below).
     await selectFilterOption(page, "Standard", `${reference} — ${standardName}`);
     const standardsReportRequestPromise = page.waitForRequest(
-      (req) => req.url().includes("/modules/compliance/reports/csv") && req.url().includes("standard_id=")
+      (req) => req.url().includes("/modules/compliance/reports") && req.url().includes("format=csv") && req.url().includes("standard_id=")
     );
     await page.getByRole("button", { name: "Export" }).click();
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
@@ -372,7 +372,8 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // filter state to the actual outgoing request.
     const reportRequestPromise = page.waitForRequest(
       (req) =>
-        req.url().includes("/modules/compliance/reports/csv") &&
+        req.url().includes("/modules/compliance/reports") &&
+        req.url().includes("format=csv") &&
         req.url().includes("standard_id=") &&
         req.url().includes("requirement_id=")
     );

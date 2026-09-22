@@ -41,7 +41,7 @@ For example, a security team that owns "ISO 27001:2022" end to end would typical
 - [Scheduled reviews and notifications](./reviews-and-notifications.md) — recurring reviews and the background sweeps that keep people informed of what needs attention.
 - [Cross-standard mapping and version migration](./mapping-and-migration.md) — relating requirements across standards, and moving a project's assignment onto a newer published version.
 - [Reporting and export](./reporting-and-export.md) — PDF/CSV reports, and how compliance content travels through ReqTrackManager's export/import bundles.
-- [AI assistant (MCP) integration](./mcp-integration.md) — the read-only tools an AI assistant can call against a project or organisation's compliance data.
+- [AI assistant (MCP) integration](./mcp-integration.md) — the read and write tools an AI assistant can call against a project or organisation's compliance data.
 - [Known limitations](./known-limitations.md) — what this module deliberately doesn't do yet.
 
 ## Where this fits

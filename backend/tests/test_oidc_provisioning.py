@@ -612,7 +612,7 @@ def test_oidc_callback_rejects_a_deactivated_account(client, admin_token, org_id
     _sso_org(client, admin_token, org_id, "deactivated-oidc-org")
     email = "deactivated-oidc@example.com"
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
-    assert client.post(f"/api/v1/system/users/{orphaned_id}/deactivate", headers=auth_headers(admin_token)).status_code == 204
+    assert client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token)).status_code == 204
 
     _patch_fake_oidc(monkeypatch, email=email)
     state = create_oidc_state_token(org_id, "x" * 16)
@@ -655,7 +655,7 @@ def test_oidc_callback_rejects_a_banned_account_and_grants_no_pending_invite(cli
     # orphaned native account (e.g. it also signed up natively elsewhere
     # first), which then gets banned.
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
-    assert client.post(f"/api/v1/system/users/{orphaned_id}/ban", headers=auth_headers(admin_token)).status_code == 204
+    assert client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token)).status_code == 204
 
     _patch_fake_oidc(monkeypatch, email=email)
     state = create_oidc_state_token(org_id, "x" * 16)

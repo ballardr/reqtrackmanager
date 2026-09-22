@@ -36,7 +36,7 @@
  * here).
  *
  * The Standards tab's "Export" trigger (Phase 15, §29) hits
- * `GET .../modules/compliance/reports/{pdf,csv}` directly via
+ * `GET .../modules/compliance/reports?format={pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — the exact same fetch-a-blob-and-save-
  * it idiom `pages/ReportsPage.tsx`'s own PDF/CSV buttons already use for
  * core requirement reports (that page's `generate` function), reused
@@ -93,7 +93,7 @@ export function ProjectCompliancePage() {
   async function downloadReport(kind: "pdf" | "csv") {
     if (!projectId || !project) return;
     try {
-      const blob = await api.getForBlob(`/api/v1/projects/${projectId}/modules/compliance/reports/${kind}`);
+      const blob = await api.getForBlob(`/api/v1/projects/${projectId}/modules/compliance/reports?format=${kind}`);
       const safeName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${safeName}-compliance-report.${kind}`);
     } catch (err) {

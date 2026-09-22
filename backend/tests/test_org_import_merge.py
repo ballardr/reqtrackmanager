@@ -292,7 +292,7 @@ def test_merge_does_not_grant_a_role_or_group_membership_to_a_banned_member(clie
     banned_token = login(client, banned_email, "Password123!")
     leave_resp = client.delete(f"/api/v1/orgs/{source_org['id']}/membership", headers=auth_headers(banned_token))
     assert leave_resp.status_code == 204, leave_resp.text
-    ban_resp = client.post(f"/api/v1/system/users/{banned_id}/ban", headers=auth_headers(admin_token))
+    ban_resp = client.post(f"/api/v1/system/users/{banned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert ban_resp.status_code == 204, ban_resp.text
 
     target_org, target_token = create_org_admin_in(client, admin_token, "Merge Banned Member Target")

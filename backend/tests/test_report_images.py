@@ -51,8 +51,8 @@ def test_report_pdf_embeds_a_valid_attachment_image(client, admin_token):
     file_id = _upload_image(client, org_admin_token, org["id"])
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"pre_markdown": f"# Intro\n\n![a pixel](attachment:{file_id})\n"},
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "pre_markdown": f"# Intro\n\n![a pixel](attachment:{file_id})\n"},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
@@ -71,8 +71,8 @@ def test_report_pdf_silently_skips_attachment_from_a_different_org(client, admin
     project = create_project(client, org_admin_token, org["id"])
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"pre_markdown": f"![cross-org](attachment:{other_file_id})\n"},
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "pre_markdown": f"![cross-org](attachment:{other_file_id})\n"},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
@@ -107,8 +107,8 @@ def test_report_pdf_silently_skips_a_same_org_requirement_attachment_from_a_diff
 
     project = create_project(client, org_admin_token, org["id"], name="Report Project")
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"pre_markdown": f"![borrowed](attachment:{attachment_file_id})\n"},
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "pre_markdown": f"![borrowed](attachment:{attachment_file_id})\n"},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text
@@ -120,8 +120,8 @@ def test_report_pdf_silently_skips_unknown_attachment_reference(client, admin_to
     project = create_project(client, org_admin_token, org["id"])
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"pre_markdown": "![missing](attachment:00000000-0000-0000-0000-000000000000)\n"},
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "pre_markdown": "![missing](attachment:00000000-0000-0000-0000-000000000000)\n"},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 200, resp.text

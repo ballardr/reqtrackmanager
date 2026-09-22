@@ -24,19 +24,24 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     // caption (components/FilterPanel.tsx), so the accessible "label" text
     // `getByLabel` matches against is the caption *plus every option's own
     // text* (confirmed directly: this control's is "StatusActiveDisabled
-    // All") — a substring match on "Status" is normally fine (only this
-    // one control on the page contains it), but React Router 7's default
-    // startTransition-wrapped navigation (the URL updates immediately, but
-    // a just-left page's content can stay mounted for a beat — see the
-    // identical fix in golden-path.spec.ts) can transiently leave a
-    // *different* page's own "status"-containing filter mounted alongside
-    // this one, and unlike a plain label that ambiguity can't be resolved
-    // with `{ exact: true }` given the option-text quirk above.
+    // All") — a plain substring match on "Status" isn't safe: any org row's
+    // `ActionMenu` trigger has an accessible name of "<org name> actions",
+    // and an org whose name happens to contain the word "Status"/"Statuses"
+    // (e.g. another spec's "E2E Statuses Org" fixture, still present in the
+    // shared test DB) then collides with it. Scoping by role="combobox"
+    // (the native `<select>`'s accessible role; the `ActionMenu` trigger is
+    // role="button") disambiguates regardless of what other rows/fixtures
+    // exist on the page. React Router 7's default startTransition-wrapped
+    // navigation (the URL updates immediately, but a just-left page's
+    // content can stay mounted for a beat — see the identical fix in
+    // golden-path.spec.ts) can also transiently leave a *different* page's
+    // own "status"-containing filter mounted alongside this one; the heading
+    // wait below already guards against that.
     await expect(page.getByRole("heading", { name: "Organisations", exact: true })).toBeVisible();
     // Disabled orgs are hidden by default (UI/UX pass) — this test watches
     // one org through its whole lifecycle including a disabled state, so
     // it needs the "All" filter rather than the default "Active" one.
-    await page.getByLabel("Status").selectOption("all");
+    await page.getByRole("combobox", { name: "Status" }).selectOption("all");
 
     await test.step("create the organisation, with Decision Management's seeded template picker visible", async () => {
       // "New organisation" opens a Modal (style guide "Pattern: modal
@@ -70,22 +75,45 @@ test.describe("server admin manages an organisation's lifecycle", () => {
     });
 
     const row = page.getByRole("row", { name: new RegExp(orgName) });
+    // Style guide "Pattern: action menu"'s per-row addendum — Edit/
+    // Disable-Enable/Delete now sit behind one `ActionMenu` in the row's
+    // actions column instead of three standalone buttons.
+    const rowActionsMenu = page.getByRole("menu", { name: `${orgName} actions` });
+
+    await test.step("edit opens this organisation's own admin page", async () => {
+      await row.getByRole("button", { name: `${orgName} actions` }).click();
+      await rowActionsMenu.getByRole("menuitem", { name: "Edit" }).click();
+      await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
+      await expect(page.getByText(orgName)).toBeVisible();
+
+      await page.goBack();
+      await expect(page).toHaveURL(/\/server\/organisations$/);
+      // A fresh mount of this page after navigating back defaults to the
+      // "Active" status filter, same as a first visit — re-apply "All" so
+      // the rest of this test (which watches this org through a disabled
+      // state) can still find its row. role="combobox" scoping: see the
+      // comment on this same selector near the top of this test.
+      await page.getByRole("combobox", { name: "Status" }).selectOption("all");
+    });
 
     await test.step("disable it", async () => {
       // Disable now confirms via the shared `ConfirmDialog` (sixth-pass
       // audit) rather than `window.confirm`.
-      await row.getByRole("button", { name: "Disable" }).click();
+      await row.getByRole("button", { name: `${orgName} actions` }).click();
+      await rowActionsMenu.getByRole("menuitem", { name: "Disable" }).click();
       await page.getByRole("dialog", { name: `Disable "${orgName}"?` }).getByRole("button", { name: "Disable" }).click();
       await expect(row).toContainText("Disabled");
     });
 
     await test.step("re-enable it", async () => {
-      await row.getByRole("button", { name: "Enable" }).click();
+      await row.getByRole("button", { name: `${orgName} actions` }).click();
+      await rowActionsMenu.getByRole("menuitem", { name: "Enable" }).click();
       await expect(row).toContainText("Active");
     });
 
     await test.step("delete requires typing the exact name", async () => {
-      await row.getByRole("button", { name: "Delete", exact: true }).click();
+      await row.getByRole("button", { name: `${orgName} actions` }).click();
+      await rowActionsMenu.getByRole("menuitem", { name: "Delete" }).click();
       const confirmButton = page.getByRole("button", { name: "Permanently delete" });
       await expect(confirmButton).toBeDisabled();
       await page.getByPlaceholder(orgName).fill("the wrong name");

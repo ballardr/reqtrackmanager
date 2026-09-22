@@ -245,8 +245,11 @@ test.describe("org security controls: 2FA requirement, display-name lock, member
       // A brand-new email with no account anywhere shows an "Invite"
       // option (not "Add"), per UserAutocomplete's existing/new distinction.
       await addMemberModal.getByText(`Invite ${outsideEmail}`, { exact: true }).click();
-      // Selecting closes the modal; the result message renders on the page
-      // underneath it, same as before this control moved into a Modal.
+      // Picking the invite option only stages it (`AddMembersModal`'s
+      // staged multi-add) — committing is what actually sends the invite.
+      await addMemberModal.getByRole("button", { name: "Add 1 member" }).click();
+      // Committing closes the modal; the result message renders on the
+      // page underneath it, same as before this control moved into a Modal.
       await expect(addMemberModal).not.toBeVisible();
       await expect(page.getByText(/invite email was sent/i).first()).toBeVisible();
     });

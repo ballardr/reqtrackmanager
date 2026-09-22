@@ -63,7 +63,7 @@ blocked on Module 12 — neither is actionable right now.
 | 1 | Data model: Decision, Decision Type, Decision Template, lifecycle, module RBAC | [x] Complete (2026-09-21) — verified: full backend suite 1124/1124, new Storybook stories 11/11, new Playwright coverage passing, real migration run against a live DB |
 | 2 | Approval, rejection, and supersession workflow | [x] Complete (2026-09-21) — see "Phase 2 notes" below |
 | 3 | Relationships (to Requirements, other Decisions, and reserved future types) | [x] Complete (2026-09-21) — see "Phase 3 notes" below |
-| 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes" and "Phase 4 addendum (2026-09-21) — MCP tools added" below |
+| 4 | Backend API + audit logging | [x] Complete (2026-09-21) — see "Phase 4 notes", "Phase 4 addendum (2026-09-21) — MCP tools added", and "Phase 4 addendum follow-up (2026-09-22) — approve/reject given the AI-approval gate" below |
 | 5 | Frontend — Decision list/detail/create/approve UI | [x] Complete (2026-09-21) — see "Phase 5 notes" below |
 | 6 | Docs website coverage | [x] Complete (2026-09-21) — see "Phase 6 notes" below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
@@ -346,6 +346,43 @@ Management) Phase 4 addendum — MCP tools" entry for the final backend-suite
 pass/fail count and the identify→verify→remediate review outcome (this
 change touches the approval-exclusion mechanism, a security-adjacent
 surface per the SOC 2 change-management policy).
+
+## Phase 4 addendum follow-up (2026-09-22) — approve/reject given the AI-approval gate
+
+**What changed:** the "Gap fixed as part of this" paragraph above — marking
+`approve_decision_endpoint`/`reject_decision_endpoint` with `APPROVAL_
+ACTION_ROUTE_EXTRA` so neither could ever resolve to an MCP tool — is
+superseded. The same day, once Compliance's own `approve_requirement`/
+`reject_requirement` were reversed from that identical hard exclusion to a
+generalized, opt-in `allow_ai_approvals` gate instead ("Compliance MCP
+write tools + generalized AI approval gate," `docs/decisions.md`), this
+plan's own approve/reject were flagged as an architecturally identical
+candidate for the same treatment, left untouched pending explicit user
+sign-off. Asked directly, the user answered: **"Yes, apply the same
+treatment."** **Decided by: User.**
+
+**What was built:** `APPROVAL_ACTION_ROUTE_EXTRA` removed from both routes;
+each now takes `channel: str = Depends(get_request_channel)` and calls
+`require_ai_approvals_enabled(db, project)` when `channel == "mcp"`,
+identical to Compliance's own inline pattern. `backend/app/modules/
+decisions/service.py::_transition_status` gained a `via_mcp` param, folding
+a `"via": "mcp"` marker into the logged `AuditEvent.detail`, matching
+Compliance's own convention. Two new `McpToolDefinition`s — `approve_
+decision`/`reject_decision` — declared in `module.py`. No longer read-only-
+only: this module's MCP surface now has two gated write tools alongside its
+seven read-only ones. See `docs/decisions.md`'s "Decision Management MCP
+approval gate" entry for the full identify→verify→remediate review and the
+exact test-suite pass count.
+
+**Testing:** `test_decisions_mcp_tools.py` rewritten — the old "manifest
+mechanically excludes approve/reject" assertion no longer holds (that's the
+whole point of this change), replaced with "approve/reject resolve as real,
+mutating tools with the expected params, and no *other* mutating tool
+exists for this module." New `test_decisions_ai_approvals_via_mcp.py`
+mirrors `test_compliance_ai_approvals_via_mcp.py`'s 7-test shape (blocked-
+both-off, blocked-one-flag-on, allowed-with-`via:mcp`-marker, reject's same
+sequence, UI-call-unaffected regression guard, real-RBAC-still-enforced,
+propose/submit-for-review-unaffected).
 
 ## Phase 5 notes (2026-09-21)
 

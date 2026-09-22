@@ -1,9 +1,11 @@
+import { Pencil, Power, Trash2 } from "lucide-react";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { Organization, OrgCreationChoice, OrgImportResult } from "../api/types";
+import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
@@ -31,6 +33,7 @@ type StatusFilter = "active" | "disabled" | "all";
 
 export function ServerOrganisationsPage() {
   const strings = useStrings();
+  const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
@@ -291,22 +294,25 @@ export function ServerOrganisationsPage() {
                     </td>
                     <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
                     <td>
-                      <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
-                        <Link to={`/orgs/${o.id}/admin`} className="btn">
-                          Edit
-                        </Link>
-                        {o.is_active ? (
-                          <button className="btn" onClick={() => disableOrg(o)}>
-                            {strings.serverOrgs.disable}
-                          </button>
-                        ) : (
-                          <button className="btn" onClick={() => enableOrg(o)}>
-                            {strings.serverOrgs.enable}
-                          </button>
-                        )}
-                        <button className="btn btn-danger" onClick={() => startDelete(o)}>
-                          {strings.serverOrgs.delete}
-                        </button>
+                      <div className="row" style={{ justifyContent: "flex-end" }}>
+                        {/* Style guide "Pattern: action menu" — three
+                            standalone row buttons (Edit/Disable-Enable/
+                            Delete) consolidated into one `ActionMenu`, per
+                            the addendum applying the same two-or-more-
+                            actions threshold inside a table row. Each item
+                            still opens the exact same dialog/navigation as
+                            before — the menu is just the entry point, not a
+                            replacement for either `ConfirmDialog` tier. */}
+                        <ActionMenu
+                          triggerLabel={strings.serverOrgs.actionsFor(o.name)}
+                          items={[
+                            { label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) },
+                            o.is_active
+                              ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
+                              : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
+                            { label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

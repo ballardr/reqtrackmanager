@@ -29,7 +29,7 @@
  * share one request instead of firing the identical one twice.
  *
  * The "Download PDF report"/"Download CSV report" actions (Phase 15, §29)
- * hit `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}` directly via
+ * hit `GET .../orgs/{id}/modules/compliance/reports?format={pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — see `ProjectCompliancePage.tsx`'s own
  * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
  * established fetch-a-blob-and-save-it idiom rather than a new one. Phase
@@ -118,7 +118,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
 
   async function downloadReport(kind: "pdf" | "csv") {
     try {
-      const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports/${kind}`);
+      const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports?format=${kind}`);
       downloadBlob(blob, `organisation-compliance-report.${kind}`);
     } catch (err) {
       showToast(toErrorMessage(err, "Could not generate the organisation compliance report."), "error");

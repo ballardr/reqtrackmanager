@@ -47,8 +47,8 @@ def test_generating_a_pdf_report_with_a_template_selected_succeeds(client, admin
     create_component_and_category(client, admin_token, project["id"])
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"report_template_id": template["id"]}, headers=auth_headers(admin_token),
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "report_template_id": template["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
@@ -115,8 +115,8 @@ def test_generating_a_report_with_a_foreign_orgs_template_id_is_rejected(client,
 
     project = create_project(client, admin_token, org_id)
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"report_template_id": foreign_template["id"]}, headers=auth_headers(admin_token),
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "report_template_id": foreign_template["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400
 

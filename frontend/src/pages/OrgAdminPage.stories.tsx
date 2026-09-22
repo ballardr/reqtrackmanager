@@ -1796,15 +1796,19 @@ export const ManageUsersModalToggleDirectRole: Story = {
   },
 };
 
-/** The modal's own "add a direct member" control — same `UserAutocomplete`
- * + role `<select>` composition `ProjectAdminPage.tsx`'s Members section
- * uses, scoped to whichever project's modal is open. Style guide "Pattern:
- * modal dialog for entity create/rename" (Principle 3) — as of PR3 of the
- * members/groups directory rework, this sub-form is no longer permanently
- * visible inside the outer "Manage users" modal; "Add member" opens it in
- * a second, nested `Modal` (`useDialogA11y`'s docstring covers why nesting
- * is already handled safely: only the innermost open dialog ever actually
- * contains focus, so Escape/Tab-trap don't cross between the two). */
+/** The modal's own "add a direct member" control — the shared
+ * `AddMembersModal` (staged multi-add, see that component's own module
+ * docstring) `ProjectAdminPage.tsx`'s Members section uses too, scoped to
+ * whichever project's modal is open. Style guide "Pattern: modal dialog for
+ * entity create/rename" (Principle 3) — as of PR3 of the members/groups
+ * directory rework, this sub-form is no longer permanently visible inside
+ * the outer "Manage users" modal; "Add member" opens it in a second, nested
+ * `Modal` (`useDialogA11y`'s docstring covers why nesting is already
+ * handled safely: only the innermost open dialog ever actually contains
+ * focus, so Escape/Tab-trap don't cross between the two). Each staged entry
+ * gets its own role `<select>` (no page-level "Role to grant" combobox any
+ * more — see `AddMembersModal`'s docstring for why that moved per-row), so
+ * this story checks for the commit button and the picker input instead. */
 export const ManageUsersModalAddControlRenders: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -1827,8 +1831,9 @@ export const ManageUsersModalAddControlRenders: Story = {
     // Both dialogs stay mounted at once — the outer container is still the
     // right home for "manage users for this project" as a whole.
     await expect(body.getByRole("dialog", { name: "Manage users — Beta" })).toBeInTheDocument();
-    await expect(within(addMemberModal).getByRole("combobox", { name: "Role to grant" })).toBeInTheDocument();
     await expect(within(addMemberModal).getByPlaceholderText("Type a name to add, or an email to invite…")).toBeInTheDocument();
+    // Nothing staged yet — the commit button stays disabled.
+    await expect(within(addMemberModal).getByRole("button", { name: "Add member(s)" })).toBeDisabled();
   },
 };
 
@@ -1863,12 +1868,13 @@ export const ManageUsersModalAddMemberNestedModalOpen: Story = {
 
 /** PR5 of the members/groups directory rework plan — the same combined
  * user-or-group autocomplete `ProjectAdminPage.tsx`'s own Members section
- * uses (`MembersTabAddMemberAutocompleteMatchesGroup`), reachable from
- * here too since this modal shares the identical `UserAutocomplete` call
- * site, now passed `groups={allGroups}` (every group in the org, the same
+ * uses (`MembersTabAddMemberAutocompleteMatchesGroup`), reachable from here
+ * too since this modal shares the identical `AddMembersModal` call site,
+ * now passed `groups={allGroups}` (every group in the org, the same
  * unpaginated fixture the Groups section itself resolves nested-group
- * names against). Picking a group grants it the role directly on
- * `manageUsersProjectId` via `POST .../group-roles`. */
+ * names against). Picking a group only *stages* it now (`AddMembersModal`'s
+ * staged multi-add) — the grant itself (`POST .../group-roles`) only fires
+ * once "Add 1 member" is pressed. */
 export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
@@ -1889,8 +1895,13 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
     await userEvent.type(within(addMemberModal).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
     const groupOption = await within(addMemberModal).findByRole("option", { name: /Engineering/ });
     await expect(groupOption).toHaveTextContent("Org group");
-
     await userEvent.click(groupOption);
+
+    // Staged, not yet granted — the row shows up with its own default role.
+    await expect(within(addMemberModal).getByText("Engineering")).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+
+    await userEvent.click(within(addMemberModal).getByRole("button", { name: "Add 1 member" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         "/api/v1/projects/proj-1/group-roles",

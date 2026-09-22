@@ -170,7 +170,7 @@ export const DownloadReport: Story = {
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
     await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/csv`
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports?format=csv`
     ));
   },
 };

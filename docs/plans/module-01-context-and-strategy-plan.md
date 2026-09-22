@@ -213,19 +213,31 @@ the commitment here, at the last purely-backend phase, rather than
 retroactively to Phase 1/2/3/4 individually, is a judgment call
 (**Decided by: Agent**) — revisit if a future pass splits those phases'
 own endpoints out explicitly. Once this phase (and the endpoints it
-depends on from Phases 1–4) exists, declare narrow, **read-only-only**
-`McpToolDefinition` entries for the safe list/get endpoints — candidates
-made concrete by each phase's own scope text: `list_strategies`/
-`get_strategy` (Phase 1), `list_pain_points`/`get_pain_point` (Phase 2),
-`list_guiding_principles`/`get_guiding_principle` (Phase 3),
-`list_open_questions`/`get_open_question` (Phase 4). Explicitly excluded:
-anything mutating, and any endpoint that approves/activates/retires/
-resolves an artefact (e.g. Strategy approval, Guiding Principle
-activation/retirement, Open Question resolution) — those routes must be
-marked with `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
-(`backend/app/modules/registry.py`) as defence-in-depth, the same
-mechanism Compliance and Decision Management already use, so such a route
-can never be exposed as an MCP tool even by accident.
+depends on from Phases 1–4) exists, declare `McpToolDefinition` entries for
+the safe list/get endpoints — candidates made concrete by each phase's own
+scope text: `list_strategies`/`get_strategy` (Phase 1), `list_pain_points`/
+`get_pain_point` (Phase 2), `list_guiding_principles`/`get_guiding_
+principle` (Phase 3), `list_open_questions`/`get_open_question` (Phase 4).
+
+**2026-09-22 update (Decided by: User):** this plan originally committed to
+**read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — CRUD tools for Strategies, Pain
+Points, Guiding Principles, and Open Questions declared normally (gated by
+`MCP_WRITES_ENABLED` + the calling account's own RBAC role, no special
+treatment). Strategy approval, Guiding Principle activation/retirement, and
+Open Question resolution remain the one exception: each is an
+approve/decide-type action, so it should use the generalized org+project
+`allow_ai_approvals` gate (`app.services.rbac.require_ai_approvals_
+enabled`, called inline the same way Compliance's `approve_requirement`/
+`reject_requirement` now do) rather than staying hard-excluded via
+`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` — defaulting to this option for
+consistency with Compliance's new posture, per no specific reason in this
+plan to keep them human-only instead. This is a judgment call at plan-time
+(**Decided by: Agent**) about *which* option (a)/(b) to pick per action;
+the underlying instruction to move this plan off read-only-only is
+**Decided by: User** (2026-09-22).
 
 ## Phase 6 — Frontend UI
 

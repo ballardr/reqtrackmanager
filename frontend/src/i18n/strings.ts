@@ -597,6 +597,14 @@ const en = {
     addMemberToGroupTitle: (groupName: string) => `Add to "${groupName}"`,
     addMemberToGroupHint: (groupName: string) =>
       `Adding someone here makes them a member of "${groupName}" — it does not grant a role by itself. The group's own role(s), if any, apply to everyone in it.`,
+    // `AddMembersModal` (staged multi-add, replacing the old immediate-
+    // submit-per-selection flow both `OrgAdminPage.tsx` and
+    // `ProjectAdminPage.tsx` used to hand-roll) — the empty-staged-list
+    // hint and the per-row controls' accessible names.
+    addMembersStagedEmpty: 'Search above to add people — nothing is granted until you press "Add member(s)".',
+    roleForStagedMember: (label: string) => `Role for ${label}`,
+    removeStagedMember: (label: string) => `Remove ${label}`,
+    addSelectedMembers: (n: number) => (n === 0 ? "Add member(s)" : `Add ${n} member${n === 1 ? "" : "s"}`),
     externalAddedDirectly: (email: string, role: string, org: string) =>
       `${email} was added directly to the {project} with the '${role}' role (not to this specific group, since they weren't already an ${org} member).`,
     externalInvited: (email: string, role: string) =>
@@ -725,11 +733,6 @@ const en = {
     // `project_manager` role that can't be revoked because it's the
     // {project}'s last manager, not because it's group-sourced.
     roleOnlyManagerSuffix: "(only manager)",
-    // Shared by both `addControl` compositions (`ProjectAdminPage.tsx`'s
-    // Members section, `OrgAdminPage.tsx`'s "Manage users" modal) — the
-    // role `<select>` accompanying `UserAutocomplete` in the "add a
-    // member" row.
-    addRoleSelectLabel: "Role to grant",
     add: "Add",
     // Whole-row Source-column summary (platform review 2026-09 follow-up)
     // — replaces the old always-visible per-role provenance lines below
@@ -868,6 +871,12 @@ const en = {
     search: (orgPlural: string) => `Search ${orgPlural.toLowerCase()}`,
     filterAll: "All",
     empty: (orgPlural: string) => `No ${orgPlural.toLowerCase()} match these filters.`,
+    // Style guide "Pattern: action menu" — the row-level `ActionMenu`
+    // (Edit/Disable-Enable/Delete) replacing three standalone buttons;
+    // named after the row's own organisation, per Principle 8 (every
+    // `ActionMenu` trigger needs a real, disambiguating accessible name
+    // once more than one can appear on the same page).
+    actionsFor: (name: string) => `${name} actions`,
   },
   orgAdmin: {
     // Resource-menu group labels (2026-08 UX audit, style guide "Pattern:
@@ -1566,6 +1575,7 @@ const en = {
     loadMore: "Load more",
     copy: "Copy",
     close: "Close",
+    remove: "Remove",
     platformDefault: "Platform default",
     customValue: "Custom",
     resetToPlatformDefault: "Reset to platform default",

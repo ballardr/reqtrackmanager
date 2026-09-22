@@ -338,10 +338,21 @@ SUPERSEDES_LINK_TYPE_REVERSE_NAME = "Is superseded by"
 
 def _transition_status(
     db: Session, decision: Decision, new_status: DecisionStatus, actor_id: uuid.UUID, *,
-    action: str, comment: str | None = None,
+    action: str, comment: str | None = None, via_mcp: bool = False,
 ) -> Decision:
     """Validates and applies a `Decision.status` transition, then records it
     via `services.audit.log_event` (not committed — caller's transaction).
+
+    `via_mcp` (2026-09-22, see docs/decisions.md's "Decision Management MCP
+    approval gate" entry) folds a `"via": "mcp"` key into the logged
+    `detail` alongside any `comment` — the same audit-trail marker
+    `modules.compliance.project_router`'s `approve_requirement`/`reject_
+    requirement` already record when reached through the MCP server,
+    applied here identically now `approve_decision_endpoint`/`reject_
+    decision_endpoint` get the same `allow_ai_approvals` gate treatment.
+    Only `approve_decision`/`reject_decision` ever pass `via_mcp=True` —
+    `propose_decision`/`submit_decision_for_review` are not approval-type
+    actions and never need it.
 
     Raises:
         ValueError: if `new_status` isn't reachable from `decision.status`
@@ -353,10 +364,15 @@ def _transition_status(
     if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
         raise ValueError(f"Cannot move a Decision from '{decision.status.value}' to '{new_status.value}'.")
     decision.status = new_status
+    detail = {}
+    if comment:
+        detail["comment"] = comment
+    if via_mcp:
+        detail["via"] = "mcp"
     log_event(
         db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision.id, action=action,
         actor_id=actor_id, project_id=decision.project_id,
-        detail={"comment": comment} if comment else None,
+        detail=detail or None,
     )
     db.flush()
     return decision
@@ -372,20 +388,30 @@ def submit_decision_for_review(db: Session, decision: Decision, actor_id: uuid.U
     return _transition_status(db, decision, DecisionStatus.UNDER_REVIEW, actor_id, action="submitted_for_review")
 
 
-def reject_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+def reject_decision(
+    db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None, via_mcp: bool = False,
+) -> Decision:
     """`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`. Rejected Decisions remain
     queryable (source overview §13/10.6) — never hard-deleted, same as
     every other soft-delete convention in this codebase; this is a status
-    value, not an archive."""
-    return _transition_status(db, decision, DecisionStatus.REJECTED, actor_id, action="rejected", comment=comment)
+    value, not an archive. `via_mcp` — see `_transition_status`'s own
+    docstring."""
+    return _transition_status(
+        db, decision, DecisionStatus.REJECTED, actor_id, action="rejected", comment=comment, via_mcp=via_mcp,
+    )
 
 
-def approve_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+def approve_decision(
+    db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None, via_mcp: bool = False,
+) -> Decision:
     """`UNDER_REVIEW` -> `APPROVED`. Also flips any predecessor Decision
     this one already supersedes (a `create_supersession` link created
     before this approval) to `SUPERSEDED`, per Phase 0 addendum item 8 —
-    see `_supersede_predecessors`."""
-    _transition_status(db, decision, DecisionStatus.APPROVED, actor_id, action="approved", comment=comment)
+    see `_supersede_predecessors`. `via_mcp` — see `_transition_status`'s
+    own docstring."""
+    _transition_status(
+        db, decision, DecisionStatus.APPROVED, actor_id, action="approved", comment=comment, via_mcp=via_mcp,
+    )
     _supersede_predecessors(db, decision, actor_id)
     return decision
 

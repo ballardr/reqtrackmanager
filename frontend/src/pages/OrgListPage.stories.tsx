@@ -1,6 +1,6 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { expect, spyOn, within } from "storybook/test";
+import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
@@ -115,6 +115,36 @@ export const SingleOrganisationRedirectsToOverview: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Org overview page")).toBeInTheDocument();
+  },
+};
+
+/** Rebuilt onto `DirectoryTable` + `FilterPanel` (search) — see the
+ * component's own module docstring for why this search is client-side.
+ * Typing narrows the table to matching organisation names only, and
+ * `FilterPanel`'s `ResultCount` header reflects the narrowed count. */
+export const SearchFiltersTheTable: Story = {
+  decorators: [withRouter("/orgs")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") {
+        return [
+          org({ id: "org-1", name: "Acme Corp" }),
+          org({ id: "org-2", name: "Beta Inc" }),
+          org({ id: "org-3", name: "Acme Subsidiary" }),
+        ];
+      }
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Beta Inc")).toBeInTheDocument();
+
+    await userEvent.type(canvas.getByPlaceholderText("Search organisations"), "acme");
+    await expect(canvas.getByText("Acme Corp")).toBeInTheDocument();
+    await expect(canvas.getByText("Acme Subsidiary")).toBeInTheDocument();
+    await expect(canvas.queryByText("Beta Inc")).not.toBeInTheDocument();
+    await expect(canvas.getByText("Showing 2 matching · 3 total")).toBeInTheDocument();
   },
 };
 

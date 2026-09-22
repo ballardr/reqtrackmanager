@@ -1,12 +1,18 @@
 """
 Module: routers.reports
 
-Report generation endpoints: PDF (R-F-01) and CSV (R-F-02) exports of a
-project's requirements, with custom Markdown sections (R-G-01, R-G-02),
-requirement filters (R-G-03), organisation shared resource files rendered
-as additional report sections (R-G-04), and images embedded in those
-Markdown sections via `_resolve_report_images` (see its docstring for the
-tenant-isolation check it performs before any image reaches the PDF).
+Report generation: a single `POST /api/v1/projects/{project_id}/reports`
+endpoint generating either a PDF (R-F-01) or CSV (R-F-02) export of a
+project's requirements, selected via `ReportRequest.format` — merged from
+two separate `/reports/pdf`/`/reports/csv` endpoints on 2026-09-22 (see
+docs/decisions.md) since they differed only in output format, not in data
+collection, and a single parameterized endpoint leaves one place for a
+future report-type/template parameter to land. Supports custom Markdown
+sections (R-G-01, R-G-02), requirement filters (R-G-03), organisation
+shared resource files rendered as additional report sections (R-G-04), and
+images embedded in those Markdown sections via `_resolve_report_images`
+(see its docstring for the tenant-isolation check it performs before any
+image reaches the PDF).
 """
 
 from __future__ import annotations
@@ -155,24 +161,37 @@ def _resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: 
     return resolved
 
 
-@router.post("/pdf")
-def generate_pdf(
+@router.post("")
+def generate_report(
     project_id: UUID, payload: ReportRequest,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Generates a PDF requirements report (R-F-01). Falls back to the
-    project's *effective* report structure (intro/chapters/appendices,
-    mock's "Report Setup" — the project's own content, or the owning
-    organisation's default per-field, see `resolve_report_config`) when
-    the request doesn't override it with ad-hoc pre_markdown/post_markdown.
+    """Generates a requirements report in `payload.format` — PDF (R-F-01)
+    or CSV (R-F-02). Requirement collection/filtering (R-G-03) is identical
+    for both formats; only CSV's branching below is genuinely format-
+    specific (no branding/markdown/chapters concept for a flat export).
+
+    For PDF, falls back to the project's *effective* report structure
+    (intro/chapters/appendices, mock's "Report Setup" — the project's own
+    content, or the owning organisation's default per-field, see
+    `resolve_report_config`) when the request doesn't override it with
+    ad-hoc pre_markdown/post_markdown.
 
     A selected `report_template_id` sits one tier more specific than that:
     per field, the template's own intro/chapters/appendices (if it set any)
     take precedence over the project/org-resolved content — same
     independent-per-field fallback shape, just one more tier on top."""
     project = db.get(Project, project_id)
-    org = db.get(Organization, project.organization_id)
     rows = _collect_rows(db, project_id, payload)
+
+    if payload.format == "csv":
+        csv_bytes = generate_csv_report(rows, terminology=project.terminology)
+        return Response(
+            content=csv_bytes, media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.csv"'},
+        )
+
+    org = db.get(Organization, project.organization_id)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
     template = None
@@ -220,19 +239,4 @@ def generate_pdf(
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.pdf"'},
-    )
-
-
-@router.post("/csv")
-def generate_csv(
-    project_id: UUID, payload: ReportRequest,
-    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
-):
-    """Generates a CSV requirements export (R-F-02)."""
-    project = db.get(Project, project_id)
-    rows = _collect_rows(db, project_id, payload)
-    csv_bytes = generate_csv_report(rows, terminology=project.terminology)
-    return Response(
-        content=csv_bytes, media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements.csv"'},
     )

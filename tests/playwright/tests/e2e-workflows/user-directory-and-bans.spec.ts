@@ -127,7 +127,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       let menu = await openOrphanActionsMenu();
       await menu.getByRole("menuitem", { name: "Deactivate" }).click();
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/deactivate") && r.request().method() === "POST"),
+        page.waitForResponse(
+          (r) => r.url().includes("/status") && r.request().method() === "POST" && r.request().postDataJSON()?.action === "deactivate"
+        ),
         page.getByRole("dialog", { name: "Deactivate this account?" }).getByRole("button", { name: "Deactivate" }).click(),
       ]);
       // The default listing excludes deactivated accounts entirely.
@@ -135,7 +137,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       await expect(row.getByText("Deactivated", { exact: true })).toBeVisible();
       menu = await openOrphanActionsMenu();
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/reactivate") && r.request().method() === "POST"),
+        page.waitForResponse(
+          (r) => r.url().includes("/status") && r.request().method() === "POST" && r.request().postDataJSON()?.action === "reactivate"
+        ),
         menu.getByRole("menuitem", { name: "Reactivate" }).click(),
       ]);
       await expect(row.getByText("Deactivated", { exact: true })).toHaveCount(0);
@@ -148,7 +152,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       const menu = await openOrphanActionsMenu();
       await menu.getByRole("menuitem", { name: "Ban", exact: true }).click();
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/ban") && r.request().method() === "POST"),
+        page.waitForResponse(
+          (r) => r.url().includes("/status") && r.request().method() === "POST" && r.request().postDataJSON()?.action === "ban"
+        ),
         page.getByRole("dialog", { name: "Ban this account?" }).getByRole("button", { name: "Ban", exact: true }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toBeVisible();
@@ -189,7 +195,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
       const menu = await openOrphanActionsMenu();
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/unban") && r.request().method() === "POST"),
+        page.waitForResponse(
+          (r) => r.url().includes("/status") && r.request().method() === "POST" && r.request().postDataJSON()?.action === "unban"
+        ),
         menu.getByRole("menuitem", { name: "Unban" }).click(),
       ]);
       await expect(row.getByText("Banned", { exact: true })).toHaveCount(0);
@@ -215,7 +223,9 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       const row = page.locator("tr", { hasText: PERSONAS.orphan.email });
       const menu = await openOrphanActionsMenu();
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/reactivate") && r.request().method() === "POST"),
+        page.waitForResponse(
+          (r) => r.url().includes("/status") && r.request().method() === "POST" && r.request().postDataJSON()?.action === "reactivate"
+        ),
         menu.getByRole("menuitem", { name: "Reactivate" }).click(),
       ]);
       await expect(row.getByText("Deactivated", { exact: true })).toHaveCount(0);

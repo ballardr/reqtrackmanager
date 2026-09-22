@@ -71,6 +71,26 @@ export const ActiveOrganisations: Story = {
   },
 };
 
+/** Style guide "Pattern: action menu"'s per-row addendum — Edit/Disable/
+ * Delete now sit behind one `ActionMenu` in the row's actions column
+ * instead of three standalone buttons. */
+export const RowActionsOpenInActionMenu: Story = {
+  beforeEach: () => {
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await expect(body.queryByRole("menu")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Acme Corp actions" }));
+    const menu = body.getByRole("menu", { name: "Acme Corp actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Disable" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  },
+};
+
 export const ShowAllIncludesDisabled: Story = {
   beforeEach: () => {
     mockOrgsGet([
@@ -196,7 +216,9 @@ export const CreateOrganisationModalCancel: Story = {
 
 /** Disable opens the shared `ConfirmDialog` (2026-08 UX audit, sixth pass —
  * this used to fire via `window.confirm`), then shows a success toast
- * (Principle 7) once the action completes. */
+ * (Principle 7) once the action completes. Reached via the row's
+ * `ActionMenu` now, not a standalone "Disable" button — the menu is just
+ * the entry point, it doesn't replace the confirmation itself. */
 export const DisableOrganisation: Story = {
   beforeEach: () => {
     mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
@@ -204,7 +226,9 @@ export const DisableOrganisation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Disable" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Acme Corp actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Acme Corp actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Disable" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: 'Disable "Acme Corp"?' });
     await userEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
@@ -224,7 +248,9 @@ export const DisableOrganisationCancelled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Disable" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Acme Corp actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Acme Corp actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Disable" }));
 
     const dialog = within(document.body).getByRole("dialog", { name: 'Disable "Acme Corp"?' });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -235,7 +261,8 @@ export const DisableOrganisationCancelled: Story = {
 };
 
 /** Deleting requires typing the organisation's exact name — the confirm
- * button stays disabled until the typed text matches. */
+ * button stays disabled until the typed text matches. Reached via the
+ * row's `ActionMenu` now, not a standalone "Delete" button. */
 export const DeleteRequiresTypedConfirmation: Story = {
   beforeEach: () => {
     mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
@@ -243,7 +270,9 @@ export const DeleteRequiresTypedConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Delete" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Acme Corp actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Acme Corp actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
 
     // The confirmation is now the shared `ConfirmDialog`, portalled into
     // document.body rather than rendered inline in the page.

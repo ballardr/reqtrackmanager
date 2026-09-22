@@ -424,19 +424,30 @@ Design CRUD/revision/relationship surface from Phases 1–6 exists (this plan
 has no single consolidated "Backend API" phase the way Module 4's plan
 does, so this addendum covers the module's REST surface as a whole rather
 than only Phase 6's own relationship endpoints). Once these endpoints
-exist, declare narrow, read-only-only `McpToolDefinition` entries per
+exist, declare `McpToolDefinition` entries per
 [docs/modules.md](../modules.md) §6, following the Compliance and Decision
 Management (`module-04-decision-management-plan.md`) precedent. Concrete
 candidates: "list designs", "get design" (including its current revision
-and hierarchy position), "list design relationships". Excluded,
-deliberately: design approval (Phase 3's Design Approver role) and
+and hierarchy position), "create/update design", "list/create design
+relationships".
+
+**2026-09-22 update (Decided by: User):** this section originally committed
+to **read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — Design CRUD/relationship tools
+declared normally (gated by `MCP_WRITES_ENABLED` + the calling account's
+own RBAC role). Design approval (Phase 3's Design Approver role) and
 invalidating a Design revision (Phase 3/Phase 6's "Invalidated by"
-mechanism) — both are exactly the kind of accountable, finalizing/flagging
-governance actions Compliance's own `module.py` has repeatedly kept off the
-MCP tool surface, so both routes are marked
-`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
-(`backend/app/modules/registry.py`) at build time, mechanically excluding
-them from the manifest rather than relying on this list alone.
+mechanism) remain the exceptions: each is an approve/decide-type action, so
+each should use the generalized org+project `allow_ai_approvals` gate
+(`app.services.rbac.require_ai_approvals_enabled`) rather than staying
+hard-excluded via `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` — defaulting
+to this option for consistency with Compliance's new posture, per no
+specific reason in this plan to keep either human-only instead. This is a
+judgment call at plan-time (**Decided by: Agent**) about *which* option
+(a)/(b) to pick per action; the underlying instruction to move this plan
+off read-only-only is **Decided by: User** (2026-09-22).
 
 ## Phase 7 — Frontend UI
 

@@ -7,6 +7,7 @@ R-G-04, R-F-01, R-F-02).
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -18,6 +19,12 @@ class ReportRequest(BaseModel):
     """Options controlling generated report content.
 
     Attributes:
+        format: Which output format to generate — `"pdf"` (R-F-01) or
+            `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
+            on this instead of there being two separate endpoints (2026-09-22
+            merge, see docs/decisions.md — one endpoint per resource, with
+            the specific format as a parameter, so a future report-type/
+            template parameter has one place to land rather than two).
         pre_markdown: Custom Markdown inserted at the beginning of the
             report, e.g. an introduction chapter (R-G-02).
         post_markdown: Custom Markdown appended at the end of the report,
@@ -40,6 +47,7 @@ class ReportRequest(BaseModel):
             wins over both when explicitly set. Ignored for CSV exports.
     """
 
+    format: Literal["pdf", "csv"]
     pre_markdown: str = ""
     post_markdown: str = ""
     include_archived: bool = False

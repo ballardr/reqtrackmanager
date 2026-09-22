@@ -79,14 +79,20 @@ test.describe("org admin: Manage users modal", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("adding a direct member via the modal's own add control (PR3, members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3)", async () => {
+    await test.step("adding a direct member via the modal's own add control (PR3, members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
       await modal.getByRole("button", { name: "Add member" }).click();
       const addMemberModal = page.getByRole("dialog", { name: "Add member" });
-      await addMemberModal.getByRole("combobox", { name: "Role to grant" }).selectOption("member");
       await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.projectMgrGamma.name);
-      await addMemberModal.getByText(PERSONAS.projectMgrGamma.email).click();
-      // Selecting a match submits and closes only the nested modal — the
-      // outer "Manage users" modal stays open underneath it.
+      await addMemberModal.getByRole("option", { name: new RegExp(PERSONAS.projectMgrGamma.name) }).click();
+
+      // Picking a match only stages it — nothing is granted, and both
+      // modals stay open, until the commit button is pressed.
+      await expect(addMemberModal.getByText(`${PERSONAS.projectMgrGamma.name} (${PERSONAS.projectMgrGamma.email})`)).toBeVisible();
+      await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toHaveCount(0);
+
+      await addMemberModal.getByRole("button", { name: "Add 1 member" }).click();
+      // Committing (with no other staged entries pending) closes only the
+      // nested modal — the outer "Manage users" modal stays open underneath.
       await expect(addMemberModal).not.toBeVisible();
       await expect(modal).toBeVisible();
       // `exact: true`: Playwright's default substring matching would also

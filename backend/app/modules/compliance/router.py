@@ -117,6 +117,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -2582,21 +2583,25 @@ def list_org_recent_activity(
 # --- Reports (Phase 15, §29) -----------------------------------------------------
 
 
-@router.get("/reports/pdf")
-def get_org_compliance_report_pdf(
-    organization_id: UUID, project_id: UUID | None = Query(None), standard_id: UUID | None = Query(None),
-    standard_version_id: UUID | None = Query(None), requirement_id: UUID | None = Query(None),
+@router.get("/reports")
+def get_org_compliance_report(
+    organization_id: UUID, format: Literal["pdf", "csv"] = Query(...), project_id: UUID | None = Query(None),
+    standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
+    requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
-    """Generates an organisation-wide PDF compliance roll-up (§29's
-    "organisation-level reporting") — one row per project/assigned-standard-
-    version pair, plus cross-project non-compliant/pending-approval/
-    expiring-evidence appendices. Manage-gated like every other Phase 14
-    org-wide aggregation on this router (§26: "View compliance across
-    projects" is a Compliance Manager capability, not general org
-    membership) — see this router's own Phase 14 comment for the full
-    reasoning, which applies identically to a report as to the live
-    dashboard listings it's built from.
+    """Generates the organisation-wide compliance roll-up (§29's
+    "organisation-level reporting") in `format` — PDF or CSV — merged from
+    two separate `/reports/pdf`/`/reports/csv` GETs on 2026-09-22 (see
+    docs/decisions.md) since they only differed in output format, not the
+    data collected. PDF: one row per project/assigned-standard-version
+    pair, plus cross-project non-compliant/pending-approval/expiring-
+    evidence appendices. CSV: the same rows as a flat export. Manage-gated
+    like every other Phase 14 org-wide aggregation on this router (§26:
+    "View compliance across projects" is a Compliance Manager capability,
+    not general org membership) — see this router's own Phase 14 comment
+    for the full reasoning, which applies identically to a report as to the
+    live dashboard listings it's built from.
 
     `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
     (Phase 43) are optional scoping filters — see `collect_org_compliance_
@@ -2608,31 +2613,16 @@ def get_org_compliance_report_pdf(
         db, organization_id, project_id=project_id, standard_id=standard_id,
         standard_version_id=standard_version_id, requirement_id=requirement_id,
     )
+    if format == "csv":
+        csv_bytes = generate_org_compliance_csv(data)
+        return Response(
+            content=csv_bytes, media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.csv"'},
+        )
     pdf_bytes = generate_org_compliance_pdf(org.name, data)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.pdf"'},
-    )
-
-
-@router.get("/reports/csv")
-def get_org_compliance_report_csv(
-    organization_id: UUID, project_id: UUID | None = Query(None), standard_id: UUID | None = Query(None),
-    standard_version_id: UUID | None = Query(None), requirement_id: UUID | None = Query(None),
-    current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
-):
-    """Generates a flat CSV export of the organisation-wide compliance
-    roll-up (§29) — one row per project/assigned-standard-version pair. See
-    the PDF endpoint above for the Phase 43 scoping filters shared by both."""
-    org = db.get(Organization, organization_id)
-    data = collect_org_compliance_report(
-        db, organization_id, project_id=project_id, standard_id=standard_id,
-        standard_version_id=standard_version_id, requirement_id=requirement_id,
-    )
-    csv_bytes = generate_org_compliance_csv(data)
-    return Response(
-        content=csv_bytes, media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.csv"'},
     )
 
 

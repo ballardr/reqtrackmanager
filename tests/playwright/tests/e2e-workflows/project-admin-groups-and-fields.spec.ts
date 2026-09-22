@@ -375,11 +375,14 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
 
         await page.getByRole("button", { name: "Add member" }).click();
         const dialog = page.getByRole("dialog", { name: "Add member" });
-        await dialog.getByLabel("Role to grant").selectOption("stakeholder");
         await dialog.getByPlaceholder("Type a name to add, or an email to invite…").fill(directGroupName);
         const groupOption = dialog.getByRole("option", { name: new RegExp(`^${directGroupName}`) });
         await expect(groupOption).toContainText("Org group");
         await groupOption.click();
+
+        // Staged, not yet granted — set this row's own role, then commit.
+        await dialog.getByRole("combobox", { name: `Role for ${directGroupName}` }).selectOption("stakeholder");
+        await dialog.getByRole("button", { name: "Add 1 member" }).click();
         await expect(dialog).not.toBeVisible();
 
         // Visible on the group's member's own row, naming the granting

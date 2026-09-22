@@ -54,14 +54,22 @@ test.describe("project admin: Members section", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("add a direct member with a role via the Members page's own add control (PR3, members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3)", async () => {
+    await test.step("add a direct member with a role via the Members page's own add control (PR3, members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
       await page.getByRole("button", { name: "Add member" }).click();
       const modal = page.getByRole("dialog", { name: "Add member" });
-      await modal.getByRole("combobox", { name: "Role to grant" }).selectOption("stakeholder");
       await modal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
-      await modal.getByText(PERSONAS.memberAlphaBeta.email).click();
-      // Selecting a match submits and closes the modal (relocated from the
-      // old always-visible control, which had no separate submit step).
+      await modal.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
+
+      // Staged, not yet granted — set this row's own role before
+      // committing (defaults to "member").
+      const stagedRoleSelect = modal.getByRole("combobox", {
+        name: `Role for ${PERSONAS.memberAlphaBeta.name} (${PERSONAS.memberAlphaBeta.email})`,
+      });
+      await stagedRoleSelect.selectOption("stakeholder");
+      await expect(page.getByRole("cell", { name: PERSONAS.memberAlphaBeta.name, exact: true })).toHaveCount(0);
+
+      await modal.getByRole("button", { name: "Add 1 member" }).click();
+      // Every staged entry succeeded — the modal closes itself.
       await expect(modal).not.toBeVisible();
       // `exact: true`: Playwright's default substring matching would also
       // match the same row's Role cell, whose `MultiSelectDropdown`

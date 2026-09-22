@@ -29,7 +29,7 @@ sidebar_position: 12
 
 ## Adding external users
 
-The picker used to add someone to a project group normally only searches your organisation's own members. Typing a full email address that isn't already a member can also surface a result — **Add** for an existing account elsewhere in the system, or **Invite** for a brand-new one — if the organisation's admin has enabled it (**Advanced settings → External users on projects**, see [Administering an organisation](./administering-an-organisation.md)). An existing account is added right away; a brand-new one gets an email to finish signing up — either way, the project role you picked is waiting for them as soon as they can sign in.
+The picker used to add someone (or an organisation-level group) directly to the project normally only searches your organisation's own members. Typing a full email address that isn't already a member can also surface a result — **Add** for an existing account elsewhere in the system, or **Invite** for a brand-new one — if the organisation's admin has enabled it (**Advanced settings → External users on projects**, see [Administering an organisation](./administering-an-organisation.md)). Picking a person, group, or email match stages it in a list rather than granting anything immediately — set (or change) each staged entry's own role, add as many more as you need, then commit them all with one button press. An existing account is added right away once committed; a brand-new one gets an email to finish signing up — either way, the project role you picked is waiting for them as soon as they can sign in.
 
 ## Settings
 

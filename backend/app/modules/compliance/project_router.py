@@ -42,28 +42,35 @@ it's already assigned to. It creates a **new** `ProjectCompliance` row
 and this module's own Phase 7 design) and archives the old one — never a
 silent, in-place version swap. See `service.py::migrate_project_compliance`'s
 own docstring for exactly which requirements' assessments are carried
-forward vs. left to reassess, and why. No MCP tool is declared for this
-action (`module.py`'s own Phase 11 notes) — it is a significant mutation
-with wide side effects across many rows, and nothing in this phase's spec
-asks for one; the read-only version-diff endpoint on the org router
-(`router.py::get_standard_version_diff`) is this action's natural "preview
-before you commit" companion and *is* an MCP tool.
+forward vs. left to reassess, and why. Originally no MCP tool was declared
+for this action (a significant, wide-blast-radius mutation); as of
+2026-09-22 it is declared (`compliance_migrate_project_compliance_version`,
+`module.py`) as part of this module's full write-tool reversal — see
+`module.py`'s own updated docstring and docs/decisions.md's "Compliance MCP
+write tools + generalized AI approval gate" entry — gated by the calling
+account's own RBAC role and the global `MCP_WRITES_ENABLED` switch like any
+other write tool, with no additional confirmation step; the read-only
+version-diff endpoint on the org router (`router.py::get_standard_version_
+diff`) remains this action's "preview before you commit" companion.
 
 Phase 9 (Approval/Sign-off, §12, §16, §27) adds the `submit-for-approval`/
 `approve`/`reject` state-machine actions and the `pending-approvals`
 cross-assignment listing to the per-requirement assessment section below.
-`approve`/`reject` are marked with `app.modules.registry.
-APPROVAL_ACTION_ROUTE_EXTRA` (`openapi_extra`) — Phase 4's manifest-builder
-exclusion reads this directly off the route, so these two can never be
-exposed as an MCP tool regardless of what a future session's `module.py`
-might declare; `submit-for-approval` is marked the same way as belt-and-
-braces, even though it only queues a decision rather than making one, since
-§11 describes the whole flow ("Request/perform assessment... Approve/sign
-off compliance") as one accountable-human action set. No new MCP tool is
-declared for any of the three — only the read-only `pending-approvals`
-listing (`compliance_list_pending_approvals`, `module.py`) is, mirroring
-the existing `compliance_get_project_status`/`list_non_compliant_
-requirements` read-only shape. `update_requirement_assessment` and
+Originally all three were marked `app.modules.registry.
+APPROVAL_ACTION_ROUTE_EXTRA` (`openapi_extra`), `submit-for-approval` as
+belt-and-braces even though it only queues a decision rather than making
+one. As of 2026-09-22 (docs/decisions.md's "Compliance MCP write tools +
+generalized AI approval gate" entry) only `approve`/`reject` keep an
+approval-type gate — now the generalized, reusable
+`require_ai_approvals_enabled(db, project)` org+project opt-in check
+(`app.services.rbac`), called inline exactly like core's `requirements.
+approve_requirement`/`change_requests.decide_change_request` when
+`get_request_channel(request) == "mcp"`, rather than the hard,
+no-opt-in-possible `APPROVAL_ACTION_ROUTE_EXTRA` exclusion. `submit-for-
+approval`'s marker was removed and it is now a normal MCP write tool with
+no approval gate at all, since it does not itself decide anything —
+mirroring core's own `submit_change_request`, which was never marked
+either. `update_requirement_assessment` and
 `update_requirement_applicability` (Phase 7) are extended to trigger the
 two automatic transitions `service.py`'s `advance_approval_state_on_
 assessment`/`invalidate_approval_if_in_flight` define; `archive_evidence`/
@@ -125,6 +132,7 @@ reimplemented.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -132,6 +140,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_request_channel
 from app.models.audit import AuditEvent
 from app.models.enums import ProjectRole
 from app.models.file import FileAsset
@@ -220,7 +229,6 @@ from app.modules.compliance.service import (
     materialize_assessment_rows,
     migrate_project_compliance,
 )
-from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.schemas.audit import AuditEventOut
 from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import notifications, relationships
@@ -230,6 +238,7 @@ from app.services.files import delete_file, upload_file
 from app.services.rbac import (
     get_effective_org_roles,
     get_effective_project_roles,
+    require_ai_approvals_enabled,
     require_module_role,
     require_project_module_enabled,
 )
@@ -714,21 +723,24 @@ def list_outstanding_required_actions(
 # --- Reports (Phase 15, §29) -----------------------------------------------------
 
 
-@router.get("/reports/pdf")
-def get_project_compliance_report_pdf(
-    project_id: UUID, include_archived: bool = Query(False),
+@router.get("/reports")
+def get_project_compliance_report(
+    project_id: UUID, format: Literal["pdf", "csv"] = Query(...), include_archived: bool = Query(False),
     standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
     requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Generates a PDF compliance report for this project (§29) — every
-    requirement's assessment across its assigned standards, plus evidence/
-    review/cross-standard-mapping appendices. View-gated like every other
-    read endpoint on this router (§26: "Other Project Users: Read access
-    according to existing project permissions") — a report never surfaces
-    anything this same caller couldn't already read via the JSON endpoints
-    it's built from (see `app.modules.compliance.reports`'s own module
-    docstring).
+    """Generates this project's compliance report in `format` — PDF or CSV
+    (§29) — merged from two separate `/reports/pdf`/`/reports/csv` GETs on
+    2026-09-22 (see docs/decisions.md) since they only differed in output
+    format, not the data collected. PDF: every requirement's assessment
+    across its assigned standards, plus evidence/review/cross-standard-
+    mapping appendices. CSV: a flat export, one row per requirement per
+    assigned standard. View-gated like every other read endpoint on this
+    router (§26: "Other Project Users: Read access according to existing
+    project permissions") — a report never surfaces anything this same
+    caller couldn't already read via the JSON endpoints it's built from
+    (see `app.modules.compliance.reports`'s own module docstring).
 
     `standard_id`/`standard_version_id`/`requirement_id` (Phase 43) are
     optional scoping filters — see `collect_project_compliance_report`'s own
@@ -740,32 +752,16 @@ def get_project_compliance_report_pdf(
         db, project, include_archived=include_archived,
         standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,
     )
+    if format == "csv":
+        csv_bytes = generate_project_compliance_csv(data)
+        return Response(
+            content=csv_bytes, media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-compliance-report.csv"'},
+        )
     pdf_bytes = generate_project_compliance_pdf(project.name, data)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-compliance-report.pdf"'},
-    )
-
-
-@router.get("/reports/csv")
-def get_project_compliance_report_csv(
-    project_id: UUID, include_archived: bool = Query(False),
-    standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
-    requirement_id: UUID | None = Query(None),
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
-):
-    """Generates a flat CSV export of this project's compliance assessments
-    (§29) — one row per requirement per assigned standard. See the PDF
-    endpoint above for the Phase 43 scoping filters shared by both."""
-    project = db.get(Project, project_id)
-    data = collect_project_compliance_report(
-        db, project, include_archived=include_archived,
-        standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,
-    )
-    csv_bytes = generate_project_compliance_csv(data)
-    return Response(
-        content=csv_bytes, media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-compliance-report.csv"'},
     )
 
 
@@ -916,7 +912,6 @@ def update_requirement_assessment(
 @router.post(
     "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/submit-for-approval",
     response_model=ProjectComplianceRequirementOut,
-    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
 )
 def submit_requirement_for_approval(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID,
@@ -926,7 +921,18 @@ def submit_requirement_for_approval(
     assessment (§12) — `ASSESSED` -> `PENDING_APPROVAL`. 409 from any other
     `approval_state`, enforcing §12's own minimum ordering ("Not Assessed ->
     Assessed -> Pending Approval -> ...") rather than allowing e.g. a
-    `NOT_ASSESSED` row to be submitted with nothing yet assessed."""
+    `NOT_ASSESSED` row to be submitted with nothing yet assessed.
+
+    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
+    docs/decisions.md's "Compliance MCP write tools + generalized AI
+    approval gate" entry): this action only queues a decision for a human
+    to make (an officer or PM still must call `approve`/`reject` next), it
+    does not itself approve/decide/complete anything, so it does not need
+    the org+project `allow_ai_approvals` gate those three do — mirroring
+    core's own `submit_change_request`, which was never marked either. It
+    is a normal MCP-writable tool (`compliance_submit_requirement_for_
+    approval`, `module.py`), gated only by the calling account's own
+    `compliance_officer`/`PROJECT_MANAGER` role, same as any UI/API call."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if pcr.approval_state != ComplianceApprovalState.ASSESSED:
         raise HTTPException(
@@ -962,11 +968,11 @@ def submit_requirement_for_approval(
 @router.post(
     "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/approve",
     response_model=ProjectComplianceRequirementOut,
-    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
 )
 def approve_requirement(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
     """Formally approves/signs off this requirement's assessment (§12) —
     `PENDING_APPROVAL` -> `APPROVED`. Gated the same as every other
@@ -974,10 +980,19 @@ def approve_requirement(
     `PROJECT_MANAGER`) — §11/§26 describe "Approve/sign off compliance
     where authorised" as one of the same Project Manager/Compliance
     Officer actions as assessing, with no separate approver role named.
-    Marked `APPROVAL_ACTION_ROUTE_EXTRA` so Phase 4's manifest-builder can
-    never expose this as an MCP tool, regardless of what a future
-    `module.py` declares."""
+
+    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
+    docs/decisions.md's "Compliance MCP write tools + generalized AI
+    approval gate" entry): this is now MCP-reachable exactly like core's
+    `requirements.approve_requirement`/`complete_requirement` and
+    `change_requests.decide_change_request` — when reached through the MCP
+    server (`channel == "mcp"`), additionally requires this project and its
+    organisation to both have explicitly enabled AI approval
+    (`require_ai_approvals_enabled`); a plain UI/API call is unaffected by
+    that flag either way."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, db.get(Project, project_id))
     if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -994,6 +1009,7 @@ def approve_requirement(
         detail={
             "previous_approval_state": "pending_approval", "new_approval_state": "approved",
             "decision_note": payload.decision_note,
+            **({"via": "mcp"} if channel == "mcp" else {}),
         },
     )
     db.commit()
@@ -1007,18 +1023,24 @@ def approve_requirement(
 @router.post(
     "/project-compliance/{project_compliance_id}/requirements/{pcr_id}/reject",
     response_model=ProjectComplianceRequirementOut,
-    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
 )
 def reject_requirement(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
     """Formally rejects this requirement's assessment (§12) —
     `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is mandatory (400) —
     mirrors §16's existing mandatory-rationale rule for Non-Compliant/Not-
     Applicable decisions, applied to a rejection for the same reason: a
-    rejection must never appear with no indication of why."""
+    rejection must never appear with no indication of why.
+
+    No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see
+    `approve_requirement`'s docstring above; gated the same way when
+    reached through the MCP server."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, db.get(Project, project_id))
     if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -1037,6 +1059,7 @@ def reject_requirement(
         detail={
             "previous_approval_state": "pending_approval", "new_approval_state": "rejected",
             "decision_note": payload.decision_note,
+            **({"via": "mcp"} if channel == "mcp" else {}),
         },
     )
     if pcr.assessed_by is not None:
