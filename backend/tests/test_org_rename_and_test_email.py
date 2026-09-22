@@ -12,8 +12,8 @@ against MailHog in docs/decisions.md's manual verification), matching
 
 from unittest.mock import Mock, patch
 
-from app.routers import orgs as orgs_router
-from app.routers import system as system_router
+from app.routers.orgs import settings as orgs_settings_router
+from app.routers.system import config as system_config_router
 from tests.conftest import auth_headers, create_org_user, login
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ def test_member_cannot_rename_organization(client, admin_token, org_id):
 
 
 def test_system_test_email_defaults_to_caller_and_uses_deployment_smtp(client, admin_token):
-    with patch.object(system_router, "send_email", new=Mock()) as mock_send:
+    with patch.object(system_config_router, "send_email", new=Mock()) as mock_send:
         resp = client.post("/api/v1/system/test-email", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 204, resp.text
     mock_send.assert_called_once()
@@ -67,7 +67,7 @@ def test_system_test_email_defaults_to_caller_and_uses_deployment_smtp(client, a
 
 
 def test_system_test_email_honours_explicit_recipient(client, admin_token):
-    with patch.object(system_router, "send_email", new=Mock()) as mock_send:
+    with patch.object(system_config_router, "send_email", new=Mock()) as mock_send:
         resp = client.post(
             "/api/v1/system/test-email", json={"to_email": "someone-else@example.com"},
             headers=auth_headers(admin_token),
@@ -79,14 +79,14 @@ def test_system_test_email_honours_explicit_recipient(client, admin_token):
 def test_system_test_email_requires_server_admin(client, admin_token, org_id):
     create_org_user(client, admin_token, org_id, "not_server_admin@example.com", role="org_admin")
     member_token = login(client, "not_server_admin@example.com", "Password123!")
-    with patch.object(system_router, "send_email", new=Mock()) as mock_send:
+    with patch.object(system_config_router, "send_email", new=Mock()) as mock_send:
         resp = client.post("/api/v1/system/test-email", json={}, headers=auth_headers(member_token))
     assert resp.status_code == 403
     mock_send.assert_not_called()
 
 
 def test_system_test_email_send_failure_returns_502_with_reason(client, admin_token):
-    with patch.object(system_router, "send_email", new=Mock(side_effect=ConnectionRefusedError("refused"))):
+    with patch.object(system_config_router, "send_email", new=Mock(side_effect=ConnectionRefusedError("refused"))):
         resp = client.post("/api/v1/system/test-email", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 502
     assert "refused" in resp.json()["detail"]
@@ -112,7 +112,7 @@ def test_org_test_email_uses_orgs_own_smtp_override(client, admin_token, org_id)
         headers=auth_headers(admin_token),
     )
 
-    with patch.object(orgs_router, "send_email", new=Mock()) as mock_send:
+    with patch.object(orgs_settings_router, "send_email", new=Mock()) as mock_send:
         resp = client.post(f"/api/v1/orgs/{org_id}/test-email", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 204, resp.text
     mock_send.assert_called_once()
@@ -137,7 +137,7 @@ def test_org_test_email_requires_org_admin(client, admin_token, org_id):
     create_org_user(client, admin_token, org_id, "org_test_email_member@example.com", role="member")
     member_token = login(client, "org_test_email_member@example.com", "Password123!")
 
-    with patch.object(orgs_router, "send_email", new=Mock()) as mock_send:
+    with patch.object(orgs_settings_router, "send_email", new=Mock()) as mock_send:
         resp = client.post(f"/api/v1/orgs/{org_id}/test-email", json={}, headers=auth_headers(member_token))
     assert resp.status_code == 403
     mock_send.assert_not_called()
@@ -149,7 +149,7 @@ def test_org_test_email_send_failure_returns_502_with_reason(client, admin_token
         json={"smtp_host": "smtp.example.com", "smtp_port": 587, "smtp_use_tls": True, },
         headers=auth_headers(admin_token),
     )
-    with patch.object(orgs_router, "send_email", new=Mock(side_effect=TimeoutError("timed out"))):
+    with patch.object(orgs_settings_router, "send_email", new=Mock(side_effect=TimeoutError("timed out"))):
         resp = client.post(f"/api/v1/orgs/{org_id}/test-email", json={}, headers=auth_headers(admin_token))
     assert resp.status_code == 502
     assert "timed out" in resp.json()["detail"]

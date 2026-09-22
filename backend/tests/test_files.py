@@ -205,8 +205,8 @@ def test_avatar_upload_and_org_logo_upload(client, admin_token, org_id):
     assert resp.json()["avatar_file_id"] is not None
 
     resp = client.post(
-        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "logo"}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     assert resp.json()["logo_file_id"] is not None
@@ -219,12 +219,12 @@ def test_org_logo_and_login_background_are_downloadable_with_no_authentication(c
     user. Previously it required auth unconditionally, so an uploaded login
     background never actually appeared on the real login page."""
     logo = client.post(
-        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "logo"}, headers=auth_headers(admin_token),
     ).json()
     background = client.post(
-        f"/api/v1/orgs/{org_id}/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        data={"kind": "login_background"}, headers=auth_headers(admin_token),
     ).json()
 
     assert client.get(f"/api/v1/files/{logo['logo_file_id']}").status_code == 200
@@ -234,28 +234,32 @@ def test_org_logo_and_login_background_are_downloadable_with_no_authentication(c
 def test_delete_org_logo_and_login_background_revert_to_the_platform_default(client, admin_token, org_id):
     """UX audit finding: logo and login background had no revert path at
     all, in the UI or the API — unlike the text-based branding overrides
-    (`OverridePill`). These new `DELETE` endpoints close that gap: clearing
+    (`OverridePill`). These `DELETE` endpoints close that gap: clearing
     the override falls back to the platform default (`GET /system/branding`)
     the same way a null `header_title`/`email_footer_*` already does, and
     the now-orphaned file is actually removed from storage, not just
-    unlinked — matching `delete_org_resource`'s cleanup."""
+    unlinked — matching `delete_org_resource`'s cleanup. Both `kind`s are
+    exercised via the single merged `POST`/`DELETE /branding-image`
+    endpoints (2026-09-22, see docs/decisions.md)."""
     logo = client.post(
-        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "logo"}, headers=auth_headers(admin_token),
     ).json()
     background = client.post(
-        f"/api/v1/orgs/{org_id}/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        data={"kind": "login_background"}, headers=auth_headers(admin_token),
     ).json()
     logo_file_id = logo["logo_file_id"]
     background_file_id = background["login_background_file_id"]
 
-    delete_logo = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(admin_token))
+    delete_logo = client.delete(f"/api/v1/orgs/{org_id}/branding-image?kind=logo", headers=auth_headers(admin_token))
     assert delete_logo.status_code == 200
     assert delete_logo.json()["logo_file_id"] is None
     assert client.get(f"/api/v1/files/{logo_file_id}").status_code == 404
 
-    delete_background = client.delete(f"/api/v1/orgs/{org_id}/login-background", headers=auth_headers(admin_token))
+    delete_background = client.delete(
+        f"/api/v1/orgs/{org_id}/branding-image?kind=login_background", headers=auth_headers(admin_token)
+    )
     assert delete_background.status_code == 200
     assert delete_background.json()["login_background_file_id"] is None
     assert client.get(f"/api/v1/files/{background_file_id}").status_code == 404
@@ -266,7 +270,7 @@ def test_delete_org_logo_is_a_noop_when_nothing_is_set(client, admin_token, org_
     legitimate no-op (200, unchanged), not a 404 — this isn't deleting a
     specific known record, it's asserting an end state that may already
     hold."""
-    resp = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(admin_token))
+    resp = client.delete(f"/api/v1/orgs/{org_id}/branding-image?kind=logo", headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.json()["logo_file_id"] is None
 
@@ -275,30 +279,70 @@ def test_org_member_cannot_delete_org_logo(client, admin_token, org_id):
     from tests.conftest import create_org_user, login
 
     client.post(
-        f"/api/v1/orgs/{org_id}/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "logo"}, headers=auth_headers(admin_token),
     )
     create_org_user(client, admin_token, org_id, "logo-member@example.com", role="member")
     member_token = login(client, "logo-member@example.com", "Password123!")
 
-    resp = client.delete(f"/api/v1/orgs/{org_id}/logo", headers=auth_headers(member_token))
+    resp = client.delete(f"/api/v1/orgs/{org_id}/branding-image?kind=logo", headers=auth_headers(member_token))
     assert resp.status_code == 403
+
+
+def test_org_branding_image_rejects_invalid_or_missing_kind(client, admin_token, org_id):
+    """The merged `POST`/`DELETE /branding-image` endpoints dispatch
+    entirely on `kind` — a missing or bogus value must 422, not silently
+    default to one image slot. Mirrors `test_report_rejects_missing_or_
+    invalid_format`/`test_orphaned_user_status_rejects_missing_or_invalid_
+    action`'s pattern for the other merged endpoints in this codebase."""
+    missing_post = client.post(
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    assert missing_post.status_code == 422
+    invalid_post = client.post(
+        f"/api/v1/orgs/{org_id}/branding-image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "favicon"}, headers=auth_headers(admin_token),
+    )
+    assert invalid_post.status_code == 422
+
+    missing_delete = client.delete(f"/api/v1/orgs/{org_id}/branding-image", headers=auth_headers(admin_token))
+    assert missing_delete.status_code == 422
+    invalid_delete = client.delete(
+        f"/api/v1/orgs/{org_id}/branding-image?kind=favicon", headers=auth_headers(admin_token)
+    )
+    assert invalid_delete.status_code == 422
 
 
 def test_platform_default_logo_and_login_background_are_downloadable_with_no_authentication(client, admin_token):
     """Same regression as above, for the platform-wide defaults shown on the
     plain `/login` page (no single org's branding applies)."""
     logo = client.post(
-        "/api/v1/system/branding/logo", files={"file": ("logo.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        "/api/v1/system/branding/image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "logo"}, headers=auth_headers(admin_token),
     ).json()
     background = client.post(
-        "/api/v1/system/branding/login-background", files={"file": ("bg.png", b"\x89PNG", "image/png")},
-        headers=auth_headers(admin_token),
+        "/api/v1/system/branding/image", files={"file": ("bg.png", b"\x89PNG", "image/png")},
+        data={"kind": "login_background"}, headers=auth_headers(admin_token),
     ).json()
 
     assert client.get(f"/api/v1/files/{logo['default_logo_file_id']}").status_code == 200
     assert client.get(f"/api/v1/files/{background['default_login_background_file_id']}").status_code == 200
+
+
+def test_system_branding_image_rejects_invalid_or_missing_kind(client, admin_token):
+    """Same dispatch-validation requirement as the org-level endpoint, for
+    the system-level merged `POST /branding/image`."""
+    missing = client.post(
+        "/api/v1/system/branding/image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    assert missing.status_code == 422
+    invalid = client.post(
+        "/api/v1/system/branding/image", files={"file": ("logo.png", b"\x89PNG", "image/png")},
+        data={"kind": "favicon"}, headers=auth_headers(admin_token),
+    )
+    assert invalid.status_code == 422
 
 
 def test_system_branding_is_readable_with_no_authentication(client):

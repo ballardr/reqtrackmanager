@@ -612,7 +612,10 @@ def test_oidc_callback_rejects_a_deactivated_account(client, admin_token, org_id
     _sso_org(client, admin_token, org_id, "deactivated-oidc-org")
     email = "deactivated-oidc@example.com"
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
-    assert client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token)).status_code == 204
+    deactivate_resp = client.post(
+        f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token)
+    )
+    assert deactivate_resp.status_code == 204
 
     _patch_fake_oidc(monkeypatch, email=email)
     state = create_oidc_state_token(org_id, "x" * 16)

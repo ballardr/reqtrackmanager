@@ -1031,7 +1031,7 @@ export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
   beforeEach: () => {
     mockOrgAdminApis({ org: { ...org, logo_file_id: "file-logo-1", login_background_file_id: "file-bg-1" } });
     spyOn(api, "delete").mockImplementation(async (path: string) =>
-      path.endsWith("/logo") ? { ...org, logo_file_id: null } : { ...org, login_background_file_id: null }
+      path.includes("kind=logo") ? { ...org, logo_file_id: null } : { ...org, login_background_file_id: null }
     );
   },
   play: async ({ canvasElement }) => {
@@ -1040,7 +1040,7 @@ export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
     await waitFor(() => expect(canvas.getAllByText("Custom").length).toBeGreaterThanOrEqual(1));
 
     await userEvent.click(canvas.getAllByRole("button", { name: "Reset to platform default" })[0]);
-    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/logo`));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=logo`));
     await expect(within(document.body).getByText("Logo reset to the platform default.")).toBeInTheDocument();
 
     await waitFor(() => expect(canvas.getByLabelText("Login page background image")).toBeInTheDocument());
@@ -1048,7 +1048,9 @@ export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
       btn.closest("div")?.textContent?.includes("Login page background image")
     );
     await userEvent.click(backgroundReset!);
-    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/login-background`));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=login_background`)
+    );
     await expect(within(document.body).getByText("Background image reset to the platform default.")).toBeInTheDocument();
   },
 };

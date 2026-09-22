@@ -147,12 +147,14 @@ def test_2fa_disable_invalidates_the_old_token(client, admin_token):
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
     secret = enroll.json()["secret"]
     code = pyotp.TOTP(secret).now()
-    client.post("/api/v1/auth/2fa/confirm", json={"code": code}, headers=auth_headers(admin_token))
+    client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(admin_token))
 
     assert client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).status_code == 200
 
     disable_code = pyotp.TOTP(secret).now()
-    resp = client.post("/api/v1/auth/2fa/disable", json={"code": disable_code}, headers=auth_headers(admin_token))
+    resp = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "disable", "code": disable_code}, headers=auth_headers(admin_token)
+    )
     assert resp.status_code == 204
 
     assert client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).status_code == 401
@@ -176,11 +178,19 @@ def test_password_change_and_2fa_actions_are_audit_logged(client, admin_token):
     token = login(client, "admin@example.com", "AuditedPassword123!")
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token))
     secret = enroll.json()["secret"]
-    resp = client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(token))
+    resp = client.post(
+        "/api/v1/auth/2fa/status",
+        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        headers=auth_headers(token),
+    )
     assert resp.status_code == 204
     assert _audit_action_count(user_id, "2fa_enabled") == 1
 
-    resp = client.post("/api/v1/auth/2fa/disable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(token))
+    resp = client.post(
+        "/api/v1/auth/2fa/status",
+        json={"action": "disable", "code": pyotp.TOTP(secret).now()},
+        headers=auth_headers(token),
+    )
     assert resp.status_code == 204
     assert _audit_action_count(user_id, "2fa_disabled") == 1
 
@@ -219,7 +229,9 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
     assert enroll.json()["qr_code_png_base64"]
 
     code = pyotp.TOTP(secret).now()
-    confirm = client.post("/api/v1/auth/2fa/confirm", json={"code": code}, headers=auth_headers(admin_token))
+    confirm = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(admin_token)
+    )
     assert confirm.status_code == 204
 
     # Plain login now returns a 2FA challenge, not a token.
@@ -252,10 +264,14 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
     assert resp.status_code == 200
 
     # Disabling requires a valid code.
-    resp = client.post("/api/v1/auth/2fa/disable", json={"code": "000000"}, headers=auth_headers(real_token))
+    resp = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "disable", "code": "000000"}, headers=auth_headers(real_token)
+    )
     assert resp.status_code == 400
     resp = client.post(
-        "/api/v1/auth/2fa/disable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(real_token)
+        "/api/v1/auth/2fa/status",
+        json={"action": "disable", "code": pyotp.TOTP(secret).now()},
+        headers=auth_headers(real_token),
     )
     assert resp.status_code == 204
 
@@ -273,7 +289,11 @@ def test_2fa_verify_locks_out_after_repeated_failed_codes(client, admin_token):
 
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
     secret = enroll.json()["secret"]
-    client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(admin_token))
+    client.post(
+        "/api/v1/auth/2fa/status",
+        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        headers=auth_headers(admin_token),
+    )
 
     login_resp = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "ChangeMe123!"})
     challenge_token = login_resp.json()["challenge_token"]
@@ -297,6 +317,25 @@ def test_2fa_verify_locks_out_after_repeated_failed_codes(client, admin_token):
     assert "too many failed attempts" in resp.json()["detail"].lower()
 
 
+def test_2fa_status_rejects_missing_or_invalid_action(client, admin_token):
+    """The merged `POST /auth/2fa/status` endpoint's `action` is required
+    (no default) and restricted to `"confirm"`/`"disable"` — a missing or
+    bogus value must 422, not silently do nothing or pick a default action.
+    Mirrors `test_report_rejects_missing_or_invalid_format`/`test_orphaned_
+    user_status_rejects_missing_or_invalid_action`'s pattern for the other
+    merged endpoints in this codebase."""
+    enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
+    secret = enroll.json()["secret"]
+    code = pyotp.TOTP(secret).now()
+
+    missing = client.post("/api/v1/auth/2fa/status", json={"code": code}, headers=auth_headers(admin_token))
+    assert missing.status_code == 422
+    invalid = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "enroll", "code": code}, headers=auth_headers(admin_token)
+    )
+    assert invalid.status_code == 422
+
+
 def test_2fa_lockout_clears_once_the_window_passes(client, admin_token):
     """Once `failed_2fa_locked_until` is in the past, a correct code succeeds again."""
     from datetime import UTC, datetime, timedelta
@@ -306,7 +345,11 @@ def test_2fa_lockout_clears_once_the_window_passes(client, admin_token):
 
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
     secret = enroll.json()["secret"]
-    client.post("/api/v1/auth/2fa/confirm", json={"code": pyotp.TOTP(secret).now()}, headers=auth_headers(admin_token))
+    client.post(
+        "/api/v1/auth/2fa/status",
+        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        headers=auth_headers(admin_token),
+    )
     user_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
 
     db = SessionLocal()

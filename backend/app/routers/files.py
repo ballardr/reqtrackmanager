@@ -97,7 +97,7 @@ def download_file(
     # `default_login_background_file_id`) belong in this same bucket for the
     # same reason, even though their `FileAsset` rows are nominally owned by
     # whichever organisation they happened to be stored against (see
-    # `routers/system.py::upload_branding_logo`) — that ownership is a
+    # `routers/system.py::upload_branding_image`) — that ownership is a
     # storage-key implementation detail, not an access rule.
     is_public_branding = (
         db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None

@@ -21,7 +21,7 @@ from app.models.enums import OrgRole
 from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
-from app.routers.orgs import _looks_like_email
+from app.routers.orgs.membership import _looks_like_email
 from app.services import invites as invites_module
 from app.services.definitions import get_default_project_status_id, seed_project_statuses
 from app.services.invites import consume_pending_invites, create_pending_invite, provision_sso_invite

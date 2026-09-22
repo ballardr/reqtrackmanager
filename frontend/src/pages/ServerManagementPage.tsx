@@ -578,7 +578,7 @@ function PlatformBrandingTab() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.postFile("/api/v1/system/branding/logo", file);
+      await api.postFile("/api/v1/system/branding/image", file, { kind: "logo" });
       await reload();
       setLogoUploaded(true);
     } catch (err) {
@@ -597,7 +597,7 @@ function PlatformBrandingTab() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.postFile("/api/v1/system/branding/login-background", file);
+      await api.postFile("/api/v1/system/branding/image", file, { kind: "login_background" });
       await reload();
       setLoginBackgroundUploaded(true);
     } catch (err) {

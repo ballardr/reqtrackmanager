@@ -8,7 +8,7 @@ and self-service profile fields (C-U-16, C-U-18).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -90,15 +90,26 @@ class TwoFactorEnrollResponse(BaseModel):
     qr_code_png_base64: str
 
 
-class TwoFactorConfirmRequest(BaseModel):
-    """Confirms enrollment by proving the authenticator app produces valid codes."""
+class TwoFactorStatusUpdate(BaseModel):
+    """Payload for `POST /auth/2fa/status` — merges the formerly-separate
+    `confirm`/`disable` endpoints (2026-09-22, see docs/decisions.md) into
+    one, following the same "action discriminates the transition" shape
+    `OrphanedUserStatusUpdate` (`routers.system`) already uses for its own
+    merged status endpoint. Both original endpoints required exactly a
+    `code` field and nothing else, so this replaces
+    `TwoFactorConfirmRequest`/`TwoFactorDisableRequest` with one shared
+    schema rather than a `Union` of two otherwise-identical ones.
 
-    code: str
+    Attributes:
+        action: Which 2FA transition to apply — `"confirm"` completes an
+            enrollment started by `/2fa/enroll`; `"disable"` turns 2FA back
+            off for an already-enabled account.
+        code: A current TOTP code from the user's authenticator app,
+            proving control of it (initial, for `confirm`; ongoing, for
+            `disable`).
+    """
 
-
-class TwoFactorDisableRequest(BaseModel):
-    """Disables 2FA; requires a currently-valid code to prove the caller still controls it."""
-
+    action: Literal["confirm", "disable"]
     code: str
 
 

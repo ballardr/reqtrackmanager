@@ -1411,7 +1411,7 @@ export function OrgAdminPage() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.postFile(`/api/v1/orgs/${orgId}/logo`, file);
+      await api.postFile(`/api/v1/orgs/${orgId}/branding-image`, file, { kind: "logo" });
       await reload();
       setLogoUploaded(true);
     } catch (err) {
@@ -1426,7 +1426,7 @@ export function OrgAdminPage() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.delete(`/api/v1/orgs/${orgId}/logo`);
+      await api.delete(`/api/v1/orgs/${orgId}/branding-image?kind=logo`);
       await reload();
       showToast(strings.orgAdmin.logoRemoved);
     } catch (err) {
@@ -1464,7 +1464,7 @@ export function OrgAdminPage() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
+      await api.postFile(`/api/v1/orgs/${orgId}/branding-image`, file, { kind: "login_background" });
       await reload();
       setLoginBackgroundUploaded(true);
     } catch (err) {
@@ -1479,7 +1479,7 @@ export function OrgAdminPage() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.delete(`/api/v1/orgs/${orgId}/login-background`);
+      await api.delete(`/api/v1/orgs/${orgId}/branding-image?kind=login_background`);
       await reload();
       showToast(strings.orgAdmin.loginBackgroundRemoved);
     } catch (err) {
