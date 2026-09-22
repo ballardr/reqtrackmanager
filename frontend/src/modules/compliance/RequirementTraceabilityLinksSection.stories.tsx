@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withRouter, withToast } from "../../testing/storybook-helpers";
+import { withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import { RequirementTraceabilityLinksSection } from "./RequirementTraceabilityLinksSection";
 import type { ComplianceRequirementTraceabilityLink } from "./types";
 
@@ -27,7 +27,7 @@ const meta: Meta<typeof RequirementTraceabilityLinksSection> = {
   title: "Modules/Compliance/RequirementTraceabilityLinksSection",
   component: RequirementTraceabilityLinksSection,
   args: { projectId: "project-1", requirementId: "requirement-1", organizationId: "org-1", refreshToken: 0 },
-  decorators: [withRouter("/projects/project-1/requirements/requirement-1"), withToast()],
+  decorators: [withRouter("/projects/project-1/requirements/requirement-1"), withToast(), withThemeProvider()],
 };
 export default meta;
 

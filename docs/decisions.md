@@ -6530,3 +6530,951 @@ Verified: `npm run build` (clean, zero broken links/anchors — `onBrokenLinks: 
 ### Files changed
 
 `docs/website/docusaurus.config.ts` (`docs.routeBasePath`, `plugin-client-redirects` config, `navbar.logo.href`), `docs/website/docs/introduction/overview.md` (`slug: /` front matter), `docs/decisions.md` (this entry).
+
+---
+
+## Module 4 (Decision Management) Phase 1 — data model, and a module-boundary correction found along the way
+
+**Decided by: User** — start Module 4 (Decision Management) first, ahead of its Phase 0 requirements-clarification sign-off, with one addition beyond the existing plan (`docs/plans/module-04-decision-management-plan.md`): Decision Templates — custom, org-managed templates plus seeded standard ADR formats (referencing [github.com/architecture-decision-record](https://github.com/architecture-decision-record/architecture-decision-record)), seedable per organisation at creation time. Module 0 (Platform Foundations) was already complete, so Phase 3's one hard dependency was already satisfied.
+
+**Phase 0 resolved (Decided by: User via clarifying questions)**: opt-in template seeding picker at org-creation time (not always-auto-seed); templates store per-field guidance/placeholder text (not a single free-text skeleton) and hold no FK back from `Decision` (a creation-time convenience, not a persistent relationship); approval authority is a single placeholder `decision_approver` module role, not a full per-Decision assignment mechanism (expected to be superseded by a future Governance module); `Rejected` is a real, explicit `DecisionStatus` value, not just an audit event. Full resolution, including the Agent-decided lower-risk items (Decision Type project scope, no template-to-type FK, three seeded ADR packs, supersession semantics, nav placement deferred to Phase 5), is recorded in the plan's own "Phase 0 addendum" section rather than duplicated here.
+
+**A module-boundary violation, caught and corrected mid-implementation, Decided by: User.** The initial implementation pass added `DECISION` members directly to two core enums (`app.models.enums.ArtefactType`, for `Decision.unique_code` generation via `ProjectSequenceCounter`; `ReviewTargetType`, to reuse `ReviewComment`/`CommentFile` for Decision's discussion threads), justifying both as "the same accepted pattern `ArtefactType` already uses." The user stopped this immediately and correctly: that justification was wrong — grepping confirmed no module has ever actually extended `ReviewTargetType` before (Compliance has its own separate comment mechanism), so this would have been a *new* precedent, not a followed one; and `ArtefactType` itself was already a *known*, not accepted, gap — `ArtefactLink.source_type`/`target_type` were deliberately made plain, module-registrable strings one phase earlier (Module 0 Phase 3) specifically so modules never need to hand-edit that enum, but `ProjectSequenceCounter.artefact_type` (built one phase after that, in the same Module 0) never got the same treatment, despite its own docstring naming Decision as the anticipated future user. The user's standing rule, stated plainly and now the durable guidance: **core changes to support a module must be generic extension points ("functionality to allow modules to perform their behaviour"), never module-specific data or behaviour hand-edited into a core file.** An enum member is data, not an import, but the failure mode is identical either way.
+
+Corrected two ways:
+1. **`ProjectSequenceCounter.artefact_type` fixed at the root**, not routed around: changed from a `models.enums.ArtefactType`-typed column to a plain string, validated by `services.sequences.generate_unique_code` against `app.modules.registry.get_all_registered_artefact_types()` — the exact same merged set `ArtefactLink` already validates against. This closes Module 0 Phase 2's own gap generically, for every future module, not just this one (migration 0044 widens the column `VARCHAR(20)` → `VARCHAR(40)` to match `artefact_links`' own column width; zero data risk, since this table had no rows from any source before this — `services.sequences` had no real caller until this module).
+2. **Decision comments/attachments made module-local instead**: `DecisionComment`/`DecisionCommentFile`/`DecisionFile` (`app.modules.decisions.models`), with a direct `decision_id` FK rather than a polymorphic `target_type`. `app.models.enums.ReviewTargetType` is untouched. This turned out simpler than the originally-proposed reuse would have been, not just more correct — a Decision comment never needs to target anything else, so the polymorphism `ReviewComment` exists for buys nothing here.
+
+The `org_creation_choices`/`on_org_created_with_choices` extension point (below) was *not* flagged by this correction — it's exactly the pattern the user asked for: a new, generic, declarative extension point on `ModuleDefinition`/`app.modules.registry`, with all of the actual template-seeding behaviour living inside `app.modules.decisions`, none of it in any core file.
+
+**Phase 1 scope actually built**: `app.modules.decisions` (new first-party module, `default_enabled=False`, `implemented=False` — data model only, no API yet): `DecisionTypeDefinition` (project-scoped, exact shape of `ActionTypeDefinition`, seeded via `on_project_created`), `DecisionTemplateDefinition` (org-scoped, no type FK, seeded opt-in via the new org-creation-choices mechanism with three packs — Nygard, MADR, Y-Statement), `Decision` itself (source overview §13/10.3's field list, `DecisionStatus` as this module's own enum), and the module-local comment/attachment tables above. `decision_owner`/`decision_approver` module roles declared. New core extension point: `ModuleDefinition.org_creation_choices`/`on_org_created_with_choices`, `app.modules.registry.get_org_creation_choices()`/`default_org_creation_choice_keys()`, `run_on_org_created_hooks`'s new optional `selected_choice_keys` parameter (backward compatible — `None` resolves to every `default_selected` option, so `services.bootstrap.run_bootstrap` and any pre-existing caller need no change), `OrganizationCreate.module_choice_keys`, and `GET /orgs/creation-choices`.
+
+**Verification**: `tests/test_schema_migrations_match_models.py` (models/migrations drift check) passes against a real migrated database (migrations 0044/0045 applied cleanly against the live container's `reqtrack_test` database, including the `decision_type_definitions` backfill running correctly across every existing project). New tests: `app/modules/decisions/tests/test_decisions_seeding.py` (project-creation type seeding; org-creation template seeding under no-field/empty-list/one-key selections, through the real `POST /orgs` endpoint; the new `GET /orgs/creation-choices` endpoint), and new cases in `tests/test_module_registry.py` for the generic `org_creation_choices`/`on_org_created_with_choices` dispatch mechanism itself (default-fallback, explicit-empty, explicit-selection). Also re-ran `tests/test_project_sequence_counters.py`, `tests/test_artefact_links.py`, `tests/test_org_lifecycle.py`, and `app/modules/compliance/tests/test_compliance_org_creation_seeding.py` to confirm the `ArtefactType`/`ProjectSequenceCounter`/`run_on_org_created_hooks` changes didn't regress existing callers — all pass. Full backend suite run for a final check.
+
+### Files changed
+
+Backend, core: `app/models/sequence.py` (`ProjectSequenceCounter.artefact_type` changed from `ArtefactType` enum to plain `String(40)`), `app/services/sequences.py` (`generate_unique_code`/`_next_sequence` take `str`, new registered-type validation), `app/modules/registry.py` (new `OrgCreationChoiceOption`; `ModuleDefinition.org_creation_choices`/`on_org_created_with_choices`; new `get_org_creation_choices()`/`default_org_creation_choice_keys()`; `run_on_org_created_hooks` gained `selected_choice_keys`), `app/routers/orgs.py` (`create_organization` passes through `module_choice_keys`; new `GET /orgs/creation-choices`), `app/schemas/org.py` (`OrganizationCreate.module_choice_keys`; new `OrgCreationChoiceOut`), `app/modules/__init__.py` (registers the new module). New migrations: `alembic/versions/0044_widen_sequence_counter_artefact_type.py`, `app/modules/decisions/migrations/0045_decision_management_data_model.py`.
+
+Backend, new module: `app/modules/decisions/__init__.py`, `enums.py`, `models.py`, `service.py`, `module.py`, `tests/test_decisions_seeding.py`.
+
+Backend, tests: `tests/test_module_registry.py` (new `org_creation_choices` dispatch tests).
+
+Docs: `docs/plans/module-04-decision-management-plan.md` (Phase 0 marked complete with its addendum, including the correction recorded above; Status table updated), `docs/decisions.md` (this entry). `CLAUDE.md`'s "Modular Feature System Boundary" section updated with the generalised rule this incident produced. `docs/modules.md` — pending: the new `org_creation_choices` extension point needs documenting there as part of this module's own contract description (see plan's own follow-up note).
+
+---
+
+## Module 4 (Decision Management) Phase 2 — approval, rejection, and supersession workflow (service layer only)
+
+**Decided by: Agent** — continuing the module's own plan (`docs/plans/module-04-decision-management-plan.md`) to its next unstarted phase, per the user's instruction to pick up "the next phase of module 4."
+
+Phase 2 has no router yet (Phase 4 adds the API), so this is implemented entirely as new functions in `app/modules/decisions/service.py`, calling out to two pieces of already-existing generic infrastructure rather than inventing new ones:
+
+- **Status transitions** (`propose_decision`/`submit_decision_for_review`/`approve_decision`/`reject_decision`): validated against a private `_ALLOWED_TRANSITIONS` map (`DRAFT -> PROPOSED -> UNDER_REVIEW -> APPROVED`, `REJECTED` reachable from `PROPOSED`/`UNDER_REVIEW`, `SUPERSEDED` reachable only via the supersession mechanism below), and recorded through `services.audit.log_event` (`entity_type="decision"`) rather than a bespoke approval-history table, per the plan's Phase 0 activity 3. Shape mirrors `services.stages.complete_stage` (mutate + audit in one service function, no commit — caller's transaction) rather than the more common in-this-codebase pattern of inlining the same logic directly in a router (`modules/compliance/project_router.py`'s `approve_requirement`/`reject_requirement`), since no router exists yet for this to live in.
+- **Supersession** (`create_supersession`): a typed `ArtefactLink` (Module 0's polymorphic relationship model) from the new Decision to the old one. The link type itself — `"Supersedes"`/`"Is superseded by"` — didn't exist anywhere in the codebase (grepped; zero prior matches), so `_get_or_create_supersedes_link_type` fetches-or-lazily-creates one `RequirementLinkTypeDefinition` row per organisation on first use. This table is already a generic, org-shared vocabulary (not requirement-specific despite its name — every other module reuses it as-is for its own links), so this is an ordinary consumer of an existing extension point, not a new core mechanism, a new enum, or a per-module hand-edit to a core file/list — no edit to `services.definitions.DEFAULT_LINK_TYPES` and no migration backfill were needed, specifically to avoid repeating the Phase 1 mistake of reaching for a core-file edit where a registry-style extension point already covers it.
+- Per the plan's Phase 0 addendum item 8, the *old* Decision only flips to `SUPERSEDED` once the link exists **and** the *new* Decision reaches `APPROVED` — checked from both directions this condition can become true (`_maybe_supersede`, called from `create_supersession`, for a link created after the new Decision is already approved; `_supersede_predecessors`, called from `approve_decision`, for the new Decision being approved after the link already exists), and only ever overwrites a predecessor that is itself currently `APPROVED` (never a `DRAFT`/`REJECTED`/already-`SUPERSEDED` one).
+- **Content-field immutability once `APPROVED`/`SUPERSEDED`** (§13/10.6) was deliberately left out of this phase, matching the plan's own text ("enforced at the API layer") and this codebase's actual precedent: `services.requirements.is_locked`'s enforcement lives entirely at the router layer (8+ call sites in `routers/requirements.py`), never inside a service mutation function, and no Decision update endpoint exists until Phase 4 — there's nothing to enforce this against yet.
+
+**Verification**: new `app/modules/decisions/tests/test_decisions_workflow.py` (11 tests, calling the service functions directly against a real database session and asserting on `Decision.status`/`AuditEvent` rows — same "test through the layer that exists" approach Phase 1's `test_decisions_seeding.py` established, since no HTTP endpoint exists yet): full legal transition sequence with audit-trail assertions, rejection with comment recorded in the audit `detail` field, a parametrized illegal-transition matrix, both supersession-flip orderings, link-type reuse across multiple supersessions within one organisation, and the supersession validation errors (self-supersession, cross-project, already-superseded, duplicate link). `ruff check` clean. Full backend suite: 1121 passed, 14 failed — the 14 failures are `tests/test_invites_and_external_users.py`/`test_oidc_provisioning.py`/`test_org_export_import.py`, all pre-existing host-pytest/mailhog SMTP-DNS failures unrelated to this change (a known environment artifact of running pytest on the host rather than in the Docker network mailhog resolves in), not a regression from this work.
+
+### Files changed
+
+`backend/app/modules/decisions/service.py` (new Phase 2 functions and module docstring section), `backend/app/modules/decisions/tests/test_decisions_workflow.py` (new), `docs/plans/module-04-decision-management-plan.md` (Phase 2 marked complete with its own notes section; Status table updated), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 3 — relationships to Requirements and other Decisions
+
+**Decided by: Agent** — continuing the module's own plan (`docs/plans/module-04-decision-management-plan.md`) to its next unstarted phase, per the user's instruction to pick up "the next phase of module 4."
+
+Phase 3 has no router yet (Phase 4 adds the API), so — same as Phase 2 — this is new functions in `app/modules/decisions/service.py` only, wiring `Decision` into Module 0's `ArtefactLink` model for the two relationship groups the plan's own Phase 3 scope marks as buildable now (the other five — Open Question, Pain Point, Strategy, Guiding Principle, Compliance, Design — stay reserved for Phase 6, blocked on modules that don't exist yet):
+
+- **Generalised Phase 2's link-type helper** rather than duplicating it: `_get_or_create_supersedes_link_type` became `_get_or_create_link_type(db, organization_id, *, forward_name, reverse_name)`, parameterised on the link type's names instead of hardcoding `"Supersedes"`. `create_supersession` was updated to call the generic form with the same two names — behaviour unchanged, still covered by Phase 2's own tests (all still pass).
+- **`create_decision_requirement_link`** — Decision -> Requirement, `"Implements"` or `"Affects"` (source overview §13/10.7, `DecisionRequirementLinkKind`). `target_type=ArtefactType.REQUIREMENT.value`, one of the two built-in core artefact types `services.relationships.create_link` already validates against — no registry or core-file change needed.
+- **`create_decision_decision_link`** — Decision -> Decision, `"Depends on"` or `"Conflicts with"` (`DecisionDecisionLinkKind`). `"Supersedes"` keeps its own dedicated `create_supersession` rather than folding into this function, since only it drives the predecessor status-flip side effect Phase 2 built; these two relationships have no such side effect.
+- Both new functions follow `create_supersession`'s exact validation shape: same-project check (`ValueError` otherwise), self-link check for the Decision<->Decision case, and a `get_link_between` duplicate pre-check before calling `create_link` — all raising plain `ValueError` for the eventual Phase 4 router to translate into an HTTP 409, matching every other service-layer convention in this codebase.
+- "Implements", "Depends on", and "Conflicts with" already exist in `services.definitions.DEFAULT_LINK_TYPES` (seeded per new organisation); "Affects" does not. All four go through the same lazy fetch-or-create path regardless, since an org's admin may have renamed/deleted a seeded row and nothing should assume the seeded name still exists under it.
+
+**Verification**: new `app/modules/decisions/tests/test_decisions_relationships.py` (9 tests) — Implements/Affects link creation including link-type lazy-creation on first use, Depends-on/Conflicts-with link creation, and validation errors (cross-project for both relationship groups, self-link for Decision<->Decision, duplicate link for both). `ruff check` clean. Full backend suite run inside the container (`docker compose exec backend pytest -q`, not on the host): 1144 passed, 0 failed — run in-container rather than on the host, so the mailhog-SMTP-DNS-dependent tests that show as pre-existing failures under host pytest (per the Phase 2 entry above) pass here too; not a discrepancy, just a different, cleaner execution environment. Also fixed one unrelated, pre-existing `ruff` import-order nit in `backend/app/routers/orgs.py` (an `OrgCreationChoiceOut` entry out of alphabetical order, left over from this module's own Phase 1 org-creation-choices work) while running a repo-wide `ruff check` as part of this change.
+
+### Files changed
+
+`backend/app/modules/decisions/service.py` (generalised link-type helper; new Phase 3 functions and module docstring section), `backend/app/modules/decisions/tests/test_decisions_relationships.py` (new), `backend/app/routers/orgs.py` (unrelated pre-existing import-order fix), `docs/plans/module-04-decision-management-plan.md` (Phase 3 marked complete with its own notes section; Status table updated; new reserved Phase 7 added per a follow-up user request), `docs/plans/module-12-fine-grained-access-control-plan.md` (new — see its own `docs/decisions.md` entry below), `docs/plans/future-modules-2026-09-index.md` (Module 12 registered), `docs/decisions.md` (this entry and the next).
+
+## New plan: Module 12 — Fine-Grained Access Control (Custom Roles & Permissions)
+
+**Decided by: User** — the request to plan a general, Azure-style
+composable-permission/custom-role system came directly from the user,
+prompted by asking whether Decision Management could restrict who
+approves which Decision Type. **Decided by: Agent** — that per-decision-
+type approval should *not* be built directly inside Decision Management,
+and instead required a new, general module: Module 4's own Phase 0
+addendum item 3 already recorded the reasoning for deferring exactly this
+("avoids building a bespoke policy engine here that the future Governance
+module will likely replace outright"); building a narrower, decision-
+type-only version of the same policy engine now would repeat that
+avoided mistake. Also **Decided by: Agent**: numbering it Module 12
+(outside the ten/eleven-module sequence, alongside Module 11, both for the
+same reason — cross-cutting, authorization-sensitive, requested directly
+by the user rather than sourced from the overview) and every specific
+design choice within the new plan (permission-atom shape, scope model,
+phase breakdown) — flagged individually as recommendations for the user
+to confirm at that plan's own Phase 0, not decided unilaterally here.
+
+**Grounding check performed before drafting** (per `CLAUDE.md`'s "before
+recommending, verify" rule and its authorization-change policy-consultation
+requirement): read `docs/soc2/policies/access-control-policy.md` in full,
+`backend/app/services/rbac.py` in full, `backend/app/models/enums.py`, and
+`backend/app/modules/registry.py`'s `ModuleRoleDefinition` mechanism,
+rather than designing from assumption. Two load-bearing findings shaped
+the plan directly:
+
+- `backend/app/models/enums.py`'s own module docstring already states
+  "Ossa (v1) intentionally uses a small, fixed set of organisation and
+  project roles rather than a customisable permission system (customisable
+  roles/attributes are a Pelion (v2) concern per docs/requirements.md)" —
+  this is not new scope invented from nothing, it is a documented, deferred
+  concern this plan now picks up.
+- `docs/requirements.md` C-U-01/C-U-03 both describe the existing fixed
+  roles as a floor ("must have **at minimum** the permission roles
+  of...."), not a ceiling — an additive custom-role system does not
+  contradict the requirements document, which this plan cannot itself
+  edit.
+- The module-contributed-role mechanism (`ModuleRoleDefinition`/
+  `UserModuleRole`/`GroupModuleRole`/`require_module_role`) is already the
+  most composable piece of the existing RBAC system (scopes, override
+  composition, group grants) and is the recommended extension point the
+  new plan builds custom roles alongside, rather than inventing a second,
+  unrelated permission concept.
+- Module 8 (Governance)'s own Phase 2 ("Approval policies... policies
+  reference roles") already assumes a fixed role vocabulary to reference —
+  it configures *which* role approves what, generically per artefact type,
+  but does not let an organisation *define* a new role. The new module and
+  Governance are complementary, not overlapping: confirmed explicitly in
+  the new plan's "Why this is not another module's problem" section so a
+  future reader doesn't need to re-derive this distinction.
+
+Module 4 (Decision Management)'s own plan gained a new, explicitly blocked
+**Phase 7 — Per-decision-type approver binding**, pointing at Module 12
+rather than duplicating any of its design — this is the concrete mechanism
+that answers the user's original question, once Module 12 exists.
+
+### Files changed
+
+`docs/plans/module-12-fine-grained-access-control-plan.md` (new),
+`docs/plans/future-modules-2026-09-index.md` (Module 12 added to the intro
+paragraph, module table, build-order note, dependency-graph omission note,
+and enablement-independence exclusion note — all four places Module 11
+required an equivalent update when it was added), `docs/plans/module-04-decision-management-plan.md`
+(new Phase 7, Status table updated to 4/7), `docs/decisions.md` (this
+entry).
+
+## Module 4 (Decision Management) Phase 4 — Backend API + audit logging
+
+**Decided by: Agent** — continuing the module's own plan
+(`docs/plans/module-04-decision-management-plan.md`) to its next unstarted
+phase, per the user's instruction to pick up "the next phase of module 4."
+
+Phase 4 gives Decision Management its first real HTTP surface. Unlike
+Phases 2/3, this needed no new core extension point at all: `get_router`/
+`get_project_router`/`resolve_file_owner_project_id` all already existed on
+`ModuleDefinition` (added by Compliance's own Phase 7/8), so this phase is
+purely this module's own two new routers plus one new `service.py`
+function consuming them — no core-file edit, migration, or registry change.
+
+- **New files**: `backend/app/modules/decisions/schemas.py`, `project_
+  router.py` (project-scoped: Decision CRUD, lifecycle transitions,
+  relationships, comments, files, Decision Type management, mounted at
+  `/api/v1/projects/{project_id}/modules/decisions`), `router.py`
+  (org-scoped: Decision Template CRUD, mounted at `/api/v1/orgs/
+  {organization_id}/modules/decisions`). `service.py` gained `resolve_
+  decision_file_project_id`, mirroring `modules.compliance.service.
+  resolve_evidence_file_project_id`'s exact shape for both `DecisionFile`
+  (direct) and `DecisionCommentFile` (via its comment).
+- **RBAC composition** (each also tagged inline in `project_router.py`'s
+  own module docstring): creating a Decision, proposing/submitting-for-
+  review one's *own* Decision, and commenting only need the module
+  enabled — `module.py`'s own role docstrings already say "ordinary
+  project members get View + Propose." `decision_owner` gates editing an
+  existing Decision's content, archiving, direct file attach/detach,
+  relationship creation, and Decision Type management. `decision_approver`
+  gates `approve`/`reject` (Phase 0 addendum item 3's placeholder role,
+  consumed here for the first time now a router exists to gate).
+  `propose`/`submit-for-review` accept **either** `decision_owner` **or**
+  the Decision's own `owner_id` — an open call the task brief flagged
+  explicitly, resolved so a plain member can move their own Decision
+  through the pre-approval part of its lifecycle without a project-wide
+  grant. Relationship-creation endpoints are gated on `decision_owner`,
+  mirroring `routers.requirements.create_link`'s own precedent of gating
+  link creation behind an edit-capable role rather than opening it to any
+  viewer.
+- **Reject requires a comment** (resolved by precedent, per the task
+  brief's own pointer): `RequirementReviewOutcome.FAILED`
+  (`routers/requirements.py:755`) and Compliance's `reject_requirement`
+  (`decision_note`) both already make this a settled codebase convention.
+- **Decision Type deletion** uses `services.definitions.delete_definition_
+  with_reassignment` (like `ActionTypeDefinition`), resolved independently
+  of `Decision Template`'s plain-delete answer per the task brief's own
+  instruction not to copy it blindly: `Decision.decision_type_id` is a
+  real, non-null FK (unlike a template, which nothing references), so an
+  in-use type needs an explicit `reassign_to_id` (409 naming the count
+  otherwise). `allow_empty=False` — no hierarchical-project fallback exists
+  for Decision Types the way `ActionTypeDefinition` has.
+- **Org-scoped Decision Template CRUD** is gated on plain `OrgRole.
+  ORG_ADMIN`, not a new org-scoped module role — Decision Management's two
+  roles are both `scope="project"`, and there's no natural "org-scoped
+  Decision Owner" the way Compliance's `compliance_manager` is (a Decision
+  is always project-scoped; only its templates live at the org level).
+  Inventing a role solely to gate a small CRUD surface was rejected as
+  premature.
+- **`DecisionLinkOut`** is a new, module-local presentation schema over the
+  generic `ArtefactLink` — checked `app.schemas`/`services.relationships`
+  first, per the task brief's own instruction to reuse before inventing;
+  no generic link schema exists, and `RequirementLinkOut` is hard-coded to
+  a requirement-to-requirement shape. Stays polymorphic (`other_type`/
+  `other_id`, with best-effort display resolution for `"decision"` and
+  core `"requirement"` targets).
+- **`implemented` flips to `True`** — this phase's own testing bar is met
+  (see Verification below) and a real, working API now exists, even
+  without a frontend yet. `default_enabled` stays `False` until Phase 5.
+  No MCP tools declared (nothing in scope calls for one, and this module's
+  mutating actions are exactly the kind of accountable-human governance
+  action Compliance's own `module.py` keeps off the MCP surface by
+  default).
+- **Seed scripts and docs website left untouched**, both checked
+  explicitly and both recorded as deliberate no-ops in the plan's own
+  Phase 4 notes: neither seed script mentions Decision Management yet
+  (still `default_enabled=False`, no frontend to demo), and Compliance's
+  own docs-website page wasn't added until its frontend phase either.
+
+**Identify→verify→remediate** (SOC 2 change-management policy's practice
+for a security-sensitive change — this phase touches authorization/RBAC
+and file-download authorization for the first time in this module).
+*Identify*: the things that could regress an existing control or open a
+new gap here are (a) a mutating endpoint accidentally gated by the weaker
+`require_project_module_enabled`/`require_org_module_enabled` instead of
+the role-checking dependency it needs; (b) a cross-project/cross-org id
+substitution attack (one project's/org's Decision, Decision Type, comment,
+or template id guessed against a different project's/org's path); (c) the
+new `resolve_decision_file_project_id` hook leaking a file to a caller with
+no real project access; (d) `owner_id`/`decision_maker_id` on create/update
+being usable to grant the *caller* extra privilege rather than just
+attributing the record to someone else. *Verify*: every mutating endpoint
+in `project_router.py`/`router.py` was checked against the gate it actually
+declares — `create`/`update`/`archive`/`unarchive`/relationship-creation/
+file-attach all resolve through `_require_edit_role`
+(`user_satisfies_module_role("decisions","decision_owner")`) after the
+weaker `_require_view` dependency; `approve`/`reject` resolve through the
+strict `_require_approver` dependency directly; Decision Type mutations
+resolve through `_require_owner_role` directly; template mutations resolve
+through the inline `_require_template_manage` (`OrgRole.ORG_ADMIN`) check
+after `_require_view` — no mismatches found (all 41 new tests in
+`test_decisions_api.py` exercise at least one gate each, including the
+explicit disabled-module-is-404-vs-wrong-role-is-403 distinction). Every
+id-addressed endpoint routes through `_get_decision_in_project`/`_get_
+decision_type_in_project`/`_get_template_in_org` (or an inline equivalent
+for comment/comment-file ids), each of which checks the referenced row's
+own scope column against the path's `project_id`/`organization_id` before
+returning it — covered by `test_cross_project_access_is_404` and the
+template suite's own cross-org case. `resolve_decision_file_project_id`
+was checked against `resolve_evidence_file_project_id`'s already-reviewed
+shape line-for-line (Compliance Phase 8) and exercised end-to-end through
+the real, unmodified `GET /api/v1/files/{id}` in `test_resolve_decision_
+file_project_id_hook` — that endpoint's own existing `get_effective_
+project_roles` check (unchanged by this phase) is what actually gates the
+download, so no new authorization logic was introduced there at all.
+`owner_id`/`decision_maker_id` were checked against `_require_org_member_
+or_none`: this only validates organisation membership, the same as every
+comparable assignee/owner field elsewhere in this codebase (e.g.
+Compliance's `_require_project_member_or_none`) — and `Decision.owner_id`
+itself carries no privilege of its own beyond the propose/submit-for-review
+override already covered above, so naming another real org member as owner
+can at most let *that* member act on the record, never the caller. *Remediate*:
+no gap found requiring a code change — every gate composed correctly on
+first implementation, which is itself the recorded outcome of the pass,
+not a skipped step, the same conclusion Compliance's own Phase 6/Phase 7
+reviews reached when reusing an already-hardened mechanism rather than
+opening a genuinely new trust boundary.
+
+**Verified**: new `app/modules/decisions/tests/test_decisions_api.py`
+(41 tests, through the real HTTP API) — CRUD/list/filter, the content lock
+(409 once `APPROVED`/`SUPERSEDED`), lifecycle transitions (mandatory-
+comment-on-reject 400, illegal-transition 409), the full RBAC composition
+described above, relationship endpoints (supersession with the predecessor
+status flip, Decision<->Requirement, Decision<->Decision, each with their
+own duplicate/self-link 409s), Decision Type CRUD and delete-with-
+reassignment, comments/comment-files (author-only edit/attach),
+direct file attachments (with the lock check), cross-project 404s, the
+org-scoped Decision Template CRUD (cross-org isolation), and the `resolve_
+decision_file_project_id` hook end-to-end. `ruff check` clean across the
+whole backend. Full backend suite: **1160 passed, 0 failed** (run via
+`docker compose exec backend python -m pytest -q` against `tests/container`,
+after rebuilding the `backend` image to pick up this phase's new files —
+confirmed independently, since the implementing agent session was cut off
+by a rate limit before it could report this number itself; see "Files
+changed" below).
+
+### Files changed
+
+`backend/app/modules/decisions/schemas.py` (new), `backend/app/modules/
+decisions/project_router.py` (new), `backend/app/modules/decisions/
+router.py` (new), `backend/app/modules/decisions/service.py` (new
+`resolve_decision_file_project_id` function and module docstring section),
+`backend/app/modules/decisions/module.py` (`get_router`/`get_project_
+router`/`resolve_file_owner_project_id` wired in; `implemented=True`),
+`backend/app/modules/decisions/tests/test_decisions_api.py` (new),
+`docs/plans/module-04-decision-management-plan.md` (Phase 4 marked
+complete with its own notes section; Status table updated to 5/7),
+`docs/solution-architecture.md` (Decision Management module — backend API
+paragraph added), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 5 — Frontend, and a second core-boundary correction
+
+**Decided by: Agent** — continuing the module's own plan
+(`docs/plans/module-04-decision-management-plan.md`) to its next unstarted
+phase, per the user's own standing instruction to build this module ahead
+of the overview's own recommended order.
+
+Built `frontend/src/modules/decisions/` as a new Tier A module, following
+`modules/compliance/`'s own established shape: `module.ts` (registration —
+one project-scoped route, one `orgOverviewSections` entry), `types.ts`
+(mirrors the backend schemas field-for-field, plus `DECISION_STATUS_LABEL`/
+`_TONE` maps — plain string literals, not routed through `useStrings()`/
+`i18n/strings.ts`, since "Decision" isn't one of this app's customisable
+terminology keys), `api.ts` (one wrapper function per backend endpoint,
+mirroring `modules/compliance/api.ts`'s own per-module-file precedent),
+`ProjectDecisionsPage.tsx` (Decisions list — `DirectoryTable`/`FilterPanel`,
+create `Modal`, detail `SidePanel`; a "Decision Types" tab reusing
+`DefinitionList`), `DecisionFormModal.tsx` (create/edit, shared via
+`initial`, with a Decision Template picker in create mode that pre-fills
+the seven free-text fields from a template's guidance prompts),
+`DecisionDetailPanel.tsx` (fields, lifecycle action buttons gated on
+`status`, archive/unarchive, relationships, attachments, comments — every
+mutating control always renders regardless of the caller's actual role,
+the backend enforces and a 403 surfaces as a toast, mirroring
+`ProjectCompliancePage.tsx`'s own posture; edit/archive/attach are hidden,
+not just toast-blocked, once `is_locked`, since that's a state the client
+already has), `DecisionRelationshipsSection.tsx` (lists and creates
+supersession/Requirement/Decision links from the Decision's own side — the
+only side Phase 5 builds, see below), `DecisionCommentsSection.tsx` (a
+trimmed, module-local sibling of `components/CommentThread.tsx` —
+`DecisionCommentOut` has no reaction mechanism, and widening the shared,
+widely-used core component's mandatory `onToggleReaction` prop to
+accommodate one module was rejected in favour of a small sibling),
+`DecisionTypesPanel.tsx` (project-scoped `DefinitionList` wrapper, mirrors
+`ActionTypesPanel.tsx`), `DecisionTemplatesPanel.tsx`/
+`DecisionTemplateFormModal.tsx` (org-scoped Decision Template CRUD, this
+module's `orgOverviewSections` contribution — the org-creation-time
+picker Phase 1 already built is unrelated and untouched; this is where an
+admin manages the library afterward). `backend/app/modules/decisions/
+module.py` gained a `frontend_manifest` (`nav_label="Decisions"`) so an
+org that enables the module gets a real project nav entry — the one
+backend change this phase needed. `default_enabled` stays `False`
+(Phase 1/4's deliberate opt-in design, unchanged).
+
+**Scoping call, Decided by: Agent**: no `requirementDetailSections`/
+`requirementLinkPickerTabs` contribution (showing/adding Decision links
+from the *Requirement* Detail page's own Links card — the reverse
+direction from this phase's own Decision-side relationship creation). The
+backend's Phase 4 API has no "list Decision links touching a given
+Requirement" endpoint (only `GET /{decision_id}/relationships`,
+decision-centric); building that reverse-listing endpoint too would be
+scope creep beyond this plan's own Phase 5 text ("project-scoped Decision
+list, detail page, create/edit form, and an approve/reject/supersede
+action flow"). Every relationship is still fully visible and creatable
+from the Decision's own detail panel in both directions — this only
+affects where in the UI it can be *seen from*. Mirrors Compliance's own
+identical Phase 34 one-direction-only scoping call
+(`RequirementTraceabilityLinksSection.tsx`'s own docstring). Revisit if a
+real need for the reverse direction surfaces.
+
+**A second core-boundary violation, caught by the user mid-implementation
+(Decided by: User)**: while styling `DecisionRelationshipsSection.tsx`'s
+relationship rows to match `RequirementTraceabilityLinksSection.tsx`'s own
+"entity accent colour" left-border-stripe convention, the agent added a
+`"decision"` entry directly to `frontend/src/api/types.ts`'s
+`ENTITY_ACCENT_COLOR`/`EntityAccentKind` map and a matching
+`--color-entity-decision` variable to the core `theme.css` — only to
+discover, on inspection, that map already carried a `"compliance"` entry
+(and matching `--color-entity-compliance` variable) added the same way
+when Compliance itself first used this pattern, unnoticed until a second
+module attempted the identical addition. The user identified this as the
+exact same failure mode CLAUDE.md already documents for `ProjectSequenceCounter
+.artefact_type` (Module 4 Phase 1's own correction) — a per-module value
+hand-added to a core, closed-set map — just one layer further out (a
+display colour, not a database enum), and asked for both the immediate fix
+and CLAUDE.md itself to be strengthened so the pattern is caught
+proactively next time, for *any* module, not just re-discovered per
+instance.
+
+Fixed at the root, not routed around: reverted both attempted `"decision"`
+additions, then corrected the pre-existing `"compliance"` one out too.
+`frontend/src/modules/entityAccentColor.ts` (new) is the generic resolver:
+the 3 genuinely core-owned entity kinds (requirement/action/change_request)
+stay in `api/types.ts`'s `ENTITY_ACCENT_COLOR` (CSS-variable-backed, no
+module concern), and a module now registers its own colour as a literal
+`{ light, dark }` hex pair on its own `TierAModuleDefinition
+.entityAccentColor` (new generic field, `modules/types.ts`), resolved
+client-side via `useEntityAccentColor()` against the viewer's current
+effective theme (`context/ThemeContext.tsx`) rather than a `:root[data-
+theme="dark"]` CSS override. `modules/compliance/module.ts` now carries its
+own colour this way (identical hex values — no visual change), and
+`RequirementTraceabilityLinksSection.tsx` was updated to consume it, with
+`--color-entity-compliance`/`--color-entity-decision` removed from
+`theme.css`. Decision Management itself declares no `entityAccentColor`
+yet, per the reverse-direction scoping call above — nothing currently
+renders a mixed list that would need to tell a Decision apart from
+anything else. `CLAUDE.md`'s "Modular Feature System Boundary" section
+gained a new bullet generalising the existing enum/column guidance to
+cover "a plain frontend constant or stylesheet" explicitly, naming this
+incident alongside `ProjectSequenceCounter.artefact_type` as a second,
+independent instance of the same rule — see that file for the exact text.
+
+Two smaller Storybook/Playwright-testability corrections found while
+building this phase's own tests, fixed in the same pass: (1) `Modal`/
+`ConfirmDialog`/`SidePanel` all portal to `document.body` (`createPortal`)
+— every new story asserting on their content queries `within(document
+.body)`, not `canvasElement`, mirroring `modules/compliance/StandardFormModal
+.stories.tsx`'s own existing convention, which a first draft of these
+stories initially got wrong (assertions found nothing, since portalled
+content renders outside the story's own root element). `testing/storybook-
+helpers.tsx` gained a shared `withThemeProvider` decorator (`PreferencesPage
+.stories.tsx` had a local, unshared copy of the same wrapper) — needed once
+`RequirementTraceabilityLinksSection.tsx` started calling `useTheme()` via
+`useEntityAccentColor`, which also required adding it to `pages/
+RequirementDetailPage.stories.tsx`'s own decorators (two of its stories
+render that section). (2) A `<label><span>X</span><input aria-label="Y">
+</label>` wrapping pattern where the visible span text (`X`) differs from
+the control's own `aria-label` (`Y`) is a latent Playwright-specific
+footgun, not just a cosmetic inconsistency — Playwright's `internal:label=`
+selector engine resolves `getByLabel` against the wrapping `<label>`
+element's own full text content, not the inner control's `aria-label`
+(the opposite of Testing Library's accessible-name computation, which is
+why this passed every Storybook interaction test cleanly while still being
+wrong for Playwright) — `modules/compliance/helpers.ts`'s own
+`selectFilterOption` already documents and works around the identical
+quirk for `FilterField`. Found and fixed at the source instead of worked
+around: `DecisionFormModal.tsx`'s "Title" field and `DecisionTemplateFormModal
+.tsx`'s "Name" field now show the same text as their own `aria-label`
+("Decision title"/"Template name"), and `DecisionDetailPanel.tsx`'s
+approve/reject comment fields likewise. `ProjectDecisionsPage.tsx`'s
+Status/Decision-type filters were also switched from a `LabeledSelect`
+nested inside `FilterField` (two nested native `<label>` elements — invalid
+HTML, and not this codebase's own established filter-select shape) to a
+bare `<select>`, matching `RequirementsPage.tsx`'s own precedent
+directly. `tests/playwright/tests/modules/decisions/helpers.ts` still
+needed its own `selectLabeledOption` for `LabeledSelect`'s remaining,
+unavoidable label/option-text ambiguity (the relationship-kind and target-
+Decision/Requirement pickers) — same underlying quirk, no visible-text
+mismatch to fix this time since `LabeledSelect` always sets its own
+`aria-label` from the same `label` prop it renders.
+
+**Seed data (Decided by: Agent, per the Phase 4 notes' own "revisit this
+when Phase 5 ships" flag)**: `backend/scripts/seed_demo_data.py` now
+enables Decision Management for the demo org and seeds three Decisions on
+the Falcon-3 project — a single-flight-controller decision (Approved, then
+flipped to Superseded), the dual-redundant decision that supersedes it
+(Approved), and an OTA-image-signing decision left in Draft — so the demo
+instance actually demonstrates the feature rather than shipping a UI
+nobody's data ever exercises (this repo's own "a backend capability isn't
+done until a UI actually calls it" verification standard, extended to "a
+UI isn't done until the demo data actually shows it working").
+`backend/scripts/seed_e2e_dataset.py` was deliberately **not** touched:
+Decision Management stays `default_enabled=False`, and the new Playwright
+spec below creates its own fully disposable org/admin/project via the API
+specifically so its own module-enablement toggle can't leak into or
+collide with any other spec's shared org state — the same reasoning
+`org-admin-modules.spec.ts` already gives for abandoning a shared org for
+its own module-toggle test. No persona/project needs Decisions
+pre-enabled.
+
+**A real bug the Playwright spec caught, fixed in the same pass**:
+`DecisionRelationshipsSection.tsx`'s `addRelationship` only ever refreshed
+its own component-local relationships list — a supersession's side effect
+on the *other* Decision (flipping it to `SUPERSEDED`) was correctly
+persisted server-side but never surfaced anywhere in the frontend: neither
+`ProjectDecisionsPage.tsx`'s own Decisions list (only refreshed on create,
+or via a detail panel's `onChanged` after a lifecycle transition/edit — a
+relationship add on a *different* Decision's own panel triggered neither)
+nor a freshly reopened detail panel for that other Decision (its status
+badge would keep showing stale data until some unrelated action happened
+to trigger a list reload). Found by the Playwright spec's own final
+assertion — reopening DEC-001 after superseding it from DEC-002's panel
+showed it still `Approved`, not `Superseded` — not by any unit-level
+Storybook story, since none of them exercise the cross-Decision list
+refresh this only shows up in. Fixed by giving `DecisionRelationshipsSection`
+an optional `onChanged` callback, invoked after a successful relationship
+add; `DecisionDetailPanel.tsx` wires it to its own existing `onChanged`
+prop (the same one lifecycle transitions and edits already use), which
+`ProjectDecisionsPage.tsx` already treats as "something changed, reload
+the whole list" — reusing an existing signal rather than inventing a
+second, parallel refresh mechanism.
+
+**Verified**: `frontend`: `tsc -b --noEmit` clean, `eslint .` clean (0
+errors, 74 warnings repo-wide; the pre-existing, codebase-wide
+`react-hooks/set-state-in-effect` warning class appears on the new files
+exactly as it already does on ~30+ unmodified ones, not a regression
+introduced here). Storybook: 332 tests across 45 files all passing
+(`vitest run --project=storybook`) — 46 new tests across the 8 Decisions
+module files, the existing Compliance suite (33 files, 202 tests) and the
+4 core pages touched by the `entityAccentColor` refactor
+(`RequirementDetailPage`/`RequirementsPage`/`ChangeRequestsPage`/
+`ProjectActionsPage`, 84 tests) all still passing unchanged. `backend`:
+`ruff check` clean on both changed files; `docker compose exec backend
+pytest -q app/modules/decisions/tests tests/test_module_registry.py
+tests/test_module_frontend_integration.py` — 118 passed, confirming the
+new `frontend_manifest` field doesn't disturb module-registry validation
+or the existing Decisions backend suite; full backend suite —
+**1160 passed, 0 failed** (unchanged from Phase 4's own count, confirming
+zero regressions from this phase's one backend change), run via `docker
+compose exec backend pytest -q` against a freshly rebuilt `backend` image.
+New Playwright coverage (`tests/modules/decisions/decision-lifecycle
+.spec.ts`, run standalone with `--no-deps` — this repo's `default` project
+otherwise depends on `global-state-mutators`, which includes several
+Keycloak-dependent SSO specs that fail in any environment without a
+running Keycloak container, unrelated to this change) — **passing**,
+end to end against a freshly rebuilt live stack, exercising this plan's
+own Phase 5 exit criteria journey: create -> propose -> approve ->
+supersede. Getting it green also required fixing three Playwright-specific
+locator issues in the spec itself, not the app (a single-org admin's
+`/orgs` auto-redirects past the org list `OrgListPage.tsx` already handles,
+no link to click; `getByRole("link", {name: "Decisions"})` substring-matched
+the header's own user-menu link since this persona's display name happens
+to contain "Decisions" too; `getByRole("button", {name: "Add"})` substring-
+matched the comment form's own "Add comment" button) — plus the real
+application bug above, caught only once the spec ran against a live app
+rather than mocked Storybook interactions. Also directly validated
+`backend/scripts/seed_demo_data.py`'s new Decision Management helpers
+end to end against a disposable org (the pre-existing "Solstice Robotics"
+demo org already exists in this dev stack, so the idempotent-skip guard
+means actually running the full script wouldn't have reached the new code)
+— `enable_module`/`create_decision`/`propose_and_approve_decision`/
+`create_decision_supersession` all behaved exactly as intended, including
+the supersession flip.
+
+### Files changed
+
+`frontend/src/modules/decisions/` (new: `module.ts`, `types.ts`, `api.ts`,
+`ProjectDecisionsPage.tsx`, `DecisionFormModal.tsx`, `DecisionDetailPanel
+.tsx`, `DecisionRelationshipsSection.tsx`, `DecisionCommentsSection.tsx`,
+`DecisionTypesPanel.tsx`, `DecisionTemplatesPanel.tsx`,
+`DecisionTemplateFormModal.tsx`, and a `.stories.tsx` file for each),
+`frontend/src/modules/entityAccentColor.ts` (new), `frontend/src/modules/
+types.ts` (`entityAccentColor` field added to `TierAModuleDefinition`),
+`frontend/src/modules/compliance/module.ts` (`entityAccentColor` added),
+`frontend/src/modules/compliance/RequirementTraceabilityLinksSection.tsx`
+(consumes `useEntityAccentColor` instead of the core map),
+`frontend/src/modules/compliance/RequirementTraceabilityLinksSection
+.stories.tsx`/`frontend/src/pages/RequirementDetailPage.stories.tsx`
+(`withThemeProvider` decorator added), `frontend/src/api/types.ts`
+(`ENTITY_ACCENT_COLOR`/`EntityAccentKind` narrowed back to the 3 core
+kinds), `frontend/src/styles/theme.css` (`--color-entity-compliance`
+removed), `frontend/src/testing/storybook-helpers.tsx` (`withThemeProvider`
+added), `backend/app/modules/decisions/module.py` (`frontend_manifest`
+added), `backend/scripts/seed_demo_data.py` (Decision Management helpers
+and seeding), `tests/playwright/tests/modules/decisions/` (new:
+`decision-lifecycle.spec.ts`, `helpers.ts`), `CLAUDE.md` (Modular Feature
+System Boundary — new bullet on frontend constants/stylesheets),
+`docs/plans/module-04-decision-management-plan.md` (Phase 5 marked
+complete with its own notes section; Status table updated to 6/8),
+`docs/solution-architecture.md` (Decision Management module — frontend
+paragraph added), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 4 addendum — MCP tools, and Phase 6 — docs website coverage
+
+**Decided by: User** on the core ask — add MCP tools to Decision
+Management, reversing Phase 4's own explicit decision at the time ("No MCP
+tools declared — nothing in this phase's scope calls for one... this
+module's mutating actions are exactly the kind of accountable-human
+governance action Compliance's own `module.py` has repeatedly kept off the
+MCP tool surface by default"). The *scope* of which tools — read-only
+only, mirroring Compliance's own precedent exactly, no mutating/approval
+tool — is **Decided by: Agent**, following this codebase's already-
+established, repeatedly-documented convention rather than inventing a new
+one. Docs-website coverage (Phase 6, already the plan's next unstarted
+phase) was done in the same pass.
+
+### MCP tools
+
+`backend/app/modules/decisions/module.py`'s `MODULE_DEFINITION` gains a
+`mcp_tools` tuple of seven read-only (`GET`) tools: `list_decision_types`,
+`list_decisions`, `get_decision`, `list_decision_relationships`,
+`list_decision_comments`, `list_decision_files` (all project-scoped,
+mounted under `project_router.py`'s prefix), and `list_decision_templates`
+(org-scoped, under `router.py`'s prefix). Zero mutating tools — no tool for
+create/propose/submit-for-review/approve/reject/supersede/link/comment/
+attach-file, matching Compliance's own module.py's Phase 6/9/11/20/22
+precedent of narrow, deliberately read-only MCP surfaces.
+
+A real, latent gap was fixed as part of this: `project_router.py`'s
+`approve_decision_endpoint`/`reject_decision_endpoint` had never been
+marked `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` (`app.modules.registry`)
+— Phase 4 had no MCP tools yet to need the defense-in-depth, so it was
+skipped at the time. Both routes now carry the marker, mirroring
+Compliance's own `approve_requirement` exactly, with a one-line docstring
+note on each explaining why. This is genuinely load-bearing now that a
+manifest exists: the builder mechanically excludes any tool resolving to a
+route carrying this marker, regardless of what `module.py` declares.
+
+**Identify→verify→remediate** (SOC 2 change-management policy's practice
+for a security-sensitive change — this touches the approval-action
+exclusion mechanism, an authorization-adjacent control). *Identify*: the
+risk is a future `McpToolDefinition` accidentally declared for `approve`/
+`reject` (or any other mutating action) slipping into the manifest and
+exposing an accountable-human governance action to an AI caller. *Verify*:
+confirmed the two routes now carry `openapi_extra=APPROVAL_ACTION_ROUTE_
+EXTRA` by direct inspection; confirmed the seven declared tools' `path_
+template`s each match a real route on `project_router.py`/`router.py`
+(not just that the strings look right) via `test_decisions_mcp_tools.py`'s
+integration test against the real, built registry; and — the actual
+mechanical-exclusion proof, not just "no tool was declared" — added a test
+that temporarily appends a synthetic `McpToolDefinition` pointing straight
+at the live `POST .../{decision_id}/approve` route to the real module's
+own `mcp_tools` tuple, rebuilds the registry, and confirms the manifest
+still excludes it (restoring the original definition afterwards regardless
+of outcome), mirroring `backend/tests/test_module_mcp_tools.py`'s own
+fixture-module proof of the same mechanism, but against this module's real
+route rather than a synthetic fixture router. *Remediate*: the
+`APPROVAL_ACTION_ROUTE_EXTRA` gap on `approve`/`reject` (found during this
+same pass, since it only became relevant once tools existed to need it)
+was fixed as described above — no other gap found.
+
+**Verified**: new `backend/app/modules/decisions/tests/test_decisions_mcp_
+tools.py` (3 tests: real-registry tool resolution, approve/reject absence,
+and the synthetic-declaration mechanical-exclusion proof) — all passing.
+`ruff check` clean across the backend. `backend/tests/test_module_mcp_
+tools.py` (the general manifest-builder suite) re-run: 12 passed,
+unaffected. Full backend suite (host-level `python -m pytest -q` from
+`backend/`): **1149 passed, 14 failed in 1470.82s**. All 14 failures are
+`tests/test_invites_and_external_users.py`/`test_oidc_provisioning.py`/
+`test_org_export_import.py` cases failing on `aiosmtplib.errors.
+SMTPConnectError: Error connecting to mailhog on port 1025: nodename nor
+servname provided` — the already-known host-pytest-can't-resolve-`mailhog`
+limitation (that hostname only resolves inside the Docker Compose network;
+these invite/OIDC/email tests need the containerised stack, not bare host
+pytest), unrelated to this change and pre-existing regardless of it. Zero
+failures in `app/modules/decisions/` or `test_module_mcp_tools.py`; no
+regression introduced.
+
+### Docs website coverage (Phase 6)
+
+Built `docs/website/docs/modules/decision-management-module/` (five pages:
+`overview.md`, `data-model-and-lifecycle.md`, `relationships-and-templates
+.md`, `mcp-integration.md`, `known-limitations.md`), following
+`compliance-module/`'s own structure and tone as the only prior precedent.
+The lifecycle `stateDiagram-v2` in `overview.md` was drawn directly from
+`service.py`'s `_ALLOWED_TRANSITIONS`/`enums.py`'s `DecisionStatus`, not
+assumed from the plan's own prose. Caught and corrected one inaccuracy in
+the task brief along the way: the reserved-relationship list has **six**
+targets (Open Question, Pain Point, Strategy, Guiding Principle,
+**Compliance**, Design), not the five the brief named — `service.py`'s own
+Phase 3 docstring and the plan's Phase 3 spec both list all six; documented
+all six in `relationships-and-templates.md` rather than silently dropping
+the sixth to match the brief's undercount.
+
+Updated `docs/website/sidebars.ts` (new "Decision Management module"
+category), `modules/overview.md`, `modules/roadmap.md` (removed the now-
+shipped "Decision Management" row), `compliance-module/mcp-integration.md`,
+`api-integrations/ai-assistants-mcp/overview.md` (added Decision
+Management's own seven-tool table alongside Compliance's ten), and
+`reference/glossary.md`'s "Module" entry — every "only one module exists"
+framing found (`grep`'d across the whole `docs/website/docs/` tree) fixed
+to name both modules. Added one cross-link sentence from `core-features/
+requirements-management.md`'s existing "Traceability links" section to the
+new Decision↔Requirement relationship; checked `concepts/requirements-
+versions-and-lifecycle.md` too but found no natural insertion point there
+and left it unchanged rather than forcing one in.
+
+**Judgment call, Decided by: Agent**: did not add "Decision"/"Decision
+Type"/"Decision Template" entries to `reference/glossary.md` — checked
+first whether it follows a per-module-concept-entry convention, and it
+doesn't: Compliance itself never added entries for "Standard", "Compliance
+Requirement", or "Required Action" despite being the established
+precedent, only the generic "Module" entry mentions it by name. Adding
+Decision-specific entries would have started a new convention Compliance's
+own docs never established, not followed an existing one.
+
+**Verified**: `cd docs/website && npm run build` — clean, zero broken-
+link/broken-anchor errors (`onBrokenLinks`/`onBrokenAnchors: 'throw'`),
+including every new cross-link. All four new Mermaid diagrams (lifecycle
+`stateDiagram-v2`, data-model `flowchart`, supersession `sequenceDiagram`,
+relationships `flowchart`) rendered cleanly to SVG via `@mermaid-js/
+mermaid-cli` with no parse errors or dangling nodes; the lifecycle SVG was
+inspected directly to confirm all six states and every labelled edge
+render correctly, not just that the render command exited 0.
+
+### Files changed
+
+`backend/app/modules/decisions/module.py` (`mcp_tools` tuple added; module
+docstring paragraph documenting the reversal), `backend/app/modules/
+decisions/project_router.py` (`APPROVAL_ACTION_ROUTE_EXTRA` added to
+`approve_decision_endpoint`/`reject_decision_endpoint`, with docstring
+notes; import added), `backend/app/modules/decisions/tests/test_decisions_
+mcp_tools.py` (new), `docs/website/docs/modules/decision-management-module/`
+(new: `overview.md`, `data-model-and-lifecycle.md`, `relationships-and-
+templates.md`, `mcp-integration.md`, `known-limitations.md`),
+`docs/website/sidebars.ts`, `docs/website/docs/modules/overview.md`,
+`docs/website/docs/modules/roadmap.md`, `docs/website/docs/modules/
+compliance-module/mcp-integration.md`, `docs/website/docs/api-integrations/
+ai-assistants-mcp/overview.md`, `docs/website/docs/reference/glossary.md`,
+`docs/website/docs/core-features/requirements-management.md`,
+`docs/plans/module-04-decision-management-plan.md` (Phase 4 addendum and
+Phase 6 notes sections added; Status table updated to 7/8; Phase 6 spec
+section's own Status line updated), `docs/solution-architecture.md`
+(Decision Management module — MCP tools paragraph added), `docs/decisions
+.md` (this entry).
+
+## Module 4 (Decision Management) Phase 6 addendum — screenshots added
+
+**Decided by: User** — asked explicitly for real screenshots on this
+module's docs-website pages (Phase 6 had shipped with Mermaid diagrams
+only), plus the same requirement made explicit in the other eleven
+not-yet-built module plans' own docs-website-coverage phases. This entry
+covers the screenshots; see `docs/decisions.md`'s neighbouring entries (or
+each `docs/plans/module-0*-*.md` file directly) for the parallel plan-doc
+updates.
+
+**Real gap found, worked around non-destructively rather than deferred**:
+`backend/scripts/seed_demo_data.py`'s Decision Management section (added
+in Phase 5) never actually ran against this developer's already-seeded
+"Solstice Robotics" database — the script's own documented idempotent-by-
+skip design (exits immediately if the org already exists) means a database
+seeded before a given section was added to the script never picks that
+section up short of the documented full `docker compose down -v` reset.
+Rather than reset a database that might hold other in-progress local work
+without asking first, the Decision Management portion of that script was
+replayed by hand — identical API calls, identical demo content, purely
+additive — reaching the same end state the script itself already
+specifies (a Superseded/Approved supersession pair plus one Draft
+Decision on Falcon-3 Inspection Drone). This is not a script bug: the
+skip-entirely behaviour is deliberate and documented in the script's own
+module docstring, with the reset recipe already written down in
+`docs/deployment.md`. Flagged here, and in the plan doc, rather than
+silently worked around with no record.
+
+**What was captured**: rebuilt the dev/test stack first (`docker compose
+up -d --build backend frontend` from `tests/container/`, per this repo's
+"containers don't bind-mount source" rule) so the running app reflected
+this session's own code changes, then used the Playwright MCP browser
+tools at a 1440×900 viewport (confirmed via `file` on each output) against
+the real, running app. Four screenshots: `decision-list.png`, `decision-
+detail.png` (an Approved Decision, showing its locked content and
+Supersedes relationship), `decision-templates.png` (the org-scoped
+Decision Templates admin panel — three templates were added to the org
+first, since it predates the org-creation-choices opt-in mechanism and had
+none), and `decision-create-template.png` (the New Decision form with a
+template selected, showing the picker in use). Stored under
+`docs/website/static/img/screenshots/`, embedded in `overview.md` (three
+images) and `data-model-and-lifecycle.md` (one, placed under "Content lock
+after approval") — `relationships-and-templates.md`, `mcp-integration.md`,
+and `known-limitations.md` were left as-is (diagrams/tables only), matching
+Compliance's own precedent of not forcing an image onto every page.
+
+**Verified**: `file` confirmed all four PNGs are exactly 1440×900; `cd
+docs/website && npm run build` re-run clean (zero broken-link/broken-image
+errors) after embedding.
+
+**Files changed**: `docs/website/static/img/screenshots/decision-list.png`,
+`decision-detail.png`, `decision-templates.png`, `decision-create-
+template.png` (new), `docs/website/docs/modules/decision-management-module/
+overview.md` and `data-model-and-lifecycle.md` (screenshots embedded),
+`docs/plans/module-04-decision-management-plan.md` (Phase 6 addendum
+added), `docs/decisions.md` (this entry).
+
+## Module 4 (Decision Management) Phase 9 — UX/architecture follow-up
+
+**Decided by: User** — five fixes requested directly after reviewing
+Phase 5's shipped UI, not agent-initiated. Two required real architectural
+additions rather than a pure UI move; each is called out below.
+
+**1. `DecisionTemplatesPanel.tsx`'s per-row actions.** Delete buttons were
+collected in a `flexWrap` block below the table (one `btn-danger` per
+template) instead of inline on each row, and "Edit" was reachable only by
+clicking the row, with no explicit affordance. Fixed with a per-row
+`ActionMenu` in a new Actions column, listing both "Edit" and "Delete" —
+row-click-to-edit is kept as a convenience shortcut, but the user was
+explicit that a shortcut must never stand in for a menu entry: the menu is
+the row's complete, authoritative action list regardless of what other
+affordances also exist. `docs/ux-style-guide.md` gained two additions: an
+addendum to "Pattern: action menu" extending its existing "two or more
+secondary actions" threshold explicitly to `DirectoryTable` rows (not just
+page-level toolbars), and a "never do this" callout on "Pattern: directory
+table" naming both failure modes found here (buttons collected outside the
+table; an action with no menu entry at all). Scoped to this one panel for
+this phase — not retroactively audited across every existing
+`DirectoryTable` call site with a bare single delete button.
+
+**2. Decision Types: `ProjectDecisionsPage.tsx` tab → `ProjectAdminPage
+.tsx`.** Decision Types are project-scoped config, exactly analogous to
+Action Types — which already live on Project Admin, not the project's
+day-to-day working page. Moving them there required a **new generic core
+extension point**: `ProjectAdminPage.tsx` had no per-module contribution
+mechanism at all before this phase, unlike `OrgAdminPage.tsx`'s existing
+`orgAdminSections`/`orgOverviewSections`. Added `ProjectAdminSectionDef`
+(`{key, label, render({projectId})}`, `frontend/src/modules/types.ts`) and
+a `projectAdminSections` field on `TierAModuleDefinition`; `ProjectAdminPage
+.tsx` computes a `moduleAdminSections` list (installed modules filtered to
+this project's actually-enabled set, collision-guarded against the six
+fixed core group keys) and consumes it with one generic `render({projectId})`
+lookup — the exact "module hands the parent a render function, parent has
+no idea what's inside it" shape `orgAdminSections` already establishes, per
+CLAUDE.md's Modular Feature System Boundary (a project-admin surface for a
+module must be a generic extension point, never a one-off import of
+`DecisionTypesPanel` into the core page). `activeGroup`'s own URL-driven
+group-selection logic had to be widened to recognise a module-contributed
+key too (mirroring `OrgAdminGroupKey`'s identical `CoreKey | string`
+widening) — a `groupParam` matching only the six fixed keys would otherwise
+silently fall back to "overview" for any module section's own URL.
+`DecisionTypesPanel.tsx` was refactored from parent-owned `items`/`onReload`
+props to fetching/reloading its own list, since a registry `render({projectId})`
+call hands it no parent state (the same self-contained shape
+`DecisionTemplatesPanel.tsx` already used for org templates).
+
+**3. Decision detail: `SidePanel` → full page + quick-view panel.**
+`DecisionDetailPanel.tsx` carried lifecycle action buttons, a relationships
+section, a comment thread, and file attachments — genuinely too much for a
+side panel read in one sitting. The user explicitly rejected the style
+guide's existing rationale for when `SidePanel` applies ("for an entity
+that doesn't already have its own dedicated page") as circular — nothing
+stops an agent from simply not building a page and calling the result
+justified — and asked for a real, checkable test instead. `docs/ux-style-
+guide.md`'s "Pattern: entity detail panel" was rewritten with a four-item
+checklist (a comment/discussion thread; file/attachment management; a
+relationships/links section; 3+ lifecycle actions each with their own
+`ConfirmDialog`) — 2 or more of the four means a dedicated page, optionally
+paired with a read-only quick-view `SidePanel` if the list is browsed often
+enough that full navigation per glance is real friction. Decisions trip
+all four markers. Replaced with `DecisionDetailPage.tsx` (a real routed
+page at `/projects/:projectId/modules/decisions/:decisionId`, fetching its
+own data the way `RequirementDetailPage.tsx` does) and
+`DecisionQuickViewPanel.tsx` (a minimal, read-only `SidePanel` — code,
+status, title, type, and the decision statement only, no actions — opened
+on row click, with a single "View full details" link into the page).
+**Decided by: Agent** for this specific quick-view-plus-page mechanism (the
+user explicitly left the implementation choice open, floating the
+quick-view idea as something worth considering rather than mandating it);
+**Decided by: User** for the underlying diagnosis that the `SidePanel` was
+carrying too much, and for rejecting the circular test that would have let
+this go unfixed indefinitely.
+
+**4. Decision Types: nested-project inheritance.** This directly
+supersedes a specific prior decision: Phase 4's `project_router.py`
+docstring recorded, at the time, "unlike `ActionTypeDefinition`, Decision
+Types have no hierarchical-project fallback mechanism" as **Decided by:
+Agent**. The user asked directly whether Decision Types should work with
+nested projects — making the reversal **Decided by: User**, not a
+unilateral agent revisit. `service.resolve_effective_decision_types` is an
+exact mirror of `services.project_hierarchy.resolve_effective_action_types`
+(own rows if any, else the nearest ancestor's, else empty at an
+unconfigured root — always on, independent of RBAC inheritance settings).
+Wired into `list_decision_types` (now returns the effective set) and a new
+`_validate_effective_decision_type` (lets `Decision.decision_type_id`
+reference a type inherited from a parent project); `rename`/`move`/`delete`
+stay scoped to literally-owned rows via the original, unchanged
+`_get_decision_type_in_project` — a hierarchical fallback must never let a
+child mutate a row it doesn't actually own. `delete_decision_type` gained
+`allow_empty=project.parent_project_id is not None`, an exact mirror of
+`action_types.py`'s identical gate.
+
+**Corollary found during implementation, not in the original request**:
+`_seed_new_project` (`backend/app/modules/decisions/module.py`) seeded
+every new project's 5 default Decision Types unconditionally, including
+children. A child seeded with its own defaults would never actually
+exercise the new fallback — the exact same "seeding defeats the
+hierarchy mechanism" gap `ActionTypeDefinition` avoids via
+`routers.projects.create_project`'s own root-only `seed_action_types` gate
+(`if payload.parent_project_id is None: seed_action_types(...)`). Fixed by
+making `_seed_new_project` a no-op for a project with a parent, mirroring
+that gate exactly. This is now called out explicitly in CLAUDE.md's new
+"Nested (Hierarchical) Projects" section as its own checklist item — a
+fallback mechanism whose seeding path defeats it is easy to miss, since the
+fallback code itself is correct in isolation.
+
+**5. Decision Templates: `orgOverviewSections` → `orgAdminSections`**
+(Org Dashboard → Org Management) — a pure registration-key rename, since
+both fields already share `OrgAdminSectionDef`'s identical `{key, label,
+render({orgId})}` shape; no `DecisionTemplatesPanel.tsx` code change
+needed.
+
+**Real gap found on first pass, then actually closed, not just flagged**:
+an initial pass through this phase left the docs-website screenshots
+stale and the rewritten Playwright spec unexecuted, noting both as
+follow-up work rather than doing them. Called out directly by the user
+("I don't think you did the full verification... I know that included
+reviewing website content and re-doing screenshots") — corrected in the
+same session, not deferred to a later one:
+
+- Rebuilt the Docker Compose stack (`tests/container/`, `--build backend
+  frontend`) against this phase's actual code.
+- Ran `tests/playwright/tests/modules/decisions/decision-lifecycle.spec.ts`
+  against the live rebuilt stack (`--project=default --no-deps`, bypassing
+  the unrelated `global-state-mutators` Keycloak dependency, which isn't
+  running locally). First run failed on a real strict-mode violation at
+  the final "Superseded" assertion — the DOM snapshot captured at failure
+  showed the *app* had already produced the fully correct state (DEC-001
+  genuinely Superseded, the Relationships section correctly showing "Is
+  superseded by DEC-002"); the failure was a test-timing race (checking
+  page text immediately after a client-side route change, before the old
+  list view's own matching text had unmounted), not a product bug. Fixed
+  by adding the same URL-based navigation wait already used after the
+  first "View full details" click to the second and third — spec now
+  passes cleanly.
+- Reviewed every page in `docs/website/docs/modules/decision-management-module/`
+  (`overview.md`, `data-model-and-lifecycle.md`, `relationships-and-templates.md`,
+  `mcp-integration.md`, `known-limitations.md`) line by line for stale
+  references beyond the ones already fixed — found and fixed one more:
+  `docs/website/docs/modules/building-your-own-module.md`'s own
+  extension-point reference table was missing the new `projectAdminSections`
+  field entirely, since that page documents the module system generically,
+  not just Decision Management's use of it.
+- Regenerated all four decision-management screenshots via Playwright MCP
+  against the live app (logged in as the seeded demo org admin, Falcon-3
+  Inspection Drone project, 1440×900): `decision-list.png` (no more
+  Decisions/Decision Types tab bar), `decision-detail.png` (the new full
+  page, scrolled to show content fields + the Supersedes relationship +
+  the locked-attachments notice together, matching the existing caption),
+  `decision-templates.png` (Organisation *Admin*, not Overview, with the
+  per-row kebab `ActionMenu` replacing the old wall of red delete
+  buttons), and `decision-create-template.png` (unchanged content,
+  recaptured for a clean, non-stale background). `cd docs/website && npm
+  run build` re-run clean afterward (zero broken-link/broken-image
+  errors).
+- Additionally live-checked Decision Types now rendering correctly under
+  Project Admin for both the root project (Falcon-3 Inspection Drone) and
+  its existing child (Falcon-3 Avionics Subsystem) — the child's own
+  Decision Types page loads without error and carries the updated
+  inheritance-aware hint text. That specific child predates this phase's
+  root-only-seeding fix, so it already had its own 5 rows and this check
+  alone can't distinguish "inherited" from "owned"; the actual inheritance
+  *mechanism* is what `test_decisions_hierarchy.py`'s fresh, isolated
+  parent/child fixtures prove deterministically (see "Verified" below) —
+  this live check only confirms the page itself renders correctly, which
+  it does.
+
+**Verified**: full `backend/app/modules/decisions/tests/` suite (49 tests,
+including new `test_decisions_hierarchy.py`'s 4 and updated
+`test_decisions_seeding.py`) run in isolation, per this repo's
+one-pytest-invocation-at-a-time rule — all passing. Frontend `npm run
+typecheck`/`npm run lint` clean. `decision-lifecycle.spec.ts` run against
+the live rebuilt stack end-to-end (create → propose → approve → supersede
+→ quick-view → full-page navigation) — passing. `docs/website`'s build
+re-run clean after the screenshot swap.
+
+**Files changed**: `frontend/src/modules/decisions/DecisionTemplatesPanel
+.tsx`, `DecisionTypesPanel.tsx`, `ProjectDecisionsPage.tsx`,
+`DecisionDetailPanel.tsx` (removed), `DecisionDetailPage.tsx` (new),
+`DecisionQuickViewPanel.tsx` (new), `module.ts`, and their Storybook
+stories; `frontend/src/modules/types.ts` (`ProjectAdminSectionDef`,
+`projectAdminSections`); `frontend/src/pages/ProjectAdminPage.tsx`;
+`backend/app/modules/decisions/service.py`
+(`resolve_effective_decision_types`), `project_router.py`
+(`list_decision_types`, `_validate_effective_decision_type`,
+`delete_decision_type`), `module.py` (root-only seeding),
+`tests/test_decisions_hierarchy.py` (new), `tests/test_decisions_seeding
+.py`; `tests/playwright/tests/modules/decisions/decision-lifecycle.spec.ts`;
+`docs/ux-style-guide.md`, `docs/solution-architecture.md`, `CLAUDE.md` (new
+"Nested (Hierarchical) Projects" section), `docs/website/docs/modules/
+decision-management-module/overview.md`, `docs/website/docs/modules/
+building-your-own-module.md` (`projectAdminSections` row added to the
+extension-point table), `docs/website/static/img/screenshots/decision-list.png`/
+`decision-detail.png`/`decision-templates.png`/`decision-create-template.png`
+(all four regenerated against the live rebuilt stack), `docs/plans/module-04-decision-
+management-plan.md` (Phase 9 spec + notes sections, Status table),
+`docs/decisions.md` (this entry).

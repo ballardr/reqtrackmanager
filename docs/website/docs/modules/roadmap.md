@@ -4,12 +4,11 @@ sidebar_position: 5
 
 # Roadmap
 
-Compliance is the first module built on ReqTrackManager's [module system](./overview.md), and a number of further modules are being explored to extend the product beyond compliance and core requirements management. Everything below is a proposed direction, not a commitment — none of it is scheduled, none of it has started, and the list itself may change as each one is worked through in more detail. The order below is alphabetical and implies nothing about which, if any, comes first.
+Compliance and Decision Management are the modules built on ReqTrackManager's [module system](./overview.md) today, and a number of further modules are being explored to extend the product beyond them and core requirements management. Everything below is a proposed direction, not a commitment — none of it is scheduled, none of it has started, and the list itself may change as each one is worked through in more detail. The order below is alphabetical and implies nothing about which, if any, comes first.
 
 | Module | What it would add |
 | --- | --- |
 | Context & Strategy | An organisation's or project's strategy, pain points, future-state vision, guiding principles, and open questions, tracked as first-class, linkable content rather than left in a slide deck. |
-| Decision Management | Formal decision records — type, approval, history, and supersession — so "why did we choose this" has an authoritative, linkable answer instead of living in a meeting note. |
 | Deeper compliance integration | Extending the [Compliance module](./compliance-module/overview.md) that's already shipped so its assessments can draw on richer project content as the other modules below arrive — requirement libraries, risk, traceability, governance, decisions, engineering design, and verification actions. |
 | Engineering Design | Design artefacts — hierarchical designs, options, revisions and baselines — with ownership, approval, and traceability back to the requirements and decisions that shaped them. |
 | Governance & Policies | Organisation-defined lifecycle, approval, review, and baseline policies, plus governance checks and role assignments, so the rules a project must follow can be configured rather than only enforced through fixed core behaviour. |
@@ -24,4 +23,4 @@ Several of these would share common underlying infrastructure — most notably a
 
 ## Where this fits
 
-See [Overview](./overview.md) for how the module system these would build on already works, and [Compliance module](./compliance-module/overview.md) for the one module shipped today.
+See [Overview](./overview.md) for how the module system these would build on already works, and [Compliance module](./compliance-module/overview.md) / [Decision Management module](./decision-management-module/overview.md) for the modules shipped today.

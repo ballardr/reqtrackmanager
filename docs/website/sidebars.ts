@@ -105,6 +105,17 @@ const sidebars: SidebarsConfig = {
             'modules/compliance-module/known-limitations',
           ],
         },
+        {
+          type: 'category',
+          label: 'Decision Management module',
+          items: [
+            'modules/decision-management-module/overview',
+            'modules/decision-management-module/data-model-and-lifecycle',
+            'modules/decision-management-module/relationships-and-templates',
+            'modules/decision-management-module/mcp-integration',
+            'modules/decision-management-module/known-limitations',
+          ],
+        },
         'modules/building-your-own-module',
         'modules/third-party-and-federated-modules',
         'modules/roadmap',

@@ -373,6 +373,57 @@ class ResolvedMcpTool:
 
 
 @dataclass(frozen=True)
+class OrgCreationChoiceOption:
+    """Declares one optional, module-contributed seeding choice offered on
+    the organisation-creation form/endpoint (Module 4 — Decision Management
+    — Phase 1, for its ADR template packs) — the org-creation flow's own
+    analogue of `ModuleRoleDefinition`: a generic declaration so
+    `routers.orgs.create_organization` and its accompanying `GET` listing
+    endpoint never need to hardcode a specific module's choice list, the
+    same "core code shouldn't need to know a specific module exists" goal
+    `on_org_created`/`resolve_file_owner_project_id` already serve for
+    other org-creation-time concerns.
+
+    Every `ModuleDefinition.org_creation_choices` entry is one of these.
+    `get_org_creation_choices` (below) merges every registered module's own
+    tuple, in registry order, for the generic listing endpoint to return;
+    `default_org_creation_choice_keys` picks out the `default_selected`
+    subset used when a caller creates an organisation without specifying
+    any selection at all (see that function's own docstring for why this
+    matters for backward compatibility).
+
+    Attributes:
+        key: Stable identifier, unique across every module's own choices
+            (convention: `f"{module_key}:{short_name}"`, e.g.
+            `"decisions:adr_madr"`) — passed back in `POST /orgs`'s
+            `module_choice_keys` and to `ModuleDefinition.
+            on_org_created_with_choices`. Must never change once a
+            deployment may have organisations whose provenance depended on
+            it (informational only today — no row stores which keys were
+            selected — but still treated as stable for forward
+            compatibility).
+        group_label: Heading the org-creation form groups this option
+            under (e.g. `"Decision Templates"`) — multiple options may
+            share one group_label; the form renders one heading per
+            distinct group_label, in first-seen order.
+        label: This option's own display label (e.g. `"MADR (Markdown
+            Architectural Decision Records)"`).
+        description: One-line explanation shown under the label.
+        default_selected: Whether this option is pre-checked on the
+            org-creation form, and whether it's included when a caller
+            creates an organisation without passing `module_choice_keys`
+            at all (server bootstrap, existing scripts, any API caller
+            that predates this mechanism) — see `run_on_org_created_hooks`.
+    """
+
+    key: str
+    group_label: str
+    label: str
+    description: str
+    default_selected: bool = True
+
+
+@dataclass(frozen=True)
 class ModuleScheduledJob:
     """Declares one date-driven background sweep a module needs run
     periodically (compliance-module-plan.md Phase 10) — e.g. Compliance's
@@ -929,6 +980,28 @@ class ModuleDefinition:
             org-creation time is the one deterministic point that can't race
             or double-seed regardless of a module's own default-enabled
             policy; see `seed_compliance_action_types`'s own docstring.
+        org_creation_choices: Module-contributed `OrgCreationChoiceOption`s
+            (Module 4 — Decision Management — Phase 1) offered on the
+            org-creation form, distinct from `on_org_created` above: that
+            hook always seeds unconditionally, while these are choices a
+            human (or caller) opts into — e.g. Decision Management's three
+            ADR template packs, none of which should be forced on every
+            organisation the way default project statuses are. Empty tuple
+            for a module with nothing optional to offer at org-creation
+            time (every module before Decision Management). See
+            `get_org_creation_choices`/`default_org_creation_choice_keys`.
+        on_org_created_with_choices: Optional hook, called once alongside
+            `on_org_created` (same event, same transaction, same
+            not-committed convention) but only for modules that declared at
+            least one `org_creation_choices` entry — separate from
+            `on_org_created` itself so a module with only unconditional
+            seeding never has to accept an unused `selected_keys` argument.
+            Takes `(db, organization_id, selected_keys)` where
+            `selected_keys` is the resolved set of every `OrgCreationChoiceOption.
+            key` the caller chose (across every module, not just this
+            module's own — filter to this module's own prefix before
+            acting). `None` for a module with no `org_creation_choices` of
+            its own (every module before Decision Management).
         project_nav_visible: Optional hook (same 2026-09-08 cleanup) letting
             a module hide its own already-enabled project-scoped nav
             entry/route for a specific project, beyond simple enablement
@@ -1019,6 +1092,8 @@ class ModuleDefinition:
     org_bundle_hooks: ModuleOrgBundleHooks | None = None
     project_bundle_hooks: ModuleProjectBundleHooks | None = None
     on_org_created: Callable[[Session, uuid.UUID], None] | None = None
+    org_creation_choices: tuple[OrgCreationChoiceOption, ...] = field(default=())
+    on_org_created_with_choices: Callable[[Session, uuid.UUID, frozenset[str]], None] | None = None
     project_nav_visible: Callable[[Session, Project], bool] | None = None
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
@@ -1727,7 +1802,32 @@ def resolve_module_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID
     return None
 
 
-def run_on_org_created_hooks(db: Session, organization_id: uuid.UUID) -> None:
+def get_org_creation_choices() -> list[OrgCreationChoiceOption]:
+    """Every registered module's `org_creation_choices`, in registry
+    iteration order — the generic listing `app.routers.orgs`'s org-creation
+    endpoints return so the org-creation form can render every module's
+    optional seeding choices without importing any specific module."""
+    options: list[OrgCreationChoiceOption] = []
+    for definition in get_module_registry().values():
+        options.extend(definition.org_creation_choices)
+    return options
+
+
+def default_org_creation_choice_keys() -> frozenset[str]:
+    """The `key` of every `OrgCreationChoiceOption` marked
+    `default_selected=True`, across every registered module — the implicit
+    selection `run_on_org_created_hooks` applies when its caller doesn't
+    pass `selected_choice_keys` at all, so a caller that predates this
+    mechanism (`services.bootstrap.run_bootstrap`, any script/test calling
+    `POST /orgs` without the new field) keeps getting the same seeding a
+    human clicking through the org-creation form with nothing unchecked
+    would get, rather than silently getting none of it."""
+    return frozenset(option.key for option in get_org_creation_choices() if option.default_selected)
+
+
+def run_on_org_created_hooks(
+    db: Session, organization_id: uuid.UUID, selected_choice_keys: frozenset[str] | None = None
+) -> None:
     """Calls every registered module's `on_org_created` hook (module
     boundary cleanup, 2026-09-08), in registry iteration order, right after
     a brand-new `Organization` row is flushed — the mechanism
@@ -1737,8 +1837,14 @@ def run_on_org_created_hooks(db: Session, organization_id: uuid.UUID) -> None:
     defaults, mirroring `resolve_module_file_project_id`'s identical
     "core code shouldn't need to know a specific module exists" reasoning.
 
-    A module with no `on_org_created` of its own (the default `None`) is
-    simply skipped. Does not commit — each hook only adds rows, the same
+    Also calls every registered module's `on_org_created_with_choices` hook
+    (Module 4 — Decision Management — Phase 1), passing the resolved set of
+    selected `OrgCreationChoiceOption` keys — `selected_choice_keys` if the
+    caller passed one explicitly (even an empty set, an explicit "seed none
+    of these"), otherwise `default_org_creation_choice_keys()`.
+
+    A module with neither hook (the default `None` for both) is simply
+    skipped. Does not commit — each hook only adds rows, the same
     convention `seed_project_statuses`/`seed_link_types` already follow;
     the caller commits once for the whole org-creation transaction.
 
@@ -1747,11 +1853,20 @@ def run_on_org_created_hooks(db: Session, organization_id: uuid.UUID) -> None:
             `Organization` row must already be flushed so hooks can
             reference its id via foreign keys).
         organization_id: The newly created organisation's id.
+        selected_choice_keys: The `OrgCreationChoiceOption.key`s the caller
+            explicitly chose, or `None` to fall back to every
+            `default_selected` option (see `default_org_creation_choice_
+            keys`'s own docstring for why `None`, not an empty set, is the
+            "caller didn't specify" sentinel).
     """
+    resolved_keys = (
+        default_org_creation_choice_keys() if selected_choice_keys is None else selected_choice_keys
+    )
     for definition in get_module_registry().values():
-        if definition.on_org_created is None:
-            continue
-        definition.on_org_created(db, organization_id)
+        if definition.on_org_created is not None:
+            definition.on_org_created(db, organization_id)
+        if definition.on_org_created_with_choices is not None:
+            definition.on_org_created_with_choices(db, organization_id, resolved_keys)
 
 
 def run_on_project_created_hooks(db: Session, project: Project, actor_id: uuid.UUID) -> None:

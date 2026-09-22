@@ -42,6 +42,19 @@ export interface OrgAdminSectionDef {
   render: (props: { orgId: string }) => ReactNode;
 }
 
+/** `OrgAdminSectionDef`'s project-scoped counterpart (Module 4 Phase 9,
+ * 2026-09-22) — same shape, scoped by `projectId` instead of `orgId` for
+ * `ProjectAdminPage.tsx`'s own `ResourceMenu` groups. */
+export interface ProjectAdminSectionDef {
+  /** This section's `ResourceMenu` group key and
+   * `/projects/:projectId/admin/:group` route segment — must be unique
+   * across every installed module's contributed sections (and distinct
+   * from every core group key `ProjectAdminPage.tsx` itself declares). */
+  key: string;
+  label: string;
+  render: (props: { projectId: string }) => ReactNode;
+}
+
 /**
  * One top-level nav-rail link a Tier A module contributes to `Layout.tsx`'s
  * "Global" section (docs/compliance-module-plan.md Phase 18 — "Compliance
@@ -264,6 +277,20 @@ export interface TierAModuleDefinition {
    * actually-enabled modules. Omitted (or empty) for a module with no
    * org-level admin surface. */
   orgAdminSections?: OrgAdminSectionDef[];
+  /** This module's `ResourceMenu` groups on `pages/ProjectAdminPage.tsx`
+   * (Module 4 Phase 9, 2026-09-22) — merged into that page's own fixed
+   * six groups and filtered to this project's actually-enabled modules,
+   * the same "module hands the parent a render function, parent has no
+   * idea what's inside it" shape `orgAdminSections` already establishes,
+   * just scoped by `projectId` instead of `orgId` (a distinct interface
+   * from `OrgAdminSectionDef` for that reason, not a second declaration of
+   * the same shape). First contributor: Decision Types, moved off
+   * `ProjectDecisionsPage.tsx`'s own tab bar to sit alongside the
+   * project's other definition-table settings (Action Types, Custom
+   * Fields) rather than the module's day-to-day working page — see
+   * `docs/decisions.md`. Omitted (or empty) for a module with no
+   * project-level admin surface. */
+  projectAdminSections?: ProjectAdminSectionDef[];
   /** This module's top-level nav-rail links (Phase 18), rendered in
    * `Layout.tsx`'s "Global" section. Omitted (or empty) for a module with
    * no global tab of its own. */
@@ -305,4 +332,26 @@ export interface TierAModuleDefinition {
    * way `requirementDetailSections` is. Omitted (or empty) for a module
    * with no linkable entity of its own. */
   requirementLinkPickerTabs?: RequirementLinkPickerTabDef[];
+  /** This module's own accent colour for `.entity-accent-card`/`.entity-
+   * accent-row` styling (`styles/theme.css`) — the left-border stripe a list
+   * row showing this module's own entity kind (e.g. a compliance
+   * requirement, alongside core requirement-to-requirement links, in
+   * `pages/RequirementDetailPage.tsx`'s own mixed Links card) renders with,
+   * so a user scanning a list mixing several entity kinds can tell them
+   * apart at a glance (see `modules/entityAccentColor.ts`'s own docstring
+   * for the full mechanism). One literal hex pair per module, not a CSS
+   * variable declared in `theme.css` — `theme.css` is a core file and must
+   * never carry a per-module colour token, the same boundary violation as a
+   * per-module value hand-added to a core enum/column (`ProjectSequenceCounter
+   * .artefact_type`'s own corrected history, CLAUDE.md's "Modular Feature
+   * System Boundary") applied to a colour token instead of an enum member —
+   * `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR` briefly grew a
+   * `"compliance"`/`"decision"` entry this exact way before being corrected
+   * back to only the 3 genuinely core-owned kinds (requirement/action/
+   * change_request). Keyed implicitly by this definition's own `key` at the
+   * call site (`useEntityAccentColor(moduleKey)`) — no separate "kind"
+   * identifier, since one module contributes exactly one entity kind today.
+   * Omitted for a module with no entity of its own ever shown in a mixed
+   * list (falls back to a neutral grey — see `entityAccentColor.ts`). */
+  entityAccentColor?: { light: string; dark: string };
 }

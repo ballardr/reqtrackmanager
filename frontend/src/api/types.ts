@@ -109,18 +109,27 @@ export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, B
 // (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) applied
 // consistently wherever these kinds appear as a list row or card, so a
 // user scanning a mixed list (e.g. a requirement's own Links card, which
-// shows both requirement-to-requirement links and compliance-requirement
-// links side by side) can tell the entity kind apart at a glance. v1
-// covers the 4 entity kinds that exist today; a future module (see
-// docs/future-modules-2026-09-overview.md) adds its own token + entry
-// here when it actually ships, rather than this set trying to
-// pre-reserve colours for entity kinds that don't exist yet.
-export type EntityAccentKind = "requirement" | "action" | "change_request" | "compliance";
+// shows both requirement-to-requirement links and a module's own link
+// kind side by side) can tell the entity kind apart at a glance.
+//
+// Covers only the 3 entity kinds core itself owns — requirement/action/
+// change_request. A *module's* own accent colour (e.g. Compliance's) does
+// NOT belong here: an earlier version of this map carried a `"compliance"`
+// entry (and `theme.css` a matching `--color-entity-compliance` variable),
+// which was corrected back out once a second module attempted the same
+// addition and made the pattern visible — a per-module value hand-added to
+// this core, closed-set map is the exact same boundary violation CLAUDE.md
+// documents for `ProjectSequenceCounter.artefact_type`, just applied to a
+// display colour instead of an artefact-type string. A module now registers
+// its own colour on its own `module.ts` (`TierAModuleDefinition.
+// entityAccentColor`) instead, resolved via `modules/entityAccentColor.ts`'s
+// `useEntityAccentColor` — see that file's own docstring for the full
+// mechanism and `modules/compliance/module.ts` for the reference example.
+export type EntityAccentKind = "requirement" | "action" | "change_request";
 export const ENTITY_ACCENT_COLOR: Record<EntityAccentKind, string> = {
   requirement: "var(--color-entity-requirement)",
   action: "var(--color-entity-action)",
   change_request: "var(--color-entity-change-request)",
-  compliance: "var(--color-entity-compliance)",
 };
 // Compliance module enums/label maps (Phase 5/6/12) live in this module's
 // own `frontend/src/modules/compliance/types.ts`, not here — see that
@@ -365,6 +374,18 @@ export interface Organization {
 export interface OrgImportResult {
   organization: Organization;
   warnings: string[];
+}
+
+// Module 4 (Decision Management) Phase 1 — a module's optional org-creation
+// seeding choice (`app.modules.registry.OrgCreationChoiceOption`), listed
+// generically by `GET /orgs/creation-choices` so this page never hardcodes
+// a specific module's own choices.
+export interface OrgCreationChoice {
+  key: string;
+  group_label: string;
+  label: string;
+  description: string;
+  default_selected: boolean;
 }
 
 export interface MergeConflict {

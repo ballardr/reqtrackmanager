@@ -21,6 +21,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { ProjectContext } from "../context/ProjectContextValue";
+import { ThemeProvider } from "../context/ThemeContext";
 import { ToastProvider } from "../context/ToastContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
@@ -431,5 +432,20 @@ export function withToast(): Decorator {
     <ToastProvider>
       <Story />
     </ToastProvider>
+  );
+}
+
+/** Wraps a story in a real `ThemeProvider` — for any component whose
+ * `play` function exercises `useTheme()` (`modules/entityAccentColor.ts`'s
+ * `useEntityAccentColor`, `PreferencesPage.tsx`'s own theme picker, ...).
+ * The global `withTheme` decorator in `.storybook/preview.tsx` only sets
+ * the `data-theme` DOM attribute the toolbar's light/dark toggle needs for
+ * CSS — it doesn't provide `ThemeContext` itself, so any component that
+ * calls `useTheme()` (not just reads CSS variables) still needs this. */
+export function withThemeProvider(): Decorator {
+  return (Story) => (
+    <ThemeProvider>
+      <Story />
+    </ThemeProvider>
   );
 }

@@ -43,6 +43,7 @@ earlier would mean guessing at integration points that don't exist yet.
 | 1 | Compliance participates in Traceability rules | [ ] Blocked on Module 7 |
 | 2 | Compliance participates in Governance baseline policies | [ ] Blocked on Module 8 |
 | 3 | Compliance ↔ Decisions, Risk, Design relationships | [ ] Blocked on Modules 3, 4, 6 |
+| 4 | MCP tools / docs-website coverage | N/A — see "MCP tools and docs-website coverage — determination" note below; this plan adds no new endpoint or user-facing surface of its own |
 
 ## Phase 0 — Exploratory: Confirm Integration Points
 
@@ -121,6 +122,64 @@ already reserves this), Decision → Addresses/Constrained by → Compliance
 reserved in the respective modules' own plans — this phase is the
 "other side" of those reservations, kept here since Compliance is the
 common target across all of them.
+
+## MCP tools and docs-website coverage — determination (2026-09-21)
+
+**Decided by: User** — this session, the user asked that every not-yet-built
+module plan in this roadmap make explicit whether it will (a) get narrow,
+read-only MCP tools once its backend API ships, and (b) get a docs-website
+coverage phase once its frontend or backend ships, following the pattern
+`docs/plans/module-04-decision-management-plan.md`'s Phase 4 addendum and
+Phase 6 established, and `docs/modules.md` §6 documents generically. Both
+determinations below are reached by re-reading this plan's own three
+phases rather than assumed, and are **Decided by: Agent**.
+
+**MCP tools: does not apply to this plan.** Each of Phases 1–3 says
+explicitly that it adds no new endpoint of Compliance's own: Phase 1 "no
+new mechanism on the Compliance side beyond exposing itself as a linkable
+target," Phase 2 is Governance's own baseline-policy configuration, and
+Phase 3 is relationship-model wiring already reserved by the *other*
+modules' own plans (Module 3's Risk phase, Module 4's Phase 3/7). There is
+no phase here that stands up a router or endpoint this plan could declare
+an `McpToolDefinition` against — `docs/modules.md` §6's own constraint (a
+tool's `path_template` must fall inside the declaring module's own router
+prefix) means a tool could not legally be declared here even if one were
+wanted. Compliance's own already-shipped, read-only MCP tools
+(`compliance_list_standards`, `compliance_list_requirements`, etc. —
+`backend/app/modules/compliance/module.py`) already expose read access to
+the "Compliance Requirement" rows this plan makes referenceable elsewhere;
+nothing in this plan changes what they return. If Module 7 (Traceability)
+or Module 8 (Governance) later add their own endpoints that surface this
+integration (e.g. "list traceability rules that target a Compliance
+Requirement"), any MCP tool for that belongs on those modules' own plans,
+not here.
+
+**Docs-website coverage: does not apply to this plan.** None of Phases 1–3
+add a user-facing surface of their own — Phase 1's Traceability-rule
+targeting, Phase 2's Governance baseline check, and Phase 3's relationship
+wiring are all consumed through *other* modules' own UI (Traceability's
+rule editor, Governance's baseline checklist, the consuming artefact's own
+relationship panel), which those modules' own docs-website phases are
+responsible for documenting once built. Per `CLAUDE.md`'s Docs Website
+Maintenance rule ("if no [user-visible surface], no action is needed — do
+not pad the site with updates for purely internal/backend-only changes"),
+no phase is added here. The table above carries a fourth row recording
+this determination so it is visible alongside the other three phases, not
+only in this prose.
+
+**Screenshot requirement (2026-09-22 addendum): this determination stands
+for screenshots too, unchanged.** The user asked that every not-yet-built
+module plan's Docs website coverage phase make `docs/plans/docs-website-
+plan.md`'s screenshot standard explicit (**Decided by: User**); re-checking
+that ask against this plan's own N/A finding above rather than overriding
+it (**Decided by: Agent**), it doesn't change anything here — with no
+docs-site page of its own, there is no page for this plan to add a
+screenshot to. Any screenshot showing this integration's effects (e.g. a
+Traceability rule targeting a Compliance Requirement, or a relationship
+panel showing the link) belongs to the *consuming* module's own
+docs-website phase and its own screenshot obligation, per the same
+reasoning already given above for MCP tools and docs-website coverage
+generally.
 
 ## Acceptance criteria (from overview §48, Compliance Integration subset)
 

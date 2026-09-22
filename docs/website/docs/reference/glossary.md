@@ -60,7 +60,7 @@ What happens once a requirement reaches Approved or Completed: its edit form dis
 
 #### Module
 
-A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance is the first shipped example. See [Modules → Overview](../modules/overview.md).
+A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance and Decision Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
 
 #### Organisation
 

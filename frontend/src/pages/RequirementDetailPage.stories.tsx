@@ -17,6 +17,7 @@ import {
   withRouter,
   withStatefulAuth,
   withTerminology,
+  withThemeProvider,
   withToast,
 } from "../testing/storybook-helpers";
 import { RequirementDetailPage } from "./RequirementDetailPage";
@@ -136,6 +137,12 @@ const meta: Meta<typeof RequirementDetailPage> = {
       "/projects/:projectId/requirements/:requirementId"
     ),
     withToast(),
+    // The two "...Compliance Link..." stories below render Compliance's
+    // `RequirementTraceabilityLinksSection`/`ComplianceRequirementLinkPickerTab`
+    // contributions, which now call `useTheme()` via `useEntityAccentColor`
+    // (`modules/entityAccentColor.ts`) — see `withThemeProvider`'s own
+    // docstring for why the global Storybook theme toggle alone isn't enough.
+    withThemeProvider(),
   ],
 };
 export default meta;

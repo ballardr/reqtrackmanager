@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { Organization } from "../api/types";
+import type { Organization, OrgCreationChoice } from "../api/types";
 import { withRouter, withToast } from "../testing/storybook-helpers";
 import { ServerOrganisationsPage } from "./ServerOrganisationsPage";
 
@@ -18,6 +18,35 @@ function org(overrides: Partial<Organization>): Organization {
   };
 }
 
+// Module 4 (Decision Management) Phase 1 — this page's own `useEffect`
+// fetches `/api/v1/orgs/creation-choices` unconditionally on mount,
+// alongside the `/api/v1/orgs` list, so every story's `api.get` mock must
+// branch on the requested path rather than returning one fixed value for
+// every call. `choices` defaults to empty (a plain "no module offers
+// anything" org-creation flow); stories that exercise the picker itself
+// pass a non-empty list explicitly.
+function mockOrgsGet(orgs: Organization[], choices: OrgCreationChoice[] = []) {
+  spyOn(api, "get").mockImplementation(async (path: string) =>
+    path === "/api/v1/orgs/creation-choices" ? choices : orgs
+  );
+}
+
+const DECISION_TEMPLATE_CHOICES: OrgCreationChoice[] = [
+  {
+    key: "decisions:adr_nygard", group_label: "Decision Templates", label: "Nygard (Classic ADR)",
+    description: "Michael Nygard's original, minimal ADR format.", default_selected: true,
+  },
+  {
+    key: "decisions:adr_madr", group_label: "Decision Templates",
+    label: "MADR (Markdown Architectural Decision Records)",
+    description: "The fuller ADR format.", default_selected: true,
+  },
+  {
+    key: "decisions:adr_y_statement", group_label: "Decision Templates", label: "Y-Statement",
+    description: "The compressed, single-sentence ADR form.", default_selected: false,
+  },
+];
+
 const meta: Meta<typeof ServerOrganisationsPage> = {
   title: "Pages/ServerOrganisationsPage",
   component: ServerOrganisationsPage,
@@ -29,7 +58,7 @@ type Story = StoryObj<typeof ServerOrganisationsPage>;
 
 export const ActiveOrganisations: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([
+    mockOrgsGet([
       org({ id: "org-1", name: "Acme Corp", is_active: true }),
       org({ id: "org-2", name: "Beta Inc", is_active: false }),
     ]);
@@ -44,7 +73,7 @@ export const ActiveOrganisations: Story = {
 
 export const ShowAllIncludesDisabled: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([
+    mockOrgsGet([
       org({ id: "org-1", name: "Acme Corp", is_active: true }),
       org({ id: "org-2", name: "Beta Inc", is_active: false }),
     ]);
@@ -62,7 +91,7 @@ export const ShowAllIncludesDisabled: Story = {
  * block that reflows the list underneath it. */
 export const CreateOrganisation: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({})]);
+    mockOrgsGet([org({})]);
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
@@ -74,16 +103,83 @@ export const CreateOrganisation: Story = {
     const dialog = body.getByRole("dialog", { name: "New organisation" });
     await userEvent.type(within(dialog).getByLabelText("Organisation name"), "New Co");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs", { name: "New Co" }));
+    // No module offers any org-creation choices in this story (empty
+    // `creation-choices` mock) — `module_choice_keys` still resolves to an
+    // empty array, not `undefined`, once the picker's own fetch settles.
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/orgs", { name: "New Co", module_choice_keys: [] })
+    );
     await expect(body.getByText("Organisation created")).toBeInTheDocument();
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Module 4 (Decision Management) Phase 1 — a module's optional
+ * org-creation seeding choices (e.g. Decision Management's three ADR
+ * template packs) render generically, grouped by `group_label`, with only
+ * each option's own `default_selected` value pre-checked. */
+export const CreateOrganisationWithTemplateChoices: Story = {
+  beforeEach: () => {
+    mockOrgsGet([org({})], DECISION_TEMPLATE_CHOICES);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New organisation/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New organisation" });
+    const dialogScope = within(dialog);
+
+    await expect(dialogScope.getByText("Decision Templates")).toBeInTheDocument();
+    const nygard = dialogScope.getByRole("checkbox", { name: /Nygard/ });
+    const madr = dialogScope.getByRole("checkbox", { name: /MADR/ });
+    const yStatement = dialogScope.getByRole("checkbox", { name: /Y-Statement/ });
+    await expect(nygard).toBeChecked();
+    await expect(madr).toBeChecked();
+    await expect(yStatement).not.toBeChecked();
+
+    // Uncheck one default-selected pack, check the non-default one.
+    await userEvent.click(madr);
+    await userEvent.click(yStatement);
+    await userEvent.type(dialogScope.getByLabelText("Organisation name"), "New Co");
+    await userEvent.click(dialogScope.getByRole("button", { name: "Create" }));
+
+    // Insertion order into `selectedChoiceKeys` (a `Set`) is deterministic:
+    // Nygard was already selected (never toggled), so it stays first;
+    // Y-Statement was just added, so it's last.
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/orgs", {
+        name: "New Co",
+        module_choice_keys: ["decisions:adr_nygard", "decisions:adr_y_statement"],
+      })
+    );
+  },
+};
+
+/** The picker is hidden entirely for the bundle-import path — an imported
+ * organisation carries its own already-existing settings, there is
+ * nothing fresh to seed. */
+export const CreateOrganisationImportHidesTemplateChoices: Story = {
+  beforeEach: () => {
+    mockOrgsGet([org({})], DECISION_TEMPLATE_CHOICES);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /New organisation/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New organisation" });
+    const dialogScope = within(dialog);
+    await expect(dialogScope.getByText("Decision Templates")).toBeInTheDocument();
+
+    const file = new File(["{}"], "bundle.zip", { type: "application/zip" });
+    await userEvent.upload(dialogScope.getByLabelText(/Or import from an exported/), file);
+
+    await expect(dialogScope.queryByText("Decision Templates")).not.toBeInTheDocument();
   },
 };
 
 /** Cancelling the modal creates nothing and leaves the list untouched. */
 export const CreateOrganisationModalCancel: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({})]);
+    mockOrgsGet([org({})]);
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
@@ -103,7 +199,7 @@ export const CreateOrganisationModalCancel: Story = {
  * (Principle 7) once the action completes. */
 export const DisableOrganisation: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
@@ -123,7 +219,7 @@ export const DisableOrganisation: Story = {
  * `ArchivingConfirmsAndShowsToast`/cancel pair) applied here. */
 export const DisableOrganisationCancelled: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
@@ -142,7 +238,7 @@ export const DisableOrganisationCancelled: Story = {
  * button stays disabled until the typed text matches. */
 export const DeleteRequiresTypedConfirmation: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })]);
     spyOn(api, "delete").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {

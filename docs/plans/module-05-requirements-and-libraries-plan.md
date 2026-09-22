@@ -26,6 +26,7 @@ just the overview.
 | 1 | Requirement Type ordering/hierarchy semantics | [ ] Not started |
 | 2 | Organisation Requirement Sets (versioned, reusable) | [ ] Not started |
 | 3 | Project adoption, version comparison, and adoption auditing | [ ] Not started |
+| 4 | Docs website coverage | [ ] Not started — depends on Phases 2–3 shipping a real UI (see note below) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -157,6 +158,103 @@ sign-off (§16), never silent auto-upgrade (§12.5's explicit requirement).
 possible if adoption is an explicit, recorded, approved act rather than an
 implicit "this project uses the org's environmental requirements" reference
 with no version pinning.
+
+**MCP tools.** The instruction to give every not-yet-built module plan this
+same explicit MCP-tools and docs-website treatment is **Decided by: User**
+(2026-09-21); which phase to amend and the specific candidate names below
+are **Decided by: Agent**. Once this phase's endpoints exist (together with
+Phase 2's Requirement Set/version CRUD, which this phase's adoption records
+reference), declare narrow, read-only-only `McpToolDefinition` entries per
+[docs/modules.md](../modules.md) §6, following the Compliance and Decision
+Management (`module-04-decision-management-plan.md`) precedent of
+committing to this once the backend is real rather than leaving it
+unstated. Concrete candidates once the endpoint shapes settle: "list
+requirement sets", "get requirement set version", and "list project
+adoptions" (which projects use which version — §12.4's own worked example).
+Excluded, deliberately: adopting/changing a project's targeted version and
+approving that change (§16's explicit Project-Approver sign-off
+requirement) — this is exactly the kind of finalizing action
+`backend/app/modules/registry.py`'s `APPROVAL_ACTION_ROUTE_EXTRA` exists
+for, so that endpoint is marked `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
+at build time (mechanically excluding it from the MCP manifest, not merely
+omitting it from this list) — the same defence-in-depth Compliance and
+Decision Management already use for their own approval/decide endpoints.
+
+## Phase 4 — Docs website coverage
+
+Adding this as its own explicit, tracked phase (rather than leaving it
+implicit) is **Decided by: User** (2026-09-21, the same instruction as the
+MCP-tools addition above, applied to every not-yet-built module plan); the
+specific scope and placement below are **Decided by: Agent**.
+
+**Goal:** add this module's user-facing surface to `docs/website/` (the
+published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
+coverage", adapted to this module's actual content rather than copied.
+
+**Why this is its own tracked phase:** `CLAUDE.md`'s "Docs Website
+Maintenance" rule already requires checking this on every change with a
+user-facing surface, in the same change rather than deferred — a dedicated
+phase makes that check checklist-visible instead of an implicit sub-bullet
+of whichever phase happens to ship the UI, the same reasoning Decision
+Management gave for its own Phase 6.
+
+**Note on placement, specific to this plan:** unlike Modules 4, 6, 7, and
+8, this plan does not currently have a separately-tracked "Frontend UI"
+phase — Phases 1–3 above bundle data model, backend, and (implicitly) the
+UI needed to configure Requirement Types, manage Requirement Sets/versions,
+and drive project adoption/comparison, without an explicit UI phase of
+their own. That is arguably a gap in this plan relative to the other
+module plans' structure, but correcting it is out of scope for this
+documentation-only pass. This phase is therefore placed after Phase 3 (the
+last phase in the current sequence) per this task's own fallback rule
+("after its frontend phase if one exists, otherwise after its backend-API
+phase"), and its own Status line below should be read as depending on
+whichever phase(s) actually ship the real UI — Phase 2/3 as currently
+written, or a future explicit frontend phase if this plan is later split
+that way.
+
+**Scope:**
+
+- A new docs-site page (or section, matching whatever grouping the site
+  uses for other project- and org-scoped features) covering: what a
+  Requirement Type is and how its configurable ordering drives both the
+  conceptual Business → Stakeholder → Project hierarchy and default report
+  ordering (§14/11.1); what an organisation Requirement Set is, its
+  versioning model, and why a project always targets an *explicit* version
+  rather than "latest" (§15/12.3); the adoption workflow, including the
+  Project-Approver sign-off requirement (§16) and how version-to-version
+  diffs are surfaced before a project adopts a new version (§12.5).
+- A Mermaid diagram showing the relationship between an org-owned
+  Requirement Set, its versions, and the projects that adopt a specific
+  version each — this is the module's core mental model and the one most
+  likely to be misread as "projects just reference the set" without a
+  picture showing the explicit version pin.
+- Update the site's module/feature index or nav (wherever other installed
+  modules are listed) to include this module once it ships.
+- Cross-link from the existing Requirements documentation wherever the site
+  already documents Requirement Types/hierarchy or requirement libraries in
+  general terms, if it does.
+- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
+  every not-yet-built module plan's own "Docs website coverage" phase,
+  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  "Screenshots" standard (1440×900 viewport, captured against the seeded
+  demo dataset, stored under `docs/website/static/img/screenshots/`, real
+  alt text plus a one-line caption, no surrounding "what this shows/why it
+  matters" prose) and its "every Concepts, Core Features, Workflows, and
+  Modules page needs at least one screenshot or diagram" bar — not forced
+  onto a page whose content is genuinely diagram/table-only. Candidate
+  screens — **Decided by: Agent**: given the placement note above (this
+  plan has no separately-tracked frontend UI phase yet, so the concrete
+  screens aren't fixed), the most likely candidates once Phases 1–3 ship a
+  real UI are the organisation Requirement Set admin/version list, the
+  version-diff view surfaced during project adoption, and the Requirement
+  Type ordering configuration panel — but a generic commitment to the
+  standard above is sufficient until that UI exists.
+
+**Status:** not started — see the placement note above for what this
+depends on given this plan's current phase structure.
 
 ## Acceptance criteria (from overview §48, Requirements & Libraries subset)
 

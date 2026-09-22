@@ -22,6 +22,7 @@ build order (§46 Phase 2), after Context & Strategy.
 | 1 | Data model: Stakeholder/Persona, types, module RBAC | [ ] Not started |
 | 2 | Stakeholder Needs (as first-class records) | [ ] Not started |
 | 3 | Relationships + frontend UI | [ ] Not started |
+| 4 | Docs website coverage | [ ] Not started — depends on Phase 3 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -145,6 +146,103 @@ exist yet (Decision, Design) are reserved the same way Module 4 reserves
 its own forward-relationships. Frontend: list/detail/create UI for
 Stakeholders/Personas and Needs, per UX style guide conventions, with
 Playwright e2e + Storybook coverage.
+
+**MCP tools.** Added 2026-09-21 at the user's explicit instruction, applied
+across every not-yet-built module plan (**Decided by: User**) — see
+`docs/modules.md` §6 and [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+shipped `mcp_tools` (`backend/app/modules/decisions/module.py`) as the
+precedent to follow. This module has no single dedicated "backend API"
+phase; Phase 1 (Stakeholder/Persona) and Phase 2 (Stakeholder Need) each
+stand up their own data model, RBAC, and CRUD endpoints together, so the
+full REST surface across Stakeholders/Personas, Needs, and their
+relationships is only complete once this phase's relationship endpoints
+land, immediately before this phase's own frontend work consumes it.
+Attaching the commitment here, at the last purely-backend milestone,
+rather than retroactively to Phase 1/2, is a judgment call (**Decided by:
+Agent**) — revisit if a future pass splits this phase's backend and
+frontend halves apart, or splits Phase 1/2's own endpoints out explicitly.
+Once these endpoints exist, declare narrow, **read-only-only**
+`McpToolDefinition` entries for the safe list/get endpoints — candidates
+made concrete by Phase 1/2's own scope text: `list_stakeholders`/
+`get_stakeholder` (covering both `kind=stakeholder` and `kind=persona`
+rows, per Phase 0 Q1's resolution) and `list_stakeholder_needs`/
+`get_stakeholder_need`. Explicitly excluded: anything mutating, and any
+endpoint that approves or finalises something — §10 names no
+approval/baseline workflow for Stakeholders/Personas the way Decisions or
+Strategies have one (Phase 1's own RBAC note flags this asymmetry
+explicitly), so no route here is expected to need
+`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
+(`backend/app/modules/registry.py`); if Phase 0 or Phase 1 later confirms
+some form of stakeholder sign-off/approval after all, any such route must
+be marked with it before this phase's MCP tools are finalised, the same
+defence-in-depth Compliance and Decision Management already use.
+
+## Phase 4 — Docs website coverage
+
+Added 2026-09-21 at the user's explicit instruction, applied across every
+not-yet-built module plan (**Decided by: User**); the specific scope and
+placement below are this session's own judgment (**Decided by: Agent**),
+modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+Phase 6 of the same name.
+
+**Goal:** add Stakeholders & Personas' user-facing surface to
+`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`)
+— what a Stakeholder/Persona record is, how a Persona differs from (and is
+modelled alongside) an ordinary Stakeholder, what a Stakeholder Need is and
+why it exists as its own record, and how these relate to Requirements and
+other artefacts — following the site's existing structure, tone, and
+Mermaid-diagram conventions (per this repo's Documentation Requirements:
+prefer diagrams, validate they render before finalising).
+
+**Why this is its own tracked phase, not folded silently into this phase's
+own frontend work:** `CLAUDE.md`'s "Docs Website Maintenance" rule already
+requires this check on every change with a user-facing surface, performed
+in the same change rather than deferred — so in the ordinary case this
+would just be part of Phase 3's own work. It's broken out explicitly here,
+mirroring Decision Management's own Phase 6 reasoning, so the docs-site
+update has its own checklist-visible exit criteria rather than being an
+implicit sub-bullet of Phase 3's UI work, which already has plenty of its
+own scope (two artefact types, eight relationship kinds, and a
+persona-vs-stakeholder distinction that is easy to under-explain if rushed).
+
+**Scope:**
+
+- A new docs-site page or section (matching whatever grouping the site
+  already uses for other project-scoped modules, e.g. Compliance and
+  Decision Management) covering: what a Stakeholder is and how a Persona
+  (per Phase 0 Q1's `kind` discriminator, if resolved that way) sits on the
+  same record type rather than as an unrelated concept; the Stakeholder →
+  Need → Stakeholder Requirement → Project Requirement chain (§10.1) as a
+  Mermaid diagram, including why a Need is optional rather than mandatory
+  in that chain (Phase 0 Q3); the relationships wired in Phase 3 (Has Need,
+  Experiences Pain Point, Provides Requirement, Represents Persona, etc.),
+  including which targets (Decision, Design) are reserved pending Modules 4
+  and 6.
+- Update the site's module/feature index or nav to include Stakeholders &
+  Personas alongside the other installed modules it already lists.
+- Cross-link from the Requirements documentation to the new page wherever
+  the site already documents how a Requirement traces back to the
+  stakeholder or need that motivated it, if it does.
+- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
+  every not-yet-built module plan's own "Docs website coverage" phase,
+  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  "Screenshots" standard (1440×900 viewport, captured against the seeded
+  demo dataset, stored under `docs/website/static/img/screenshots/`, real
+  alt text plus a one-line caption, no surrounding "what this shows/why it
+  matters" prose) and its "every Concepts, Core Features, Workflows, and
+  Modules page needs at least one screenshot or diagram" bar — not forced
+  onto a page whose content is genuinely diagram/table-only. Candidate
+  screens for this module's own page — **Decided by: Agent**: the
+  Stakeholder/Persona list view, a Stakeholder detail page showing its
+  Needs and relationships, and the Persona-vs-Stakeholder `kind` field on
+  the create/edit form.
+
+**Status:** not started — depends on Phase 3 (relationships + frontend)
+actually shipping; there is no real user-facing workflow to document
+accurately before then, the same reasoning Decision Management's own
+Phase 6 and Compliance's docs-site page both used. Not a blocker for any
+other phase.
 
 ## Acceptance criteria (from overview §48, Stakeholders & Personas subset)
 

@@ -54,6 +54,9 @@ import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import type { ProjectAdminSectionDef } from "../modules/types";
+import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 
@@ -107,9 +110,14 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * (`direct_role` vs. group/nested-org-group/project-ref/org-wide) that
  * makes its inline role-toggle safe.
  */
-type ProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup";
+type CoreProjectAdminGroupKey = "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup";
 
-const PROJECT_ADMIN_GROUP_KEYS: ProjectAdminGroupKey[] = [
+/** Widened to admit a module-contributed section's own key (Module 4 Phase
+ * 9, 2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
+ * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
+type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
+
+const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "overview",
   "structure",
   "fieldsActions",
@@ -134,6 +142,25 @@ export function ProjectAdminPage() {
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
+  // Module 4 Phase 9 (2026-09-22): every installed module's own
+  // `projectAdminSections`, filtered to this project's actually-enabled
+  // modules (`GET /projects/{id}/enabled-modules` already returns only the
+  // enabled set) — mirrors `OrgAdminPage.tsx`'s identical `moduleAdminSections`
+  // computation. Computed early (before `activeGroup` below) since that
+  // fallback needs to recognise a module-contributed group key too, not
+  // just the six fixed core ones.
+  const { modules: projectEnabledModules } = useProjectEnabledModules(projectId ?? null);
+  const enabledProjectModuleKeys = new Set(projectEnabledModules.map((m) => m.module_key));
+  const moduleAdminSections: ProjectAdminSectionDef[] = installedModules
+    .filter((m) => enabledProjectModuleKeys.has(m.key))
+    .flatMap((m) => m.projectAdminSections ?? [])
+    .filter((section) => {
+      if ((PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(section.key)) {
+        console.error(`Module-contributed project-admin section "${section.key}" collides with a core group key; ignoring it.`);
+        return false;
+      }
+      return true;
+    });
   const [project, setProject] = useState<Project | null>(null);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
@@ -1161,9 +1188,11 @@ export function ProjectAdminPage() {
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
   // above `ProjectAdminGroupKey`, and Phase 5's later "groups" -> "members"
   // + "groups" split recorded there too.
-  const activeGroup: ProjectAdminGroupKey = PROJECT_ADMIN_GROUP_KEYS.includes(groupParam as ProjectAdminGroupKey)
-    ? (groupParam as ProjectAdminGroupKey)
-    : "overview";
+  const activeGroup: ProjectAdminGroupKey =
+    (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "") ||
+    moduleAdminSections.some((section) => section.key === groupParam)
+      ? (groupParam as ProjectAdminGroupKey)
+      : "overview";
 
   // --- Groups section: per-group SidePanel + ?openGroup= deep link -------
   // (Phase 5, docs/decisions.md) — "click a group in Members, see its
@@ -1301,6 +1330,9 @@ export function ProjectAdminPage() {
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
+    ...moduleAdminSections.map((section) => ({
+      key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
+    })),
   ];
 
   return (
@@ -2714,6 +2746,19 @@ export function ProjectAdminPage() {
         </button>
       </div>
       )}
+
+      {/* Module 4 Phase 9 (2026-09-22): one generic lookup for every
+          module-contributed project-admin section, mirroring
+          `OrgAdminPage.tsx`'s own `moduleAdminSections` render — a future
+          installed module's own `projectAdminSections` entry needs no
+          corresponding edit here at all. */}
+      {moduleAdminSections
+        .filter((section) => section.key === activeGroup)
+        .map((section) => (
+          <div className="stack" key={section.key}>
+            {section.render({ projectId: project.id })}
+          </div>
+        ))}
       </ResourceMenu>
     </div>
   );

@@ -67,6 +67,7 @@ since building it out is the only way to make the trade-off concrete.
 | 5 | Engineering Attributes (custom-field reuse) | [ ] Not started |
 | 6 | Relationships (Requirement, Decision, Risk, Compliance, Verification, Design) | [ ] Not started |
 | 7 | Frontend UI | [ ] Not started |
+| 8 | Docs website coverage | [ ] Not started — depends on Phase 7 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -414,6 +415,29 @@ Decisions mention the processor" — this is the concrete payoff for having
 built Design as its own artefact at all, and it's also exactly the kind of
 traversal Module 10's Engineering Change Impact report (§47.6) needs.
 
+**MCP tools.** The instruction to give every not-yet-built module plan this
+same explicit MCP-tools and docs-website treatment is **Decided by: User**
+(2026-09-21); which phase to amend and the specific candidate names below
+are **Decided by: Agent** — Phase 6 is chosen because it's the last
+backend-building phase in this plan's own sequence, by which point the full
+Design CRUD/revision/relationship surface from Phases 1–6 exists (this plan
+has no single consolidated "Backend API" phase the way Module 4's plan
+does, so this addendum covers the module's REST surface as a whole rather
+than only Phase 6's own relationship endpoints). Once these endpoints
+exist, declare narrow, read-only-only `McpToolDefinition` entries per
+[docs/modules.md](../modules.md) §6, following the Compliance and Decision
+Management (`module-04-decision-management-plan.md`) precedent. Concrete
+candidates: "list designs", "get design" (including its current revision
+and hierarchy position), "list design relationships". Excluded,
+deliberately: design approval (Phase 3's Design Approver role) and
+invalidating a Design revision (Phase 3/Phase 6's "Invalidated by"
+mechanism) — both are exactly the kind of accountable, finalizing/flagging
+governance actions Compliance's own `module.py` has repeatedly kept off the
+MCP tool surface, so both routes are marked
+`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
+(`backend/app/modules/registry.py`) at build time, mechanically excluding
+them from the manifest rather than relying on this list alone.
+
 ## Phase 7 — Frontend UI
 
 List/detail/create UI with a real hierarchy tree view (per §12's explicit
@@ -423,6 +447,77 @@ approach, and relationship/traceability displays consistent with the
 other modules. Enum/status/design-type values render through label maps
 from day one. Playwright e2e + Storybook coverage per standing testing
 requirements.
+
+## Phase 8 — Docs website coverage
+
+Adding this as its own explicit, tracked phase (rather than leaving it
+implicit) is **Decided by: User** (2026-09-21, the same instruction as the
+MCP-tools addition above, applied to every not-yet-built module plan); the
+specific scope below is **Decided by: Agent**.
+
+**Goal:** add Engineering Design's user-facing surface to `docs/website/`
+(the published docs site, `docs/plans/docs-website-plan.md`) — modeled
+closely on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs
+website coverage", adapted to this module's own content rather than
+copied.
+
+**Why this is its own tracked phase, not folded silently into Phase 7:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, in the same change rather than
+deferred — so in the ordinary case this would just be part of Phase 7's
+own work. It is broken out explicitly here, mirroring Decision
+Management's own Phase 6 reasoning, because this module's user-facing
+surface is unusually broad for one phase (design hierarchy, options,
+revisions/supersession, invalidation, interfaces, engineering attributes,
+and five relationship groups all land in the same Phase 7 UI at once) — a
+dedicated, checklist-visible phase makes it harder for the docs-site update
+to be under-scoped or missed.
+
+**Scope:**
+
+- A new docs-site page (or section, matching whatever grouping the site
+  already uses for other project-scoped modules, e.g. Compliance and
+  Decision Management) covering: what a Design record is and when to use
+  one, including the explicit boundary that it references CAD/ECAD/source
+  control rather than replacing them (§10); the design hierarchy
+  (parent/child, distinct from project hierarchy per §12) as a validated
+  Mermaid diagram; Design Options and how one is selected via a linked
+  Decision (Phase 2, §13); the revision/supersession model (mirroring
+  Decision Management's own, per Phase 0 Q1) as a validated Mermaid
+  lifecycle diagram, including invalidation as an overlay marker
+  independent of both status and supersession (Phase 3, Phase 0 Q8/Q9);
+  Interfaces as an "Interface Design" type rather than a separate concept
+  (Phase 4); Engineering Attributes via the shared custom-field mechanism
+  (Phase 5); and the module's relationship groups to Requirement, Decision,
+  Risk, Compliance, Verification, and other Designs (Phase 6), with a short
+  Mermaid diagram showing how a Design sits relative to those other
+  artefacts — reusing the doc's own four-artefact framing (Requirement =
+  what must be true, Decision = why this approach, Design = what solution,
+  Verification = how proven).
+- Update the site's module/feature index or nav to include Engineering
+  Design once it ships.
+- Cross-link from the Decision Management documentation wherever it already
+  discusses Design ↔ Decision relationships or Decision's own "options
+  considered" field, since Phase 2 of this module directly resolves that
+  plan's own Phase 0 Q4.
+- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
+  every not-yet-built module plan's own "Docs website coverage" phase,
+  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  "Screenshots" standard (1440×900 viewport, captured against the seeded
+  demo dataset, stored under `docs/website/static/img/screenshots/`, real
+  alt text plus a one-line caption, no surrounding "what this shows/why it
+  matters" prose) and its "every Concepts, Core Features, Workflows, and
+  Modules page needs at least one screenshot or diagram" bar — not forced
+  onto a page whose content is genuinely diagram/table-only. Candidate
+  screens for this module's own page — **Decided by: Agent**: the Design
+  hierarchy/list view, a Design detail page showing its revision history
+  and interfaces, and the Design Option selection UI tied to a Decision.
+
+**Status:** not started. Depends on Phase 7 (frontend) actually shipping —
+there is no real user-facing workflow to document accurately before then,
+the same reasoning Decision Management's own Phase 6 and Compliance's
+docs-site page both used.
 
 ## Acceptance criteria
 

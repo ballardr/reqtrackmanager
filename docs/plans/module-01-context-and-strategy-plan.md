@@ -34,6 +34,7 @@ workflow), but nothing here blocks Module 4's own Phases 1–5.
 | 4 | Open Questions (+ Future State, folded into Strategy per §7) | [ ] Not started |
 | 5 | Cross-artefact relationships wired between all of the above (via Module 0) | [ ] Not started |
 | 6 | Frontend UI for all five artefact types | [ ] Not started |
+| 7 | Docs website coverage | [ ] Not started — depends on Phase 6 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -195,6 +196,37 @@ now but only become populatable once Module 4 lands (or, if built in the
 other order, vice versa — the two modules' Phase 6-equivalents are mutually
 completing).
 
+**MCP tools.** Added 2026-09-21 at the user's explicit instruction, applied
+across every not-yet-built module plan (**Decided by: User**), so that
+narrow, read-only MCP-tool coverage isn't an afterthought once a module's
+API exists — see `docs/modules.md` §6 and
+[Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+shipped `mcp_tools` (`backend/app/modules/decisions/module.py`) as the
+precedent to follow. This module has no single dedicated "backend API"
+phase the way Decision Management's later, more granular plan does — each
+of Phases 1–4 stands up one artefact's own data model, RBAC, and (per this
+codebase's own convention of never landing a model with no way to reach
+it) its CRUD endpoints together, so the full REST surface across all five
+artefact types is only actually complete once this phase's relationship
+endpoints land, immediately before Phase 6's frontend consumes it. Attaching
+the commitment here, at the last purely-backend phase, rather than
+retroactively to Phase 1/2/3/4 individually, is a judgment call
+(**Decided by: Agent**) — revisit if a future pass splits those phases'
+own endpoints out explicitly. Once this phase (and the endpoints it
+depends on from Phases 1–4) exists, declare narrow, **read-only-only**
+`McpToolDefinition` entries for the safe list/get endpoints — candidates
+made concrete by each phase's own scope text: `list_strategies`/
+`get_strategy` (Phase 1), `list_pain_points`/`get_pain_point` (Phase 2),
+`list_guiding_principles`/`get_guiding_principle` (Phase 3),
+`list_open_questions`/`get_open_question` (Phase 4). Explicitly excluded:
+anything mutating, and any endpoint that approves/activates/retires/
+resolves an artefact (e.g. Strategy approval, Guiding Principle
+activation/retirement, Open Question resolution) — those routes must be
+marked with `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
+(`backend/app/modules/registry.py`) as defence-in-depth, the same
+mechanism Compliance and Decision Management already use, so such a route
+can never be exposed as an MCP tool even by accident.
+
 ## Phase 6 — Frontend UI
 
 **Goal:** list/detail/create/edit/approve UI for all five artefact types,
@@ -202,6 +234,75 @@ per Phase 0 Q7's nav-placement decision, following the UX style guide's
 settings-hierarchy and confirmation-tier patterns. Enum/status values
 render through label maps from day one. Playwright e2e + Storybook coverage
 for each new page/component, per standing testing requirements.
+
+## Phase 7 — Docs website coverage
+
+Added 2026-09-21 at the user's explicit instruction, applied across every
+not-yet-built module plan (**Decided by: User**); the specific scope and
+placement below are this session's own judgment (**Decided by: Agent**),
+modelled closely on [Module 4 (Decision Management)](module-04-decision-management-plan.md)'s
+Phase 6 of the same name.
+
+**Goal:** add Context & Strategy's user-facing surface to `docs/website/`
+(the published docs site, `docs/plans/docs-website-plan.md`) — what each of
+the five artefact types is and when to use it, how they relate to each
+other and to Requirements, and their lifecycle states — following the
+site's existing structure, tone, and Mermaid-diagram conventions (per this
+repo's Documentation Requirements: prefer diagrams, validate they render
+before finalising).
+
+**Why this is its own tracked phase, not folded silently into Phase 6:**
+`CLAUDE.md`'s "Docs Website Maintenance" rule already requires this check
+on every change with a user-facing surface, performed in the same change
+rather than deferred — so in the ordinary case this would just be part of
+Phase 6's own work. It's broken out explicitly here, mirroring Decision
+Management's own Phase 6 reasoning, because this module's user-facing
+surface is unusually broad for one phase — five artefact types (Strategy,
+Pain Point, Guiding Principle, Open Question, and Future State folded into
+Strategy), each with its own lifecycle, landing in the same Phase 6 UI at
+once — so a dedicated, checklist-visible phase makes the docs-site update
+harder to under-scope or miss amid everything else Phase 6 ships.
+
+**Scope:**
+
+- A new docs-site page or section (matching whatever grouping the site
+  already uses for other project-scoped modules, e.g. Compliance and
+  Decision Management) covering: what each of Strategy, Pain Point, Guiding
+  Principle, and Open Question is and when to use it; the Organisation
+  Strategy → Project Strategy → Requirements → Implementation chain (§5.2)
+  as a Mermaid diagram; each artefact's own lifecycle as a validated Mermaid
+  state diagram, including Pain Point's branching `Triaged → {Rejected |
+  Duplicate | Accepted → Addressed → Closed}` shape and Strategy's
+  `Draft → Proposed → Under Review → Approved → Active → Superseded/Retired`
+  chain (Phase 1); how Future State is represented (fields on Strategy, per
+  Phase 0 Q1's resolution, not a separate artefact); the cross-artefact
+  relationships wired in Phase 5 (Pain Point → drives → Strategy, Strategy
+  → drives → Requirement, etc.), including which targets (Decision) are
+  reserved pending Module 4.
+- Update the site's module/feature index or nav to include Context &
+  Strategy alongside the other installed modules it already lists.
+- Cross-link from the Requirements documentation to the new page wherever
+  the site already documents how a Requirement's rationale traces back to
+  an upstream Pain Point or Strategy, if it does.
+- **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
+  every not-yet-built module plan's own "Docs website coverage" phase,
+  alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
+  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  "Screenshots" standard (1440×900 viewport, captured against the seeded
+  demo dataset, stored under `docs/website/static/img/screenshots/`, real
+  alt text plus a one-line caption, no surrounding "what this shows/why it
+  matters" prose) and its "every Concepts, Core Features, Workflows, and
+  Modules page needs at least one screenshot or diagram" bar — not forced
+  onto a page whose content is genuinely diagram/table-only. Candidate
+  screens for this module's own page — **Decided by: Agent**: a Pain Point
+  or Strategy list view, a Strategy detail page showing its lifecycle state
+  and the Org → Project → Requirement chain, and the Open Question →
+  Decision conversion form.
+
+**Status:** not started — depends on Phase 6 (frontend) actually shipping;
+there is no real user-facing workflow to document accurately before then,
+the same reasoning Decision Management's own Phase 6 and Compliance's
+docs-site page both used. Not a blocker for any other phase.
 
 ## Acceptance criteria (from overview §48, Context & Strategy subset)
 
