@@ -120,6 +120,7 @@ Because this is compiled directly into the same frontend bundle, the module's ow
 | `routes` | Project-scoped pages, e.g. `/projects/:projectId/modules/<key>` | This project's currently-enabled-modules list |
 | `globalRoutes` | Always-mounted top-level routes with no single project/org in the URL (e.g. Compliance's `/standards`) | Nothing — mounted for every installed module |
 | `orgAdminSections` | A `ResourceMenu` group on the Org Admin page | This org's currently-enabled-modules list |
+| `projectAdminSections` | A `ResourceMenu` group on the Project Admin page | This project's currently-enabled-modules list |
 | `globalNavItems` | A top-level link in the nav rail's "Global" section | The module's own `render` decides — the host has no org/project in context to filter on |
 | `standaloneWorkspaces` | A left-nav section for a project-like entity that isn't a `Project` (matched against the current URL) | The module's own `render` decides |
 | `projectOverviewTiles` | An extra metric tile on a project's Overview page | This project's currently-enabled-modules list |

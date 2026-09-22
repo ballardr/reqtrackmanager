@@ -2,9 +2,12 @@
  * Module: modules/decisions/DecisionTemplatesPanel
  *
  * The org-scoped Decision Template library (Phase 0 addendum items 1/2/6/7)
- * — registered as this module's `orgOverviewSections` contribution
- * (`module.ts`), the org-level counterpart to the opt-in template-pack
- * picker `pages/ServerOrganisationsPage.tsx` already surfaces at
+ * — registered as this module's `orgAdminSections` contribution
+ * (`module.ts`; moved here from `orgOverviewSections` in Phase 9,
+ * 2026-09-22, per explicit user direction — an org admin manages this
+ * library on Org Management, not the Org Dashboard), the org-level
+ * counterpart to the opt-in template-pack picker
+ * `pages/ServerOrganisationsPage.tsx` already surfaces at
  * organisation-creation time (`GET /orgs/creation-choices`). This panel is
  * where an org admin manages the template library *after* creation —
  * editing a seeded pack, adding a custom one, or removing one nobody wants.
@@ -12,10 +15,20 @@
  * `DirectoryTable` + `Modal` create/edit (`DecisionTemplateFormModal`) +
  * `ConfirmDialog` delete — the same shape `EvidencePanel.tsx` uses for its
  * own CRUD list, minus a detail `SidePanel` (a template has no sub-resources
- * of its own worth drilling into; edit reopens the same form).
+ * of its own worth drilling into; edit reopens the same form). Row actions
+ * (Edit, Delete) are a per-row `ActionMenu` in an Actions column — never a
+ * block of delete buttons collected below the table, and never an action
+ * reachable only via row-click with no corresponding menu entry (style
+ * guide's "Pattern: action menu" table addendum and "Pattern: directory
+ * table" callout, both 2026-09-22 — this panel was the finding that
+ * prompted both). The row itself stays clickable to open the edit form as a
+ * shortcut; "Edit" is still listed in the menu too, since a shortcut is
+ * never a substitute for a menu entry.
  */
 import { useEffect, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 
+import { ActionMenu } from "../../components/ActionMenu";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { Spinner } from "../../components/Spinner";
@@ -53,6 +66,18 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
   const columns: DirectoryColumn<DecisionTemplate>[] = [
     { key: "name", label: "Name", render: (t) => t.name },
     { key: "description", label: "Description", render: (t) => t.description || "—" },
+    {
+      key: "actions", label: "",
+      render: (t) => (
+        <ActionMenu
+          triggerLabel={`Actions for "${t.name}"`}
+          items={[
+            { label: "Edit", icon: <Pencil size={14} />, onSelect: () => setEditing(t) },
+            { label: "Delete", icon: <Trash2 size={14} />, onSelect: () => setDeleting(t) },
+          ]}
+        />
+      ),
+    },
   ];
 
   return (
@@ -72,16 +97,6 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
         onRowClick={setEditing}
         emptyState={<p className="text-muted">No Decision Templates yet.</p>}
       />
-      {templates.length > 0 && (
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-          {templates.map((t) => (
-            <button key={t.id} className="btn btn-danger" onClick={() => setDeleting(t)}>
-              Delete "{t.name}"
-            </button>
-          ))}
-        </div>
-      )}
-
       {creating && (
         <DecisionTemplateFormModal
           error={formError}

@@ -19,7 +19,7 @@ Use a Decision Record for a choice worth being able to answer for later — one 
 
 ## Enabling the module
 
-Decision Management is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement)). Enabling it seeds each of that organisation's projects with a default set of Decision Types (see below); disabling it hides its navigation and endpoints, but deletes no data.
+Decision Management is **not** enabled by default — an org admin opts in per organisation from the organisation's Modules settings, the same entitlement/enablement mechanism every module uses (see [Modules → Overview](../overview.md#gating-entitlement--enablement)). Enabling it seeds each of that organisation's *root* projects with a default set of Decision Types (see below); a project with a parent starts with none of its own and inherits its nearest ancestor's instead. Disabling the module hides its navigation and endpoints, but deletes no data.
 
 ## The lifecycle
 
@@ -46,7 +46,7 @@ Decision Management defines two of its own roles, module-contributed rather than
 
 | Role | Scope | Grants |
 | --- | --- | --- |
-| **Decision Owner** | Project | Creates and manages Decision records and this project's Decision Types — the module's management-level role. |
+| **Decision Owner** | Project | Creates and manages Decision records and this project's Decision Types (from that project's own Project Admin page) — the module's management-level role. |
 | **Decision Approver** | Project | May approve, reject, and supersede Decisions in this project. |
 
 Both compose with roles that already carry equivalent authority elsewhere: a server admin, an org admin, or the project's own Project Manager can do everything either role can, on that project. Every other project member has read access once the module is enabled, plus the ability to create a Decision and propose/submit their own for review — no role grant is needed just to participate.
@@ -55,7 +55,7 @@ Both compose with roles that already carry equivalent authority elsewhere: a ser
 
 ## Decision Types
 
-A **Decision Type** (e.g. "Architecture", "Design", "Engineering", "Strategy", "Operational") categorises a Decision and is project-scoped and project-configurable — a Decision Owner can rename, reorder, or delete a project's own types (deleting one reassigns its existing Decisions, the same delete-with-reassignment pattern used elsewhere in ReqTrackManager). Every new project is seeded with the five defaults above once the module is enabled for its organisation.
+A **Decision Type** (e.g. "Architecture", "Design", "Engineering", "Strategy", "Operational") categorises a Decision and is project-scoped and project-configurable, managed from that project's own **Project Admin** page — a Decision Owner can rename, reorder, or delete a project's own types (deleting one reassigns its existing Decisions, the same delete-with-reassignment pattern used elsewhere in ReqTrackManager). A new *root* project is seeded with the five defaults above once the module is enabled for its organisation; a [child project](../../concepts/organisations-and-projects.md) starts with none of its own and instead inherits its nearest ancestor's types — that project's Project Admin page shows the inherited list, but only a project with decision types of its own can rename/reorder/delete them there.
 
 ## Decision Templates
 
@@ -71,7 +71,7 @@ An organisation can also define its own custom templates alongside (or instead o
 
 | Managing an organisation's Decision Templates |
 | --- |
-| The org-scoped Decision Templates list, from Organisation Overview |
+| The org-scoped Decision Templates list, from Organisation Management |
 | ![Decision Templates list for an organisation showing Nygard, MADR, and Y-Statement templates with their descriptions](../../../static/img/screenshots/decision-templates.png) |
 
 | Picking a template at creation time |

@@ -1,35 +1,41 @@
 /**
- * Module: modules/decisions/DecisionDetailPanel
+ * Module: modules/decisions/DecisionDetailPage
  *
- * A single Decision's detail view — rendered in a `SidePanel` by
- * `ProjectDecisionsPage.tsx` (style guide's 2026-08-24 revision: `SidePanel`
- * is for viewing/editing an *existing* entity in context of the list behind
- * it; creation uses `Modal` instead — `DecisionFormModal` is shared by both
- * via its `initial` prop). Shows the Decision's fields, its lifecycle
- * action buttons (propose/submit-for-review/approve/reject, gated by
- * `status`), archive/unarchive, its relationships
- * (`DecisionRelationshipsSection`), comments (`DecisionCommentsSection`),
- * and direct file attachments (`FileAttachmentList`).
+ * A single Decision's full detail — management and full context — as its
+ * own routed page (`/projects/:projectId/modules/decisions/:decisionId`,
+ * `module.ts`), replacing the `SidePanel`-only `DecisionDetailPanel.tsx`
+ * (Phase 9, 2026-09-22). `docs/ux-style-guide.md`'s "Pattern: entity detail
+ * panel" checklist called for a page here: a Decision's detail carries a
+ * comment thread, file attachments, a relationships section, and 3+
+ * lifecycle actions each with their own `ConfirmDialog` — all four of the
+ * checklist's "too much for a SidePanel" markers. `ProjectDecisionsPage
+ * .tsx`'s list opens `DecisionQuickViewPanel` (a minimal read-only peek) on
+ * row click instead; that panel's own "View full details" link is what
+ * lands here.
+ *
+ * Fetches its own data on mount (`project`, `orgUsers`, `decisionTypes`,
+ * and the `Decision` itself via `decisionsApi.getDecision`) — the same
+ * self-contained-page shape `RequirementDetailPage.tsx` already uses,
+ * appropriate now that this is a real, bookmarkable/deep-linkable route
+ * rather than a panel handed data by its parent list page.
  *
  * Every mutating control always renders regardless of the caller's actual
- * role — the backend enforces `decision_owner`/`decision_approver` and a
- * 403 surfaces as a toast — the same "no client-side can-i-manage
- * precomputation" posture `ProjectCompliancePage.tsx`'s own module
- * docstring establishes (no "my effective roles including module roles"
- * endpoint exists to check against without adding one). Edit/archive/file-
- * attach controls specifically for *content* are hidden (not just
- * toast-blocked) once `decision.is_locked`, since that's a real, always-true
- * state the client already has — the same distinction `RequirementDetailPage
- * .tsx`'s own lock-after-approval UI already draws between "might be
- * forbidden, ask the server" and "is definitely forbidden, don't even ask."
+ * role (same posture `DecisionDetailPanel.tsx` established — see
+ * `ProjectCompliancePage.tsx`'s own docstring for the precedent) — the
+ * backend enforces `decision_owner`/`decision_approver` and a 403 surfaces
+ * as a toast. Edit/archive/file-attach controls specifically for *content*
+ * are hidden (not just toast-blocked) once `decision.is_locked`.
  */
 import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
 
-import type { OrgUser } from "../../api/types";
+import type { OrgUser, Project } from "../../api/types";
+import { api } from "../../api/client";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
-import { SidePanel } from "../../components/SidePanel";
+import { Spinner } from "../../components/Spinner";
+import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionCommentsSection } from "./DecisionCommentsSection";
@@ -39,28 +45,17 @@ import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
 
-export function DecisionDetailPanel({
-  projectId,
-  decision,
-  decisionTypes,
-  orgUsers,
-  currentUserId,
-  onClose,
-  onChanged,
-}: {
-  projectId: string;
-  decision: Decision;
-  decisionTypes: DecisionTypeDefinition[];
-  orgUsers: OrgUser[];
-  currentUserId?: string;
-  onClose: () => void;
-  /** Called with the fresh `Decision` after any successful mutation — the
-   * caller (`ProjectDecisionsPage.tsx`) owns the canonical list and this
-   * panel's own `decision` prop, so this panel never mutates its own copy
-   * directly. */
-  onChanged: (updated: Decision) => void;
-}) {
+export function DecisionDetailPage() {
+  const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
+  const { user } = useAuth();
   const { showToast } = useToast();
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -71,14 +66,24 @@ export function DecisionDetailPanel({
   const [comments, setComments] = useState<DecisionComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
 
-  const decisionType = decisionTypes.find((t) => t.id === decision.decision_type_id);
-  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
+  useEffect(() => {
+    if (!projectId || !decisionId) return;
+    api.get<Project>(`/api/v1/projects/${projectId}`).then((proj) => {
+      setProject(proj);
+      api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`).then(setOrgUsers);
+    });
+    decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
+    decisionsApi.getDecision(projectId, decisionId).then(setDecision).catch((err) => {
+      setLoadError(toErrorMessage(err, "This Decision could not be found, or you don't have access to it."));
+    });
+  }, [projectId, decisionId]);
 
   async function reloadCommentsAndFiles() {
+    if (!projectId || !decisionId) return;
     try {
       const [c, f] = await Promise.all([
-        decisionsApi.listDecisionComments(projectId, decision.id),
-        decisionsApi.listDecisionFiles(projectId, decision.id),
+        decisionsApi.listDecisionComments(projectId, decisionId),
+        decisionsApi.listDecisionFiles(projectId, decisionId),
       ]);
       setComments(c);
       setFiles(f);
@@ -90,44 +95,56 @@ export function DecisionDetailPanel({
   useEffect(() => {
     void reloadCommentsAndFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, decision.id]);
+  }, [projectId, decisionId]);
 
   async function runTransition(action: () => Promise<Decision>, successMessage: string) {
     try {
       const updated = await action();
       showToast(successMessage);
-      onChanged(updated);
+      setDecision(updated);
     } catch (err) {
       showToast(toErrorMessage(err, "Could not update this Decision."), "error");
     }
   }
 
   async function saveEdit(values: DecisionFieldValues) {
+    if (!projectId || !decision) return;
     setFormError(null);
     try {
       const updated = await decisionsApi.updateDecision(projectId, decision.id, values);
       showToast("Decision updated.");
       setEditing(false);
-      onChanged(updated);
+      setDecision(updated);
     } catch (err) {
       setFormError(toErrorMessage(err, "Could not update this Decision."));
     }
   }
 
+  if (!projectId || !decisionId) return null;
+  if (loadError) return <p className="text-muted">{loadError}</p>;
+  if (decision === null || project === null) return <Spinner />;
+
+  const decisionType = decisionTypes.find((t) => t.id === decision.decision_type_id);
+  const userOptions = orgUsers.map((u) => ({ id: u.user_id, display_name: u.display_name }));
+
   return (
-    <SidePanel title={decision.unique_code} onClose={onClose}>
+    <div className="container stack">
+      <Link to={`/projects/${projectId}/modules/decisions`}>← Decisions</Link>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <h1 style={{ margin: 0 }}>{decision.unique_code}</h1>
+        <span className={`badge badge--${DECISION_STATUS_TONE[decision.status]}`}>
+          {DECISION_STATUS_LABEL[decision.status]}
+        </span>
+      </div>
       <div className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <span className={`badge badge--${DECISION_STATUS_TONE[decision.status]}`}>
-            {DECISION_STATUS_LABEL[decision.status]}
-          </span>
+          <h2 style={{ margin: 0 }}>{decision.title}</h2>
           {!decision.is_locked && (
             <button className="btn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
               <Pencil size={14} />
             </button>
           )}
         </div>
-        <h2 style={{ margin: 0 }}>{decision.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0 }}>{decision.decision_statement}</p>
 
@@ -164,7 +181,7 @@ export function DecisionDetailPanel({
           </button>
         </div>
 
-        <DecisionRelationshipsSection projectId={projectId} decision={decision} onChanged={() => onChanged(decision)} />
+        <DecisionRelationshipsSection projectId={projectId} decision={decision} onChanged={() => setDecision(decision)} />
 
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
@@ -186,7 +203,7 @@ export function DecisionDetailPanel({
         <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
           <DecisionCommentsSection
             comments={comments ?? []}
-            currentUserId={currentUserId}
+            currentUserId={user?.id}
             onPost={async (body) => {
               const comment = await decisionsApi.addDecisionComment(projectId, decision.id, body);
               setComments((prev) => [...(prev ?? []), comment]);
@@ -213,7 +230,7 @@ export function DecisionDetailPanel({
           initial={decision}
           decisionTypes={decisionTypes}
           userOptions={userOptions}
-          currentUserId={currentUserId}
+          currentUserId={user?.id}
           error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }}
           onSave={saveEdit}
@@ -292,7 +309,7 @@ export function DecisionDetailPanel({
           onCancel={() => setArchiveConfirm(false)}
         />
       )}
-    </SidePanel>
+    </div>
   );
 }
 

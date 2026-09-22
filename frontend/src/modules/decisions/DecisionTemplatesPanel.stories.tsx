@@ -88,19 +88,36 @@ export const CreateTemplate: Story = {
   },
 };
 
+// Row actions (Edit, Delete) are a per-row `ActionMenu` (style guide's
+// "Pattern: action menu" table addendum, 2026-09-22) — the kebab trigger
+// lives in the panel's own DOM subtree, the revealed menu and the
+// `ConfirmDialog` it opens both portal to `document.body`.
 export const DeleteTemplate: Story = {
   beforeEach: () => mockTemplateApis([template()]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await waitFor(() => canvas.getByRole("button", { name: 'Delete "Nygard (Classic ADR)"' }));
-    await userEvent.click(canvas.getByRole("button", { name: 'Delete "Nygard (Classic ADR)"' }));
+    await waitFor(() => canvas.getByRole("button", { name: 'Actions for "Nygard (Classic ADR)"' }));
+    await userEvent.click(canvas.getByRole("button", { name: 'Actions for "Nygard (Classic ADR)"' }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Delete" }));
     await userEvent.click(body.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/decisions/templates/template-1`
     ));
     await waitFor(() => expect(canvas.queryByText("Nygard (Classic ADR)")).not.toBeInTheDocument());
+  },
+};
+
+export const EditTemplateViaActionMenu: Story = {
+  beforeEach: () => mockTemplateApis([template()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await waitFor(() => canvas.getByRole("button", { name: 'Actions for "Nygard (Classic ADR)"' }));
+    await userEvent.click(canvas.getByRole("button", { name: 'Actions for "Nygard (Classic ADR)"' }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Edit" }));
+    await waitFor(() => expect(body.getByDisplayValue("Nygard (Classic ADR)")).toBeInTheDocument());
   },
 };
 

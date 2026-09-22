@@ -15,13 +15,17 @@ endpoints yet), `implemented=False` and `default_enabled=False` reflected
 that nothing was usable by an end user yet.
 
 `on_project_created` seeds this project's default `DecisionTypeDefinition`
-rows unconditionally (mirrors Compliance's own `on_org_created` seeding —
-see `service.seed_decision_types`'s own docstring for why unconditional,
-not gated on module enablement). `org_creation_choices` / `on_org_created_
-with_choices` are this module's first use of the org-creation-choices
-extension point (`app.modules.registry`) — the three seeded ADR template
-packs, opted into per-organisation rather than always seeded (Phase 0
-addendum Q1).
+rows for a *root* project (not gated on module enablement, mirroring
+Compliance's own `on_org_created` seeding). A project with a parent is
+deliberately left unseeded as of Phase 9 (2026-09-22): Decision Types now
+have the same hierarchical fallback `ActionTypeDefinition` already has
+(`service.resolve_effective_decision_types`), and a child needs to start
+empty for that fallback to have anything to do — exact mirror of
+`routers.projects.create_project`'s own root-only `seed_action_types` gate.
+`org_creation_choices` / `on_org_created_with_choices` are this module's
+first use of the org-creation-choices extension point
+(`app.modules.registry`) — the three seeded ADR template packs, opted into
+per-organisation rather than always seeded (Phase 0 addendum Q1).
 
 Phase 4 (docs/plans/module-04-decision-management-plan.md — Backend API +
 audit logging) adds this module's first real HTTP surface: `get_router()`
@@ -142,7 +146,17 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
 def _seed_new_project(db: Session, project: Project, actor_id: uuid.UUID) -> None:
     """This module's `ModuleDefinition.on_project_created` hook. Imported
     lazily for the same import-cycle reason `app.modules.compliance.
-    module`'s own hook functions are."""
+    module`'s own hook functions are.
+
+    Only seeds a *root* project (`parent_project_id is None`) — Phase 9
+    (2026-09-22): now that Decision Types have the same hierarchical
+    fallback `ActionTypeDefinition` already has (`service.resolve_
+    effective_decision_types`), a child project must start with none of
+    its own so the fallback actually has something to do, exact mirror of
+    `routers.projects.create_project`'s own `if payload.parent_project_id
+    is None: seed_action_types(...)` gate."""
+    if project.parent_project_id is not None:
+        return
     from app.modules.decisions.service import seed_decision_types
 
     seed_decision_types(db, project.id)

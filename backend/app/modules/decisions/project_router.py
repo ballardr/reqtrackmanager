@@ -119,6 +119,7 @@ from app.modules.decisions.service import (
     create_supersession,
     propose_decision,
     reject_decision,
+    resolve_effective_decision_types,
     submit_decision_for_review,
 )
 from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
@@ -179,10 +180,34 @@ def _get_decision_in_project(db: Session, project_id: UUID, decision_id: UUID) -
 
 
 def _get_decision_type_in_project(db: Session, project_id: UUID, decision_type_id: UUID) -> DecisionTypeDefinition:
+    """Fetches a decision type this project literally owns (for
+    rename/move/delete, which must never act on a row a hierarchical-
+    project fallback merely makes *visible* to this project — see
+    `_validate_effective_decision_type` below for the "may a Decision
+    reference this type" question instead, which is deliberately broader)."""
     decision_type = db.get(DecisionTypeDefinition, decision_type_id)
     if decision_type is None or decision_type.project_id != project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid decision_type_id.")
     return decision_type
+
+
+def _validate_effective_decision_type(db: Session, project_id: UUID, decision_type_id: UUID) -> None:
+    """400s unless `decision_type_id` is one of `project_id`'s *effective*
+    decision types — its own, or (hierarchical projects, always on,
+    Phase 9 2026-09-22) a fallback inherited from its nearest ancestor
+    (`service.resolve_effective_decision_types`). This is what lets a
+    Decision in a child project reference a decision type defined on the
+    parent directly — the same cross-project FK reference `actions.py`'s
+    own `_validate_action_type` already allows for `ActionTypeDefinition`.
+    Used for `Decision.decision_type_id` validation only; rename/move/
+    delete still go through `_get_decision_type_in_project` above, which
+    stays scoped to rows this project actually owns."""
+    effective_ids = {t.id for t in resolve_effective_decision_types(db, project_id)}
+    if decision_type_id not in effective_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "decision_type_id must be a decision type defined in this project, or inherited from a parent project.",
+        )
 
 
 def _require_org_member_or_none(db: Session, project: Project, user_id: UUID | None) -> None:
@@ -239,11 +264,13 @@ def _apply_value_error_as_conflict(fn, *args, **kwargs):
 def list_decision_types(
     project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    return db.scalars(
-        select(DecisionTypeDefinition)
-        .where(DecisionTypeDefinition.project_id == project_id)
-        .order_by(DecisionTypeDefinition.sort_order)
-    ).all()
+    """Lists a project's decision types — any project member may select one
+    when creating a Decision, so listing isn't manage-only (only
+    create/rename/move/delete are). A project with none of its own falls
+    back to its nearest ancestor's (hierarchical projects, always on
+    independent of RBAC inheritance settings — Phase 9, 2026-09-22 — see
+    `service.resolve_effective_decision_types`)."""
+    return resolve_effective_decision_types(db, project_id)
 
 
 @router.post("/decision-types", response_model=DecisionTypeOut, status_code=status.HTTP_201_CREATED)
@@ -319,9 +346,18 @@ def delete_decision_type(
     FK, so deleting an in-use type requires an explicit `reassign_to_id`
     (409 naming the count if omitted) — resolved independently of the
     template answer, per this phase's own build instructions, rather than
-    copying it. `allow_empty=False`: unlike `ActionTypeDefinition`, Decision
-    Types have no hierarchical-project fallback mechanism, so a project
-    must always retain at least one. **Decided by: Agent.**"""
+    copying it.
+
+    `allow_empty=project.parent_project_id is not None` (Phase 9,
+    2026-09-22, **Decided by: User** — supersedes this endpoint's own
+    earlier Phase 4 **Decided by: Agent** call that Decision Types would
+    never allow emptying a project, unlike `ActionTypeDefinition`): a
+    project with a parent may now be emptied of its own decision types,
+    since it falls back to its nearest ancestor's
+    (`service.resolve_effective_decision_types`) — exact mirror of
+    `routers.action_types.delete_action_type`'s identical guard. A *root*
+    project (no parent) still can't be emptied — `min_count_message` below
+    still fires for it."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -332,6 +368,7 @@ def delete_decision_type(
         referencing_fk_name="decision_type_id", entity_type="decision_type_definition", noun="decision type",
         plural_noun="decision(s)", reassign_verb="move",
         min_count_message="A project must always have at least one decision type.",
+        allow_empty=project.parent_project_id is not None,
         actor_id=current_user.id, organization_id=project.organization_id, project_id=project_id,
     )
     db.commit()
@@ -350,7 +387,7 @@ def create_decision(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    _get_decision_type_in_project(db, project_id, payload.decision_type_id)
+    _validate_effective_decision_type(db, project_id, payload.decision_type_id)
     owner_id = payload.owner_id if payload.owner_id is not None else current_user.id
     _require_org_member_or_none(db, project, owner_id)
     _require_org_member_or_none(db, project, payload.decision_maker_id)
@@ -440,7 +477,7 @@ def update_decision(
             status.HTTP_409_CONFLICT,
             "This Decision is approved or superseded; its content can no longer be edited in place.",
         )
-    _get_decision_type_in_project(db, project_id, payload.decision_type_id)
+    _validate_effective_decision_type(db, project_id, payload.decision_type_id)
     _require_org_member_or_none(db, project, payload.owner_id)
     _require_org_member_or_none(db, project, payload.decision_maker_id)
 

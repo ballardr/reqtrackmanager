@@ -1,20 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { withToast } from "../../testing/storybook-helpers";
-import * as decisionsApi from "./api";
 import { DecisionTypesPanel } from "./DecisionTypesPanel";
 import type { DecisionTypeDefinition } from "./types";
 
 const PROJECT_ID = "project-1";
 
 /**
- * Mirrors `ActionTypesPanel.stories.tsx`'s own harness exactly — `items`/
- * `onReload` are owned by the caller (here, a minimal `Harness`), not this
- * panel, so these stories exercise the real round trip through the mocked
- * `api` rather than a `fn()` that doesn't actually update anything.
+ * `DecisionTypesPanel` fetches and reloads its own list since Phase 9
+ * (2026-09-22, moved to Project Admin's `projectAdminSections` — see this
+ * panel's own module docstring), so these stories mock the `api` directly
+ * rather than wrapping it in a state-owning `Harness`.
  */
 function mockDecisionTypeApis(initial: DecisionTypeDefinition[]) {
   let items = initial;
@@ -54,17 +52,10 @@ function mockDecisionTypeApis(initial: DecisionTypeDefinition[]) {
   });
 }
 
-function Harness({ initial }: { initial: DecisionTypeDefinition[] }) {
-  const [items, setItems] = useState(initial);
-  async function reload() {
-    setItems(await decisionsApi.listDecisionTypes(PROJECT_ID));
-  }
-  return <DecisionTypesPanel projectId={PROJECT_ID} items={items} onReload={reload} />;
-}
-
 const meta: Meta<typeof DecisionTypesPanel> = {
   title: "Modules/Decisions/DecisionTypesPanel",
   component: DecisionTypesPanel,
+  args: { projectId: PROJECT_ID },
   decorators: [withToast()],
 };
 export default meta;
@@ -78,19 +69,18 @@ const SEED: DecisionTypeDefinition[] = [
 
 export const ListsExistingDecisionTypes: Story = {
   beforeEach: () => mockDecisionTypeApis(SEED),
-  render: () => <Harness initial={SEED} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByDisplayValue("Architecture")).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByDisplayValue("Architecture")).toBeInTheDocument());
     await expect(canvas.getByDisplayValue("Strategy")).toBeInTheDocument();
   },
 };
 
 export const AddDecisionType: Story = {
   beforeEach: () => mockDecisionTypeApis([SEED[0]]),
-  render: () => <Harness initial={[SEED[0]]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByPlaceholderText("Decision type name"));
     await userEvent.type(canvas.getByPlaceholderText("Decision type name"), "Engineering");
     await userEvent.click(canvas.getByRole("button", { name: "Add decision type" }));
 
@@ -104,9 +94,9 @@ export const AddDecisionType: Story = {
 
 export const DeleteDecisionType: Story = {
   beforeEach: () => mockDecisionTypeApis(SEED),
-  render: () => <Harness initial={SEED} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await waitFor(() => canvas.getAllByRole("button", { name: "Delete decision type" }));
     await userEvent.click(canvas.getAllByRole("button", { name: "Delete decision type" })[0]);
 
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(

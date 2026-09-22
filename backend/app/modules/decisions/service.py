@@ -222,6 +222,53 @@ def seed_decision_types(db: Session, project_id: uuid.UUID) -> None:
         db.add(DecisionTypeDefinition(project_id=project_id, name=name, sort_order=i))
 
 
+# Mirrors `app.services.project_hierarchy._PROJECT_TREE_ITERATION_CAP`'s own
+# value — not imported directly since that name is module-private to
+# `project_hierarchy.py` (a cross-module import of an underscore-prefixed
+# name would itself be the wrong kind of coupling); this is a plain safety
+# cap on the same walk-up-the-tree shape, not a shared piece of state.
+_PROJECT_TREE_ITERATION_CAP = 5000
+
+
+def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list[DecisionTypeDefinition]:
+    """Returns the decision types a project should offer when creating a
+    Decision: its own, if it has any, else its nearest ancestor's (walking
+    `Project.parent_project_id` upward), else an empty list at an
+    unconfigured root.
+
+    Added Phase 9 (2026-09-22, **Decided by: User** — supersedes this
+    module's own earlier Phase 4 **Decided by: Agent** call that Decision
+    Types would have no hierarchical-project fallback, unlike
+    `ActionTypeDefinition`). Exact mirror of `app.services.project_
+    hierarchy.resolve_effective_action_types` — always on, independent of
+    `role_inheritance_mode`/`ProjectMemberSource` (a purely structural
+    fallback, not gated by either RBAC mechanism, per `docs/decisions.md`).
+    Does not check the caller's access to the parent: this only ever runs
+    in the context of an endpoint that has already checked the caller's
+    access to `project_id` itself, and it never returns the parent's
+    identity, just its decision-type rows for use within the child — the
+    same accepted trade-off `resolve_effective_action_types` already
+    documents (a broader audience than the parent's own could see the
+    parent's decision-type *names* through a more-visible child;
+    low-sensitivity metadata, not content).
+    """
+    visited: set[uuid.UUID] = set()
+    current_id: uuid.UUID | None = project_id
+    iterations = 0
+    while current_id is not None and current_id not in visited and iterations < _PROJECT_TREE_ITERATION_CAP:
+        iterations += 1
+        visited.add(current_id)
+        own = db.scalars(
+            select(DecisionTypeDefinition)
+            .where(DecisionTypeDefinition.project_id == current_id)
+            .order_by(DecisionTypeDefinition.sort_order)
+        ).all()
+        if own:
+            return list(own)
+        current_id = db.scalar(select(Project.parent_project_id).where(Project.id == current_id))
+    return []
+
+
 def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_keys: frozenset[str]) -> None:
     """Adds one `DecisionTemplateDefinition` row per selected pack in
     `DECISION_TEMPLATE_PACKS` (not committed/flushed — caller owns the

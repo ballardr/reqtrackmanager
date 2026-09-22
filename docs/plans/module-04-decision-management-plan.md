@@ -54,7 +54,7 @@ improvised).
 
 ## Status / Resume Here
 
-7 / 8 phases complete. Phase 7 is blocked on Module 1/Module 6; Phase 8 is
+8 / 9 phases complete. Phase 7 is blocked on Module 1/Module 6; Phase 8 is
 blocked on Module 12 — neither is actionable right now.
 
 | # | Phase | Status |
@@ -68,6 +68,7 @@ blocked on Module 12 — neither is actionable right now.
 | 6 | Docs website coverage | [x] Complete (2026-09-21) — see "Phase 6 notes" below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
 | 8 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
+| 9 | UX/architecture follow-up: template & type placement, nested decision types, detail page | [x] Complete (2026-09-22) — see "Phase 9 notes" below |
 
 ## Phase 2 notes (2026-09-21)
 
@@ -509,6 +510,93 @@ limitations.md` carry neither a screenshot nor a diagram either).
 **Verified**: `file` confirmed all four screenshots are exactly 1440×900;
 `cd docs/website && npm run build` re-run clean after embedding (zero
 broken-link/broken-image errors).
+
+## Phase 9 notes (2026-09-22)
+
+Five fixes from a direct user design review of Phase 5's shipped UI — see
+the "Phase 9" spec section below for the full per-item rationale and
+`Decided by:` tags. Summary of what changed and why, in build order:
+
+1. **`DecisionTemplatesPanel.tsx`**: delete buttons collected in a block
+   below the table → a per-row `ActionMenu` listing both "Edit" and
+   "Delete" (row-click-to-edit kept as a shortcut, but no longer the only
+   way to reach it). `docs/ux-style-guide.md` gained a table-row addendum
+   to "Pattern: action menu" and a "never do this" callout on "Pattern:
+   directory table."
+2. **Decision Types**: moved from a `ProjectDecisionsPage.tsx` tab to
+   `ProjectAdminPage.tsx`. Required a new generic extension point —
+   `ProjectAdminSectionDef`/`projectAdminSections` on `TierAModuleDefinition`
+   — since no project-admin equivalent of `orgAdminSections` existed yet;
+   `ProjectAdminPage.tsx` now merges module-contributed sections into its
+   `ResourceMenu` groups the same way `OrgAdminPage.tsx` already does.
+   `DecisionTypesPanel.tsx` was refactored to fetch/reload its own list
+   (previously handed `items`/`onReload` by `ProjectDecisionsPage`'s own
+   state) since a `render({projectId})` call from the registry hands it no
+   parent state.
+3. **Decision detail**: `DecisionDetailPanel.tsx` (`SidePanel`) replaced by
+   `DecisionDetailPage.tsx` (a real routed page, self-fetching like
+   `RequirementDetailPage.tsx`) plus `DecisionQuickViewPanel.tsx` (a
+   minimal read-only `SidePanel` peek opened on row click, linking to the
+   page). `docs/ux-style-guide.md`'s "Pattern: entity detail panel" was
+   rewritten: its old "no dedicated page exists yet" test was circular, so
+   it's now a checklist of four concrete markers (comment thread, file
+   attachments, a relationships section, 3+ lifecycle actions each with
+   their own `ConfirmDialog`) — 2 or more means a page. Decisions trip all
+   four.
+4. **Decision Types nested-project fallback**: `service.
+   resolve_effective_decision_types` mirrors `resolve_effective_action_
+   types` exactly; wired into `list_decision_types` (effective set) and a
+   new `_validate_effective_decision_type` (lets a child Decision reference
+   an inherited type), while rename/move/delete stay scoped to
+   literally-owned rows via the original `_get_decision_type_in_project`.
+   `delete_decision_type` gained `allow_empty=project.parent_project_id is
+   not None`, mirroring `action_types.py`. **Corollary found during
+   implementation, not in the original request**: `_seed_new_project`
+   (`module.py`) seeded every project's 5 defaults unconditionally,
+   including children — a child seeded with its own would never exercise
+   the new fallback, so seeding is now root-only (mirrors `routers.
+   projects.create_project`'s own `seed_action_types` gate). New test file
+   `test_decisions_hierarchy.py` (four tests, mirroring `test_action_types
+   .py`'s own hierarchy suite) plus a new child-seeding test in
+   `test_decisions_seeding.py`. This "seeding defeats the fallback" failure
+   mode is now called out explicitly in CLAUDE.md's new "Nested
+   (Hierarchical) Projects" section so a future module doesn't repeat it.
+5. **Decision Templates**: `orgOverviewSections` → `orgAdminSections`
+   (Org Dashboard → Org Management), a pure registration-key change.
+
+**Real gap found on first pass, then actually closed**: an initial pass
+left the docs-website screenshots stale and the rewritten Playwright spec
+unexecuted, noting both as follow-up rather than doing them — called out
+directly by the user and corrected in the same session. Rebuilt the
+Docker Compose stack (`tests/container/`) against this phase's code; ran
+`decision-lifecycle.spec.ts` against it (`--project=default --no-deps`,
+skipping the unrelated Keycloak-dependent `global-state-mutators`
+project), which caught a real test-timing race (checking page text
+immediately after a client-side route change, before the old list view
+unmounted — the app's own state was already correct, per the DOM snapshot
+captured at the failure) — fixed by adding the same URL-based navigation
+wait already used elsewhere in the spec; now passes cleanly end-to-end.
+Reviewed every page under `docs/website/docs/modules/decision-management-module/`
+line by line and found one more stale spot beyond what the first pass
+caught: `building-your-own-module.md`'s own extension-point table was
+missing `projectAdminSections` entirely. Regenerated all four
+decision-management screenshots via Playwright MCP against the live app
+(1440×900, demo org admin persona, Falcon-3 Inspection Drone project) —
+`decision-list.png` (tab bar gone), `decision-detail.png` (the new full
+page), `decision-templates.png` (Organisation Admin, per-row `ActionMenu`),
+`decision-create-template.png` (recaptured for a clean background). `cd
+docs/website && npm run build` re-run clean afterward.
+
+**Verified**: full backend test suite (`backend/app/modules/decisions/
+tests/`, 49 tests including the new `test_decisions_hierarchy.py`) run in
+isolation per the repo's one-pytest-at-a-time rule — all passing; frontend
+`npm run typecheck`/`npm run lint` clean; `decision-lifecycle.spec.ts` run
+against the live rebuilt stack end-to-end — passing; docs-website build
+clean after the screenshot swap.
+
+**Files changed**: see the "Phase 9" spec section's own file list below,
+plus `docs/website/docs/modules/building-your-own-module.md` and the four
+regenerated screenshots under `docs/website/static/img/screenshots/`.
 
 ## Phase 0 addendum (2026-09-21) — resolved open questions
 
@@ -1008,6 +1096,18 @@ own plan, Phase 5, rather than duplicated here.
 Superseded, not duplicated, if/when Module 8 (Governance) later ships its
 own generic per-artefact-type Approval Policies (Module 8 Phase 2) — see
 Module 12's Phase 5 note.
+
+## Phase 9 — UX/architecture follow-up: template & type placement, nested decision types, detail page
+
+**Decided by: User** — five fixes requested directly after a design review of Phase 5's shipped UI, not agent-initiated:
+
+1. **`DecisionTemplatesPanel.tsx`'s delete buttons, collected in a block below the table, move into a per-row `ActionMenu`.** The list's "Edit" (previously an implicit row-click only) becomes an explicit menu item too, since a row-click shortcut is never a substitute for a menu entry — the menu must always list every action available on that row. New `docs/ux-style-guide.md` guidance (an addendum to "Pattern: action menu," and a "never do this" callout on "Pattern: directory table") generalises the fix beyond this one panel, scoped to this call site only for this phase.
+2. **Decision Types move from a `ProjectDecisionsPage.tsx` tab to `ProjectAdminPage.tsx`**, alongside the project's other definition-table settings (Action Types, Custom Fields) — matching where Action Types themselves already live. `ProjectAdminPage.tsx` had no per-module contribution mechanism before this phase (unlike `OrgAdminPage.tsx`'s `orgAdminSections`); a new `projectAdminSections` field on `TierAModuleDefinition` (generic, not decisions-specific, per CLAUDE.md's Modular Feature System Boundary) is added and consumed the same way.
+3. **Decision detail moves from a `SidePanel` (`DecisionDetailPanel.tsx`) to a full page (`DecisionDetailPage.tsx`)**, with a new, minimal, read-only `DecisionQuickViewPanel.tsx` (`SidePanel`) opened on row click instead — code/status/title/type/statement only, no actions, with a "View full details" link into the page. `docs/ux-style-guide.md`'s "Pattern: entity detail panel" is revised alongside this: its old "for an entity that doesn't already have its own dedicated page" test was circular (an agent could just not build a page), replaced with a checklist of four concrete "too much for a SidePanel" markers (comment thread, file attachments, a relationships section, 3+ lifecycle actions each with their own `ConfirmDialog`) — Decisions trip all four. **Decided by: Agent** for the specific quick-view-plus-page mechanism (the user explicitly left this implementation choice open); **Decided by: User** for the underlying "the SidePanel carries too much" diagnosis and the requirement that whatever replaces it not be a one-off, un-auditable judgment call.
+4. **Decision Types gain the hierarchical-project fallback `ActionTypeDefinition` already has.** This directly supersedes Phase 4's own router docstring, which had explicitly flagged the fallback's absence as a **Decided by: Agent** call at the time ("unlike `ActionTypeDefinition`, Decision Types have no hierarchical-project fallback mechanism") — the user asked directly whether nested projects should work here, making the reversal **Decided by: User**. `service.resolve_effective_decision_types` mirrors `services.project_hierarchy.resolve_effective_action_types` exactly. Implementing this surfaced a needed corollary not in the original request: `_seed_new_project` (`module.py`) was seeding every new project's 5 defaults unconditionally, including children — a child seeded with its own defaults never actually exercises the fallback, so seeding is now root-only, mirroring `routers.projects.create_project`'s own `seed_action_types` gate. This gap (a fallback mechanism whose seeding path defeats it) is now called out as its own explicit check in CLAUDE.md's new "Nested (Hierarchical) Projects" section, alongside the general "does this table need the fallback" check.
+5. **Decision Templates move from `orgOverviewSections` (Org Dashboard) to `orgAdminSections` (Org Management)** — a pure registration-key change (both share `OrgAdminSectionDef`'s identical shape).
+
+**Files changed:** `frontend/src/modules/decisions/DecisionTemplatesPanel.tsx` (`ActionMenu` actions column, imports), `frontend/src/modules/decisions/DecisionTypesPanel.tsx` (self-fetching, moved off `items`/`onReload` props), `frontend/src/modules/decisions/ProjectDecisionsPage.tsx` (tab bar removed, `DecisionQuickViewPanel` replaces `DecisionDetailPanel`), `frontend/src/modules/decisions/DecisionDetailPanel.tsx` (removed), `frontend/src/modules/decisions/DecisionDetailPage.tsx` (new), `frontend/src/modules/decisions/DecisionQuickViewPanel.tsx` (new), `frontend/src/modules/decisions/module.ts` (new route, `projectAdminSections`, `orgAdminSections` rename), `frontend/src/modules/types.ts` (`ProjectAdminSectionDef`, `projectAdminSections` field), `frontend/src/pages/ProjectAdminPage.tsx` (`moduleAdminSections` computation, generic render fallback, widened `ProjectAdminGroupKey`), `backend/app/modules/decisions/service.py` (`resolve_effective_decision_types`), `backend/app/modules/decisions/project_router.py` (`list_decision_types`, `_validate_effective_decision_type`, `delete_decision_type`'s `allow_empty`), `backend/app/modules/decisions/module.py` (root-only seeding gate), `backend/app/modules/decisions/tests/test_decisions_hierarchy.py` (new), `backend/app/modules/decisions/tests/test_decisions_seeding.py` (updated docstring + new child-seeding test), Storybook stories for all touched/new components, `tests/playwright/tests/modules/decisions/decision-lifecycle.spec.ts` (updated for the page/quick-view split), `docs/ux-style-guide.md`, `docs/solution-architecture.md`, `CLAUDE.md` (new "Nested (Hierarchical) Projects" section), `docs/website/docs/modules/decision-management-module/overview.md`, `docs/website/docs/modules/building-your-own-module.md` (`projectAdminSections` row), `docs/website/static/img/screenshots/decision-list.png`/`decision-detail.png`/`decision-templates.png`/`decision-create-template.png` (regenerated), `docs/decisions.md` (this phase's entry).
 
 ## Acceptance criteria (from overview §48, Decisions subset)
 

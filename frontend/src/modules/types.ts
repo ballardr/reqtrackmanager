@@ -42,6 +42,19 @@ export interface OrgAdminSectionDef {
   render: (props: { orgId: string }) => ReactNode;
 }
 
+/** `OrgAdminSectionDef`'s project-scoped counterpart (Module 4 Phase 9,
+ * 2026-09-22) — same shape, scoped by `projectId` instead of `orgId` for
+ * `ProjectAdminPage.tsx`'s own `ResourceMenu` groups. */
+export interface ProjectAdminSectionDef {
+  /** This section's `ResourceMenu` group key and
+   * `/projects/:projectId/admin/:group` route segment — must be unique
+   * across every installed module's contributed sections (and distinct
+   * from every core group key `ProjectAdminPage.tsx` itself declares). */
+  key: string;
+  label: string;
+  render: (props: { projectId: string }) => ReactNode;
+}
+
 /**
  * One top-level nav-rail link a Tier A module contributes to `Layout.tsx`'s
  * "Global" section (docs/compliance-module-plan.md Phase 18 — "Compliance
@@ -264,6 +277,20 @@ export interface TierAModuleDefinition {
    * actually-enabled modules. Omitted (or empty) for a module with no
    * org-level admin surface. */
   orgAdminSections?: OrgAdminSectionDef[];
+  /** This module's `ResourceMenu` groups on `pages/ProjectAdminPage.tsx`
+   * (Module 4 Phase 9, 2026-09-22) — merged into that page's own fixed
+   * six groups and filtered to this project's actually-enabled modules,
+   * the same "module hands the parent a render function, parent has no
+   * idea what's inside it" shape `orgAdminSections` already establishes,
+   * just scoped by `projectId` instead of `orgId` (a distinct interface
+   * from `OrgAdminSectionDef` for that reason, not a second declaration of
+   * the same shape). First contributor: Decision Types, moved off
+   * `ProjectDecisionsPage.tsx`'s own tab bar to sit alongside the
+   * project's other definition-table settings (Action Types, Custom
+   * Fields) rather than the module's day-to-day working page — see
+   * `docs/decisions.md`. Omitted (or empty) for a module with no
+   * project-level admin surface. */
+  projectAdminSections?: ProjectAdminSectionDef[];
   /** This module's top-level nav-rail links (Phase 18), rendered in
    * `Layout.tsx`'s "Global" section. Omitted (or empty) for a module with
    * no global tab of its own. */

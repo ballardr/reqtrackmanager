@@ -936,11 +936,15 @@ def seed_project(
 # --- Decision Management module helpers (docs/plans/module-04-decision-
 # management-plan.md Phase 5) --------------------------------------------
 #
-# `Decision.decision_type_id` is a required FK, but every project already
-# has 5 default `DecisionTypeDefinition` rows seeded by `on_project_created`
-# (Architecture/Design/Engineering/Strategy/Operational) unconditionally,
-# regardless of this module's own `enabled` state — so `list_decision_types`
-# always has something to pick from without this script creating any itself.
+# `Decision.decision_type_id` is a required FK, but every *root* project
+# already has 5 default `DecisionTypeDefinition` rows seeded by
+# `on_project_created` (Architecture/Design/Engineering/Strategy/
+# Operational), not gated on this module's own `enabled` state — so
+# `list_decision_types` always has something to pick from without this
+# script creating any itself, as long as the project used here (Falcon-3
+# Inspection Drone, a root project) isn't a child (Phase 9, 2026-09-22: a
+# child starts with none of its own and inherits its nearest ancestor's
+# instead — see `service.resolve_effective_decision_types`).
 
 
 def enable_module(headers: dict, org_id: str, module_key: str) -> None:

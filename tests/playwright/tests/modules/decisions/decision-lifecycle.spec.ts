@@ -8,12 +8,22 @@ const API_BASE_URL = "http://localhost:8000";
 /**
  * Job to be done: docs/plans/module-04-decision-management-plan.md Phase 5's
  * own exit criteria — "Playwright e2e coverage for create -> propose ->
- * approve -> supersede." Exercises the full Decision Management frontend
+ * approve -> supersede," updated for Phase 9's (2026-09-22) quick-view +
+ * full-page detail split. Exercises the full Decision Management frontend
  * (`frontend/src/modules/decisions/`) against a real backend: creating a
- * Decision, moving it through its lifecycle to Approved, then creating a
- * second Decision that supersedes the first and watching the first flip to
- * Superseded once the second is itself Approved (source overview §13/10.6 —
- * see `service.py`'s own `_maybe_supersede`/`_supersede_predecessors`).
+ * Decision, moving it through its lifecycle to Approved on its own detail
+ * page, then creating a second Decision that supersedes the first and
+ * watching the first flip to Superseded once the second is itself Approved
+ * (source overview §13/10.6 — see `service.py`'s own `_maybe_supersede`/
+ * `_supersede_predecessors`).
+ *
+ * A row click on the Decisions list opens `DecisionQuickViewPanel` — a
+ * minimal, read-only `SidePanel` (`role="dialog"`) with no lifecycle
+ * controls of its own — whose "View full details" link is what reaches
+ * `DecisionDetailPage`, a real routed page (not a dialog) carrying every
+ * lifecycle action, the Relationships section, comments, and attachments.
+ * Locators below are scoped to `page` (not a `dialog` role) once on that
+ * page, unlike the pre-Phase-9 version of this spec.
  *
  * Uses a brand-new, disposable organisation + admin + project created via
  * the API, not a shared seeded org/project — mirrors `org-admin-modules
@@ -67,7 +77,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     ).json();
 
     // --- Enable Decision Management for this org (default_enabled=False —
-    // module.py's Phase 1/4 deliberate opt-in design, unchanged by Phase 5).
+    // module.py's Phase 1/4 deliberate opt-in design, unchanged by Phase 9).
     // `OrgListPage.tsx` auto-redirects straight to `/orgs/:orgId/admin`
     // when the caller belongs to exactly one org (true here — this admin
     // was just created in this one disposable org), so there's no "org
@@ -91,7 +101,8 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await page.getByRole("link", { name: "Decisions", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions$`));
 
-    // --- Create Decision A ("DEC-001") and move it to Approved.
+    // --- Create Decision A ("DEC-001") and move it to Approved on its own
+    // detail page (reached via the list's quick-view panel).
     await page.getByRole("button", { name: "New decision" }).click();
     let dialog = page.getByRole("dialog", { name: "New decision" });
     await dialog.getByLabel("Decision title").fill("Adopt PostgreSQL for the billing service");
@@ -100,19 +111,30 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page.getByRole("button", { name: "DEC-001" })).toBeVisible();
 
     await page.getByRole("button", { name: "DEC-001" }).click();
-    let panel = page.getByRole("dialog", { name: "DEC-001" });
-    await expect(panel.getByText("Draft", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "Propose" }).click();
-    await expect(panel.getByText("Proposed", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "Submit for review" }).click();
-    await expect(panel.getByText("Under review", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "Approve" }).click();
+    let quickView = page.getByRole("dialog", { name: "DEC-001" });
+    await expect(quickView.getByRole("link", { name: "View full details" })).toBeVisible();
+    await quickView.getByRole("link", { name: "View full details" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+
+    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Propose" }).click();
+    await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Submit for review" }).click();
+    await expect(page.getByText("Under review", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Approve" }).click();
     let confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(panel.getByText("Approved", { exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
-    // --- Create Decision B ("DEC-002") and move it to Approved too.
+    // --- Back to the list, create Decision B ("DEC-002") and move it to
+    // Approved too.
+    // `exact: true` and the arrow prefix disambiguate this page's own back
+    // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
+    // link, which also matches a plain substring search on this page.
+    await page.getByRole("link", { name: "← Decisions", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions$`));
+
     await page.getByRole("button", { name: "New decision" }).click();
     dialog = page.getByRole("dialog", { name: "New decision" });
     await dialog.getByLabel("Decision title").fill("Adopt Terraform for infrastructure");
@@ -121,36 +143,52 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page.getByRole("button", { name: "DEC-002" })).toBeVisible();
 
     await page.getByRole("button", { name: "DEC-002" }).click();
-    panel = page.getByRole("dialog", { name: "DEC-002" });
-    await panel.getByRole("button", { name: "Propose" }).click();
-    await panel.getByRole("button", { name: "Submit for review" }).click();
-    await panel.getByRole("button", { name: "Approve" }).click();
+    quickView = page.getByRole("dialog", { name: "DEC-002" });
+    await quickView.getByRole("link", { name: "View full details" }).click();
+    // Wait for the route change itself, not just page content, before
+    // querying the DOM — the list page (and its own "Superseded"/status
+    // text in the table and FilterPanel) is still mounted for one render
+    // tick after the `Link` click, and a bare `getByText` query racing that
+    // window can hit a real Playwright strict-mode violation (multiple
+    // matches) rather than a plain "not found yet" retry.
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+    await expect(page.getByRole("heading", { name: "DEC-002" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Propose" }).click();
+    await page.getByRole("button", { name: "Submit for review" }).click();
+    await page.getByRole("button", { name: "Approve" }).click();
     confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
-    await expect(panel.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 
     // --- From DEC-002's own Relationships section, record that it
     // supersedes DEC-001 — both Decisions are already Approved, so the
     // supersession should flip DEC-001 to Superseded immediately
     // (`_maybe_supersede`: link created after the new Decision is already
     // approved).
-    await selectLabeledOption(panel, "Relationship", "Supersedes another Decision");
-    await selectLabeledOption(panel, "Decision this supersedes", "DEC-001 — Adopt PostgreSQL for the billing service");
-    await panel.getByRole("button", { name: "Add", exact: true }).click();
+    await selectLabeledOption(page, "Relationship", "Supersedes another Decision");
+    await selectLabeledOption(page, "Decision this supersedes", "DEC-001 — Adopt PostgreSQL for the billing service");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
     // Scoped to the relationship row itself (`.row.card`,
     // `DecisionRelationshipsSection.tsx`) — a bare `getByText(/DEC-001/)`
     // also matches the still-rendered (if no longer visible) `<option>`
     // this same form's own "Decision this supersedes" `<select>` carries,
     // a Playwright strict-mode violation regardless of that option's own
     // visibility.
-    const supersessionRow = panel.locator(".row.card", { hasText: "Supersedes" });
+    const supersessionRow = page.locator(".row.card", { hasText: "Supersedes" });
     await expect(supersessionRow).toBeVisible();
     await expect(supersessionRow).toContainText("DEC-001");
-    await panel.getByRole("button", { name: "Close" }).click();
 
-    // --- DEC-001 is now Superseded.
+    // --- DEC-001 is now Superseded — check from its own detail page.
+    // `exact: true` and the arrow prefix disambiguate this page's own back
+    // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
+    // link, which also matches a plain substring search on this page.
+    await page.getByRole("link", { name: "← Decisions", exact: true }).click();
     await page.getByRole("button", { name: "DEC-001" }).click();
-    panel = page.getByRole("dialog", { name: "DEC-001" });
-    await expect(panel.getByText("Superseded", { exact: true })).toBeVisible();
+    quickView = page.getByRole("dialog", { name: "DEC-001" });
+    await quickView.getByRole("link", { name: "View full details" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
+    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.getByText("Superseded", { exact: true })).toBeVisible();
   });
 });

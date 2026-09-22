@@ -2,9 +2,12 @@
 decision-management-plan.md Phase 1):
 
 - `app.modules.decisions.module._seed_new_project` (`on_project_created`)
-  — every new project gets the 5 default `DecisionTypeDefinition` rows,
-  unconditionally, mirroring `app.modules.compliance`'s own `on_org_
-  created` seeding test one lifecycle event later.
+  — every new *root* project (no parent) gets the 5 default
+  `DecisionTypeDefinition` rows, not gated on module enablement. A project
+  with a parent is deliberately left unseeded as of Phase 9 (2026-09-22,
+  see `test_decisions_hierarchy.py`) so its own hierarchical-project
+  fallback (`service.resolve_effective_decision_types`) has something to
+  do — exact mirror of `ActionTypeDefinition`'s own root-only seeding.
 - `app.modules.decisions.module._seed_org_templates` (`on_org_created_
   with_choices`) — a new organisation gets a `DecisionTemplateDefinition`
   row per selected ADR template pack, opt-in (Phase 0 addendum Q1) rather
@@ -55,6 +58,22 @@ def test_creating_a_project_seeds_default_decision_types(client, admin_token):
     project = create_project(client, org_admin_token, org["id"], "Decision Types Seeding Test Project")
 
     assert _decision_type_names(project["id"]) == set(DEFAULT_DECISION_TYPES)
+
+
+def test_creating_a_child_project_seeds_no_decision_types_of_its_own(client, admin_token):
+    # Phase 9 (2026-09-22): a child starts empty so it actually falls back
+    # to its parent's decision types (`test_decisions_hierarchy.py` covers
+    # the fallback itself through the API) — mirrors `test_action_types.py`'s
+    # own root-only-seeding assumption.
+    org, org_admin_token = create_org_admin_in(client, admin_token, "Decision Types Child Seeding Test Co")
+    parent = create_project(
+        client, org_admin_token, org["id"], "Decision Types Child Seeding Parent", can_be_parent=True
+    )
+    child = create_project(
+        client, org_admin_token, org["id"], "Decision Types Child Seeding Child", parent_project_id=parent["id"]
+    )
+
+    assert _decision_type_names(child["id"]) == set()
 
 
 def test_creating_an_org_with_no_module_choice_keys_field_seeds_every_default_template(client, admin_token):
