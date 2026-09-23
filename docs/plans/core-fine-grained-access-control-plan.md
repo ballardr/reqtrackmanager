@@ -153,13 +153,13 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-2 / 7 phases complete. Phase 2 is next.
+3 / 7 phases complete. Phase 3 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: permission-atom shape & open questions | [x] Complete (2026-09-23) — all nine questions resolved with the user, several beyond this plan's original recommendation (generic sub-type scoping; `grant_roles` generalized to the whole role system) — see "Open questions for Phase 0" above |
 | 1 | Data model: permission atoms, sub-type registry, `CustomRoleDefinition`, grants | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 1 complete" entry for the full account, including the `CustomRoleDefinition.scope` restriction and the Decision Management sub-type provider's flat-org-union design decision, both Decided by: Agent |
-| 2 | Effective-permission resolution + `require_permission` | [ ] Not started |
+| 2 | Effective-permission resolution + `require_permission` | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 2 complete" entry for the full account, including the static fixed-role mapping, the org-scoped-custom-role-applies-org-wide design decision, and the path-params-only (never query-bindable) security choice behind `require_permission`'s scope resolution, all Decided by: Agent |
 | 3 | Backend API + frontend UI: Role Management | [ ] Not started |
 | 4 | First real consumer migrations (proof against live surfaces) | [ ] Not started |
 | 5 | Decision Management: per-decision-type approval scoping | [ ] Not started |
@@ -380,6 +380,30 @@ rewrite of `get_effective_project_roles`) means Phase 2 ships with zero
 risk of regressing the 8-source resolution algorithm's own, already
 carefully-hardened behaviour (per `access-control-policy.md`'s documented
 hardening history on that exact code path).
+
+**Status: Complete (2026-09-23).** Built as scoped above. Three points
+resolved during implementation that Phase 0/this section's own text left
+open, all **Decided by: Agent**, full reasoning in `docs/decisions.md`'s
+"Fine-Grained Access Control (core) — Phase 2 complete" entry, not
+duplicated here:
+
+1. The static `ProjectRole`/`OrgRole` → permission mapping table, beyond
+   the one worked example (`PROJECT_MANAGER`) this section's own text
+   gave — `PROJECT_ADMINISTRATOR`/`STAKEHOLDER`/`MEMBER`/`ORG_ADMIN` each
+   needed their own mapping, derived from C-U-01/C-U-03's clarifications.
+2. An org-scoped `CustomRoleDefinition`'s grant applies throughout every
+   project in its organisation (not only at org-level checks) — the
+   alternative would make `scope="org"` pointless for any permission atom
+   other than the four administrative ones.
+3. `require_permission` reads its `organization_id`/`project_id` scope
+   off `request.path_params` directly rather than as a normal FastAPI
+   dependency argument with a query-parameter fallback — a deliberate
+   security choice (an `Optional[UUID] = None` argument would let a
+   caller redirect which org/project gets checked via the query string on
+   a route missing the matching path segment), not a style preference.
+
+Exit criteria met — `docs/decisions.md`'s own entry has the full test/
+verification account. Phase 3 can start.
 
 ## Phase 3 — Backend API + frontend UI: Role Management
 
