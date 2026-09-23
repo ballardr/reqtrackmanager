@@ -15,6 +15,12 @@ from app.models.change_request import (
     ReviewComment,
 )
 from app.models.custom_field import CustomFieldDefinition
+from app.models.custom_role import (
+    CustomRoleDefinition,
+    CustomRolePermission,
+    GroupCustomRoleGrant,
+    UserCustomRoleGrant,
+)
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
@@ -70,6 +76,10 @@ __all__ = [
     "ChangeRequestVote",
     "ReviewComment",
     "CustomFieldDefinition",
+    "CustomRoleDefinition",
+    "CustomRolePermission",
+    "GroupCustomRoleGrant",
+    "UserCustomRoleGrant",
     "CommentReaction",
     "Subscription",
     "FileAsset",

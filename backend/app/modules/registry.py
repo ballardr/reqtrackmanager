@@ -165,6 +165,18 @@ class ModuleRoleDefinition:
             dependency's "module disabled or entity absent -> 404, not
             403/500" posture). `None` for `"org"`/`"project"` roles, which
             resolve their organisation from the path directly instead.
+        permissions: Fine-Grained Access Control (`docs/plans/core-fine-
+            grained-access-control-plan.md` Phase 0 Q4/Phase 1) — the set of
+            permission-atom strings (`app.services.permissions.encode_
+            permission`-encoded, e.g. `"decision:approve_baseline:"`, or a
+            bare administrative key like `"grant_roles"`) a holder of this
+            module-contributed role additionally gets, folded into `app.
+            services.rbac.get_effective_permissions`'s union alongside
+            direct/group `CustomRoleDefinition` grants. Additive and
+            defaulted empty — a module that never sets this keeps working
+            exactly as before; this is the one part of that plan any actual
+            module is expected to touch (see that plan's own "Documentation
+            obligations" section).
     """
 
     role_key: str
@@ -173,6 +185,7 @@ class ModuleRoleDefinition:
     scope: str
     overridden_by: tuple[tuple[str, str], ...] = ()
     resolve_entity_organization_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
+    permissions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1070,6 +1083,25 @@ class ModuleDefinition:
             against. Empty tuple for a module that introduces no linkable
             artefact type of its own (every module before Compliance's own
             evidence-linkage migration).
+        subtype_providers: Fine-Grained Access Control (`docs/plans/core-
+            fine-grained-access-control-plan.md` Phase 0 Q3/Phase 1) — maps
+            one of this module's own `artefact_types` values to a callable
+            `(db, organization_id) -> list[str]` returning that
+            organisation's currently valid sub-type values for it (e.g.
+            Decision Management registers `{"decision": <a callable
+            returning that org's current Decision Type names>}`), for the
+            same reason `artefact_types` itself exists: a permission atom's
+            `subtype` dimension needs to validate against a *dynamic,
+            per-organisation* vocabulary a module owns, not a value a core
+            file could hand-maintain or derive from a fixed enum. Unlike
+            `artefact_types` (a fixed, code-level set merged once),
+            sub-types here are org-scoped *data* (e.g. `DecisionTypeDefinition`
+            rows), so the registry only holds the lookup function, never the
+            values themselves — see `get_subtype_providers`/`get_subtypes`
+            (below). A module with no dynamic sub-type vocabulary of its own
+            simply leaves this empty (every module so far, other than
+            Decision Management) — `subtype=None` (the wildcard, matching
+            every sub-type) remains the only option for its artefact types.
     """
 
     key: str
@@ -1098,6 +1130,7 @@ class ModuleDefinition:
     on_project_created: Callable[[Session, Project, uuid.UUID], None] | None = None
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
     artefact_types: tuple[str, ...] = field(default=())
+    subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1953,6 +1986,61 @@ def get_all_registered_artefact_types() -> set[str]:
     for definition in get_module_registry().values():
         types.update(definition.artefact_types)
     return types
+
+
+def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:
+    """Merges every registered module's own `ModuleDefinition.subtype_
+    providers` into one `{artefact_type: provider}` mapping (Fine-Grained
+    Access Control, `docs/plans/core-fine-grained-access-control-plan.md`
+    Phase 1) — the sub-type-vocabulary analogue of `get_all_registered_
+    artefact_types` above, one layer down.
+
+    At most one provider is kept per artefact type: if two registered
+    modules declared a provider for the same artefact type (not expected —
+    a module only ever registers a provider for an artefact type it itself
+    declared on `artefact_types`), the later module in registry iteration
+    order wins, mirroring this registry's own documented last-write
+    tolerance elsewhere rather than raising, since artefact-type ownership
+    is already effectively exclusive per module by convention.
+
+    Returns:
+        A dict from artefact-type string to its registered provider
+        callable. An artefact type with no registered provider (every
+        artefact type before Decision Management's own `"decision"`
+        registration) is simply absent — see `get_subtypes` for the
+        no-provider default.
+    """
+    providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = {}
+    for definition in get_module_registry().values():
+        providers.update(definition.subtype_providers)
+    return providers
+
+
+def get_subtypes(db: Session, organization_id: uuid.UUID, artefact_type: str) -> list[str]:
+    """Returns `organization_id`'s current sub-type values for
+    `artefact_type`, via that artefact type's registered provider (see
+    `get_subtype_providers`), or `[]` if no module has registered one for
+    it. Used to validate a `CustomRolePermission`'s own `subtype` value at
+    write time (Phase 1) and to populate the Role Management UI's sub-type
+    picker (Phase 3), mirroring how `create_link` validates `source_type`/
+    `target_type` against `get_all_registered_artefact_types` — the
+    difference here is that this vocabulary is per-organisation data,
+    not a fixed, merged-once set, so it is re-resolved on every call rather
+    than cached.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation whose current rows to resolve.
+        artefact_type: The artefact type to look up a provider for.
+
+    Returns:
+        That organisation's current sub-type string values, or `[]` if
+        `artefact_type` has no registered provider.
+    """
+    provider = get_subtype_providers().get(artefact_type)
+    if provider is None:
+        return []
+    return provider(db, organization_id)
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

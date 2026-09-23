@@ -1,10 +1,14 @@
 """
 Module: models.enums
 
-All fixed vocabularies used by the domain model. Ossa (v1) intentionally uses
-a small, fixed set of organisation and project roles rather than a
-customisable permission system (customisable roles/attributes are a Pelion
-(v2) concern per docs/requirements.md).
+All fixed vocabularies used by the domain model. Ossa (v1)'s own small,
+fixed `OrgRole`/`ProjectRole` sets below remain in place unconditionally
+(Fine-Grained Access Control's own Design Principle 1: additive, never a
+replacement) — but the customisable permission system anticipated here as a
+Pelion (v2) concern now exists alongside them, reclassified from an
+optional module to a core platform capability 2026-09-23: see
+`PermissionLevel` below, `app.models.custom_role.CustomRoleDefinition`, and
+`docs/plans/core-fine-grained-access-control-plan.md`.
 """
 
 import enum
@@ -227,6 +231,36 @@ class ArtefactType(str, enum.Enum):
 
     REQUIREMENT = "requirement"
     REQUIREMENT_ACTION = "requirement_action"
+
+
+class PermissionLevel(str, enum.Enum):
+    """The four-tier taxonomy crossed with every registered artefact type
+    (`app.modules.registry.get_all_registered_artefact_types`) to derive
+    the Fine-Grained Access Control permission-atom vocabulary
+    (`docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1/Phase
+    1, `app.services.permissions.get_all_permissions`).
+
+    VIEW is its own independent atom, held or not held separately from
+    every write tier — a role can be granted `VIEW` alone, a pure read-only
+    grant, without any of the three below. This is the explicit design
+    choice that satisfies "read and write must be separate" without going
+    fully granular *within* write (a different axis, left as a future
+    refinement — see that plan's own Q1 for the full reasoning).
+
+    PROPOSE_CREATE: create/propose a new artefact of this type (e.g.
+        drafting a Requirement, submitting a Change Request) without the
+        power to directly edit or approve an existing one.
+    MANAGE: edit/manage an existing artefact of this type, short of
+        approving/baselining it.
+    APPROVE_BASELINE: approve, baseline, or otherwise finalise an artefact
+        of this type — the tier Decision Management's own per-Decision-Type
+        approval scoping (Phase 5) is expressed against.
+    """
+
+    VIEW = "view"
+    PROPOSE_CREATE = "propose_create"
+    MANAGE = "manage"
+    APPROVE_BASELINE = "approve_baseline"
 
 
 class RequirementActionOutcome(str, enum.Enum):

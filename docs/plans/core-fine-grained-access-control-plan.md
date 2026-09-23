@@ -153,12 +153,12 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-1 / 7 phases complete. Phase 1 is next.
+2 / 7 phases complete. Phase 2 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: permission-atom shape & open questions | [x] Complete (2026-09-23) — all nine questions resolved with the user, several beyond this plan's original recommendation (generic sub-type scoping; `grant_roles` generalized to the whole role system) — see "Open questions for Phase 0" above |
-| 1 | Data model: permission atoms, sub-type registry, `CustomRoleDefinition`, grants | [ ] Not started |
+| 1 | Data model: permission atoms, sub-type registry, `CustomRoleDefinition`, grants | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 1 complete" entry for the full account, including the `CustomRoleDefinition.scope` restriction and the Decision Management sub-type provider's flat-org-union design decision, both Decided by: Agent |
 | 2 | Effective-permission resolution + `require_permission` | [ ] Not started |
 | 3 | Backend API + frontend UI: Role Management | [ ] Not started |
 | 4 | First real consumer migrations (proof against live surfaces) | [ ] Not started |
@@ -318,6 +318,29 @@ module ships) or require a core-file edit per module — exactly the
 per-module-hand-edit failure mode `CLAUDE.md`'s Modular Feature System
 Boundary section exists to prevent, here applied to permissions instead of
 artefact types or relationship link types.
+
+**Status: Complete (2026-09-23).** Built as scoped above, with two points
+resolved during implementation that weren't fully settled by Phase 0's own
+text — both **Decided by: Agent**, full reasoning in `docs/decisions.md`'s
+"Fine-Grained Access Control (core) — Phase 1 complete" entry, not
+duplicated here:
+
+1. `CustomRoleDefinition.scope` accepts only `"org"`/`"project"`, not an
+   arbitrary module-owned entity scope the way `ModuleRoleDefinition.scope`
+   can — a custom role has no declaring module to supply the
+   `resolve_entity_organization_id` hook a third scope value would need.
+2. Decision Management's `subtype_providers["decision"]` registration
+   (`list_decision_type_names_for_organization`) returns a **flat union of
+   Decision Type names across every project in the organisation**, not
+   `resolve_effective_decision_types`'s per-project parent/child fallback —
+   `DecisionTypeDefinition` is project-scoped data while a permission atom's
+   `subtype` is compared directly against one specific decision's own type
+   name at check time (Phase 5), never re-resolved through this provider
+   after role-definition time, so there is no project hierarchy for this
+   function itself to walk.
+
+Exit criteria met — `docs/decisions.md`'s own entry has the full test/
+verification account. Phase 2 can start.
 
 ## Phase 2 — Effective-permission resolution + `require_permission`
 

@@ -504,6 +504,43 @@ user, and coexists with this floor mechanism rather than replacing it. See
 `app.modules.compliance.service.validate_fallback_group_member_removal` for
 the reference implementation.
 
+### 4c. Fine-Grained Access Control: `ModuleRoleDefinition.permissions` and `subtype_providers`
+
+Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
+plan.md`, reclassified from an optional module to a **core** platform
+capability, 2026-09-23 — it has no `ModuleDefinition` of its own, unlike
+every other module this document describes) adds two small, additive
+extension points to the module contract this section already documents,
+rather than a new module:
+
+- `ModuleRoleDefinition.permissions: tuple[str, ...] = ()` — the set of
+  Fine-Grained Access Control permission-atom strings
+  (`app.services.permissions.encode_permission`, e.g.
+  `"decision:approve_baseline:"`, or a bare administrative key like
+  `"grant_roles"`) a holder of this module-contributed role additionally
+  gets, folded into the effective-permission resolution alongside direct
+  custom-role grants. Optional and defaulted empty — a module that never
+  sets this (every module as of this phase) keeps working exactly as
+  before.
+- `ModuleDefinition.subtype_providers: dict[str, Callable[[Session, UUID],
+  list[str]]] = {}` — maps one of the module's own `artefact_types` values
+  to a callable returning that organisation's currently valid sub-type
+  values for it, e.g. Decision Management registers `{"decision":
+  <a callable returning that org's current Decision Type names>}`. This
+  lets a permission atom's optional third dimension (`subtype`) validate
+  against a *dynamic, per-organisation* vocabulary a module owns (Decision
+  Types are `DecisionTypeDefinition` rows, not a fixed code-level set),
+  the same reason `artefact_types` itself exists one layer up — see
+  `app.modules.registry.get_subtype_providers`/`get_subtypes`. A module
+  with no dynamic sub-type vocabulary of its own simply leaves this empty;
+  `subtype=None` (the wildcard, matching every sub-type) remains the only
+  option for its artefact types.
+
+Full design and phase-by-phase detail lives in that plan, not here — this
+entry exists only so a module author extending either the core `Module
+RoleDefinition`/`ModuleDefinition` contract or their own module's roles
+knows both fields exist.
+
 ---
 
 ## 5. Frontend integration: Tier A and Tier B

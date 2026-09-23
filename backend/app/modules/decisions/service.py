@@ -269,6 +269,48 @@ def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list
     return []
 
 
+def list_decision_type_names_for_organization(db: Session, organization_id: uuid.UUID) -> list[str]:
+    """Returns the distinct `DecisionTypeDefinition.name` values currently
+    in use anywhere in `organization_id`, sorted — this module's `Module
+    Definition.subtype_providers["decision"]` registration (`module.py`)
+    for Fine-Grained Access Control (`docs/plans/core-fine-grained-access-
+    control-plan.md` Phase 1 Q3/Phase 1), used to populate the Role
+    Management UI's sub-type picker and to validate a `CustomRolePermission`
+    /`ModuleRoleDefinition.permissions` sub-type value at write time
+    (`app.services.permissions.validate_permission_key`).
+
+    **Deliberately a flat union across every project in the organisation,
+    not `resolve_effective_decision_types`'s own per-project hierarchy
+    fallback** (Decided by: Agent) — a permission atom's `subtype` is a
+    plain string compared directly against a *specific decision's own*
+    `DecisionTypeDefinition.name` at check time (Phase 5), never resolved
+    through this function again, so there is no parent/child project to
+    walk here: this function's only job is enumerating which sub-type
+    *strings* currently mean something somewhere in the org, for an
+    org-scoped role definition to reference. A role scoped to a sub-type
+    name that happens not to exist in some particular project simply never
+    matches a decision in that project — the same harmless non-match any
+    other unrecognised sub-type value would produce, not a fallback
+    concern this function needs to resolve.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve current Decision Type
+            names for.
+
+    Returns:
+        Sorted, deduplicated Decision Type names currently defined by any
+        project in this organisation.
+    """
+    names = db.scalars(
+        select(DecisionTypeDefinition.name)
+        .join(Project, Project.id == DecisionTypeDefinition.project_id)
+        .where(Project.organization_id == organization_id)
+        .distinct()
+    ).all()
+    return sorted(names)
+
+
 def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_keys: frozenset[str]) -> None:
     """Adds one `DecisionTemplateDefinition` row per selected pack in
     `DECISION_TEMPLATE_PACKS` (not committed/flushed — caller owns the
