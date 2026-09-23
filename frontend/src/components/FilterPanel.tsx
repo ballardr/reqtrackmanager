@@ -31,7 +31,10 @@ const MOBILE_BREAKPOINT_PX = 860;
  *    friction; below `MOBILE_BREAKPOINT_PX` it defaults to collapsed with a
  *    toggle to expand, via the existing `CollapsibleSection` accordion
  *    (style guide Principle 1, "Accordion (CollapsibleSection)") rather
- *    than a new disclosure widget.
+ *    than a new disclosure widget. Callers with no filter fields beyond the
+ *    header's own search box (e.g. `OrgListPage.tsx`) pass `children={null}`
+ *    — the body (heading, accordion, everything) is then omitted entirely
+ *    rather than rendering a `"Filters"` heading over nothing.
  *
  * `layout` picks between the two placements the style guide's "Pattern:
  * filter panel placement — side vs. top" documents:
@@ -76,6 +79,11 @@ export function FilterPanel({
 }) {
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
   const isTop = layout === "top";
+  // Callers with no dedicated filter fields beyond the header's search box
+  // (e.g. `OrgListPage`) pass `{null}` as children — same reasoning as
+  // `layout="top"`'s own "no heading" rule above: a "Filters" heading over
+  // an empty body reads as broken, not as an empty section.
+  const hasFilterFields = children != null;
   const body = isTop ? (
     <div className="row" style={{ gap: "0.75rem", rowGap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
       {children}
@@ -104,7 +112,7 @@ export function FilterPanel({
           />
         )}
       </div>
-      {isNarrow ? (
+      {!hasFilterFields ? null : isNarrow ? (
         <CollapsibleSection sectionKey={sectionKey} title={strings.common.filters} defaultCollapsed>
           {body}
         </CollapsibleSection>

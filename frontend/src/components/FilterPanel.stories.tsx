@@ -14,7 +14,17 @@ import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
  * `withAuth` defaults to) because the collapsible body goes through
  * `CollapsibleSection`, which persists collapsed/expanded state via
  * `useUiPreference` → `useAuth()`. */
-function Interactive({ matching = 57, total = 57, layout }: { matching?: number; total?: number; layout?: "side" | "top" }) {
+function Interactive({
+  matching = 57,
+  total = 57,
+  layout,
+  noFilterFields = false,
+}: {
+  matching?: number;
+  total?: number;
+  layout?: "side" | "top";
+  noFilterFields?: boolean;
+}) {
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
   return (
@@ -27,9 +37,11 @@ function Interactive({ matching = 57, total = 57, layout }: { matching?: number;
       onSearchChange={setSearch}
       searchPlaceholder="Search"
     >
-      <FilterField label="Status">
-        <FilterCheckbox label="Include archived" checked={archived} onChange={setArchived} />
-      </FilterField>
+      {noFilterFields ? null : (
+        <FilterField label="Status">
+          <FilterCheckbox label="Include archived" checked={archived} onChange={setArchived} />
+        </FilterField>
+      )}
     </FilterPanel>
   );
 }
@@ -101,6 +113,39 @@ export const MobileCollapsedByDefault: Story = {
     // `CollapsibleSection.stories.tsx`'s own collapsed/expanded pair), so
     // the pre-click `toggle` reference is stale here — re-query it.
     await expect(canvas.getByRole("button", { name: "Filters section" })).toHaveAttribute("aria-expanded", "true");
+  },
+};
+
+/** `children={null}` (Org Groups, Project Groups, `OrgListPage.tsx`): a page
+ * with only the header's search box and no `FilterField`/`FilterCheckbox`
+ * controls at all. `FilterPanel` must omit the `"Filters"` heading (and, on
+ * mobile, the collapsible accordion around it) entirely rather than
+ * rendering a heading over an empty body — the bug this story pins against
+ * a regression of (see docs/ux-style-guide.md's "Pattern: `FilterPanel`",
+ * "No filter fields beyond search"). */
+export const NoFilterFieldsDesktop: Story = {
+  args: { noFilterFields: true },
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
+    await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Filters" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Filters section" })).not.toBeInTheDocument();
+  },
+};
+
+/** Same `children={null}` case below the mobile breakpoint — no collapse
+ * toggle either, since there's nothing to collapse. */
+export const NoFilterFieldsMobile: Story = {
+  args: { noFilterFields: true },
+  play: async ({ canvasElement }) => {
+    await page.viewport(400, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
+    await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Filters" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Filters section" })).not.toBeInTheDocument();
   },
 };
 

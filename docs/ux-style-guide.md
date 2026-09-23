@@ -351,6 +351,8 @@ Reach for it when a list page needs one or more controls that *narrow which rows
 
 A future page adopting `FilterPanel` gets this shape for free: pass `total` (and `matching`, when it differs — omit both if the page has no comparable "how many exist in total" figure to show) to get the header's `ResultCount`, and `search`/`onSearchChange` if the page has a free-text search box to place there. `sectionKey` is required and must be unique per page — it's `CollapsibleSection`'s own per-user, cross-device persisted collapsed/expanded key, so two pages sharing one key would also share the same stored preference.
 
+**No filter fields beyond search.** A page with only a search box and no narrowing `FilterField`/`FilterCheckbox` controls (Org Groups, Project Groups, `OrgListPage.tsx`) still uses `FilterPanel` for its header (`ResultCount`/search chrome consistency with every other directory) and passes `children={null}`. `FilterPanel` omits the `"Filters"` heading (and, on mobile, the `CollapsibleSection` accordion around it) whenever `children` is `null` — the same reasoning `layout="top"` already applies to its own heading: a heading over an empty body reads as broken, not as an empty section.
+
 ## Pattern: filter panel placement — side vs. top
 
 *(New — follow-up UX fix, see `docs/decisions.md`. A live screenshot of Org Admin's Users table showed the Role column and everything after it visibly cramped against the filter panel's left edge — a genuine readability problem, not a CSS bug: `.side-grid`'s `grid-template-columns: minmax(0, 1fr) 240px` never actually overlaps content, it just leaves a many-column table less room than a narrow one.)*
