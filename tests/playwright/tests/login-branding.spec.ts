@@ -58,7 +58,9 @@ test.describe("org-branded login page: custom logo regression", () => {
 
   test.afterEach(async ({ page }) => {
     if (!alphaOrgId) return;
-    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/logo`, { headers: authHeaders });
+    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/branding-image?kind=logo`, {
+      headers: authHeaders,
+    });
   });
 
   test("org-branded login page still renders the org's own custom logo when one is set", async ({ page }) => {
@@ -84,9 +86,9 @@ test.describe("org-branded login page: custom logo regression", () => {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
     );
-    const logoResp = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/logo`, {
+    const logoResp = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/branding-image`, {
       headers: authHeaders,
-      multipart: { file: { name: "logo.png", mimeType: "image/png", buffer: onePixelPng } },
+      multipart: { file: { name: "logo.png", mimeType: "image/png", buffer: onePixelPng }, kind: "logo" },
     });
     expect(logoResp.ok()).toBe(true);
     const { logo_file_id: logoFileId } = await logoResp.json();

@@ -186,8 +186,8 @@ def test_report_content_is_escaped_against_markup_injection(client, admin_token,
     )
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"pre_markdown": '<img src="file:///etc/passwd"/>', "post_markdown": ""},
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "pre_markdown": '<img src="file:///etc/passwd"/>', "post_markdown": ""},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200

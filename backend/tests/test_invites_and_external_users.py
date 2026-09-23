@@ -21,7 +21,7 @@ from app.models.enums import OrgRole
 from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
-from app.routers.orgs import _looks_like_email
+from app.routers.orgs.membership import _looks_like_email
 from app.services import invites as invites_module
 from app.services.definitions import get_default_project_status_id, seed_project_statuses
 from app.services.invites import consume_pending_invites, create_pending_invite, provision_sso_invite
@@ -169,7 +169,7 @@ def test_assign_by_email_rejects_banned_existing_user(client, admin_token):
     )
     banned_user_id = signup_resp.json()["user"]["id"]
     client.put("/api/v1/system/signup-config", json={"signup_mode": "disabled"}, headers=auth_headers(admin_token))
-    ban_resp = client.post(f"/api/v1/system/users/{banned_user_id}/ban", headers=auth_headers(admin_token))
+    ban_resp = client.post(f"/api/v1/system/users/{banned_user_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert ban_resp.status_code == 204, ban_resp.text
 
     org, org_admin_token = create_org_admin_in(client, admin_token, "BanGuardOrg")

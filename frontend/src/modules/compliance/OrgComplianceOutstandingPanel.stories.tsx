@@ -223,7 +223,7 @@ export const ExportPassesActiveFiltersAsQueryParams: Story = {
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
     await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/pdf?standard_id=std-1&requirement_id=sec-5`
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports?format=pdf&standard_id=std-1&requirement_id=sec-5`
     ));
   },
 };

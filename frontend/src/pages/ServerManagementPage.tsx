@@ -142,7 +142,10 @@ function AccessReviewTab() {
   }
 
   function reactivate(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/reactivate`), strings.system.reactivatedToast);
+    runAction(
+      () => api.post(`/api/v1/system/users/${userId}/status`, { action: "reactivate" }),
+      strings.system.reactivatedToast
+    );
   }
 
   function ban(userId: string) {
@@ -150,7 +153,7 @@ function AccessReviewTab() {
   }
 
   function unban(userId: string) {
-    runAction(() => api.post(`/api/v1/system/users/${userId}/unban`), strings.system.unbannedToast);
+    runAction(() => api.post(`/api/v1/system/users/${userId}/status`, { action: "unban" }), strings.system.unbannedToast);
   }
 
   function grantServerAdmin(userId: string) {
@@ -175,10 +178,13 @@ function AccessReviewTab() {
     setConfirmAction(null);
     switch (kind) {
       case "deactivate":
-        runAction(() => api.post(`/api/v1/system/users/${userId}/deactivate`), strings.system.deactivatedToast);
+        runAction(
+          () => api.post(`/api/v1/system/users/${userId}/status`, { action: "deactivate" }),
+          strings.system.deactivatedToast
+        );
         break;
       case "ban":
-        runAction(() => api.post(`/api/v1/system/users/${userId}/ban`), strings.system.bannedToast);
+        runAction(() => api.post(`/api/v1/system/users/${userId}/status`, { action: "ban" }), strings.system.bannedToast);
         break;
       case "grantServerAdmin":
         runAction(
@@ -572,7 +578,7 @@ function PlatformBrandingTab() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.postFile("/api/v1/system/branding/logo", file);
+      await api.postFile("/api/v1/system/branding/image", file, { kind: "logo" });
       await reload();
       setLogoUploaded(true);
     } catch (err) {
@@ -591,7 +597,7 @@ function PlatformBrandingTab() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.postFile("/api/v1/system/branding/login-background", file);
+      await api.postFile("/api/v1/system/branding/image", file, { kind: "login_background" });
       await reload();
       setLoginBackgroundUploaded(true);
     } catch (err) {

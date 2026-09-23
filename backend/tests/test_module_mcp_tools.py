@@ -226,9 +226,9 @@ def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All ten of Compliance's tools (three from Phase 6, two more from
-    Phase 7, one more from Phase 8, one more from Phase 9, one more from
-    Phase 10, two more from Phase 11) resolve, are read-only
+    """All ten of Compliance's original read-only tools (three from Phase 6,
+    two more from Phase 7, one more from Phase 8, one more from Phase 9, one
+    more from Phase 10, two more from Phase 11) resolve, are read-only
     (`mutates=False`, all GET), and carry exactly the path
     parameters their router endpoints require — the concrete proof that
     `module.py`'s declared `path_template`s actually match real routes on
@@ -236,13 +236,25 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     that the strings look right. The Phase 7 tools are the first real proof
     that `build_mcp_tool_manifest` validates a tool against *either* of a
     module's two router prefixes (`app.modules.registry.ModuleDefinition.
-    get_project_router`), not just `get_router`'s. Phase 9's real `approve`/
-    `reject` routes (marked `APPROVAL_ACTION_ROUTE_EXTRA`) are also proven
-    here to resolve to no tool at all against the live registry — not just
-    the synthetic `fake_module` fixture's own approval-marked route above —
-    since no `McpToolDefinition` for them was ever declared in `module.py`
-    in the first place (the manifest builder's exclusion is defence in
-    depth, not the only thing stopping them)."""
+    get_project_router`), not just `get_router`'s.
+
+    2026-09-22 reversal: this module's MCP surface is no longer
+    deliberately read-only (see `docs/decisions.md`'s "Compliance MCP
+    write tools + generalized AI approval gate" entry) — the second half of
+    this test proves the 68 new write tools resolve too, that `approve`/
+    `reject`/`submit_requirement_for_approval` now resolve (no longer
+    excluded by `APPROVAL_ACTION_ROUTE_EXTRA`, which was removed from all
+    three routes), and that the RBAC-role-grant and file-upload endpoints
+    still resolve to no tool at all, since no `McpToolDefinition` was ever
+    declared for any of them.
+
+    2026-09-23 hardening pass: two of those 68 (`complete_project_review`/
+    `complete_standard_review`) were found declared with no gate at all
+    despite recording a review outcome being categorically MCP-excluded in
+    every configuration (mirroring core's `record_review_outcome`, which
+    has no MCP tool declared anywhere) — both routes were marked
+    `APPROVAL_ACTION_ROUTE_EXTRA` and their declarations removed, landing
+    at 66. See that entry in `docs/decisions.md`."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
@@ -330,17 +342,56 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         "organization_id", "standard_id", "version_id", "other_version_id",
     }
 
-    # No mutating tool for publish/retire, applicability, assessment, any
-    # evidence mutation (create/update/archive/revalidate/link/upload), any
-    # of Phase 9's own submit-for-approval/approve/reject actions, mapping
-    # create/archive, or Phase 11's own version-migration action is
-    # declared at all — this module's MCP surface stays deliberately
-    # read-only across every phase so far.
-    assert not any(name.startswith("compliance_") and t.mutates for name, t in by_name.items())
+    # --- 2026-09-22 reversal: write tools now exist ---------------------
+
+    mutating_compliance_tools = {name for name, t in by_name.items() if name.startswith("compliance_") and t.mutates}
+    # 68 write tools declared in module.py, minus 2 removed in the 2026-09-23
+    # hardening pass (complete_project_review/complete_standard_review) = 66.
+    assert len(mutating_compliance_tools) == 66
+
+    # Ordinary CRUD/lifecycle write tools resolve normally, mutates=True.
+    for name in (
+        "compliance_create_standard", "compliance_publish_standard_version",
+        "compliance_create_requirement", "compliance_create_action_type",
+        "compliance_create_requirement_mapping", "compliance_admin_assign_standard_to_project",
+        "compliance_assign_standard_to_project", "compliance_migrate_project_compliance_version",
+        "compliance_update_requirement_applicability", "compliance_update_requirement_assessment",
+        "compliance_create_evidence", "compliance_create_standard_review",
+        "compliance_create_project_review", "compliance_create_requirement_traceability_link",
+    ):
+        assert name in by_name, name
+        assert by_name[name].mutates is True
+
+    # submit-for-approval is no longer marked APPROVAL_ACTION_ROUTE_EXTRA at
+    # all (it only queues a decision, it doesn't decide anything) — it
+    # resolves as a normal write tool.
+    submit = by_name["compliance_submit_requirement_for_approval"]
+    assert submit.mutates is True
+    assert submit.method == "POST"
+
+    # approve/reject also resolve now (the marker was removed from both
+    # routes) — the manifest itself has no knowledge of the runtime
+    # `require_ai_approvals_enabled` gate those two routes now apply; that
+    # gate is proven separately in test_ai_approvals_via_mcp.py.
+    approve = by_name["compliance_approve_requirement"]
+    assert approve.mutates is True
+    reject = by_name["compliance_reject_requirement"]
+    assert reject.mutates is True
+
+    # Standard member/group role assignment (RBAC-in-nature) and the two
+    # file-upload endpoints (import_standard, evidence file upload) still
+    # have no MCP tool at all — no McpToolDefinition was ever declared for
+    # any of them, before or after the reversal.
     assert not any(
         name in {
-            "compliance_submit_for_approval", "compliance_approve", "compliance_reject",
-            "compliance_migrate_project_compliance_version", "compliance_migrate_version",
+            "compliance_assign_standard_member_role", "compliance_revoke_standard_member_role",
+            "compliance_assign_standard_group_role", "compliance_revoke_standard_group_role",
+            "compliance_import_standard", "compliance_upload_evidence_attachment",
         }
         for name in by_name
     )
+
+    # 2026-09-23 hardening pass: recording a review outcome is categorically
+    # MCP-excluded, not gated — neither tool resolves at all.
+    assert "compliance_complete_project_review" not in by_name
+    assert "compliance_complete_standard_review" not in by_name

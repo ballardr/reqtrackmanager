@@ -404,8 +404,9 @@ def test_delete_succeeds_when_org_has_a_logo_and_login_background(client, admin_
     org, org_admin_token = create_org_admin_in(client, admin_token, "Logo Delete Org")
 
     logo_resp = client.post(
-        f"/api/v1/orgs/{org['id']}/logo",
+        f"/api/v1/orgs/{org['id']}/branding-image",
         files={"file": ("logo.png", b"fake-png-bytes", "image/png")},
+        data={"kind": "logo"},
         headers=auth_headers(org_admin_token),
     )
     assert logo_resp.status_code == 200

@@ -268,7 +268,7 @@ def test_scim_banned_user_cannot_be_reprovisioned(client, admin_token, org_id):
     # clarification) — same _make_orphaned_user pattern test_access_review.py
     # and test_oidc_provisioning.py already use to reach a bannable state.
     user_id = _make_orphaned_user(client, admin_token, org_id, banned_email)
-    resp = client.post(f"/api/v1/system/users/{user_id}/ban", headers=auth_headers(admin_token))
+    resp = client.post(f"/api/v1/system/users/{user_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
     assert resp.status_code in (200, 204), resp.text
 
     token = _generate_scim_token(client, admin_token, org_id)

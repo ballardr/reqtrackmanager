@@ -232,33 +232,36 @@ export interface ComplianceReportFilters {
   requirementId?: string;
 }
 
-function reportQueryString(filters: ComplianceReportFilters): string {
+function reportQueryString(kind: "pdf" | "csv", filters: ComplianceReportFilters): string {
   const params = new URLSearchParams();
+  params.set("format", kind);
   if (filters.projectId) params.set("project_id", filters.projectId);
   if (filters.standardId) params.set("standard_id", filters.standardId);
   if (filters.standardVersionId) params.set("standard_version_id", filters.standardVersionId);
   if (filters.requirementId) params.set("requirement_id", filters.requirementId);
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+  return `?${params.toString()}`;
 }
 
-/** `GET .../orgs/{id}/modules/compliance/reports/{pdf,csv}`, scoped by
- * `filters` — the org-wide report `OrgComplianceDashboard.tsx`'s own
+/** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,csv}`, scoped
+ * by `filters` — the org-wide report `OrgComplianceDashboard.tsx`'s own
  * unfiltered "Download PDF/CSV report" already calls unscoped; this is the
  * filtered counterpart `OrgComplianceStandardsPanel.tsx`/
- * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. */
+ * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. Merged
+ * from two separate `/reports/pdf`/`/reports/csv` GETs into one endpoint
+ * taking `format` as a query param (2026-09-22, see docs/decisions.md). */
 export function downloadOrgComplianceReport(orgId: string, kind: "pdf" | "csv", filters: ComplianceReportFilters = {}): Promise<Blob> {
-  return api.getForBlob(`${base(orgId)}/reports/${kind}${reportQueryString(filters)}`);
+  return api.getForBlob(`${base(orgId)}/reports${reportQueryString(kind, filters)}`);
 }
 
-/** `GET .../projects/{id}/modules/compliance/reports/{pdf,csv}`, scoped by
- * `filters` — the filtered counterpart to `ProjectCompliancePage.tsx`'s own
- * unfiltered whole-project report download, used by `OutstandingPanel.tsx`'s
- * Export trigger. */
+/** `GET .../projects/{id}/modules/compliance/reports?format={pdf,csv}`,
+ * scoped by `filters` — the filtered counterpart to
+ * `ProjectCompliancePage.tsx`'s own unfiltered whole-project report
+ * download, used by `OutstandingPanel.tsx`'s Export trigger. Same
+ * 2026-09-22 merge as `downloadOrgComplianceReport` above. */
 export function downloadProjectComplianceReport(
   projectId: string, kind: "pdf" | "csv", filters: Omit<ComplianceReportFilters, "projectId"> = {}
 ): Promise<Blob> {
-  return api.getForBlob(`${projectBase(projectId)}/reports/${kind}${reportQueryString(filters)}`);
+  return api.getForBlob(`${projectBase(projectId)}/reports${reportQueryString(kind, filters)}`);
 }
 
 /** `resolution` is only needed on a retry after a 409 (reference collision)

@@ -32,6 +32,8 @@ import type {
   ReportTemplate,
 } from "../api/types";
 import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import type { StagedMember } from "../components/AddMembersModal";
+import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -291,7 +293,6 @@ export function ProjectAdminPage() {
   const [memberTableGroups, setMemberTableGroups] = useState<ProjectGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
-  const [addMemberRole, setAddMemberRole] = useState<ProjectRole>("member");
   // Style guide "Pattern: modal dialog for entity create/rename" (Principle
   // 3, "Create is a layer, not a page reflow") — the add-member form used
   // to render permanently above the table via `addControl`; it's now
@@ -945,7 +946,7 @@ export function ProjectAdminPage() {
    * by-email endpoint has no notion of "this specific group" and only ever
    * grants a single role per call — see
    * `routers/projects.py::assign_project_role_by_email`. */
-  async function addExternalMember(email: string, role: string) {
+  async function addExternalMember(email: string, role: string, options?: { rethrow?: boolean }) {
     setExternalAddResult(null);
     try {
       const result = await api.post<{ outcome: AssignByEmailOutcome }>(
@@ -963,10 +964,19 @@ export function ProjectAdminPage() {
       });
       reload();
     } catch (err) {
-      setExternalAddResult({
-        message: err instanceof ApiError ? err.message : strings.admin.externalAddError,
-        isError: true,
-      });
+      const message = err instanceof ApiError ? err.message : strings.admin.externalAddError;
+      setExternalAddResult({ message, isError: true });
+      // `AddMembersModal`'s primary add-member modal (`handleAddMembersEntry`)
+      // passes `{ rethrow: true }` so a failed invite surfaces on its own
+      // staged row instead of only in this shared banner — see that
+      // component's `onAddEntry` contract. Rethrows the original error
+      // as-is (not a new `Error(message)`) so nothing about it — type,
+      // stack, cause — is lost; `AddMembersModal`'s own catch already
+      // falls back to a generic message if `err` isn't an `Error`. The
+      // Groups tab's own quick-add-external control (this function's
+      // other call site) doesn't pass `rethrow`, so its existing
+      // banner-only behaviour is unchanged.
+      if (options?.rethrow) throw err;
     }
   }
 
@@ -1047,13 +1057,14 @@ export function ProjectAdminPage() {
   }
 
   /** Grants a brand-new direct role — the Members section's own
-   * `addControl` (an existing-org-member `UserAutocomplete` result; the
-   * external-invite branch reuses `addExternalMember` below unchanged,
+   * `AddMembersModal` (an existing-org-member `UserAutocomplete` result;
+   * the external-invite branch reuses `addExternalMember` below unchanged,
    * since `assign_project_role_by_email` already grants a *direct* role,
-   * not group membership). */
-  async function addProjectMember(userId: string) {
-    await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role: addMemberRole });
-    await reloadEffectiveMembers();
+   * not group membership). Reloading is the caller's job now —
+   * `AddMembersModal`'s `onCommitted` fires once per staged-add commit
+   * rather than once per entry (see `handleAddMembersCommitted`). */
+  async function addProjectMember(userId: string, role: ProjectRole) {
+    await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role });
   }
 
   /** The Members section's own add-control, group branch (PR5 of the
@@ -1067,13 +1078,33 @@ export function ProjectAdminPage() {
    * composition stays on the Groups tab's own per-group `SidePanel` (a
    * project group's existing "nest an org group" affordance) or the org
    * group's own `SidePanel` (nesting a subgroup), unchanged by this PR.
-   * Same "re-fetch just effective-members" treatment `addProjectMember`
-   * uses, not a full `reload()`. */
+   * Reloading deferred to `handleAddMembersCommitted`, same as
+   * `addProjectMember` above. */
   async function addProjectGroupRole(orgGroupId: string, role: ProjectRole) {
     await api.post(`/api/v1/projects/${projectId}/group-roles`, { org_group_id: orgGroupId, role });
+  }
+
+  /** `AddMembersModal`'s `onAddEntry` for the Members section's primary
+   * add-member modal — dispatches a staged entry to whichever handler
+   * matches its `kind`. The external branch is asked to rethrow on
+   * failure (rather than only setting `externalAddResult`) so a failed
+   * external invite shows inline on its own staged row instead of
+   * silently vanishing — see `AddMembersModal`'s `onAddEntry` contract. */
+  async function handleAddMembersEntry(entry: StagedMember) {
+    if (entry.kind === "user") await addProjectMember(entry.id, entry.role);
+    else if (entry.kind === "group") await addProjectGroupRole(entry.id, entry.role);
+    else await addExternalMember(entry.id, entry.role, { rethrow: true });
+  }
+
+  /** `AddMembersModal`'s `onCommitted` for the primary add-member modal —
+   * fires once per commit pass, re-fetching effective members and group
+   * roles (a newly-granted group needs its own `ProjectMembersTable` row).
+   * `addExternalMember` still does its own `reload()` on success (shared
+   * with the Groups tab's own quick-add-external control, unaffected by
+   * this change) — a harmless extra refresh on top of this one, not a
+   * second source of truth. */
+  async function handleAddMembersCommitted() {
     await reloadEffectiveMembers();
-    // Phase 6: the group this just granted a role to now needs its own
-    // `ProjectMembersTable` row, not just its members' updated provenance.
     await reloadGroupRoles();
   }
 
@@ -2126,104 +2157,56 @@ export function ProjectAdminPage() {
                 rather than a second button/modal — see UserAutocomplete's
                 own module docstring. */}
           </div>
-          {addMemberModalOpen && (
-            <Modal
-              title={addMemberTargetGroup ? strings.admin.addMemberToGroupTitle(addMemberTargetGroup.name) : strings.admin.addMember}
+          {/* PR3/PR5/PR7 of the members/groups directory rework plan
+              originally opened one nested Modal here, submitting one
+              person at a time and switching itself into a second "add
+              into this group" step on a project-group match; now the
+              shared staged multi-add component (`AddMembersModal`) in two
+              configurations — see that component's own module docstring
+              for why it replaced this and `OrgAdminPage.tsx`'s equivalent
+              bespoke modal at once, and for the project-group hand-off
+              design. */}
+          {addMemberModalOpen && addMemberTargetGroup && (
+            // PR7: second step after picking a project-group match below —
+            // adds whoever's picked here as a member of that group
+            // (existing `addGroupMember`/`addOrgGroupMember`, both
+            // `POST .../groups/{group_id}/members`, no new backend call),
+            // rather than granting a role directly. The group's own
+            // role(s) — separate, possibly zero, possibly several — apply
+            // to whoever joins, unaffected by this, so this configuration
+            // hides the role picker entirely (`showRole={false}`).
+            <AddMembersModal
+              title={strings.admin.addMemberToGroupTitle(addMemberTargetGroup.name)}
               onClose={() => {
                 setAddMemberModalOpen(false);
                 setAddMemberTargetGroup(null);
               }}
-            >
-              {addMemberTargetGroup ? (
-                // PR7: second step after picking a project-group match
-                // below — adds whoever's picked here as a member of that
-                // group (existing `addGroupMember`/`addOrgGroupMember`,
-                // both `POST .../groups/{group_id}/members`, no new
-                // backend call), rather than granting a role directly. The
-                // group's own role(s) — separate, possibly zero, possibly
-                // several — apply to whoever joins, unaffected by this.
-                <div className="stack">
-                  <p className="text-muted" style={{ margin: 0 }}>
-                    {strings.admin.addMemberToGroupHint(addMemberTargetGroup.name)}
-                  </p>
-                  <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                    <UserAutocomplete
-                      users={orgUsers.filter((u) => !addMemberTargetGroup.member_user_ids.includes(u.user_id))}
-                      placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                      onSelect={(userId) => {
-                        addGroupMember(addMemberTargetGroup.id, userId);
-                        setAddMemberModalOpen(false);
-                        setAddMemberTargetGroup(null);
-                      }}
-                      groups={orgGroups.filter((og) => !addMemberTargetGroup.member_org_group_ids.includes(og.id))}
-                      onSelectGroup={(orgGroupId) => {
-                        addOrgGroupMember(addMemberTargetGroup.id, orgGroupId);
-                        setAddMemberModalOpen(false);
-                        setAddMemberTargetGroup(null);
-                      }}
-                    />
-                  </div>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <button className="btn" onClick={() => setAddMemberTargetGroup(null)}>
-                      {strings.common.back}
-                    </button>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        setAddMemberModalOpen(false);
-                        setAddMemberTargetGroup(null);
-                      }}
-                    >
-                      {strings.common.cancel}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                    <UserAutocomplete
-                      users={orgUsers}
-                      placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                      onSelect={(userId) => {
-                        addProjectMember(userId);
-                        setAddMemberModalOpen(false);
-                      }}
-                      groups={orgGroups}
-                      onSelectGroup={(groupId) => {
-                        addProjectGroupRole(groupId, addMemberRole);
-                        setAddMemberModalOpen(false);
-                      }}
-                      projectGroups={memberTableGroups}
-                      onSelectProjectGroup={(groupId) => {
-                        setAddMemberTargetGroup(memberTableGroups.find((g) => g.id === groupId) ?? null);
-                      }}
-                      organizationId={project?.organization_id}
-                      projectId={project?.id}
-                      onSelectExternal={(email) => {
-                        addExternalMember(email, addMemberRole);
-                        setAddMemberModalOpen(false);
-                      }}
-                    />
-                    <select
-                      className="input"
-                      aria-label={strings.membersTable.addRoleSelectLabel}
-                      value={addMemberRole}
-                      onChange={(e) => setAddMemberRole(e.target.value as ProjectRole)}
-                    >
-                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                      <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-                    </select>
-                  </div>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setAddMemberModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                  </div>
-                </>
-              )}
-            </Modal>
+              onBack={() => setAddMemberTargetGroup(null)}
+              hint={strings.admin.addMemberToGroupHint(addMemberTargetGroup.name)}
+              showRole={false}
+              users={orgUsers.filter((u) => !addMemberTargetGroup.member_user_ids.includes(u.user_id))}
+              groups={orgGroups.filter((og) => !addMemberTargetGroup.member_org_group_ids.includes(og.id))}
+              onAddEntry={async (entry) => {
+                if (entry.kind === "user") await addGroupMember(addMemberTargetGroup.id, entry.id);
+                else if (entry.kind === "group") await addOrgGroupMember(addMemberTargetGroup.id, entry.id);
+              }}
+            />
+          )}
+          {addMemberModalOpen && !addMemberTargetGroup && (
+            <AddMembersModal
+              title={strings.admin.addMember}
+              onClose={() => setAddMemberModalOpen(false)}
+              users={orgUsers}
+              groups={orgGroups}
+              projectGroups={memberTableGroups}
+              organizationId={project?.organization_id}
+              projectId={project?.id}
+              onSelectProjectGroup={(groupId) =>
+                setAddMemberTargetGroup(memberTableGroups.find((g) => g.id === groupId) ?? null)
+              }
+              onAddEntry={handleAddMembersEntry}
+              onCommitted={handleAddMembersCommitted}
+            />
           )}
           {effectiveMembers === null ? (
             <Spinner />

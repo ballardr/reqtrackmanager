@@ -128,7 +128,8 @@ export function ReportsPage() {
     try {
       const preMarkdown = [reportIntro, chaptersToMarkdown(reportChapters)].filter(Boolean).join("\n\n");
       const postMarkdown = chaptersToMarkdown(reportAppendices);
-      const blob = await api.postForBlob(`/api/v1/projects/${projectId}/reports/${kind}`, {
+      const blob = await api.postForBlob(`/api/v1/projects/${projectId}/reports`, {
+        format: kind,
         pre_markdown: preMarkdown,
         post_markdown: postMarkdown,
         include_archived: includeArchived,

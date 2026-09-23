@@ -198,23 +198,33 @@ are **Decided by: Agent** — Phase 5 is chosen because it's the last
 backend-building phase in this plan's own sequence, by which point the full
 rule-configuration/enforcement/exception/matrix surface from Phases 1–5
 exists (this plan has no single consolidated "Backend API" phase the way
-Module 4's plan does). Once these endpoints exist, declare narrow,
-read-only-only `McpToolDefinition` entries per
-[docs/modules.md](../modules.md) §6, following the Compliance and Decision
-Management (`module-04-decision-management-plan.md`) precedent. Concrete
-candidates: "list traceability rules" (a project's configured rules and
-their enforcement level), "get traceability matrix" (a saved
+Module 4's plan does). Once these endpoints exist, declare
+`McpToolDefinition` entries per [docs/modules.md](../modules.md) §6,
+following the Compliance and Decision Management
+(`module-04-decision-management-plan.md`) precedent. Concrete candidates:
+"list/create traceability rules" (a project's configured rules and their
+enforcement level), "get traceability matrix" (a saved
 `TraceabilityMatrixDefinition`'s generated view, §25), "get coverage
-report" (§27's percentages/orphan counts). Excluded, deliberately:
-requesting or approving a traceability exception (Phase 3, §22) — approving
-one is exactly the kind of accountable, human governance decision this
-codebase's MCP surface has never exposed, so that endpoint is marked
-`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` (`backend/app/modules/
-registry.py`) at build time, mechanically excluding it from the manifest
-rather than relying on this list alone. This mirrors Phase 0 Q3's own flag
-of exception approval as a self-approval risk worth extra scrutiny — the
-same caution applies to the MCP surface, not only to who holds the
-approver role.
+report" (§27's percentages/orphan counts), "request traceability exception"
+(Phase 3, §22 — the request itself, not the decision on it).
+
+**2026-09-22 update (Decided by: User):** this section originally committed
+to **read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — rule configuration and exception
+*requests* declared normally (gated by `MCP_WRITES_ENABLED` + the calling
+account's own RBAC role). *Approving* a traceability exception remains the
+exception: it is an approve/decide-type action — and Phase 0 Q3's own flag
+of exception approval as a self-approval risk is exactly the kind of
+"specific reason to keep it human-only" this task's own instructions
+anticipate — so it should stay marked `openapi_extra=
+APPROVAL_ACTION_ROUTE_EXTRA` (option (b)) rather than getting the
+generalized `allow_ai_approvals` gate, unlike this plan's other
+approve/decide-shaped candidates in the modules 1/3/5/6 revisions. This is
+a judgment call at plan-time (**Decided by: Agent**); the underlying
+instruction to move this plan's non-approval tools off read-only-only is
+**Decided by: User** (2026-09-22).
 
 ## Phase 6 — Frontend UI
 

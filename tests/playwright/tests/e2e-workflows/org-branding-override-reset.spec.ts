@@ -36,8 +36,10 @@ test.describe("org branding: platform-default/override pill and reset", () => {
     // No-op when nothing's set (idempotent, see backend/tests/test_files.py),
     // so this is safe to run unconditionally rather than only when the logo
     // test below actually ran.
-    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/logo`, { headers: authHeaders });
-    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/login-background`, { headers: authHeaders });
+    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/branding-image?kind=logo`, { headers: authHeaders });
+    await page.request.delete(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/branding-image?kind=login_background`, {
+      headers: authHeaders,
+    });
   });
 
   test("Custom fields show a reset action; resetting reverts to Platform default", async ({ page }) => {
@@ -114,7 +116,7 @@ test.describe("org branding: platform-default/override pill and reset", () => {
     await test.step("resetting the logo reverts it immediately — no Save button involved", async () => {
       const logoRow = page.locator('label[for="org-logo-input"]').locator("..");
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/logo") && r.request().method() === "DELETE"),
+        page.waitForResponse((r) => r.url().includes("kind=logo") && r.request().method() === "DELETE"),
         logoRow.getByRole("button", { name: "Reset to platform default" }).click(),
       ]);
       await expect(page.getByText("Logo reset to the platform default.")).toBeVisible();
@@ -137,7 +139,7 @@ test.describe("org branding: platform-default/override pill and reset", () => {
       await expect(backgroundRow.getByText("Custom")).toBeVisible();
 
       await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/login-background") && r.request().method() === "DELETE"),
+        page.waitForResponse((r) => r.url().includes("kind=login_background") && r.request().method() === "DELETE"),
         backgroundRow.getByRole("button", { name: "Reset to platform default" }).click(),
       ]);
       await expect(page.getByText("Background image reset to the platform default.")).toBeVisible();

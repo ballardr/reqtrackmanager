@@ -135,7 +135,10 @@ test("project admin invites a brand-new external user by email, and they can sig
     // is `role="option"`, not `role="button"`.
     await expect(addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
     await addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
-    // Selecting closes the modal; the result message renders on the page
+    // Picking the invite option only stages it (`AddMembersModal`'s staged
+    // multi-add) — committing is what actually sends the invite.
+    await addMemberModal.getByRole("button", { name: "Add 1 member" }).click();
+    // Committing closes the modal; the result message renders on the page
     // underneath it, same as before this control moved into a Modal.
     await expect(addMemberModal).not.toBeVisible();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();
@@ -208,7 +211,10 @@ test("project admin sees a pending invite listed and can resend it, retriggering
     await picker.fill(inviteeEmail);
     await expect(addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) })).toBeVisible();
     await addMemberModal.getByRole("option", { name: new RegExp(`Invite ${inviteeEmail}`) }).click();
-    // Selecting closes the modal; the result message renders on the page
+    // Picking the invite option only stages it (`AddMembersModal`'s staged
+    // multi-add) — committing is what actually sends the invite.
+    await addMemberModal.getByRole("button", { name: "Add 1 member" }).click();
+    // Committing closes the modal; the result message renders on the page
     // underneath it, same as before this control moved into a Modal.
     await expect(addMemberModal).not.toBeVisible();
     await expect(page.getByText(new RegExp(`invite email was sent to ${inviteeEmail}`))).toBeVisible();

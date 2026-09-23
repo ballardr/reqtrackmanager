@@ -224,8 +224,8 @@ def test_report_filters_by_status_and_component(client, admin_token, org_id):
     )
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/csv",
-        json={"component_id": component_id}, headers=auth_headers(admin_token),
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "csv", "component_id": component_id}, headers=auth_headers(admin_token),
     )
     text = resp.content.decode("utf-8")
     assert "Software req" in text
@@ -247,8 +247,8 @@ def test_report_includes_org_shared_resource_section(client, admin_token, org_id
     ).json()
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"resource_file_ids": [resource["id"]]}, headers=auth_headers(admin_token),
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "resource_file_ids": [resource["id"]]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"
@@ -263,7 +263,7 @@ def test_report_rejects_resource_from_another_organization(client, admin_token, 
     ).json()
 
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports/pdf",
-        json={"resource_file_ids": [other_resource["id"]]}, headers=auth_headers(admin_token),
+        f"/api/v1/projects/{project['id']}/reports",
+        json={"format": "pdf", "resource_file_ids": [other_resource["id"]]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400

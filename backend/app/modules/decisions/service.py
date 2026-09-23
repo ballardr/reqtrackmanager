@@ -338,10 +338,21 @@ SUPERSEDES_LINK_TYPE_REVERSE_NAME = "Is superseded by"
 
 def _transition_status(
     db: Session, decision: Decision, new_status: DecisionStatus, actor_id: uuid.UUID, *,
-    action: str, comment: str | None = None,
+    action: str, comment: str | None = None, via_mcp: bool = False,
 ) -> Decision:
     """Validates and applies a `Decision.status` transition, then records it
     via `services.audit.log_event` (not committed — caller's transaction).
+
+    `via_mcp` (2026-09-22, see docs/decisions.md's "Decision Management MCP
+    approval gate" entry) folds a `"via": "mcp"` key into the logged
+    `detail` alongside any `comment` — the same audit-trail marker
+    `modules.compliance.project_router`'s `approve_requirement`/`reject_
+    requirement` already record when reached through the MCP server,
+    applied here identically now `approve_decision_endpoint`/`reject_
+    decision_endpoint` get the same `allow_ai_approvals` gate treatment.
+    Only `approve_decision`/`reject_decision` ever pass `via_mcp=True` —
+    `propose_decision`/`submit_decision_for_review` are not approval-type
+    actions and never need it.
 
     Raises:
         ValueError: if `new_status` isn't reachable from `decision.status`
@@ -353,10 +364,15 @@ def _transition_status(
     if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
         raise ValueError(f"Cannot move a Decision from '{decision.status.value}' to '{new_status.value}'.")
     decision.status = new_status
+    detail = {}
+    if comment:
+        detail["comment"] = comment
+    if via_mcp:
+        detail["via"] = "mcp"
     log_event(
         db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision.id, action=action,
         actor_id=actor_id, project_id=decision.project_id,
-        detail={"comment": comment} if comment else None,
+        detail=detail or None,
     )
     db.flush()
     return decision
@@ -372,20 +388,30 @@ def submit_decision_for_review(db: Session, decision: Decision, actor_id: uuid.U
     return _transition_status(db, decision, DecisionStatus.UNDER_REVIEW, actor_id, action="submitted_for_review")
 
 
-def reject_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+def reject_decision(
+    db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None, via_mcp: bool = False,
+) -> Decision:
     """`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`. Rejected Decisions remain
     queryable (source overview §13/10.6) — never hard-deleted, same as
     every other soft-delete convention in this codebase; this is a status
-    value, not an archive."""
-    return _transition_status(db, decision, DecisionStatus.REJECTED, actor_id, action="rejected", comment=comment)
+    value, not an archive. `via_mcp` — see `_transition_status`'s own
+    docstring."""
+    return _transition_status(
+        db, decision, DecisionStatus.REJECTED, actor_id, action="rejected", comment=comment, via_mcp=via_mcp,
+    )
 
 
-def approve_decision(db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None) -> Decision:
+def approve_decision(
+    db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None, via_mcp: bool = False,
+) -> Decision:
     """`UNDER_REVIEW` -> `APPROVED`. Also flips any predecessor Decision
     this one already supersedes (a `create_supersession` link created
     before this approval) to `SUPERSEDED`, per Phase 0 addendum item 8 —
-    see `_supersede_predecessors`."""
-    _transition_status(db, decision, DecisionStatus.APPROVED, actor_id, action="approved", comment=comment)
+    see `_supersede_predecessors`. `via_mcp` — see `_transition_status`'s
+    own docstring."""
+    _transition_status(
+        db, decision, DecisionStatus.APPROVED, actor_id, action="approved", comment=comment, via_mcp=via_mcp,
+    )
     _supersede_predecessors(db, decision, actor_id)
     return decision
 
@@ -511,7 +537,9 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         ValueError: if `new_decision`/`old_decision` are the same row, are
             in different projects (supersession is scoped to one project's
             Decision set, same as `DecisionTypeDefinition`), `old_decision`
-            is already `SUPERSEDED`, or this exact supersession link
+            is already `SUPERSEDED`, `new_decision` is in a terminal status
+            that can never reach `APPROVED` (`REJECTED`/`SUPERSEDED` — see
+            `_ALLOWED_TRANSITIONS`), or this exact supersession link
             already exists.
     """
     if new_decision.id == old_decision.id:
@@ -520,6 +548,20 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         raise ValueError("A Decision can only supersede another Decision in the same project.")
     if old_decision.status == DecisionStatus.SUPERSEDED:
         raise ValueError("This Decision has already been superseded.")
+    if new_decision.status in (DecisionStatus.REJECTED, DecisionStatus.SUPERSEDED):
+        # A Decision only ever flips to SUPERSEDED via `_maybe_supersede`
+        # (here) or `_supersede_predecessors` (once `new_decision` itself
+        # reaches APPROVED via `approve_decision`) — both conditioned on
+        # `new_decision.status == APPROVED`. DRAFT/PROPOSED/UNDER_REVIEW are
+        # fine (the link resolves later if/when approval happens), but
+        # REJECTED/SUPERSEDED are terminal (`_ALLOWED_TRANSITIONS` has no
+        # outgoing edges for either) — recording a supersession from either
+        # would create a link that can never resolve into the status
+        # transition its own name implies, permanently misleading the
+        # relationship graph. Found in a 2026-09-23 hardening pass.
+        raise ValueError(
+            f"A '{new_decision.status.value}' Decision can never be approved, so it cannot supersede another Decision."
+        )
 
     organization_id = _project_organization_id(db, new_decision.project_id)
     link_type = _get_or_create_link_type(

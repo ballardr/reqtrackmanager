@@ -1,10 +1,12 @@
 """Tests for Phase 15's PDF/CSV compliance report generation
 (docs/compliance-module-plan.md Phase 15; docs/Compliance_Module_
-Requirements.md §29): `GET /projects/{id}/modules/compliance/reports/
-{pdf,csv}` and `GET /orgs/{id}/modules/compliance/reports/{pdf,csv}`,
-mirroring `tests/test_reports.py`'s own established assertions (valid PDF
-magic bytes, CSV formula-injection neutralization) for the core
-requirement-report generator this module's own report generator
+Requirements.md §29): `GET /projects/{id}/modules/compliance/reports` and
+`GET /orgs/{id}/modules/compliance/reports`, both taking a required
+`format=pdf|csv` query param (merged from separate `/reports/pdf`/
+`/reports/csv` GETs, 2026-09-22 — see docs/decisions.md), mirroring
+`tests/test_reports.py`'s own established assertions (valid PDF magic
+bytes, CSV formula-injection neutralization) for the core requirement-
+report generator this module's own report generator
 (`app.modules.compliance.reports`) follows the same pattern as.
 """
 
@@ -84,7 +86,7 @@ def _project_with_assessment(client, admin_token, org_id, *, project_name="Compl
 
 def test_project_compliance_pdf_report_is_a_valid_pdf(client, admin_token, org_id):
     project, standard, _version = _project_with_assessment(client, admin_token, org_id)
-    resp = client.get(f"{_project_base(project['id'])}/reports/pdf", headers=auth_headers(admin_token))
+    resp = client.get(f"{_project_base(project['id'])}/reports", params={"format": "pdf"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
     assert resp.content[:5] == b"%PDF-"
@@ -93,7 +95,7 @@ def test_project_compliance_pdf_report_is_a_valid_pdf(client, admin_token, org_i
 
 def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injection(client, admin_token, org_id):
     project, standard, version = _project_with_assessment(client, admin_token, org_id)
-    resp = client.get(f"{_project_base(project['id'])}/reports/csv", headers=auth_headers(admin_token))
+    resp = client.get(f"{_project_base(project['id'])}/reports", params={"format": "csv"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "text/csv; charset=utf-8"
     text = resp.content.decode("utf-8")
@@ -132,6 +134,23 @@ def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injec
     assert not_applicable_row[justification_col].startswith("'=HYPERLINK(")
 
 
+def test_project_and_org_compliance_report_reject_missing_or_invalid_format(client, admin_token, org_id):
+    """`format` is a required query param on both the project- and org-
+    scoped merged report endpoint (no default) — the whole point of taking
+    it is to dispatch on it, so an unset or bogus value must 422."""
+    project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Format Validation Project")
+
+    missing = client.get(f"{_project_base(project['id'])}/reports", headers=auth_headers(admin_token))
+    assert missing.status_code == 422
+    invalid = client.get(f"{_project_base(project['id'])}/reports", params={"format": "xlsx"}, headers=auth_headers(admin_token))
+    assert invalid.status_code == 422
+
+    org_missing = client.get(f"{_base(org_id)}/reports", headers=auth_headers(admin_token))
+    assert org_missing.status_code == 422
+    org_invalid = client.get(f"{_base(org_id)}/reports", params={"format": "xlsx"}, headers=auth_headers(admin_token))
+    assert org_invalid.status_code == 422
+
+
 def test_org_compliance_report_requires_compliance_manager(client, admin_token, org_id):
     _project_with_assessment(client, admin_token, org_id, project_name="Org Report Gating Project")
 
@@ -139,19 +158,19 @@ def test_org_compliance_report_requires_compliance_manager(client, admin_token, 
     _grant_compliance_manager(client, admin_token, org_id, manager_id)
     manager_token = login(client, "compliance.report.manager@example.com", "Password123!")
 
-    manager_pdf = client.get(f"{_base(org_id)}/reports/pdf", headers=auth_headers(manager_token))
+    manager_pdf = client.get(f"{_base(org_id)}/reports", params={"format": "pdf"}, headers=auth_headers(manager_token))
     assert manager_pdf.status_code == 200
     assert manager_pdf.content[:5] == b"%PDF-"
 
     create_org_user(client, admin_token, org_id, "plain.report.viewer@example.com", role="member")
     plain_token = login(client, "plain.report.viewer@example.com", "Password123!")
-    forbidden = client.get(f"{_base(org_id)}/reports/pdf", headers=auth_headers(plain_token))
+    forbidden = client.get(f"{_base(org_id)}/reports", params={"format": "pdf"}, headers=auth_headers(plain_token))
     assert forbidden.status_code == 403
 
 
 def test_org_compliance_csv_report_lists_project_assignment_roll_up(client, admin_token, org_id):
     project, standard, version = _project_with_assessment(client, admin_token, org_id, project_name="Org CSV Roll-up Project")
-    resp = client.get(f"{_base(org_id)}/reports/csv", headers=auth_headers(admin_token))
+    resp = client.get(f"{_base(org_id)}/reports", params={"format": "csv"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     text = resp.content.decode("utf-8")
     rows = list(csv.reader(io.StringIO(text)))
@@ -319,8 +338,8 @@ def test_project_compliance_report_pdf_with_no_matching_filter_is_still_a_valid_
     report rather than erroring."""
     project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Empty PDF Filter Project")
     resp = client.get(
-        f"{_project_base(project['id'])}/reports/pdf",
-        params={"standard_id": str(uuid.uuid4())},
+        f"{_project_base(project['id'])}/reports",
+        params={"format": "pdf", "standard_id": str(uuid.uuid4())},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
@@ -333,8 +352,8 @@ def test_project_compliance_report_csv_endpoint_accepts_standard_filter(client, 
     compliance_report`."""
     project, standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Endpoint Filter Project")
     resp = client.get(
-        f"{_project_base(project['id'])}/reports/csv",
-        params={"standard_id": standard["id"]}, headers=auth_headers(admin_token),
+        f"{_project_base(project['id'])}/reports",
+        params={"format": "csv", "standard_id": standard["id"]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
@@ -408,7 +427,9 @@ def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin
     project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Org Endpoint Filter Project")
     create_project(client, admin_token, org_id, name="Org Endpoint Other Project")
 
-    resp = client.get(f"{_base(org_id)}/reports/csv", params={"project_id": project["id"]}, headers=auth_headers(admin_token))
+    resp = client.get(
+        f"{_base(org_id)}/reports", params={"format": "csv", "project_id": project["id"]}, headers=auth_headers(admin_token)
+    )
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     header, data_rows = rows[0], rows[1:]
@@ -417,7 +438,7 @@ def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin
     assert data_rows[0][project_col] == project["name"]
 
     empty_resp = client.get(
-        f"{_base(org_id)}/reports/csv", params={"project_id": str(uuid.uuid4())}, headers=auth_headers(admin_token)
+        f"{_base(org_id)}/reports", params={"format": "csv", "project_id": str(uuid.uuid4())}, headers=auth_headers(admin_token)
     )
     assert empty_resp.status_code == 200
     empty_rows = list(csv.reader(io.StringIO(empty_resp.content.decode("utf-8"))))

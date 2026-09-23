@@ -38,9 +38,8 @@ from app.schemas.auth import (
     SignupRequest,
     TokenResponse,
     TwoFactorChallengeResponse,
-    TwoFactorConfirmRequest,
-    TwoFactorDisableRequest,
     TwoFactorEnrollResponse,
+    TwoFactorStatusUpdate,
     TwoFactorVerifyRequest,
     UserOut,
     UserPreferencesUpdate,
@@ -385,8 +384,9 @@ def change_password(
 def enroll_2fa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Starts 2FA enrollment: generates a secret and a QR code to scan (C-U-14).
 
-    2FA is not yet active — the user must call `/2fa/confirm` with a code
-    generated from the scanned secret before `is_2fa_enabled` is set.
+    2FA is not yet active — the user must call `/2fa/status` with
+    `{"action": "confirm", "code": ...}` and a code generated from the
+    scanned secret before `is_2fa_enabled` is set.
     """
     secret = totp.generate_secret()
     current_user.totp_secret = secret
@@ -398,39 +398,48 @@ def enroll_2fa(current_user: User = Depends(get_current_user), db: Session = Dep
     )
 
 
-@router.post("/2fa/confirm", status_code=status.HTTP_204_NO_CONTENT)
-def confirm_2fa(
-    payload: TwoFactorConfirmRequest,
+@router.post("/2fa/status", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_or_disable_2fa(
+    payload: TwoFactorStatusUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Confirms 2FA enrollment by verifying a code from the authenticator app."""
-    if not current_user.totp_secret:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Call /2fa/enroll first.")
-    if not totp.verify_code(current_user.totp_secret, payload.code):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
-    current_user.is_2fa_enabled = True
-    log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_enabled", actor_id=current_user.id)
-    db.commit()
+    """Applies a 2FA status transition for the current user — merges the
+    formerly-separate `confirm`/`disable` endpoints (2026-09-22, see
+    docs/decisions.md) into one, dispatching on `payload.action`. Each
+    branch below preserves its original endpoint's exact guards and field
+    writes; neither was weakened by the merge. `/2fa/enroll` itself is
+    unchanged and stays a separate endpoint (no `code` to dispatch on, and
+    a different response shape).
 
+    - `confirm` — completes an enrollment started by `/2fa/enroll`: 400 if
+      no enrollment is in progress (`current_user.totp_secret` unset), 400
+      if `code` doesn't verify against it, else sets `is_2fa_enabled`.
+    - `disable` — turns 2FA back off for an already-enabled account: 400 if
+      2FA isn't currently enabled, 400 if `code` doesn't verify, else clears
+      `is_2fa_enabled`/`totp_secret` and bumps `token_version` (same
+      rationale as `change_password`: a token issued while 2FA was still on
+      shouldn't silently keep working past this point).
 
-@router.post("/2fa/disable", status_code=status.HTTP_204_NO_CONTENT)
-def disable_2fa(
-    payload: TwoFactorDisableRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Disables 2FA; requires a currently-valid code to prove ongoing control of the authenticator."""
-    if not current_user.is_2fa_enabled or not current_user.totp_secret:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA is not enabled.")
-    if not totp.verify_code(current_user.totp_secret, payload.code):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
-    current_user.is_2fa_enabled = False
-    current_user.totp_secret = None
-    # Same rationale as change_password: a token issued while 2FA was still
-    # on shouldn't silently keep working past this point.
-    current_user.token_version += 1
-    log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_disabled", actor_id=current_user.id)
+    Raises:
+        HTTPException: 400 per the branch-specific guards above.
+    """
+    if payload.action == "confirm":
+        if not current_user.totp_secret:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Call /2fa/enroll first.")
+        if not totp.verify_code(current_user.totp_secret, payload.code):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
+        current_user.is_2fa_enabled = True
+        log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_enabled", actor_id=current_user.id)
+    else:  # "disable"
+        if not current_user.is_2fa_enabled or not current_user.totp_secret:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA is not enabled.")
+        if not totp.verify_code(current_user.totp_secret, payload.code):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
+        current_user.is_2fa_enabled = False
+        current_user.totp_secret = None
+        current_user.token_version += 1
+        log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_disabled", actor_id=current_user.id)
     db.commit()
 
 

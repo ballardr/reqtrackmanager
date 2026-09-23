@@ -121,20 +121,39 @@ specifics below are **Decided by: Agent**, following `docs/modules.md` §6
 and the Compliance/Decision-Management precedent (`backend/app/modules/
 compliance/module.py`; `backend/app/modules/decisions/module.py`'s Phase 4
 addendum) rather than re-explaining the mechanism inline. Once this
-phase's endpoints exist, declare narrow, read-only (`GET`)
-`McpToolDefinition` entries for the safe list/get surfaces — candidates:
-`list_report_templates(project_id)`, `get_report_template(project_id,
-template_id)`, `list_generated_reports(project_id)` (the provenance-record
-listing from Phase 0 activity 3), and `get_generated_report(project_id,
-report_id)` (a single provenance record and a pointer to its stored
-output). Explicitly excluded: the generation action itself (however Phase
-0 ultimately shapes its endpoint), template create/update/delete, and any
-future report-type-specific generation endpoint Phases 2–6 add — triggering
-generation is a mutating, potentially resource-intensive action, not a
-read, so it gets the same treatment this codebase gives every other
-mutating action: no `McpToolDefinition` declared for it at all. Exact tool
+phase's endpoints exist, declare `McpToolDefinition` entries for the safe
+list/get surfaces — candidates: `list_report_templates(project_id)`,
+`get_report_template(project_id, template_id)`,
+`list_generated_reports(project_id)` (the provenance-record listing from
+Phase 0 activity 3), and `get_generated_report(project_id, report_id)` (a
+single provenance record and a pointer to its stored output). Exact tool
 names may shift once Phase 0 settles the real API shape (output format,
 template CRUD surface); this is a scope commitment, not a final contract.
+
+**2026-09-22 update (Decided by: User):** this section originally excluded
+every mutating endpoint outright (the generation action, template
+create/update/delete, and any future report-type-specific generation
+endpoint) with no `McpToolDefinition` at all, reasoning that triggering
+generation is "a mutating, potentially resource-intensive action, not a
+read." Per the same reversal applied to the Compliance module
+(`docs/decisions.md`'s "Compliance MCP write tools + generalized AI
+approval gate" entry), a mutating action is no longer excluded from this
+codebase's MCP surface just for being mutating — that blanket exclusion is
+exactly what's being reversed. This module should instead commit to
+**write-enabled** MCP tools once built: `create_report_template`/
+`update_report_template`/`delete_report_template` and a `generate_report`
+tool (once Phase 0 settles its endpoint shape) declared normally, gated by
+`MCP_WRITES_ENABLED` + the calling account's own RBAC role like any other
+write tool — resource cost alone is not a reason this codebase's MCP
+surface otherwise excludes an endpoint (compare Compliance's own
+`compliance_migrate_project_compliance_version`, also a heavier mutation,
+now declared under the same reversal). This module has no approve/
+decide-type action of its own to consider under options (a)/(b) — report
+generation is a plain create, not an approval — so nothing here needs
+`allow_ai_approvals`/`APPROVAL_ACTION_ROUTE_EXTRA` either way. **Decided
+by: Agent** for the specific tool-name/scope judgment call; **Decided by:
+User** (2026-09-22) for the underlying instruction to move this plan off
+its blanket mutating-endpoint exclusion.
 
 ## Phase 2 — Business Requirements Document
 

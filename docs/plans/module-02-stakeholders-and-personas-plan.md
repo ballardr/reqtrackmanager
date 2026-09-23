@@ -161,21 +161,26 @@ Attaching the commitment here, at the last purely-backend milestone,
 rather than retroactively to Phase 1/2, is a judgment call (**Decided by:
 Agent**) — revisit if a future pass splits this phase's backend and
 frontend halves apart, or splits Phase 1/2's own endpoints out explicitly.
-Once these endpoints exist, declare narrow, **read-only-only**
-`McpToolDefinition` entries for the safe list/get endpoints — candidates
-made concrete by Phase 1/2's own scope text: `list_stakeholders`/
-`get_stakeholder` (covering both `kind=stakeholder` and `kind=persona`
-rows, per Phase 0 Q1's resolution) and `list_stakeholder_needs`/
-`get_stakeholder_need`. Explicitly excluded: anything mutating, and any
-endpoint that approves or finalises something — §10 names no
-approval/baseline workflow for Stakeholders/Personas the way Decisions or
-Strategies have one (Phase 1's own RBAC note flags this asymmetry
-explicitly), so no route here is expected to need
-`openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
-(`backend/app/modules/registry.py`); if Phase 0 or Phase 1 later confirms
-some form of stakeholder sign-off/approval after all, any such route must
-be marked with it before this phase's MCP tools are finalised, the same
-defence-in-depth Compliance and Decision Management already use.
+Once these endpoints exist, declare `McpToolDefinition` entries for the
+safe list/get endpoints — candidates made concrete by Phase 1/2's own
+scope text: `list_stakeholders`/`get_stakeholder` (covering both
+`kind=stakeholder` and `kind=persona` rows, per Phase 0 Q1's resolution)
+and `list_stakeholder_needs`/`get_stakeholder_need`.
+
+**2026-09-22 update (Decided by: User):** this plan originally committed to
+**read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — CRUD tools for Stakeholders/
+Personas and Stakeholder Needs declared normally (gated by
+`MCP_WRITES_ENABLED` + the calling account's own RBAC role, no special
+treatment). §10 still names no approval/baseline workflow for
+Stakeholders/Personas (Phase 1's own RBAC note flags this asymmetry), so
+there is no approve/decide-type action here needing either option (a) the
+generalized `allow_ai_approvals` gate or (b) `APPROVAL_ACTION_ROUTE_EXTRA`
+— if Phase 0 or Phase 1 later confirms some form of stakeholder sign-off
+after all, decide between (a)/(b) for it then, defaulting to (a) per the
+Compliance precedent absent a specific reason otherwise.
 
 ## Phase 4 — Docs website coverage
 

@@ -184,7 +184,7 @@ export const ExportPassesActiveFiltersAsQueryParams: Story = {
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
     await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports/csv?project_id=proj-2&standard_id=std-1`
+      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports?format=csv&project_id=proj-2&standard_id=std-1`
     ));
   },
 };

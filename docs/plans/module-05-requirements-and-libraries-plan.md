@@ -164,21 +164,37 @@ same explicit MCP-tools and docs-website treatment is **Decided by: User**
 (2026-09-21); which phase to amend and the specific candidate names below
 are **Decided by: Agent**. Once this phase's endpoints exist (together with
 Phase 2's Requirement Set/version CRUD, which this phase's adoption records
-reference), declare narrow, read-only-only `McpToolDefinition` entries per
-[docs/modules.md](../modules.md) §6, following the Compliance and Decision
-Management (`module-04-decision-management-plan.md`) precedent of
-committing to this once the backend is real rather than leaving it
-unstated. Concrete candidates once the endpoint shapes settle: "list
-requirement sets", "get requirement set version", and "list project
-adoptions" (which projects use which version — §12.4's own worked example).
-Excluded, deliberately: adopting/changing a project's targeted version and
-approving that change (§16's explicit Project-Approver sign-off
-requirement) — this is exactly the kind of finalizing action
-`backend/app/modules/registry.py`'s `APPROVAL_ACTION_ROUTE_EXTRA` exists
-for, so that endpoint is marked `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA`
-at build time (mechanically excluding it from the MCP manifest, not merely
-omitting it from this list) — the same defence-in-depth Compliance and
-Decision Management already use for their own approval/decide endpoints.
+reference), declare `McpToolDefinition` entries per [docs/modules.md](../modules.md)
+§6, following the Compliance and Decision Management
+(`module-04-decision-management-plan.md`) precedent of committing to this
+once the backend is real rather than leaving it unstated. Concrete
+candidates once the endpoint shapes settle: "list requirement sets", "get
+requirement set version", "create/update requirement set version", and
+"list/create project adoptions" (which projects use which version — §12.4's
+own worked example).
+
+**2026-09-22 update (Decided by: User):** this section originally committed
+to **read-only-only** MCP tools; per the same reversal applied to the
+Compliance module (`docs/decisions.md`'s "Compliance MCP write tools +
+generalized AI approval gate" entry), this module should instead commit to
+**write-enabled** MCP tools once built — Requirement Set/version CRUD
+declared normally (gated by `MCP_WRITES_ENABLED` + the calling account's
+own RBAC role). Adopting/changing a project's targeted version remains the
+one exception: approving that change (§16's explicit Project-Approver
+sign-off requirement) is an approve/decide-type action, so it should use
+the generalized org+project `allow_ai_approvals` gate
+(`app.services.rbac.require_ai_approvals_enabled`) rather than staying
+hard-excluded via `openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA` — defaulting
+to this option for consistency with Compliance's new posture, per no
+specific reason in this plan to keep it human-only instead. (The plain
+"adopt a version" action that precedes approval, if the eventual design
+separates the two the way Compliance's own `submit-for-approval` is
+separate from `approve`/`reject`, is not itself an approval and should be a
+normal write tool with no gate — mirroring the 2026-09-22 correction to
+Compliance's own `submit_requirement_for_approval`.) This is a judgment
+call at plan-time (**Decided by: Agent**) about *which* option (a)/(b) to
+pick; the underlying instruction to move this plan off read-only-only is
+**Decided by: User** (2026-09-22).
 
 ## Phase 4 — Docs website coverage
 

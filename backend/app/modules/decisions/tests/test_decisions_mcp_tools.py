@@ -1,32 +1,37 @@
 """Tests for Decision Management's MCP tools (docs/plans/module-04-decision-
-management-plan.md, "Phase 4 addendum (2026-09-21) — MCP tools added").
+management-plan.md, "Phase 4 addendum (2026-09-21) — MCP tools added"; the
+2026-09-22 "Decision Management MCP approval gate" follow-up adds two more).
 
 Mirrors `backend/tests/test_module_mcp_tools.py`'s own "against the REAL
 registry" integration section (written against Compliance, the only prior
 precedent) — Decision Management is already a real, permanent
-`INSTALLED_MODULES` entry with real routers, so this proves the seven
+`INSTALLED_MODULES` entry with real routers, so this proves the nine
 declared `McpToolDefinition`s in `module.py` actually resolve against real
-routes (not just that the declared strings look right), and — the load-
-bearing assertion this addendum exists for — that `approve`/`reject` are
-mechanically excluded from the built manifest now that `project_router.py`
-marks both routes with `APPROVAL_ACTION_ROUTE_EXTRA`. No `fake_module`
+routes (not just that the declared strings look right). No `fake_module`
 fixture / `INSTALLED_MODULES` mutation is needed, same reasoning as the
 Compliance integration test this mirrors.
-"""
+
+`approve_decision`/`reject_decision` no longer carry `APPROVAL_ACTION_
+ROUTE_EXTRA` (removed from `project_router.py` as part of the 2026-09-22
+gate) — they resolve as real, mutating tools here; the actual "is an
+MCP-originated call to either one still blocked without the org+project
+`allow_ai_approvals` opt-in" behaviour is covered by `test_decisions_ai_
+approvals_via_mcp.py`, not this file (this file only proves the manifest
+shape, the same division of labour `test_compliance_ai_approvals_via_mcp.py`
+uses for Compliance)."""
 
 from __future__ import annotations
 
-import dataclasses
-
-from app.modules import registry as module_registry
-from app.modules.decisions.module import DECISIONS_MODULE_KEY
-from app.modules.registry import McpToolDefinition, build_mcp_tool_manifest, build_registry
+from app.modules.registry import build_mcp_tool_manifest
 
 
 def test_decisions_mcp_tools_resolve_against_the_real_registry():
-    """All seven of Decision Management's declared tools resolve, are
-    read-only (`mutates=False`, all GET), and carry exactly the path
-    parameters their router endpoints require."""
+    """All nine of Decision Management's declared tools resolve and carry
+    exactly the path/body parameters their router endpoints require. Seven
+    are read-only (`mutates=False`, all GET); `approve_decision`/
+    `reject_decision` are mutating `POST` tools, gated by `require_ai_
+    approvals_enabled` when reached through MCP (not by manifest exclusion
+    — see this module's own docstring)."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
@@ -37,6 +42,8 @@ def test_decisions_mcp_tools_resolve_against_the_real_registry():
     assert "decisions_list_decision_comments" in by_name
     assert "decisions_list_decision_files" in by_name
     assert "decisions_list_decision_templates" in by_name
+    assert "decisions_approve_decision" in by_name
+    assert "decisions_reject_decision" in by_name
 
     list_types = by_name["decisions_list_decision_types"]
     assert list_types.mutates is False
@@ -78,65 +85,26 @@ def test_decisions_mcp_tools_resolve_against_the_real_registry():
     assert list_templates.path_template == "/api/v1/orgs/{organization_id}/modules/decisions/templates"
     assert {p["name"] for p in list_templates.params} == {"organization_id"}
 
+    approve = by_name["decisions_approve_decision"]
+    assert approve.mutates is True
+    assert approve.method == "POST"
+    assert approve.path_template == "/api/v1/projects/{project_id}/modules/decisions/{decision_id}/approve"
+    assert {p["name"] for p in approve.params} == {"project_id", "decision_id", "comment"}
 
-def test_decisions_mcp_manifest_excludes_approval_actions():
-    """The actual load-bearing assertion this addendum exists for: `approve`
-    and `reject` never appear in the built manifest, even though this
-    module now declares real MCP tools (unlike before, when their absence
-    was only because nothing was declared at all). This is true for two
-    independent reasons — no `McpToolDefinition` for either action exists
-    in `module.py`'s `mcp_tools` tuple, AND `project_router.py` marks both
-    routes with `APPROVAL_ACTION_ROUTE_EXTRA` as defense-in-depth — but the
-    assertion below only proves the observable outcome (nothing resolves),
-    not which of the two reasons is doing the work in isolation."""
+    reject = by_name["decisions_reject_decision"]
+    assert reject.mutates is True
+    assert reject.method == "POST"
+    assert reject.path_template == "/api/v1/projects/{project_id}/modules/decisions/{decision_id}/reject"
+    assert {p["name"] for p in reject.params} == {"project_id", "decision_id", "comment"}
+
+
+def test_decisions_mcp_manifest_declares_no_other_mutating_tool():
+    """Beyond the two approval-gated tools above, no other mutating tool is
+    declared for this module — create/update/archive/unarchive/propose/
+    submit-for-review/supersede/link/comment/file-attach all stay off the
+    MCP tool surface (2026-09-22 addendum's own scope: only approve/reject
+    were asked for)."""
     tools = build_mcp_tool_manifest()
-    names = {t.name for t in tools}
-
-    assert not any("approve" in name for name in names if name.startswith("decisions_"))
-    assert not any("reject" in name for name in names if name.startswith("decisions_"))
-    assert "decisions_approve_decision" not in names
-    assert "decisions_reject_decision" not in names
-
-    # No mutating tool at all is declared for this module — create/update/
-    # archive/unarchive/propose/submit-for-review/approve/reject/supersede/
-    # link/comment/file-attach all stay off the MCP tool surface.
-    assert not any(name.startswith("decisions_") and t.mutates for name, t in {t.name: t for t in tools}.items())
-
-
-def test_decisions_manifest_would_exclude_approve_even_if_declared():
-    """The real defense-in-depth proof, not just "no tool was declared for
-    it": temporarily add an `McpToolDefinition` pointing straight at the
-    real, live `POST .../{decision_id}/approve` route (which
-    `project_router.py` marks `APPROVAL_ACTION_ROUTE_EXTRA`) to the real
-    `decisions` module's own `mcp_tools`, rebuild the registry, and confirm
-    the manifest builder still excludes it — proving the mechanical
-    exclusion actually fires for this module's real route metadata, the
-    same way `test_manifest_excludes_approval_marked_route_regardless_of_
-    declaration` proves it against a synthetic fixture route in
-    `backend/tests/test_module_mcp_tools.py`. Always restores the real,
-    unmodified module definition afterwards, whether the assertion passes
-    or fails."""
-    installed = module_registry.INSTALLED_MODULES
-    index = next(i for i, m in enumerate(installed) if m.key == DECISIONS_MODULE_KEY)
-    original = installed[index]
-
-    sneaky_tool = McpToolDefinition(
-        name="sneaky_approve_decision",
-        description="Tries to expose the approval-marked approve route as an MCP tool.",
-        method="POST",
-        path_template="/api/v1/projects/{project_id}/modules/decisions/{decision_id}/approve",
-        params=[
-            {"name": "project_id", "type": "uuid", "required": True, "in": "path", "description": ""},
-            {"name": "decision_id", "type": "uuid", "required": True, "in": "path", "description": ""},
-        ],
-    )
-    modified = dataclasses.replace(original, mcp_tools=(*original.mcp_tools, sneaky_tool))
-
-    try:
-        installed[index] = modified
-        build_registry(force=True)
-        tools = build_mcp_tool_manifest()
-        assert "decisions_sneaky_approve_decision" not in {t.name for t in tools}
-    finally:
-        installed[index] = original
-        build_registry(force=True)
+    by_name = {t.name: t for t in tools}
+    mutating_decisions_tools = {name for name, tool in by_name.items() if name.startswith("decisions_") and tool.mutates}
+    assert mutating_decisions_tools == {"decisions_approve_decision", "decisions_reject_decision"}

@@ -25,7 +25,9 @@ def _enroll_2fa(client, token) -> None:
     assert enroll.status_code == 200, enroll.text
     secret = enroll.json()["secret"]
     code = pyotp.TOTP(secret).now()
-    confirm = client.post("/api/v1/auth/2fa/confirm", json={"code": code}, headers=auth_headers(token))
+    confirm = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(token)
+    )
     assert confirm.status_code == 204, confirm.text
 
 

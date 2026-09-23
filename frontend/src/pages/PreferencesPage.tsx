@@ -380,7 +380,7 @@ export function PreferencesPage() {
   async function confirmEnrollment() {
     setTwoFactorError(null);
     try {
-      await api.post("/api/v1/auth/2fa/confirm", { code: confirmCode });
+      await api.post("/api/v1/auth/2fa/status", { action: "confirm", code: confirmCode });
       setEnrollment(null);
       setConfirmCode("");
       await refreshUser();
@@ -392,7 +392,7 @@ export function PreferencesPage() {
   async function disable2fa() {
     setTwoFactorError(null);
     try {
-      await api.post("/api/v1/auth/2fa/disable", { code: disableCode });
+      await api.post("/api/v1/auth/2fa/status", { action: "disable", code: disableCode });
       // Same rationale as changePassword: disabling 2FA also bumps
       // token_version, so the current session token is already dead.
       logout();

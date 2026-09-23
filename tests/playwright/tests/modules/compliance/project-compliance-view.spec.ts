@@ -304,7 +304,8 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     // Outstanding group's identical coverage in `org-compliance-view.spec.ts`.
     const reportRequestPromise = page.waitForRequest(
       (req) =>
-        req.url().includes("/modules/compliance/reports/csv") &&
+        req.url().includes("/modules/compliance/reports") &&
+        req.url().includes("format=csv") &&
         req.url().includes("standard_id=") &&
         req.url().includes("requirement_id=")
     );

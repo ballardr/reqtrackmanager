@@ -73,22 +73,31 @@ read-only (`GET`) tools — `list_decision_types`, `list_decisions`,
 `get_decision`, `list_decision_relationships`, `list_decision_comments`,
 `list_decision_files` (all project-scoped, `_PROJECT_ROUTER_PREFIX`), and
 `list_decision_templates` (org-scoped, `_ROUTER_PREFIX`) — with zero
-mutating tools. In particular, no tool exists for create/propose/submit-
-for-review/approve/reject/supersede/comment/attach-file: this module's
-mutating actions remain exactly the kind of accountable-human governance
-action Compliance's own module.py has consistently kept off the MCP tool
-surface (see that module's Phase 9/11/20/22 notes above), and this scope
-decision — read-only-only, mirroring Compliance's precedent exactly rather
-than inventing a new convention — is **Decided by: Agent**, not something
-the user specified beyond "add MCP tools." `project_router.py`'s
-`approve_decision_endpoint`/`reject_decision_endpoint` had never been marked
-`APPROVAL_ACTION_ROUTE_EXTRA` (`app.modules.registry`) — Phase 4 had no MCP
-tools yet to need the defense-in-depth, so it was skipped — and that gap is
-fixed as part of this addendum, now that a manifest actually exists for the
-mechanical exclusion to matter for. See docs/plans/module-04-decision-
-management-plan.md's "Phase 4 addendum (2026-09-21)" section for the full
-account, including the test added to verify the exclusion mechanically
-(not just by omission of a tool declaration).
+mutating tools. `project_router.py`'s `approve_decision_endpoint`/`reject_
+decision_endpoint` were marked `APPROVAL_ACTION_ROUTE_EXTRA`
+(`app.modules.registry`) at this point, as defense-in-depth against a
+future tool declaration resolving to either route.
+
+2026-09-22 — approve/reject given the same generalized AI-approval gate as
+Compliance (**Decided by: User** — explicit confirmation, "Yes, apply the
+same treatment," in direct response to being asked, following on from
+docs/decisions.md's "Compliance MCP write tools + generalized AI approval
+gate" entry, which had left this module's `approve_decision`/`reject_
+decision` as the one architecturally-identical case still excluded). Two
+more tools are now declared below — `approve_decision`/`reject_decision` —
+and `APPROVAL_ACTION_ROUTE_EXTRA` was removed from both routes: reached
+through MCP, each now additionally requires `require_ai_approvals_enabled`
+(this project's and its organisation's `allow_ai_approvals` both true),
+exactly mirroring `modules.compliance.project_router.approve_requirement`/
+`reject_requirement`. See `project_router.py`'s `approve_decision_endpoint`/
+`reject_decision_endpoint` docstrings and docs/decisions.md's "Decision
+Management MCP approval gate" entry for the full account. This closes the
+inconsistency the compliance entry flagged; create/propose/submit-for-
+review/supersede/comment/attach-file remain undeclared — the first two
+don't decide anything (mirroring Compliance's own `submit-for-approval`
+treatment) and the rest are ordinary CRUD/collaboration actions this
+addendum never asked to expand, not approval-type actions this gate
+concerns.
 """
 
 from __future__ import annotations
@@ -310,6 +319,45 @@ MODULE_DEFINITION = ModuleDefinition(
             params=[
                 {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The organisation whose Decision Templates to list."},
+            ],
+        ),
+        # --- 2026-09-22: approve/reject given the same generalized AI-approval
+        # gate as Compliance's `approve_requirement`/`reject_requirement` — see
+        # this module's own docstring's "2026-09-22" section. Reached through
+        # MCP, each resolves to a route gated by `require_ai_approvals_enabled`
+        # (declaring them here does not bypass that gate).
+        McpToolDefinition(
+            name="approve_decision",
+            description=(
+                "Formally approves a Decision (moves it from Under Review to Approved). Reached through MCP "
+                "only when this project's and its organisation's AI-approval opt-in are both enabled."
+            ),
+            method="POST",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}/approve",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision to approve."},
+                {"name": "comment", "type": "string", "required": False, "in": "body",
+                 "description": "Optional comment explaining the approval."},
+            ],
+        ),
+        McpToolDefinition(
+            name="reject_decision",
+            description=(
+                "Formally rejects a Decision (a comment is required). Reached through MCP only when this "
+                "project's and its organisation's AI-approval opt-in are both enabled."
+            ),
+            method="POST",
+            path_template=f"{_PROJECT_ROUTER_PREFIX}/{{decision_id}}/reject",
+            params=[
+                {"name": "project_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The project that owns the Decision."},
+                {"name": "decision_id", "type": "uuid", "required": True, "in": "path",
+                 "description": "The Decision to reject."},
+                {"name": "comment", "type": "string", "required": True, "in": "body",
+                 "description": "Comment explaining the rejection; the endpoint 400s if left blank."},
             ],
         ),
     ),

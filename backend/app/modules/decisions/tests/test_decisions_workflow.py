@@ -12,9 +12,11 @@ rather than an HTTP response body.
 
 from __future__ import annotations
 
+import threading
 import uuid
 
 import pytest
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
@@ -345,3 +347,140 @@ def test_cannot_supersede_an_already_superseded_decision(client, admin_token):
         db.rollback()
     finally:
         db.close()
+
+
+# --- 2026-09-23 hardening pass: supersession status guard + approve/reject race ----
+
+
+def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(client, admin_token):
+    """A `REJECTED`/`SUPERSEDED` Decision can never reach `APPROVED`
+    (`_ALLOWED_TRANSITIONS` has no outgoing edges for either), so recording
+    it as superseding another Decision would create a link that can never
+    resolve into the status transition its own name implies — found and
+    fixed in a 2026-09-23 hardening pass. DRAFT/PROPOSED/UNDER_REVIEW
+    remain allowed (existing `test_supersession_validation_errors`
+    coverage), since those can still reach APPROVED later."""
+    project, user_id, decision_type_id = _setup_project(client, admin_token, "Decision Supersession Guard Co")
+    project_id = uuid.UUID(project["id"])
+    old_id = _create_decision(project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-001")
+    rejected_id = _create_decision(project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-002")
+    superseded_new_id = _create_decision(
+        project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-003"
+    )
+    predecessor_id = _create_decision(
+        project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-004"
+    )
+
+    db = SessionLocal()
+    try:
+        rejected = db.get(Decision, rejected_id)
+        propose_decision(db, rejected, user_id)
+        reject_decision(db, rejected, user_id, comment="No longer needed.")
+
+        for decision_id in (superseded_new_id, predecessor_id):
+            decision = db.get(Decision, decision_id)
+            propose_decision(db, decision, user_id)
+            submit_decision_for_review(db, decision, user_id)
+            approve_decision(db, decision, user_id)
+        db.commit()
+
+        # Give superseded_new_id a predecessor of its own so it becomes SUPERSEDED.
+        create_supersession(
+            db, new_decision=db.get(Decision, predecessor_id), old_decision=db.get(Decision, superseded_new_id),
+            actor_id=user_id,
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    assert _status(rejected_id) == DecisionStatus.REJECTED
+    assert _status(superseded_new_id) == DecisionStatus.SUPERSEDED
+
+    db = SessionLocal()
+    try:
+        old_decision = db.get(Decision, old_id)
+        with pytest.raises(ValueError, match="can never be approved"):
+            create_supersession(db, new_decision=db.get(Decision, rejected_id), old_decision=old_decision, actor_id=user_id)
+        db.rollback()
+
+        old_decision = db.get(Decision, old_id)
+        with pytest.raises(ValueError, match="can never be approved"):
+            create_supersession(
+                db, new_decision=db.get(Decision, superseded_new_id), old_decision=old_decision, actor_id=user_id,
+            )
+        db.rollback()
+    finally:
+        db.close()
+
+
+def test_concurrent_approve_and_reject_on_the_same_decision_are_serialized(client, admin_token):
+    """Two real, overlapping transactions — one approving, one rejecting
+    the same `UNDER_REVIEW` Decision — must not both succeed: without a
+    row lock, both could read status == UNDER_REVIEW before either
+    commits and both pass `_ALLOWED_TRANSITIONS`, leaving the audit trail
+    showing contradictory events. With the row-locked fetch
+    (`_get_decision_in_project_for_update`, mirroring `change_requests.
+    workflow.decide_change_request`'s identical fix), the second call's
+    status check must run against the first one's already-committed
+    result and fail cleanly instead. Locks directly at the DB layer (real
+    `SELECT ... FOR UPDATE`, real threads, real separate sessions) rather
+    than through the HTTP layer, mirroring `test_project_sequence_
+    counters.py::test_concurrent_generation_never_produces_duplicate_
+    codes`'s own established pattern for proving a lock actually
+    serializes concurrent callers."""
+    project, user_id, decision_type_id = _setup_project(client, admin_token, "Decision Approve Reject Race Co")
+    project_id = uuid.UUID(project["id"])
+    decision_id = _create_decision(
+        project_id=project_id, decision_type_id=decision_type_id, user_id=user_id, code="DEC-001"
+    )
+    db = SessionLocal()
+    try:
+        decision = db.get(Decision, decision_id)
+        propose_decision(db, decision, user_id)
+        submit_decision_for_review(db, decision, user_id)
+        db.commit()
+    finally:
+        db.close()
+    assert _status(decision_id) == DecisionStatus.UNDER_REVIEW
+
+    barrier = threading.Barrier(2)
+    outcomes: dict[str, str] = {}
+    outcomes_lock = threading.Lock()
+    errors: list[BaseException] = []
+
+    def worker(action: str):
+        db = SessionLocal()
+        try:
+            barrier.wait(timeout=5)
+            locked = db.scalar(select(Decision).where(Decision.id == decision_id).with_for_update())
+            try:
+                if action == "approve":
+                    approve_decision(db, locked, user_id, comment="Approving.")
+                else:
+                    reject_decision(db, locked, user_id, comment="Rejecting.")
+                db.commit()
+                with outcomes_lock:
+                    outcomes[action] = "succeeded"
+            except ValueError:
+                db.rollback()
+                with outcomes_lock:
+                    outcomes[action] = "conflict"
+        except BaseException as exc:  # noqa: BLE001 - surfaced via `errors` for the assertion below
+            errors.append(exc)
+        finally:
+            db.close()
+
+    threads = [threading.Thread(target=worker, args=(action,)) for action in ("approve", "reject")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, errors
+    # Exactly one side must have won; the loser must see a clean conflict,
+    # never a silent double-success.
+    assert sorted(outcomes.values()) == ["conflict", "succeeded"]
+    final_status = _status(decision_id)
+    assert final_status in (DecisionStatus.APPROVED, DecisionStatus.REJECTED)
+    winner = "approve" if final_status == DecisionStatus.APPROVED else "reject"
+    assert outcomes[winner] == "succeeded"

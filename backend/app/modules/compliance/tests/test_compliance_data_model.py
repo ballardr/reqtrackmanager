@@ -36,18 +36,25 @@ from tests.conftest import build_alembic_config, create_org_user
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase. Updated for Phase 11 (docs/
-    compliance-module-plan.md): the module now has both an org-scoped and
-    a project-scoped router, ten read-only MCP tools (three from Phase 6,
-    two more from Phase 7, one more from Phase 8's evidence support, one
-    more from Phase 9's pending-approvals listing, one more from Phase 10's
-    reviews-due listing, two more from Phase 11's mapping/version-diff
-    listings), a `resolve_file_owner_project_id` hook (Phase 8), and four
-    scheduled jobs (Phase 10) — see `test_compliance_standards_api.py`/
-    `test_project_compliance_api.py`/`test_compliance_evidence_api.py`/
-    `test_compliance_approval_workflow.py`/`test_compliance_reviews_and_
-    notifications.py`/`test_compliance_mapping_and_version_impact.py` for
-    the actual API surfaces these facts stand in for here."""
+    `INSTALLED_MODULES` as of this phase. The module has both an org-scoped
+    and a project-scoped router, a `resolve_file_owner_project_id` hook
+    (Phase 8), and four scheduled jobs (Phase 10) — see
+    `test_compliance_standards_api.py`/`test_project_compliance_api.py`/
+    `test_compliance_evidence_api.py`/`test_compliance_approval_workflow.py`/
+    `test_compliance_reviews_and_notifications.py`/`test_compliance_
+    mapping_and_version_impact.py` for the actual API surfaces these facts
+    stand in for here.
+
+    Its MCP surface was originally ten read-only tools (Phases 6-11);
+    2026-09-22 reversed that to write-enabled (68 more tools) except
+    approvals (gated, not excluded) and RBAC/file-upload endpoints (still
+    undeclared) — see `module.py`'s own docstring and `docs/decisions.md`'s
+    "Compliance MCP write tools + generalized AI approval gate" entry. A
+    2026-09-23 hardening pass then removed two of those 68 (`complete_
+    project_review`/`complete_standard_review`, found declared with no
+    gate at all despite recording a review outcome being categorically
+    MCP-excluded in every configuration — see that entry in docs/
+    decisions.md), landing at 76."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
@@ -57,17 +64,42 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 10, (
-        "Phase 6 declared three read-only MCP tools; Phase 7 added two more; Phase 8 added one more; "
-        "Phase 9 added one more; Phase 10 added one more; Phase 11 added two more"
+    assert len(definition.mcp_tools) == 76, (
+        "Ten read-only tools (three from Phase 6, two more from Phase 7, one more from Phase 8, one more "
+        "from Phase 9, one more from Phase 10, two more from Phase 11) plus 68 write tools declared in the "
+        "2026-09-22 reversal (docs/decisions.md's 'Compliance MCP write tools + generalized AI approval "
+        "gate' entry), minus 2 removed in the 2026-09-23 hardening pass (complete_project_review/"
+        "complete_standard_review) — see module.py's own updated docstring"
     )
-    assert not any(tool.name in {"submit_for_approval", "approve", "reject"} for tool in definition.mcp_tools), (
-        "Phase 9's own actual approve/reject/submit-for-approval workflow actions must never be declared "
-        "as MCP tools — see module.py's own Phase 9 notes"
+    assert {tool.name for tool in definition.mcp_tools} >= {
+        "submit_requirement_for_approval", "approve_requirement", "reject_requirement",
+    }, (
+        "As of the 2026-09-22 reversal, submit-for-approval/approve/reject ARE declared — submit needs no "
+        "gate (it only queues a decision), approve/reject resolve to routes gated by "
+        "require_ai_approvals_enabled when reached through MCP (see project_router.py's own docstrings)"
     )
-    assert not any("migrate" in tool.name for tool in definition.mcp_tools), (
-        "Phase 11's own version-migration action must never be declared as an MCP tool — see module.py's "
-        "own Phase 11 notes"
+    assert any("migrate" in tool.name for tool in definition.mcp_tools), (
+        "The 2026-09-22 reversal also declares the project version-migration action "
+        "(compliance_migrate_project_compliance_version) — see module.py's own Phase 11 notes"
+    )
+    assert not any(
+        tool.name
+        in {
+            "assign_standard_member_role", "revoke_standard_member_role",
+            "assign_standard_group_role", "revoke_standard_group_role",
+            "import_standard", "upload_evidence_attachment",
+        }
+        for tool in definition.mcp_tools
+    ), (
+        "RBAC role-grant endpoints and the two file-upload endpoints stay undeclared even after the "
+        "2026-09-22 reversal — see module.py's own docstring's 'reversal' section, points 2 and 3"
+    )
+    assert not any(
+        tool.name in {"complete_project_review", "complete_standard_review"} for tool in definition.mcp_tools
+    ), (
+        "2026-09-23 hardening pass: recording a review outcome is categorically MCP-excluded in every "
+        "configuration (mirrors core's record_review_outcome), not just gated — both routes are now marked "
+        "APPROVAL_ACTION_ROUTE_EXTRA and their tool declarations were removed"
     )
     assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
     assert len(definition.scheduled_jobs) == 4, "Phase 10 adds four date-driven notification sweeps"

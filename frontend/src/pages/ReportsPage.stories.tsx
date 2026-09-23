@@ -57,8 +57,8 @@ export const GeneratePdf: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Generate PDF" }));
     await waitFor(() =>
       expect(api.postForBlob).toHaveBeenCalledWith(
-        `/api/v1/projects/${PROJECT_ID}/reports/pdf`,
-        expect.objectContaining({ pre_markdown: expect.stringContaining("Atlas platform") })
+        `/api/v1/projects/${PROJECT_ID}/reports`,
+        expect.objectContaining({ format: "pdf", pre_markdown: expect.stringContaining("Atlas platform") })
       )
     );
   },

@@ -171,7 +171,7 @@ export const DownloadReport: Story = {
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
     await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
-      `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports/pdf`
+      `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports?format=pdf`
     ));
   },
 };

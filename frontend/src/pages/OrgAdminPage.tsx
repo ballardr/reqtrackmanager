@@ -43,6 +43,8 @@ import type {
 } from "../api/types";
 import { collapseProjectRoles, ORG_ROLE_LABEL, PENDING_INVITE_STATUS_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import type { StagedMember } from "../components/AddMembersModal";
+import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -390,7 +392,6 @@ export function OrgAdminPage() {
   const [manageUsersGroupRoles, setManageUsersGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [manageUsersInvites, setManageUsersInvites] = useState<PendingInvite[]>([]);
   const [manageUsersResendingInviteId, setManageUsersResendingInviteId] = useState<string | null>(null);
-  const [manageUsersAddRole, setManageUsersAddRole] = useState<ProjectRole>("member");
   // Style guide "Pattern: modal dialog for entity create/rename" (Principle
   // 3) — the inline add-member sub-form used to render permanently inside
   // this outer "Manage users" Modal; it's now a button that opens a second,
@@ -909,28 +910,25 @@ export function OrgAdminPage() {
     }
   }
 
-  async function addManageUsersMember(userId: string) {
+  async function addManageUsersMember(userId: string, role: ProjectRole) {
     if (!manageUsersProjectId) return;
-    await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role: manageUsersAddRole });
-    await reloadManageUsersMembers();
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
   }
 
   /** The group branch of the same add-control (PR5 of the members/groups
    * directory rework plan) — `UserAutocomplete`'s combined user-or-group
    * autocomplete calls this instead of `addManageUsersMember` when the
-   * selected match is an org group, granting it `manageUsersAddRole`
-   * *directly* on `manageUsersProjectId` via PR4's new mechanism, the same
-   * pattern `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
+   * selected match is an org group, granting it a role *directly* on
+   * `manageUsersProjectId` via PR4's new mechanism, the same pattern
+   * `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
    * `ProjectGroup` wrapper is created, and nesting stays out of scope for
    * this control — see that function's own docstring for the full
-   * rationale, shared verbatim here. */
-  async function addManageUsersGroupRole(orgGroupId: string) {
+   * rationale, shared verbatim here. Reloading (both members and group
+   * roles) is the caller's job now — see `AddMembersModal`'s `onCommitted`,
+   * fired once per staged-add commit rather than once per entry. */
+  async function addManageUsersGroupRole(orgGroupId: string, role: ProjectRole) {
     if (!manageUsersProjectId) return;
-    await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role: manageUsersAddRole });
-    await reloadManageUsersMembers();
-    // Phase 6: the group this just granted a role to now needs its own
-    // `ProjectMembersTable` row, not just its members' updated provenance.
-    await reloadManageUsersGroupRoles();
+    await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
   }
 
   /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6), scoped to
@@ -1019,25 +1017,43 @@ export function OrgAdminPage() {
    * endpoint and outcome messaging `ProjectAdminPage.tsx`'s own
    * `addExternalMember` uses, reused here via a `Toast` instead of that
    * page's inline result banner (this Modal has no equivalent persistent
-   * banner slot). */
-  async function addManageUsersExternalMember(email: string) {
+   * banner slot). Left to throw on failure (rather than catching and
+   * toasting here) so `AddMembersModal` can show the error inline on this
+   * entry's own staged row instead — see that component's `onAddEntry`
+   * contract. */
+  async function addManageUsersExternalMember(email: string, role: ProjectRole) {
     if (!manageUsersProjectId) return;
-    try {
-      const result = await api.post<{ outcome: AssignByEmailOutcome }>(
-        `/api/v1/projects/${manageUsersProjectId}/roles/by-email`,
-        { email, role: manageUsersAddRole },
-      );
-      const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
-        added: strings.admin.externalAddedDirectly,
-        invited: strings.admin.externalInvited,
-        sso_provisioned: strings.admin.externalSsoProvisioned,
-      };
-      showToast(messages[result.outcome](email, manageUsersAddRole, orgLabel));
-      await reloadManageUsersMembers();
-      setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : strings.admin.externalAddError, "error");
-    }
+    const result = await api.post<{ outcome: AssignByEmailOutcome }>(
+      `/api/v1/projects/${manageUsersProjectId}/roles/by-email`,
+      { email, role },
+    );
+    const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
+      added: strings.admin.externalAddedDirectly,
+      invited: strings.admin.externalInvited,
+      sso_provisioned: strings.admin.externalSsoProvisioned,
+    };
+    showToast(messages[result.outcome](email, role, orgLabel));
+  }
+
+  /** `AddMembersModal`'s `onAddEntry` for the "Manage users" modal's own
+   * add-member step — dispatches a staged entry to whichever of the three
+   * handlers above matches its `kind`. */
+  async function handleManageUsersAddEntry(entry: StagedMember) {
+    if (entry.kind === "user") await addManageUsersMember(entry.id, entry.role);
+    else if (entry.kind === "group") await addManageUsersGroupRole(entry.id, entry.role);
+    else await addManageUsersExternalMember(entry.id, entry.role);
+  }
+
+  /** `AddMembersModal`'s `onCommitted` — fires once per commit pass (not
+   * once per staged entry), re-fetching everything a successful add could
+   * have changed: effective members, group roles (a newly-granted group
+   * needs its own `ProjectMembersTable` row), and pending invites (an
+   * external "invited" outcome adds one). */
+  async function handleManageUsersAddCommitted() {
+    if (!manageUsersProjectId) return;
+    await reloadManageUsersMembers();
+    await reloadManageUsersGroupRoles();
+    setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
   }
 
   async function resendManageUsersInvite(invite: PendingInvite) {
@@ -1395,7 +1411,7 @@ export function OrgAdminPage() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.postFile(`/api/v1/orgs/${orgId}/logo`, file);
+      await api.postFile(`/api/v1/orgs/${orgId}/branding-image`, file, { kind: "logo" });
       await reload();
       setLogoUploaded(true);
     } catch (err) {
@@ -1410,7 +1426,7 @@ export function OrgAdminPage() {
     setLogoUploaded(false);
     setLogoUploading(true);
     try {
-      await api.delete(`/api/v1/orgs/${orgId}/logo`);
+      await api.delete(`/api/v1/orgs/${orgId}/branding-image?kind=logo`);
       await reload();
       showToast(strings.orgAdmin.logoRemoved);
     } catch (err) {
@@ -1448,7 +1464,7 @@ export function OrgAdminPage() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.postFile(`/api/v1/orgs/${orgId}/login-background`, file);
+      await api.postFile(`/api/v1/orgs/${orgId}/branding-image`, file, { kind: "login_background" });
       await reload();
       setLoginBackgroundUploaded(true);
     } catch (err) {
@@ -1463,7 +1479,7 @@ export function OrgAdminPage() {
     setLoginBackgroundUploaded(false);
     setLoginBackgroundUploading(true);
     try {
-      await api.delete(`/api/v1/orgs/${orgId}/login-background`);
+      await api.delete(`/api/v1/orgs/${orgId}/branding-image?kind=login_background`);
       await reload();
       showToast(strings.orgAdmin.loginBackgroundRemoved);
     } catch (err) {
@@ -2763,45 +2779,22 @@ export function OrgAdminPage() {
                       docstring. */}
                 </div>
                 {manageUsersAddMemberModalOpen && (
-                  <Modal title={strings.admin.addMember} onClose={() => setManageUsersAddMemberModalOpen(false)}>
-                    <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-                      <UserAutocomplete
-                        users={users}
-                        placeholder={strings.admin.addOrInviteMemberPlaceholder}
-                        onSelect={(userId) => {
-                          addManageUsersMember(userId);
-                          setManageUsersAddMemberModalOpen(false);
-                        }}
-                        groups={allGroups}
-                        onSelectGroup={(groupId) => {
-                          addManageUsersGroupRole(groupId);
-                          setManageUsersAddMemberModalOpen(false);
-                        }}
-                        organizationId={orgId}
-                        projectId={manageUsersProjectId}
-                        onSelectExternal={(email) => {
-                          addManageUsersExternalMember(email);
-                          setManageUsersAddMemberModalOpen(false);
-                        }}
-                      />
-                      <select
-                        className="input"
-                        aria-label={strings.membersTable.addRoleSelectLabel}
-                        value={manageUsersAddRole}
-                        onChange={(e) => setManageUsersAddRole(e.target.value as ProjectRole)}
-                      >
-                        <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                        <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                        <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                        <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-                      </select>
-                    </div>
-                    <div className="row" style={{ justifyContent: "flex-end" }}>
-                      <button className="btn" onClick={() => setManageUsersAddMemberModalOpen(false)}>
-                        {strings.common.cancel}
-                      </button>
-                    </div>
-                  </Modal>
+                  // PR3/PR5 of the members/groups directory rework plan
+                  // originally opened a nested Modal here submitting one
+                  // person at a time; now the shared staged multi-add
+                  // component (`AddMembersModal`) — see that component's own
+                  // module docstring for why it replaced this and
+                  // `ProjectAdminPage.tsx`'s equivalent bespoke modal at once.
+                  <AddMembersModal
+                    title={strings.admin.addMember}
+                    onClose={() => setManageUsersAddMemberModalOpen(false)}
+                    users={users}
+                    groups={allGroups}
+                    organizationId={orgId}
+                    projectId={manageUsersProjectId}
+                    onAddEntry={handleManageUsersAddEntry}
+                    onCommitted={handleManageUsersAddCommitted}
+                  />
                 )}
                 <ProjectMembersTable
                   members={manageUsersMembers}
