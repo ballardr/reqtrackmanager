@@ -3033,3 +3033,101 @@ def require_permission(*allowed: str):
         return current_user
 
     return _dependency
+
+
+def require_org_admin_or_grant_roles(
+    organization_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Dependency for an org-scoped action that is `ORG_ADMIN`-gated by
+    default but additionally delegable to a `grant_roles` holder (Fine-
+    Grained Access Control Phase 0 Q6/Phase 3) — used by the custom-role
+    grant/revoke endpoints (`routers.orgs.custom_roles`) and by the
+    existing org/module-role-assignment endpoints (`routers.orgs.
+    membership.assign_org_role`/`assign_org_module_role` and their revoke
+    counterparts) being widened to accept `grant_roles` as an alternative
+    to their previous `require_org_role(OrgRole.ORG_ADMIN)` gate.
+
+    A plain function performing the OR check directly, not two composed
+    `Depends(...)` factories — mirrors `require_project_view_or_manage`'s
+    own style (see that dependency's docstring for why: FastAPI dependency
+    factories aren't designed to be combined via try/except, and a plain
+    function reading its own path parameters is simpler and more explicit
+    than any wrapper that would try to do so).
+
+    Authorized if **any** of the following hold:
+      - `current_user.is_server_admin`.
+      - `OrgRole.ORG_ADMIN` among the caller's effective org roles.
+      - `require_permission`'s own resolution (`get_effective_permissions`/
+        `permission_satisfied`) grants `"grant_roles"` at this
+        organisation's scope.
+
+    `assign_org_role`/`revoke_org_role` layer their own additional check on
+    top of this dependency for the one value (`OrgRole.ORG_ADMIN` itself)
+    that Phase 0 Q6 carves out as staying admin-only even for a
+    `grant_roles` holder — that carve-out lives in those endpoints' own
+    bodies, not here, since it depends on the specific role value being
+    granted/revoked, which this dependency has no visibility into.
+
+    Same PAT-scope/org-active/org-2FA checks, in the same order, as every
+    sibling `require_*` dependency in this module.
+    """
+    check_pat_scope(request, organization_id)
+    _require_org_active(db, organization_id)
+    _require_org_2fa(db, organization_id, current_user)
+    if current_user.is_server_admin:
+        return current_user
+    if OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id):
+        return current_user
+    held = get_effective_permissions(db, current_user.id, organization_id=organization_id)
+    if permission_satisfied(held, "grant_roles"):
+        return current_user
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient organisation permissions.")
+
+
+def require_project_manage_or_grant_roles(
+    project_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Project:
+    """Project-scoped sibling of `require_org_admin_or_grant_roles` — used
+    by the project/project-module-role-assignment endpoints
+    (`routers.projects.roles.assign_project_role`/`assign_group_project_
+    role` and `routers.projects.module_roles.assign_project_module_role`,
+    and their revoke counterparts) being widened to accept `grant_roles` as
+    an alternative to their previous `require_project_manage` gate.
+
+    Unlike `require_org_admin_or_grant_roles`, no special-value carve-out
+    is layered on top by any caller: Phase 0 Q6's only two non-delegable
+    values are `OrgRole.ORG_ADMIN` and `ServerRole.MODULE_ADMINISTRATOR`,
+    neither of which is a `ProjectRole` — there is no project-role
+    equivalent tier this dependency needs to protect, so a plain OR is the
+    whole check.
+
+    Authorized if **any** of the following hold:
+      - `can_manage_project_settings` — `require_project_manage`'s own
+        predicate (project manager/administrator, or an org admin of the
+        project's own organisation), reused rather than re-derived.
+      - `require_permission`'s own resolution grants `"grant_roles"` at
+        this project's scope (its organisation, or the project itself).
+
+    Returns the `Project`, matching `require_project_manage`'s own return
+    shape so call sites don't need a second lookup. Same PAT-scope/org-
+    active/org-2FA checks, in the same order, as `require_project_manage`.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    check_pat_scope(request, project.organization_id)
+    check_pat_project_scope(request, project.id)
+    _require_org_active(db, project.organization_id)
+    _require_org_2fa(db, project.organization_id, current_user)
+    if can_manage_project_settings(db, current_user, project):
+        return project
+    held = get_effective_permissions(db, current_user.id, project_id=project.id)
+    if permission_satisfied(held, "grant_roles"):
+        return project
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient project permissions.")

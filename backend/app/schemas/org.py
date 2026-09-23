@@ -371,6 +371,125 @@ class ModuleRoleAssign(BaseModel):
     role_key: str
 
 
+class PermissionOut(BaseModel):
+    """One permission atom in this organisation's currently-valid vocabulary
+    (Fine-Grained Access Control, `docs/plans/core-fine-grained-access-
+    control-plan.md` Phase 3, `GET /orgs/{id}/permissions`) — mirrors
+    `app.services.permissions.Permission`'s own fields exactly, so the
+    frontend's permission-atom picker never hardcodes the vocabulary
+    itself (the same "derived, not hand-maintained" principle
+    `ModuleRoleDefinitionOut` already gives module-role options)."""
+
+    key: str
+    label: str
+    artefact_type: str | None
+    level: str | None
+    subtype: str | None
+
+
+class CustomRoleDefinitionOut(BaseModel):
+    """One organisation-defined `CustomRoleDefinition` (Fine-Grained Access
+    Control Phase 3), with its full permission-atom set — `GET /orgs/{id}/
+    custom-roles` / `GET /orgs/{id}/custom-roles/{role_id}`.
+
+    `permissions` is the encoded `CustomRolePermission.permission` keys
+    (`app.services.permissions.encode_permission`'s output, or a bare
+    administrative key), not the richer `PermissionOut` shape — a role's
+    own held set is compared/edited against the vocabulary `GET .../
+    permissions` already returns, so there's no need to repeat each atom's
+    label/artefact_type/level/subtype breakdown here too.
+    """
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    organization_id: UUID
+    name: str
+    description: str
+    scope: str
+    created_by: UUID | None = None
+    created_at: datetime
+    permissions: list[str] = []
+
+
+class CustomRoleDefinitionCreate(BaseModel):
+    """Body for `POST /orgs/{id}/custom-roles` — `ORG_ADMIN`-only, never
+    delegable via `grant_roles` (Phase 0 Q5: no "manage custom roles"
+    permission atom exists or should be invented). `scope` must be `"org"`
+    or `"project"` (`CustomRoleDefinition.scope`'s own restriction) and
+    every entry of `permissions` must be a currently-valid key for this
+    organisation (`app.services.permissions.validate_permission_key`) —
+    both checked server-side, not just implied by this schema's typing.
+    """
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    scope: str
+    permissions: list[str] = []
+
+
+class CustomRoleDefinitionUpdate(BaseModel):
+    """Partial update for `PATCH /orgs/{id}/custom-roles/{role_id}` —
+    mirrors `schemas.project.ProjectUpdate`'s partial-update convention:
+    every field is optional and omitting one (`None`, the default) leaves
+    it unchanged. `permissions`, when given, replaces the role's entire
+    permission set rather than merging with it — there is no separate
+    add/remove-one-permission endpoint, so a full replacement is the only
+    meaningful semantics for this field. Same `ORG_ADMIN`-only gate and
+    server-side `scope`/`permissions` validation as `CustomRoleDefinitionCreate`.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+    scope: str | None = None
+    permissions: list[str] | None = None
+
+
+class CustomRoleGrantOut(BaseModel):
+    """One held, org-scoped `UserCustomRoleGrant`, as surfaced on
+    `OrgUserOut.custom_roles` (Fine-Grained Access Control Phase 3 —
+    frontend Role Management UI) — mirrors `ModuleRoleGrantOut`'s identical
+    "deliberately minimal" shape one tier down (a custom role instead of a
+    module-contributed one): just enough for the Users table's role
+    dropdown to render a checked/unchecked state and a human label without
+    a second round-trip, since the caller already has the matching
+    `CustomRoleDefinitionOut` loaded (`GET .../custom-roles`) to cross-
+    reference by `custom_role_id`.
+
+    Deliberately limited to *org-scoped* (`project_id IS NULL`) grants —
+    the same scope `OrgUserOut.module_roles` itself is limited to (project-
+    scoped module roles are surfaced on `EffectiveMemberOut` instead, in a
+    project context). A project-scoped `CustomRoleDefinition`'s grants have
+    no natural single-row home on the org-wide Users table (which project?)
+    and are managed from the Role Management page's own grant/revoke
+    action instead, not shown as a per-row checkbox here.
+    """
+
+    custom_role_id: UUID
+    name: str
+
+
+class CustomRoleGrantTarget(BaseModel):
+    """Body for granting a `CustomRoleDefinition` to a user or org group
+    (`POST /orgs/{id}/custom-roles/{role_id}/users/{user_id}` and its
+    `/groups/{org_group_id}` sibling). The affected user/group is always
+    the URL path parameter, never a body field — mirroring `assign_org_
+    role`'s own "URL, not body, is authoritative for who is affected"
+    convention (see that endpoint's docstring for why: the caller is
+    authorized against, and the audit trail records, exactly the URL
+    target, never a value a mismatched body could smuggle in instead).
+
+    `project_id` is required if and only if the target role's own `scope
+    == "project"` — validated server-side against the actual role being
+    granted (not just by this schema's typing), mirroring `UserCustomRoleGrant`/
+    `GroupCustomRoleGrant`'s own model docstrings: a `scope="org"` role must
+    never accept a `project_id`, and a `scope="project"` role must always
+    require one.
+    """
+
+    project_id: UUID | None = None
+
+
 class OrgUserCreate(BaseModel):
     """Creates a brand-new user directly within an organisation."""
 
@@ -396,6 +515,11 @@ class OrgUserOut(BaseModel):
     # population of this field) — a grant for a since-disabled module is
     # simply omitted here, not deleted from `user_module_roles`.
     module_roles: list[ModuleRoleGrantOut] = []
+    # Fine-Grained Access Control Phase 3 (frontend Role Management UI):
+    # this user's org-scoped (`project_id IS NULL`) `CustomRoleDefinition`
+    # grants — see `CustomRoleGrantOut`'s own docstring for why this is
+    # org-scoped only, mirroring `module_roles`' identical scope limit.
+    custom_roles: list[CustomRoleGrantOut] = []
 
 
 class OrgPendingInviteCreate(BaseModel):

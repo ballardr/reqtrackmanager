@@ -9,6 +9,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
   AssignByEmailOutcome,
+  CustomRoleDefinition,
   EffectiveMember,
   ExternalUserPolicy,
   FileAsset,
@@ -32,6 +33,7 @@ import type {
   Organization,
   OutsideDomainUser,
   PendingInvite,
+  Permission,
   ProjectListItem,
   ProjectRole,
   ProjectStatusDefinition,
@@ -58,6 +60,7 @@ import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
+import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportChapterListEditor } from "../components/ReportChapterListEditor";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -117,6 +120,11 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "email",
   "security",
   "modules",
+  // Fine-Grained Access Control (core, not a module — `docs/plans/
+  // core-fine-grained-access-control-plan.md` Phase 3): custom-role
+  // definition (ORG_ADMIN-only) plus the broader grant_roles-based
+  // assignment surface, named "Role Management" per Phase 0 Q8/Q9.
+  "role-management",
 ] as const;
 type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
 
@@ -239,6 +247,18 @@ export function OrgAdminPage() {
   const [syncEnabledEdits, setSyncEnabledEdits] = useState<Record<string, boolean>>({});
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
+  // Fine-Grained Access Control (core) Phase 3: this org's projects the
+  // *caller* has some visibility into (`GET /api/v1/projects`, already
+  // fetched unconditionally for `templateProjects` above) — the Role
+  // Management page's project-scoped-role grant picker's fallback source
+  // when `orgProjects` (the ORG_ADMIN-only *full* org project directory)
+  // isn't available. A `grant_roles` holder who isn't an ORG_ADMIN still
+  // needs *some* project list to grant a project-scoped custom role
+  // against; falling back to their own visible projects (rather than
+  // leaving the picker empty) is the smallest fix that doesn't require
+  // widening `GET /orgs/{id}/projects`'s own ORG_ADMIN-only gate (a
+  // broader, unrelated authorization change out of scope here).
+  const [thisOrgVisibleProjects, setThisOrgVisibleProjects] = useState<ProjectListItem[]>([]);
 
   // --- Project statuses (C-G-XX) ---------------------------------------
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDefinition[]>([]);
@@ -298,6 +318,29 @@ export function OrgAdminPage() {
   // deployment with none registered yet (no module has any roles until
   // Phase 5).
   const [availableOrgModuleRoles, setAvailableOrgModuleRoles] = useState<ModuleRoleDefinition[]>([]);
+  // Fine-Grained Access Control (core, `docs/plans/core-fine-grained-
+  // access-control-plan.md` Phase 3) — Role Management group state.
+  // `permissions`/`customRoles` are fetched in the main (non-admin-gated)
+  // `reload()` bundle below: `GET .../permissions` and `GET .../
+  // custom-roles` are both open to any real org role (`_VIEW_ROLES` on the
+  // backend), the same "any member can see what's grantable" reasoning
+  // `availableOrgModuleRoles` above already gets, not `ORG_ADMIN`-gated
+  // like role *definition* itself.
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRoleDefinition[]>([]);
+  const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
+  const [editingCustomRoleId, setEditingCustomRoleId] = useState<string | null>(null);
+  const [customRoleFormName, setCustomRoleFormName] = useState("");
+  const [customRoleFormDescription, setCustomRoleFormDescription] = useState("");
+  const [customRoleFormScope, setCustomRoleFormScope] = useState<"org" | "project">("org");
+  const [customRoleFormPermissions, setCustomRoleFormPermissions] = useState<string[]>([]);
+  const [customRoleFormError, setCustomRoleFormError] = useState<string | null>(null);
+  const [customRoleFormSaving, setCustomRoleFormSaving] = useState(false);
+  const [confirmDeleteCustomRole, setConfirmDeleteCustomRole] = useState<CustomRoleDefinition | null>(null);
+  // Which {project} each project-scoped custom role's grant/revoke pickers
+  // below currently target — keyed by `CustomRoleDefinition.id`. An
+  // org-scoped role needs no entry here (its grants carry no project_id).
+  const [customRoleGrantProjectId, setCustomRoleGrantProjectId] = useState<Record<string, string>>({});
   // Same, but project-scoped — for the "manage users" modal's own
   // `ProjectMembersTable`, keyed by whichever project that modal currently
   // has open (see `openManageUsers` below).
@@ -536,8 +579,9 @@ export function OrgAdminPage() {
     // forever (its loading gate is just `if (!org) return <Spinner />`).
     let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
     let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
+    let permissionsList: Permission[], customRoleList: CustomRoleDefinition[];
     try {
-      [o, allG, r, projects, templates, statuses, linkTypeList] = await Promise.all([
+      [o, allG, r, projects, templates, statuses, linkTypeList, permissionsList, customRoleList] = await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
         // group" dropdown both need every group in the org regardless of
@@ -548,6 +592,13 @@ export function OrgAdminPage() {
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
         api.get<LinkTypeDefinition[]>(`/api/v1/orgs/${orgId}/link-types`),
+        // Fine-Grained Access Control Phase 3 — open to any real org role
+        // (backend `_VIEW_ROLES`), same tier as every other call in this
+        // bundle, so it belongs here rather than the ORG_ADMIN-gated
+        // catch-403 block below (a `grant_roles` holder who isn't an
+        // ORG_ADMIN still needs to see what's grantable).
+        api.get<Permission[]>(`/api/v1/orgs/${orgId}/permissions`),
+        api.get<CustomRoleDefinition[]>(`/api/v1/orgs/${orgId}/custom-roles`),
       ]);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : strings.common.error);
@@ -575,9 +626,12 @@ export function OrgAdminPage() {
     setAllGroups(allG);
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
+    setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
     setReportTemplates(templates);
     setProjectStatuses(statuses);
     setLinkTypes(linkTypeList);
+    setPermissions(permissionsList);
+    setCustomRoles(customRoleList);
     await Promise.all([loadUsers(currentUserFilters(), userSearch, 0, false), loadGroups(groupSearch, 0, false), loadOrgInvites()]);
 
     try {
@@ -1298,6 +1352,196 @@ export function OrgAdminPage() {
     }
   }
 
+  // --- Fine-Grained Access Control (core) Phase 3: Role Management ------
+  // Custom-role *definition* (ORG_ADMIN-only, never delegable — Phase 0
+  // Q5) and *assignment* (delegable via grant_roles — Phase 0 Q6) actions.
+  // The backend deliberately exposes no "who currently holds this role"
+  // listing endpoint at all (Phase 3's own MCP-tools addendum: a grant
+  // roster is a privilege-reconnaissance disclosure, not a safe default) —
+  // so unlike the fixed/module-role checkboxes above, granting/revoking a
+  // custom role to/from a user *by picking them from a directory search*
+  // (as opposed to the Users table's own per-row checkbox, which reads its
+  // checked state from `OrgUser.custom_roles` and is covered separately
+  // below) is a fire-and-forget action with no checked/unchecked state to
+  // reflect, not a toggle.
+
+  function openCreateCustomRoleModal() {
+    setEditingCustomRoleId(null);
+    setCustomRoleFormName("");
+    setCustomRoleFormDescription("");
+    setCustomRoleFormScope("org");
+    setCustomRoleFormPermissions([]);
+    setCustomRoleFormError(null);
+    setCustomRoleModalOpen(true);
+  }
+
+  function openEditCustomRoleModal(role: CustomRoleDefinition) {
+    setEditingCustomRoleId(role.id);
+    setCustomRoleFormName(role.name);
+    setCustomRoleFormDescription(role.description);
+    setCustomRoleFormScope(role.scope);
+    setCustomRoleFormPermissions(role.permissions);
+    setCustomRoleFormError(null);
+    setCustomRoleModalOpen(true);
+  }
+
+  function closeCustomRoleModal() {
+    setCustomRoleModalOpen(false);
+    setCustomRoleFormError(null);
+  }
+
+  async function saveCustomRole() {
+    if (!orgId) return;
+    setCustomRoleFormSaving(true);
+    setCustomRoleFormError(null);
+    const payload = {
+      name: customRoleFormName,
+      description: customRoleFormDescription,
+      scope: customRoleFormScope,
+      permissions: customRoleFormPermissions,
+    };
+    try {
+      if (editingCustomRoleId) {
+        const updated = await api.patch<CustomRoleDefinition>(
+          `/api/v1/orgs/${orgId}/custom-roles/${editingCustomRoleId}`, payload
+        );
+        setCustomRoles((prev) => prev.map((r) => (r.id === updated.id ? updated : r)).sort((a, b) => a.name.localeCompare(b.name)));
+        showToast(strings.orgAdmin.customRoleUpdated);
+      } else {
+        const created = await api.post<CustomRoleDefinition>(`/api/v1/orgs/${orgId}/custom-roles`, payload);
+        setCustomRoles((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+        showToast(strings.orgAdmin.customRoleCreated);
+      }
+      setCustomRoleModalOpen(false);
+    } catch (err) {
+      setCustomRoleFormError(err instanceof ApiError ? err.message : strings.common.error);
+    } finally {
+      setCustomRoleFormSaving(false);
+    }
+  }
+
+  async function deleteCustomRole(role: CustomRoleDefinition) {
+    setConfirmDeleteCustomRole(null);
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}`);
+      setCustomRoles((prev) => prev.filter((r) => r.id !== role.id));
+      // A deleted role's grants are cascaded server-side — drop any local
+      // Users-table state referencing it too, so a stale checked row
+      // doesn't linger until the next full reload().
+      setUsers((prev) =>
+        prev.map((u) => ({ ...u, custom_roles: u.custom_roles.filter((g) => g.custom_role_id !== role.id) }))
+      );
+      showToast(strings.orgAdmin.customRoleDeleted);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** Users table role column — org-scoped (`scope === "org"`) custom roles
+   * only, matching `OrgUser.custom_roles`' own org-scoped-only shape (see
+   * that field's docstring). A project-scoped custom role has no single
+   * project on this org-wide table to attach a checkbox to, so it's
+   * granted/revoked from the dedicated picker below instead. */
+  async function grantOrgScopedCustomRoleToUser(u: OrgUser, role: CustomRoleDefinition) {
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${u.user_id}`, {});
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, custom_roles: [...x.custom_roles, { custom_role_id: role.id, name: role.name }] }
+            : x
+        )
+      );
+      showToast(strings.orgAdmin.roleGranted);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeOrgScopedCustomRoleFromUser(u: OrgUser, role: CustomRoleDefinition) {
+    try {
+      await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${u.user_id}`);
+      setUsers((prev) =>
+        prev.map((x) =>
+          x.user_id === u.user_id
+            ? { ...x, custom_roles: x.custom_roles.filter((g) => g.custom_role_id !== role.id) }
+            : x
+        )
+      );
+      showToast(strings.orgAdmin.roleRevoked);
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  /** The Role Management page's own grant/revoke-by-search control (below
+   * the custom-roles table), covering both org- and project-scoped roles
+   * and both user and group targets — `payload.project_id` is required iff
+   * `role.scope === "project"`, resolved from `customRoleGrantProjectId`. */
+  function resolveCustomRoleGrantProjectId(role: CustomRoleDefinition): string | undefined {
+    return role.scope === "project" ? customRoleGrantProjectId[role.id] || undefined : undefined;
+  }
+
+  async function grantCustomRoleToUserById(role: CustomRoleDefinition, userId: string, targetLabel: string) {
+    const projectId = resolveCustomRoleGrantProjectId(role);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${userId}`, { project_id: projectId ?? null });
+      if (!projectId) {
+        setUsers((prev) =>
+          prev.map((x) =>
+            x.user_id === userId && !x.custom_roles.some((g) => g.custom_role_id === role.id)
+              ? { ...x, custom_roles: [...x.custom_roles, { custom_role_id: role.id, name: role.name }] }
+              : x
+          )
+        );
+      }
+      showToast(strings.orgAdmin.customRoleGrantedTo(targetLabel));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeCustomRoleFromUserById(role: CustomRoleDefinition, userId: string, targetLabel: string) {
+    const projectId = resolveCustomRoleGrantProjectId(role);
+    try {
+      const qs = projectId ? `?project_id=${projectId}` : "";
+      await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${userId}${qs}`);
+      if (!projectId) {
+        setUsers((prev) =>
+          prev.map((x) =>
+            x.user_id === userId
+              ? { ...x, custom_roles: x.custom_roles.filter((g) => g.custom_role_id !== role.id) }
+              : x
+          )
+        );
+      }
+      showToast(strings.orgAdmin.customRoleRevokedFrom(targetLabel));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function grantCustomRoleToGroupById(role: CustomRoleDefinition, groupId: string, targetLabel: string) {
+    const projectId = resolveCustomRoleGrantProjectId(role);
+    try {
+      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/groups/${groupId}`, { project_id: projectId ?? null });
+      showToast(strings.orgAdmin.customRoleGrantedTo(targetLabel));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  async function revokeCustomRoleFromGroupById(role: CustomRoleDefinition, groupId: string, targetLabel: string) {
+    const projectId = resolveCustomRoleGrantProjectId(role);
+    try {
+      const qs = projectId ? `?project_id=${projectId}` : "";
+      await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/groups/${groupId}${qs}`);
+      showToast(strings.orgAdmin.customRoleRevokedFrom(targetLabel));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
   // Module system Phase 1: immediate PUT + local-state patch, same shape
   // as `grantOrgRole`/`revokeOrgRole` above — a single toggle only ever
   // changes this one module's own row, so there's nothing else on the page
@@ -1850,6 +2094,7 @@ export function OrgAdminPage() {
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
+    { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
     ...moduleAdminSections.map((section) => ({
       key: section.key,
       label: section.label,
@@ -1958,6 +2203,28 @@ export function OrgAdminPage() {
                     checked ? revokeModuleRole(u, d.module_key, d.role_key) : grantModuleRole(u, d.module_key, d.role_key),
                 };
               }),
+              // Fine-Grained Access Control (core) Phase 3: org-scoped
+              // custom roles, merged in the same way module roles are
+              // above — a project-scoped custom role isn't offered here
+              // (see `grantOrgScopedCustomRoleToUser`'s docstring), only
+              // from the Role Management group's own grant/revoke picker.
+              ...customRoles
+                .filter((role) => role.scope === "org")
+                .map((role) => {
+                  const checked = u.custom_roles.some((g) => g.custom_role_id === role.id);
+                  return {
+                    value: `custom:${role.id}`,
+                    label: role.name,
+                    checked,
+                    optionLabel: checked
+                      ? strings.orgAdmin.revokeRole(role.name, u.display_name)
+                      : strings.orgAdmin.grantRole(role.name, u.display_name),
+                    onToggle: () =>
+                      checked
+                        ? revokeOrgScopedCustomRoleFromUser(u, role)
+                        : grantOrgScopedCustomRoleToUser(u, role),
+                  };
+                }),
             ]}
           />
         );
@@ -3583,6 +3850,231 @@ export function OrgAdminPage() {
           </div>
         )}
 
+        {activeGroup === "role-management" && (
+          <div className="stack">
+            {/* Role *definition* — ORG_ADMIN-only, never delegable (Phase 0
+                Q5). Gated on `advanced !== null`, the same signal every
+                other ORG_ADMIN-only section on this page already uses
+                (`GET .../advanced-settings` is `require_org_role(ORG_ADMIN)`
+                with no server-admin/grant_roles bypass) — reused rather
+                than inventing a second "am I an admin" check, per style
+                guide Principle 4. A `grant_roles` holder who isn't an
+                ORG_ADMIN sees the assignment half below but not this one,
+                matching Phase 0 Q8's own "without necessarily seeing the
+                ORG_ADMIN-only role-definition half" requirement. */}
+            {advanced !== null && (
+              <CollapsibleSection sectionKey="orgAdmin.roleManagement.definitions" title={strings.orgAdmin.customRolesTitle}>
+                <p className="text-muted">{strings.orgAdmin.customRolesHint}</p>
+                <button
+                  className="btn btn-primary"
+                  style={{ alignSelf: "flex-start" }}
+                  onClick={openCreateCustomRoleModal}
+                >
+                  <Plus size={14} /> {strings.orgAdmin.newCustomRole}
+                </button>
+                <DirectoryTable
+                  ariaLabel={strings.orgAdmin.customRolesTitle}
+                  rowKey={(r) => r.id}
+                  emptyState={<p className="text-muted">{strings.orgAdmin.noCustomRoles}</p>}
+                  rows={customRoles}
+                  columns={[
+                    { key: "name", label: strings.orgAdmin.customRoleName, render: (r) => <strong>{r.name}</strong> },
+                    {
+                      key: "description", label: strings.orgAdmin.customRoleDescription,
+                      render: (r) => <span className="text-muted">{r.description}</span>,
+                    },
+                    {
+                      key: "scope", label: strings.orgAdmin.customRoleScope,
+                      render: (r) => (r.scope === "org" ? strings.orgAdmin.customRoleScopeOrg : strings.orgAdmin.customRoleScopeProject),
+                    },
+                    {
+                      key: "permissions", label: strings.orgAdmin.customRolePermissionsLabel,
+                      render: (r) => strings.orgAdmin.customRolePermissionsCount(r.permissions.length),
+                    },
+                    {
+                      key: "actions", label: "",
+                      render: (r) => (
+                        <div className="row" style={{ gap: "0.25rem" }}>
+                          <button
+                            className="btn"
+                            aria-label={strings.orgAdmin.editCustomRole(r.name)}
+                            title={strings.orgAdmin.editCustomRole(r.name)}
+                            onClick={() => openEditCustomRoleModal(r)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            className="btn"
+                            aria-label={strings.orgAdmin.deleteCustomRole(r.name)}
+                            title={strings.orgAdmin.deleteCustomRole(r.name)}
+                            onClick={() => setConfirmDeleteCustomRole(r)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+                {customRoleModalOpen && (
+                  // Style guide "Pattern: modal dialog for entity create/
+                  // rename" (Principle 3) — a brand-new (or, when editing,
+                  // an existing) role's full field set, not detail about
+                  // anything already showing.
+                  <Modal
+                    title={editingCustomRoleId ? strings.orgAdmin.editCustomRoleModalTitle : strings.orgAdmin.newCustomRole}
+                    onClose={closeCustomRoleModal}
+                    size="lg"
+                  >
+                    <div className="stack">
+                      <label className="stack" style={{ gap: "0.25rem" }}>
+                        {strings.orgAdmin.customRoleName}
+                        <input
+                          className="input"
+                          autoFocus
+                          value={customRoleFormName}
+                          onChange={(e) => setCustomRoleFormName(e.target.value)}
+                        />
+                      </label>
+                      <label className="stack" style={{ gap: "0.25rem" }}>
+                        {strings.orgAdmin.customRoleDescription}
+                        <input
+                          className="input"
+                          value={customRoleFormDescription}
+                          onChange={(e) => setCustomRoleFormDescription(e.target.value)}
+                        />
+                      </label>
+                      <label className="stack" style={{ gap: "0.25rem" }}>
+                        {strings.orgAdmin.customRoleScope}
+                        <select
+                          className="input"
+                          value={customRoleFormScope}
+                          onChange={(e) => setCustomRoleFormScope(e.target.value as "org" | "project")}
+                        >
+                          <option value="org">{strings.orgAdmin.customRoleScopeOrg}</option>
+                          <option value="project">{strings.orgAdmin.customRoleScopeProject}</option>
+                        </select>
+                      </label>
+                      <div className="stack" style={{ gap: "0.25rem" }}>
+                        <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
+                        <PermissionPicker
+                          permissions={permissions}
+                          selected={customRoleFormPermissions}
+                          onChange={setCustomRoleFormPermissions}
+                          disabled={customRoleFormSaving}
+                        />
+                      </div>
+                      {customRoleFormError && <div style={{ color: "var(--color-danger)" }}>{customRoleFormError}</div>}
+                      <div className="row" style={{ justifyContent: "flex-end" }}>
+                        <button className="btn" onClick={closeCustomRoleModal}>{strings.common.cancel}</button>
+                        <button
+                          className="btn btn-primary"
+                          disabled={!customRoleFormName.trim() || customRoleFormSaving}
+                          onClick={saveCustomRole}
+                        >
+                          {strings.common.save}
+                        </button>
+                      </div>
+                    </div>
+                  </Modal>
+                )}
+              </CollapsibleSection>
+            )}
+
+            {/* Role *assignment* — ORG_ADMIN or a `grant_roles` holder
+                (Phase 0 Q6). Always shown to anyone who can reach this page
+                at all, the same convention the Users table's own fixed/
+                module-role controls above already follow: authorization is
+                enforced server-side (403 + toast on failure), not by
+                hiding the control client-side. */}
+            <CollapsibleSection sectionKey="orgAdmin.roleManagement.assignment" title={strings.orgAdmin.customRoleAssignmentTitle}>
+              <p className="text-muted">{strings.orgAdmin.customRoleAssignmentHint}</p>
+              {customRoles.length === 0 ? (
+                <p className="text-muted">{strings.orgAdmin.noCustomRoles}</p>
+              ) : (
+                <div className="stack">
+                  {customRoles.map((role) => {
+                    const projectId = customRoleGrantProjectId[role.id] ?? "";
+                    const canPickTarget = role.scope === "org" || !!projectId;
+                    return (
+                      <div className="card stack" key={role.id} style={{ gap: "0.5rem" }}>
+                        <div className="row" style={{ justifyContent: "space-between" }}>
+                          <strong>{role.name}</strong>
+                          <span className="badge">
+                            {role.scope === "org" ? strings.orgAdmin.customRoleScopeOrg : strings.orgAdmin.customRoleScopeProject}
+                          </span>
+                        </div>
+                        {role.scope === "project" && (
+                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
+                            {strings.orgAdmin.projects}
+                            <select
+                              className="input"
+                              value={projectId}
+                              onChange={(e) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: e.target.value }))}
+                            >
+                              <option value="">{strings.common.selectOption}</option>
+                              {/* `orgProjects` (every project in the org) when available —
+                                  ORG_ADMIN only; a `grant_roles` holder who isn't an
+                                  ORG_ADMIN falls back to `thisOrgVisibleProjects` (their
+                                  own visible projects) rather than an empty picker — see
+                                  that state's own docstring. */}
+                              {(orgProjects ?? thisOrgVisibleProjects).map((p) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
+                          <label className="stack" style={{ gap: "0.25rem" }}>
+                            {strings.orgAdmin.customRoleGrantFieldLabel}
+                            <UserAutocomplete
+                              users={users}
+                              groups={allGroups}
+                              organizationId={orgId}
+                              ariaLabel={strings.orgAdmin.customRoleGrantToUserOrGroup(role.name)}
+                              placeholder={canPickTarget ? undefined : strings.orgAdmin.customRoleSelectProjectFirst}
+                              onSelect={(userId) => {
+                                if (!canPickTarget) return;
+                                const target = users.find((u) => u.user_id === userId);
+                                grantCustomRoleToUserById(role, userId, target?.display_name ?? userId);
+                              }}
+                              onSelectGroup={(groupId) => {
+                                if (!canPickTarget) return;
+                                const target = allGroups.find((g) => g.id === groupId);
+                                grantCustomRoleToGroupById(role, groupId, target?.name ?? groupId);
+                              }}
+                            />
+                          </label>
+                          <label className="stack" style={{ gap: "0.25rem" }}>
+                            {strings.orgAdmin.customRoleRevokeFieldLabel}
+                            <UserAutocomplete
+                              users={users}
+                              groups={allGroups}
+                              organizationId={orgId}
+                              ariaLabel={strings.orgAdmin.customRoleRevokeFromUserOrGroup(role.name)}
+                              placeholder={canPickTarget ? undefined : strings.orgAdmin.customRoleSelectProjectFirst}
+                              onSelect={(userId) => {
+                                if (!canPickTarget) return;
+                                const target = users.find((u) => u.user_id === userId);
+                                revokeCustomRoleFromUserById(role, userId, target?.display_name ?? userId);
+                              }}
+                              onSelectGroup={(groupId) => {
+                                if (!canPickTarget) return;
+                                const target = allGroups.find((g) => g.id === groupId);
+                                revokeCustomRoleFromGroupById(role, groupId, target?.name ?? groupId);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CollapsibleSection>
+          </div>
+        )}
+
         {/* Module system follow-up (2026-09-07): one generic lookup replaces
             what used to be one hardcoded `activeGroup === "..."` render
             block per module-contributed org-admin section (previously
@@ -3606,6 +4098,19 @@ export function OrgAdminPage() {
           confirmLabel={strings.orgAdmin.removeFromOrgConfirmButton}
           onConfirm={() => removeOrgUser(confirmRemoveUser)}
           onCancel={() => setConfirmRemoveUser(null)}
+        />
+      )}
+      {confirmDeleteCustomRole && (
+        // Style guide "Pattern: confirmation, in two tiers" (Principle 6) —
+        // a lightweight Tier 1 confirm (no typed-name requirement): a
+        // custom role's grants cascade-delete but the role itself can be
+        // recreated, unlike an org-destroying action.
+        <ConfirmDialog
+          title={strings.orgAdmin.confirmDeleteCustomRoleTitle}
+          message={strings.orgAdmin.confirmDeleteCustomRoleMessage(confirmDeleteCustomRole.name)}
+          confirmLabel={strings.common.delete}
+          onConfirm={() => deleteCustomRole(confirmDeleteCustomRole)}
+          onCancel={() => setConfirmDeleteCustomRole(null)}
         />
       )}
       {patToDescope && (

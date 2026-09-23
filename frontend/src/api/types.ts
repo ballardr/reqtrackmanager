@@ -490,6 +490,86 @@ export interface ModuleRoleGrant {
   role_key: string;
 }
 
+/** The four-tier permission-atom taxonomy (Fine-Grained Access Control,
+ * `docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1) —
+ * mirrors `app.models.enums.PermissionLevel`'s wire values exactly. `view`
+ * is its own independent atom (a role can hold it alone, a pure read-only
+ * grant) rather than being implied by every write tier. */
+export type PermissionLevel = "view" | "propose_create" | "manage" | "approve_baseline";
+export const PERMISSION_LEVEL_LABEL: Record<PermissionLevel, string> = {
+  view: "View",
+  propose_create: "Propose/create",
+  manage: "Manage",
+  approve_baseline: "Approve/baseline",
+};
+
+/** One permission atom in an organisation's currently-valid vocabulary
+ * (Fine-Grained Access Control Phase 3, `GET /orgs/{id}/permissions`) —
+ * mirrors `PermissionOut` exactly. Either an artefact-type/level/sub-type
+ * atom (`artefact_type`/`level` set, `subtype` set or `null` for the
+ * wildcard) or a bare administrative permission (`artefact_type`/`level`/
+ * `subtype` all `null`, e.g. `"grant_roles"`). `label` is already a
+ * human-readable, server-supplied string — render it directly rather than
+ * re-deriving one from `artefact_type`/`level`/`subtype` client-side, the
+ * same "derived, not hand-maintained" treatment `ModuleRoleDefinition.name`
+ * already gets. */
+export interface Permission {
+  key: string;
+  label: string;
+  artefact_type: string | null;
+  level: PermissionLevel | null;
+  subtype: string | null;
+}
+
+/** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access
+ * Control Phase 3) — a named, additive role composed from a set of
+ * `Permission.key` strings, grantable to a user or org group exactly like
+ * a fixed `OrgRole`/`ProjectRole` or a module-contributed role. `scope`
+ * determines whether a grant of this role needs a `project_id`
+ * (`"project"`) or not (`"org"`) — mirrors `ModuleRoleDefinition.scope`'s
+ * own two core-recognised values. */
+export interface CustomRoleDefinition {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string;
+  scope: "org" | "project";
+  created_by: string | null;
+  created_at: string;
+  permissions: string[];
+}
+
+/** Body for `POST /orgs/{id}/custom-roles` / `PATCH .../custom-roles/{id}`
+ * — `ORG_ADMIN`-only, never delegable (Phase 0 Q5). `CustomRoleDefinitionUpdate`
+ * is a genuine partial update: an omitted field leaves it unchanged, and
+ * `permissions` (when given) replaces the role's entire permission set
+ * rather than merging with it — there is no separate add/remove-one
+ * endpoint. */
+export interface CustomRoleDefinitionCreate {
+  name: string;
+  description: string;
+  scope: "org" | "project";
+  permissions: string[];
+}
+export interface CustomRoleDefinitionUpdate {
+  name?: string;
+  description?: string;
+  scope?: "org" | "project";
+  permissions?: string[];
+}
+
+/** One held, org-scoped `UserCustomRoleGrant`, as surfaced on
+ * `OrgUser.custom_roles` — deliberately minimal (just enough to match
+ * against a `CustomRoleDefinition.id`), the same "held-grant marker"
+ * shape `ModuleRoleGrant` already gives module-contributed roles one tier
+ * up. Limited to org-scoped (`project_id` null) grants — see the backend
+ * `CustomRoleGrantOut` schema's own docstring for why a project-scoped
+ * grant has no single row on this org-wide table to attach to instead. */
+export interface CustomRoleGrant {
+  custom_role_id: string;
+  name: string;
+}
+
 export interface OrgUser {
   user_id: string;
   email: string;
@@ -504,6 +584,10 @@ export interface OrgUser {
    * currently-enabled modules only (module system Phase 2) — a grant for
    * a since-disabled module is simply omitted, not a sign it was revoked. */
   module_roles: ModuleRoleGrant[];
+  /** This user's org-scoped `CustomRoleDefinition` grants (Fine-Grained
+   * Access Control Phase 3) — see `CustomRoleGrant`'s own docstring for
+   * why this is org-scoped only. */
+  custom_roles: CustomRoleGrant[];
 }
 
 /** A search result for an email not (yet) a member of the searched org —

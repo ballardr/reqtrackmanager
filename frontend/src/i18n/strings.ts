@@ -908,6 +908,43 @@ const en = {
     // day-to-day admin surface (enabling/disabling optional feature
     // modules) rather than an authentication/access-policy setting.
     groupModules: "Modules",
+    // Fine-Grained Access Control (core, `docs/plans/core-fine-grained-
+    // access-control-plan.md` Phase 3) — a new top-level group covering
+    // both custom-role definition (org-admin-only) and the broader
+    // grant_roles-based assignment surface for fixed/module/custom roles
+    // together (Phase 0 Q8/Q9: named "Role Management," not "Custom
+    // Roles," since it spans more than custom roles alone).
+    groupRoleManagement: "Role management",
+    customRolesTitle: "Custom roles",
+    customRolesHint: "A custom role is a named set of permissions, additive to the fixed and module roles above — it never replaces them.",
+    newCustomRole: "New custom role",
+    editCustomRoleModalTitle: "Edit custom role",
+    editCustomRole: (name: string) => `Edit ${name}`,
+    noCustomRoles: "No custom roles defined yet.",
+    customRoleName: "Name",
+    customRoleDescription: "Description",
+    customRoleScope: "Scope",
+    customRoleScopeOrg: "Organisation-wide",
+    customRoleScopeProject: "Per-project",
+    customRolePermissionsLabel: "Permissions",
+    customRolePermissionsCount: (n: number) => `${n} permission${n === 1 ? "" : "s"}`,
+    customRoleCreated: "Custom role created",
+    customRoleUpdated: "Custom role updated",
+    customRoleDeleted: "Custom role deleted",
+    deleteCustomRole: (name: string) => `Delete ${name}`,
+    confirmDeleteCustomRoleTitle: "Delete custom role?",
+    confirmDeleteCustomRoleMessage: (name: string) =>
+      `This removes "${name}" and every grant of it to a user or group. This cannot be undone.`,
+    customRoleAssignmentTitle: "Grant roles to users or groups",
+    customRoleAssignmentHint:
+      "Fixed and module roles are granted from the Users table above. A custom role can also be granted here, to a user or an organisation group — there is no roster of who currently holds a role shown here, so granting/revoking acts immediately rather than toggling a checked state.",
+    customRoleSelectProjectFirst: "Select a {project} first",
+    customRoleGrantToUserOrGroup: (role: string) => `Grant ${role} — search a user or group`,
+    customRoleRevokeFromUserOrGroup: (role: string) => `Revoke ${role} — search a user or group`,
+    customRoleGrantFieldLabel: "Grant to user or group",
+    customRoleRevokeFieldLabel: "Revoke from user or group",
+    customRoleGrantedTo: (target: string) => `Granted to ${target}`,
+    customRoleRevokedFrom: (target: string) => `Revoked from ${target}`,
     // Compliance module Phase 12 (compliance-module-plan.md) — the org-
     // level Compliance Manager surface (standards/versions/requirements/
     // required actions/mapping vocabulary), a new top-level group rather

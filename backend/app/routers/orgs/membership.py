@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.models.custom_role import CustomRoleDefinition, UserCustomRoleGrant
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.module_role import UserModuleRole
 from app.models.notification import NotificationType
@@ -32,6 +33,7 @@ from app.models.user import User
 from app.modules.registry import list_enabled_module_roles
 from app.routers.orgs.core import _now
 from app.schemas.org import (
+    CustomRoleGrantOut,
     DisplayNameLockUpdate,
     ExternalUserMatch,
     ModuleRoleAssign,
@@ -57,6 +59,7 @@ from app.services.rbac import (
     get_effective_org_roles,
     get_effective_project_managers,
     get_effective_project_roles,
+    require_org_admin_or_grant_roles,
     require_org_admin_or_server_admin,
     require_org_role,
 )
@@ -222,6 +225,24 @@ def list_org_users(
         for user_id, module_key, role_key in module_role_rows:
             if (module_key, role_key) in enabled_org_role_keys:
                 by_user[user_id].module_roles.append(ModuleRoleGrantOut(module_key=module_key, role_key=role_key))
+
+    # Fine-Grained Access Control Phase 3 (frontend Role Management UI):
+    # same "attach each returned user's own grants" treatment as
+    # module_roles above, for org-scoped (`project_id IS NULL`)
+    # `CustomRoleDefinition` grants — see `CustomRoleGrantOut`'s docstring
+    # for why project-scoped grants are deliberately excluded here.
+    if by_user:
+        custom_role_rows = db.execute(
+            select(UserCustomRoleGrant.user_id, CustomRoleDefinition.id, CustomRoleDefinition.name)
+            .join(CustomRoleDefinition, CustomRoleDefinition.id == UserCustomRoleGrant.custom_role_id)
+            .where(
+                UserCustomRoleGrant.organization_id == organization_id,
+                UserCustomRoleGrant.project_id.is_(None),
+                UserCustomRoleGrant.user_id.in_(by_user.keys()),
+            )
+        ).all()
+        for user_id, custom_role_id, name in custom_role_rows:
+            by_user[user_id].custom_roles.append(CustomRoleGrantOut(custom_role_id=custom_role_id, name=name))
 
     results = list(by_user.values())
     if is_active is not None:
@@ -644,7 +665,7 @@ def assign_org_role(
     organization_id: UUID,
     user_id: UUID,
     payload: OrgRoleAssign,
-    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Grants an organisation role to a user (C-U-01).
@@ -654,7 +675,24 @@ def assign_org_role(
     the payload actually used; a mismatched body `user_id` is ignored rather
     than trusted, so the URL a caller is authorized against (and what ends
     up in the audit trail) can never diverge from who is actually affected.
+
+    Gated by `require_org_admin_or_grant_roles` (Fine-Grained Access
+    Control Phase 0 Q6/Phase 3) — an `ORG_ADMIN`, server admin, or a
+    `grant_roles` holder may reach this endpoint. **Granting `OrgRole.
+    ORG_ADMIN` itself stays carved out**, per Q6's explicit instruction: a
+    `grant_roles`-only holder (neither a real `ORG_ADMIN` nor a server
+    admin) is rejected with 403 specifically when `payload.role ==
+    OrgRole.ORG_ADMIN`, checked here rather than in the dependency itself
+    since it depends on the specific role value being granted.
     """
+    if payload.role == OrgRole.ORG_ADMIN and not (
+        current_user.is_server_admin
+        or OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Only an existing organisation admin (or server admin) may grant the org_admin role.",
+        )
     target = db.get(User, user_id)
     if target is not None and target.is_banned:
         raise HTTPException(
@@ -694,7 +732,7 @@ def revoke_org_role(
     organization_id: UUID,
     user_id: UUID,
     role: OrgRole,
-    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Revokes an organisation role from a user — `assign_org_role`'s
@@ -710,9 +748,26 @@ def revoke_org_role(
     on someone else — so an organisation can never reach zero admins
     through this endpoint, by construction, with no separate "last admin"
     count check needed.
+
+    Gated by `require_org_admin_or_grant_roles` (Phase 0 Q6/Phase 3), with
+    the same `OrgRole.ORG_ADMIN`-value carve-out `assign_org_role` applies:
+    a `grant_roles`-only holder is rejected with 403 when `role ==
+    OrgRole.ORG_ADMIN` — the "self-targeting is blocked" reasoning above
+    only holds for a caller who is genuinely an `ORG_ADMIN` themselves, so
+    a `grant_roles`-only holder revoking someone else's `ORG_ADMIN` role
+    could otherwise leave the organisation with zero admins without ever
+    being one themselves.
     """
     if user_id == current_user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot revoke your own organisation role.")
+    if role == OrgRole.ORG_ADMIN and not (
+        current_user.is_server_admin
+        or OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Only an existing organisation admin (or server admin) may revoke the org_admin role.",
+        )
     existing = db.scalar(
         select(UserOrgRole).where(
             UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id, UserOrgRole.role == role
@@ -753,15 +808,17 @@ def assign_org_module_role(
     organization_id: UUID,
     user_id: UUID,
     payload: ModuleRoleAssign,
-    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Grants an org-scoped module-contributed role to a user (module
     system Phase 2) — the module-role counterpart to `assign_org_role`,
-    same `ORG_ADMIN`-only gate (an org admin already implicitly holds
-    every org-scoped module role via `require_module_role`'s own override,
-    so it's consistent that org admin is also who explicitly grants/
-    revokes the row).
+    same gate (an org admin already implicitly holds every org-scoped
+    module role via `require_module_role`'s own override, so it's
+    consistent that org admin is also who explicitly grants/revokes the
+    row) plus a `grant_roles` holder (Phase 0 Q6/Phase 3) — no `OrgRole.
+    ORG_ADMIN`-equivalent carve-out is needed here, since a module role
+    carries no admin-tier significance of its own.
 
     400s if `(payload.module_key, payload.role_key)` doesn't name a real
     `scope="org"` role of a *currently-enabled* module for this
@@ -824,12 +881,12 @@ def revoke_org_module_role(
     user_id: UUID,
     module_key: str,
     role_key: str,
-    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Revokes an org-scoped module-contributed role grant — `assign_org_
-    module_role`'s counterpart, same no-op-if-absent shape as `revoke_org_
-    role`. Unlike `revoke_org_role`, no self-targeting guard is needed: an
+    module_role`'s counterpart, same gate and no-op-if-absent shape as
+    `revoke_org_role`. Unlike `revoke_org_role`, no self-targeting guard is needed: an
     org can never reach "zero admins" through a module-role revoke, since
     module roles carry no admin-tier significance of their own (an
     `ORG_ADMIN` retains full access to every org-scoped module role

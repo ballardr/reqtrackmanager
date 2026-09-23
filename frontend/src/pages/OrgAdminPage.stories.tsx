@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { CustomRoleDefinition, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -21,7 +21,7 @@ const org: Organization = {
 const orgUser: OrgUser = {
   user_id: "user-1", email: "alex@example.com", display_name: "Alex Morgan", is_active: true,
   is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: "2026-02-01T09:00:00Z",
-  is_2fa_enabled: true, module_roles: [],
+  is_2fa_enabled: true, module_roles: [], custom_roles: [],
 };
 
 const advanced: OrgAdvancedSettings = {
@@ -47,6 +47,19 @@ function mockOrgAdminApis(overrides: {
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
+  // Fine-Grained Access Control (core) Phase 3 — fetched unconditionally
+  // in the main `reload()` bundle (open to any real org role, not
+  // ORG_ADMIN-gated), so every story needs these mocked or `reload()`
+  // fails as a whole, same "must be mocked" reasoning as `/module-roles`
+  // below. Default to empty — the real-world-default "no custom roles
+  // defined yet" case.
+  permissions?: Permission[]; customRoles?: CustomRoleDefinition[];
+  /** Simulates a non-ORG_ADMIN caller (e.g. a plain `grant_roles` holder)
+   * for whom `GET .../advanced-settings` 403s — the same signal the Role
+   * Management group's own role-*definition* half is gated on (Phase 0
+   * Q8), so this proves that half hides while the assignment half stays
+   * visible, without inventing a second "am I an admin" mock knob. */
+  advancedForbidden?: boolean;
   /** Phase 37 — the normal admin header's `EntitySwitcher` sibling-org
    * list (`GET /api/v1/orgs?mine=true`). Defaults to empty rather than
    * left unmocked: unlike the other overrides above, this endpoint is
@@ -71,7 +84,10 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("archived=false")) return [];
     if (path.includes("/report-templates")) return [];
     if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
-    if (path.includes("/advanced-settings")) return overrides.advanced ?? advanced;
+    if (path.includes("/advanced-settings")) {
+      if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
+      return overrides.advanced ?? advanced;
+    }
     if (path.includes("/pats")) return overrides.pats ?? [];
     // Module system Phase 1: fetched inside the same try/catch-403 block
     // as `/advanced-settings` above — must be mocked here or every story
@@ -86,6 +102,11 @@ function mockOrgAdminApis(overrides: {
     // keeps this robust against that changing.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
     if (path.includes("/modules")) return overrides.modules ?? [];
+    // Fine-Grained Access Control (core) Phase 3 — checked before the
+    // plain "/users" branch below since neither substring collides with
+    // it, same ordering reasoning as `/module-roles`/`/modules` above.
+    if (path.includes("/permissions")) return overrides.permissions ?? [];
+    if (path.includes("/custom-roles")) return overrides.customRoles ?? [];
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -300,7 +321,7 @@ export const NewUserModalRoleSelect: Story = {
 const secondOrgUser: OrgUser = {
   user_id: "user-2", email: "jordan@example.com", display_name: "Jordan Lee", is_active: true,
   is_archived: false, roles: ["project_creator"], display_name_locked: false, last_login_at: null,
-  is_2fa_enabled: false, module_roles: [],
+  is_2fa_enabled: false, module_roles: [], custom_roles: [],
 };
 
 export const UsersSectionGrantAndRevokeRole: Story = {
@@ -1719,6 +1740,10 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     // itself is handled by its own exact-match branch above.
     if (path.includes("/module-roles")) return [];
     if (path.includes("/modules")) return [];
+    // Fine-Grained Access Control (core) Phase 3 — same "must be mocked or
+    // reload() throws" reasoning as `/module-roles`/`/modules` above.
+    if (path.includes("/permissions")) return [];
+    if (path.includes("/custom-roles")) return [];
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/access")) return { org_groups: [], projects: [] };
@@ -2094,6 +2119,135 @@ export const ModuleContributedOrgAdminSectionHiddenWhenModuleNotReported: Story 
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
     await expect(canvas.queryByRole("link", { name: "Fixture admin section" })).not.toBeInTheDocument();
+  },
+};
+
+// --- Fine-Grained Access Control (core) Phase 3: Role Management -------
+
+const fixturePermissions: Permission[] = [
+  { key: "requirement:view:", label: "requirement — view", artefact_type: "requirement", level: "view", subtype: null },
+  { key: "requirement:manage:", label: "requirement — manage", artefact_type: "requirement", level: "manage", subtype: null },
+  { key: "grant_roles", label: "Grant Roles", artefact_type: null, level: null, subtype: null },
+];
+
+const fixtureCustomRole: CustomRoleDefinition = {
+  id: "role-1", organization_id: ORG_ID, name: "Reviewer", description: "Reviews requirements.",
+  scope: "org", created_by: "user-1", created_at: "2026-02-01T00:00:00Z", permissions: ["requirement:view:"],
+};
+
+/** An org admin defines a new custom role: opens the Modal (style guide
+ * "Pattern: modal dialog for entity create/rename"), names it, picks a
+ * permission atom via `PermissionPicker`, and saves — `POST .../
+ * custom-roles` with the built-up permission set, and the new role appears
+ * in the table without a full page reload. */
+export const RoleManagementCreateCustomRole: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ permissions: fixturePermissions });
+    spyOn(api, "post").mockResolvedValue({ ...fixtureCustomRole, id: "role-new", permissions: ["grant_roles"] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    // "No custom roles defined yet." appears twice (the definitions table's
+    // empty state and the assignment section's own) — assert on the
+    // unambiguous "New custom role" button instead.
+    await waitFor(() => expect(canvas.getByRole("button", { name: "New custom role" })).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "New custom role" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New custom role" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Reviewer");
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Grant Roles" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles`, {
+        name: "Reviewer", description: "", scope: "org", permissions: ["grant_roles"],
+      })
+    );
+    await expect(within(document.body).getByText("Custom role created")).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getAllByText("Reviewer").length).toBeGreaterThan(0));
+  },
+};
+
+/** Deleting a custom role gets a lightweight Tier 1 `ConfirmDialog` (style
+ * guide Principle 6 — reversible-ish, not org/account-destroying), not
+ * type-to-confirm. */
+export const RoleManagementDeleteCustomRoleConfirm: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ permissions: fixturePermissions, customRoles: [fixtureCustomRole] });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    // "Reviewer" appears twice (the definitions table row and the
+    // assignment section's own card for the same role) — wait for both.
+    await waitFor(() => expect(canvas.getAllByText("Reviewer").length).toBe(2));
+
+    await userEvent.click(canvas.getByRole("button", { name: "Delete Reviewer" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Delete custom role?" });
+    await expect(within(dialog).getByText(/This removes "Reviewer"/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles/role-1`)
+    );
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.queryAllByText("Reviewer").length).toBe(0));
+  },
+};
+
+/** An org-scoped custom role merges into the Users table's Roles dropdown
+ * alongside the fixed/module roles — the same generic-rendering pattern
+ * `UsersSectionModuleRoleGrantAndRevoke` already proves for module roles,
+ * extended one tier further (a custom role instead of a module-contributed
+ * one). Jordan already holds it (revoke path); Alex doesn't (grant path). */
+export const UsersSectionCustomRoleGrantAndRevoke: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      users: [orgUser, { ...secondOrgUser, custom_roles: [{ custom_role_id: "role-1", name: "Reviewer" }] }],
+      customRoles: [fixtureCustomRole],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("alex@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
+    const alexRoles = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
+    await userEvent.click(within(alexRoles).getByRole("checkbox", { name: "Grant Reviewer to Alex Morgan" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles/role-1/users/user-1`, {})
+    );
+
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's roles" }));
+    const jordanRoles = within(document.body).getByRole("group", { name: "Jordan Lee's roles" });
+    await userEvent.click(within(jordanRoles).getByRole("checkbox", { name: "Revoke Reviewer from Jordan Lee" }));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles/role-1/users/user-2`)
+    );
+  },
+};
+
+/** Phase 0 Q8's own access-split decision, proven directly: a caller for
+ * whom `GET .../advanced-settings` 403s (the same signal every other
+ * ORG_ADMIN-only section on this page already gates on) sees the
+ * assignment half of Role Management but not the role-*definition* half —
+ * they can still grant/revoke an already-defined role, just not create,
+ * edit, or delete one. */
+export const RoleManagementDefinitionsHiddenForNonAdmin: Story = {
+  beforeEach: () => mockOrgAdminApis({ advancedForbidden: true, customRoles: [fixtureCustomRole] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+
+    await expect(canvas.queryByRole("button", { name: "New custom role" })).not.toBeInTheDocument();
+    await expect(canvas.queryByText("No custom roles defined yet.")).not.toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByText("Grant roles to users or groups")).toBeInTheDocument());
+    await expect(canvas.getByText("Reviewer")).toBeInTheDocument();
   },
 };
 

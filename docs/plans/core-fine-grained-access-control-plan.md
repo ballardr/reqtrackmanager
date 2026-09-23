@@ -153,18 +153,18 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-3 / 7 phases complete. Phase 3 is next.
+4 / 7 phases complete. Phase 4 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: permission-atom shape & open questions | [x] Complete (2026-09-23) — all nine questions resolved with the user, several beyond this plan's original recommendation (generic sub-type scoping; `grant_roles` generalized to the whole role system) — see "Open questions for Phase 0" above |
 | 1 | Data model: permission atoms, sub-type registry, `CustomRoleDefinition`, grants | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 1 complete" entry for the full account, including the `CustomRoleDefinition.scope` restriction and the Decision Management sub-type provider's flat-org-union design decision, both Decided by: Agent |
 | 2 | Effective-permission resolution + `require_permission` | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 2 complete" entry for the full account, including the static fixed-role mapping, the org-scoped-custom-role-applies-org-wide design decision, and the path-params-only (never query-bindable) security choice behind `require_permission`'s scope resolution, all Decided by: Agent |
-| 3 | Backend API + frontend UI: Role Management | [ ] Not started |
+| 3 | Backend API + frontend UI: Role Management | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 3 complete" entry for the full account: CRUD/grant endpoints, the six-endpoint `grant_roles` wiring incl. the `ORG_ADMIN` carve-out on both grant and revoke, two new MCP tools, the Role Management UI, and the Phase 0 Q8 access-split resolution, all Decided by: Agent |
 | 4 | First real consumer migrations (proof against live surfaces) | [ ] Not started |
 | 5 | Decision Management: per-decision-type approval scoping | [ ] Not started |
 | 6 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
-| 7 | Docs website coverage | [ ] Not started — depends on Phase 3 |
+| 7 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -504,6 +504,17 @@ Management's precedent. **Decided by: Agent, after that check:**
   sufficient defence here is the same one every other module in this
   codebase relies on first: simply declaring no `McpToolDefinition` for any
   of them.
+
+**Status: Complete (2026-09-23).** Built as scoped above, with several points resolved during implementation, all **Decided by: Agent**, full reasoning in `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 3 complete" entry, not duplicated here:
+
+1. The read-only vocabulary/listing gate (`GET .../permissions`/`.../custom-roles`) uses "any real `OrgRole`," narrower than `require_org_admin_or_server_admin`, so a non-admin `grant_roles` holder can see what they're able to grant.
+2. `DELETE` grant/revoke endpoints take `project_id` as an optional query parameter rather than inferring it, since a project-scoped role can be granted to the same target across more than one project.
+3. `ServerRole.MODULE_ADMINISTRATOR`'s "stays admin-only" requirement (Phase 0 Q6) was confirmed already satisfied by construction — it has no path through any of the six widened endpoints — rather than needing new carve-out code.
+4. The `OrgRole.ORG_ADMIN` carve-out was needed on **both** `assign_org_role` and `revoke_org_role`, not just assign — a `grant_roles`-only holder revoking someone else's `ORG_ADMIN` role could otherwise bypass the existing self-targeting guard's "never reach zero admins" protection.
+5. Phase 0 Q8's page-access split needed no baseline-loosening code at all — a `grant_roles` holder always already holds a real `OrgRole` by construction (both the user- and group-grant paths require it first), so the only real remaining work was hiding the `ORG_ADMIN`-only definitions half from a non-admin `grant_roles` holder, reusing the page's existing admin-detection signal.
+6. `OrgUserOut.custom_roles` (a small, additive backend extension) and a project-picker fallback for a non-admin `grant_roles` holder granting a project-scoped role were both found necessary during the frontend pass and built then, not anticipated by this section's original scope.
+
+A subsequent independent-verification pass hit significant host-level test-infrastructure instability (concurrent `pytest` invocations across two agent sessions against the same shared test database, plus genuine host OOM) rather than any code-level failure — see the decisions-log entry's "Verified" section for the full, honest account. Exit criteria met. Phase 4 can start.
 
 ## Phase 4 — First real consumer migrations (proof against live surfaces)
 

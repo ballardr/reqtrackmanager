@@ -19,15 +19,15 @@ const STANDARD: ComplianceStandard = {
 const ORG_USERS: OrgUser[] = [
   {
     user_id: "user-1", email: "alex@example.com", display_name: "Alex Manager", is_active: true, is_archived: false,
-    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [], custom_roles: [],
   },
   {
     user_id: "user-2", email: "sam@example.com", display_name: "Sam Contributor", is_active: true, is_archived: false,
-    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [], custom_roles: [],
   },
   {
     user_id: "user-3", email: "jo@example.com", display_name: "Jo Newcomer", is_active: true, is_archived: false,
-    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [],
+    roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [], custom_roles: [],
   },
 ];
 
