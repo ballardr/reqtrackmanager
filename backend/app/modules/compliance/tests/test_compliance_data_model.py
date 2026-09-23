@@ -49,7 +49,12 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     2026-09-22 reversed that to write-enabled (68 more tools) except
     approvals (gated, not excluded) and RBAC/file-upload endpoints (still
     undeclared) — see `module.py`'s own docstring and `docs/decisions.md`'s
-    "Compliance MCP write tools + generalized AI approval gate" entry."""
+    "Compliance MCP write tools + generalized AI approval gate" entry. A
+    2026-09-23 hardening pass then removed two of those 68 (`complete_
+    project_review`/`complete_standard_review`, found declared with no
+    gate at all despite recording a review outcome being categorically
+    MCP-excluded in every configuration — see that entry in docs/
+    decisions.md), landing at 76."""
     registry = get_module_registry()
     assert "compliance" in registry
     definition = registry["compliance"]
@@ -59,11 +64,12 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
     assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
     assert definition.get_project_router() is not None
-    assert len(definition.mcp_tools) == 78, (
+    assert len(definition.mcp_tools) == 76, (
         "Ten read-only tools (three from Phase 6, two more from Phase 7, one more from Phase 8, one more "
         "from Phase 9, one more from Phase 10, two more from Phase 11) plus 68 write tools declared in the "
         "2026-09-22 reversal (docs/decisions.md's 'Compliance MCP write tools + generalized AI approval "
-        "gate' entry) — see module.py's own updated docstring"
+        "gate' entry), minus 2 removed in the 2026-09-23 hardening pass (complete_project_review/"
+        "complete_standard_review) — see module.py's own updated docstring"
     )
     assert {tool.name for tool in definition.mcp_tools} >= {
         "submit_requirement_for_approval", "approve_requirement", "reject_requirement",
@@ -87,6 +93,13 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     ), (
         "RBAC role-grant endpoints and the two file-upload endpoints stay undeclared even after the "
         "2026-09-22 reversal — see module.py's own docstring's 'reversal' section, points 2 and 3"
+    )
+    assert not any(
+        tool.name in {"complete_project_review", "complete_standard_review"} for tool in definition.mcp_tools
+    ), (
+        "2026-09-23 hardening pass: recording a review outcome is categorically MCP-excluded in every "
+        "configuration (mirrors core's record_review_outcome), not just gated — both routes are now marked "
+        "APPROVAL_ACTION_ROUTE_EXTRA and their tool declarations were removed"
     )
     assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
     assert len(definition.scheduled_jobs) == 4, "Phase 10 adds four date-driven notification sweeps"

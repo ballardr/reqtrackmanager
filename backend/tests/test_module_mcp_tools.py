@@ -246,7 +246,15 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     excluded by `APPROVAL_ACTION_ROUTE_EXTRA`, which was removed from all
     three routes), and that the RBAC-role-grant and file-upload endpoints
     still resolve to no tool at all, since no `McpToolDefinition` was ever
-    declared for any of them."""
+    declared for any of them.
+
+    2026-09-23 hardening pass: two of those 68 (`complete_project_review`/
+    `complete_standard_review`) were found declared with no gate at all
+    despite recording a review outcome being categorically MCP-excluded in
+    every configuration (mirroring core's `record_review_outcome`, which
+    has no MCP tool declared anywhere) — both routes were marked
+    `APPROVAL_ACTION_ROUTE_EXTRA` and their declarations removed, landing
+    at 66. See that entry in `docs/decisions.md`."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}
 
@@ -337,8 +345,9 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     # --- 2026-09-22 reversal: write tools now exist ---------------------
 
     mutating_compliance_tools = {name for name, t in by_name.items() if name.startswith("compliance_") and t.mutates}
-    # 68 write tools declared in module.py, all resolved successfully.
-    assert len(mutating_compliance_tools) == 68
+    # 68 write tools declared in module.py, minus 2 removed in the 2026-09-23
+    # hardening pass (complete_project_review/complete_standard_review) = 66.
+    assert len(mutating_compliance_tools) == 66
 
     # Ordinary CRUD/lifecycle write tools resolve normally, mutates=True.
     for name in (
@@ -381,3 +390,8 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
         }
         for name in by_name
     )
+
+    # 2026-09-23 hardening pass: recording a review outcome is categorically
+    # MCP-excluded, not gated — neither tool resolves at all.
+    assert "compliance_complete_project_review" not in by_name
+    assert "compliance_complete_standard_review" not in by_name

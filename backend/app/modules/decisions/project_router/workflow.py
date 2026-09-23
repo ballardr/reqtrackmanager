@@ -16,6 +16,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -44,6 +45,27 @@ def _require_owner_of_decision_or_role(db: Session, current_user: User, project:
     if current_user.id == decision.owner_id:
         return
     _require_edit_role(db, current_user, project)
+
+
+def _get_decision_in_project_for_update(db: Session, project_id: UUID, decision_id: UUID) -> Decision:
+    """Row-locked variant of `_get_decision_in_project`, for `approve`/
+    `reject` only (2026-09-23 hardening pass) — mirrors `change_requests.
+    workflow.decide_change_request`'s own `with_for_update()` fix for the
+    identical race: two concurrent decide-type calls on the same row (e.g.
+    one approve, one reject) would otherwise both read the pre-transition
+    status before either commits, both pass `_ALLOWED_TRANSITIONS`
+    validation in `service.py`, and both apply their side effects —
+    whichever commits last silently overwrites the other's decision, and
+    `_supersede_predecessors`' side effect on `approve` could fire off a
+    status a losing concurrent write already invalidated. The lock
+    serializes the two calls so the second one's status check runs against
+    the first one's already-committed result. Not used by `propose`/
+    `submit-for-review`/read endpoints — those don't race a same-row
+    decide-type transition the way approve/reject do."""
+    decision = db.scalar(select(Decision).where(Decision.id == decision_id).with_for_update())
+    if decision is None or decision.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Decision not found.")
+    return decision
 
 
 def _apply_value_error_as_conflict(fn, *args, **kwargs):
@@ -109,7 +131,7 @@ def approve_decision_endpoint(
     project = db.get(Project, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
-    decision = _get_decision_in_project(db, project_id, decision_id)
+    decision = _get_decision_in_project_for_update(db, project_id, decision_id)
     _apply_value_error_as_conflict(
         approve_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
     )
@@ -139,7 +161,7 @@ def reject_decision_endpoint(
     project = db.get(Project, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
-    decision = _get_decision_in_project(db, project_id, decision_id)
+    decision = _get_decision_in_project_for_update(db, project_id, decision_id)
     _apply_value_error_as_conflict(
         reject_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
     )

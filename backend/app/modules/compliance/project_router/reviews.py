@@ -33,6 +33,7 @@ from app.modules.compliance.schemas import (
     ComplianceReviewUpdate,
 )
 from app.modules.compliance.service import build_review_out, complete_review, list_reviews_due_for_project
+from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.services.audit import log_event
 
 router = APIRouter(tags=["compliance-project-reviews"])
@@ -169,14 +170,27 @@ def delete_project_review(
     db.commit()
 
 
-@router.post("/reviews/{review_id}/complete", response_model=ComplianceReviewOut)
+@router.post(
+    "/reviews/{review_id}/complete", response_model=ComplianceReviewOut, openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
+)
 def complete_project_review(
     project_id: UUID, review_id: UUID, payload: ComplianceReviewCompleteRequest,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
 ):
     """Completes a `SCHEDULED` review (§17's "Review outcome"), 409 if
     already completed. Schedules the next cycle automatically when this
-    review recurs — see `service.py::complete_review`'s own docstring."""
+    review recurs — see `service.py::complete_review`'s own docstring.
+
+    Marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-23 hardening pass):
+    recording a review outcome is core's one categorically MCP-excluded
+    action (`mcp-server/server.py`'s own instructions: "Voting and
+    recording a review outcome remain entirely unavailable through this
+    server, in every configuration") — a stricter posture than the
+    `require_ai_approvals_enabled` opt-in gate applied to approve/reject/
+    complete elsewhere, since a review outcome is a judgment call this
+    project treats as needing real human accountability under any
+    configuration. This endpoint was declared as a plain MCP write tool
+    with no exclusion or gate at all; found and corrected in that pass."""
     review = _get_project_review_or_404(db, project_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed.")

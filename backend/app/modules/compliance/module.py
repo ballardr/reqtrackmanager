@@ -1259,20 +1259,12 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "review_id", "type": "uuid", "required": True, "in": "path", "description": "The review to delete."},
             ],
         ),
-        McpToolDefinition(
-            name="complete_standard_review",
-            description="Records the outcome of a standard-level review, completing it.",
-            method="POST",
-            path_template=f"{_ROUTER_PREFIX}/standards/{{standard_id}}/reviews/{{review_id}}/complete",
-            params=[
-                {"name": "organization_id", "type": "uuid", "required": True, "in": "path", "description": "The organisation."},
-                {"name": "standard_id", "type": "uuid", "required": True, "in": "path", "description": "The standard."},
-                {"name": "review_id", "type": "uuid", "required": True, "in": "path", "description": "The review to complete."},
-                {"name": "outcome", "type": "string", "required": True, "in": "body", "description": "The review's outcome."},
-                {"name": "notes", "type": "string", "required": False, "in": "body",
-                 "description": "Free-text notes, replacing the review's current notes."},
-            ],
-        ),
+        # `complete_standard_review` is deliberately NOT declared as an MCP tool
+        # (2026-09-23 hardening pass, removing a stale declaration that pre-dated its
+        # route being marked `APPROVAL_ACTION_ROUTE_EXTRA`): recording a review outcome
+        # is categorically MCP-excluded, mirroring core's `record_review_outcome`,
+        # which likewise has no MCP tool declared anywhere — see
+        # `project_router.reviews.complete_project_review`'s docstring.
         # --- 2026-09-22 reversal: write tools for project_router.py's (project-scoped)
         # mutating endpoints. `upload_evidence_attachment` is deliberately not declared
         # here (file upload — see this module's own docstring's "2026-09-22 reversal"
@@ -1638,19 +1630,8 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "review_id", "type": "uuid", "required": True, "in": "path", "description": "The review to delete."},
             ],
         ),
-        McpToolDefinition(
-            name="complete_project_review",
-            description="Records the outcome of a project-level review, completing it.",
-            method="POST",
-            path_template=f"{_PROJECT_ROUTER_PREFIX}/reviews/{{review_id}}/complete",
-            params=[
-                {"name": "project_id", "type": "uuid", "required": True, "in": "path", "description": "The project."},
-                {"name": "review_id", "type": "uuid", "required": True, "in": "path", "description": "The review to complete."},
-                {"name": "outcome", "type": "string", "required": True, "in": "body", "description": "The review's outcome."},
-                {"name": "notes", "type": "string", "required": False, "in": "body",
-                 "description": "Free-text notes, replacing the review's current notes."},
-            ],
-        ),
+        # `complete_project_review` is deliberately NOT declared as an MCP tool — see
+        # the `complete_standard_review` comment above; same reasoning, same pass.
         McpToolDefinition(
             name="link_review_evidence",
             description="Links a piece of this project's evidence to a review.",

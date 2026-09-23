@@ -18,6 +18,7 @@ from app.modules.compliance.models import ComplianceReview
 from app.modules.compliance.router._shared import _get_standard_or_404, _require_manage, _require_view
 from app.modules.compliance.schemas import ComplianceReviewCompleteRequest, ComplianceReviewCreate, ComplianceReviewOut, ComplianceReviewUpdate
 from app.modules.compliance.service import build_review_out, complete_review
+from app.modules.registry import APPROVAL_ACTION_ROUTE_EXTRA
 from app.services.audit import log_event
 from app.services.rbac import get_effective_org_roles
 
@@ -135,11 +136,20 @@ def delete_standard_review(
     db.commit()
 
 
-@router.post("/standards/{standard_id}/reviews/{review_id}/complete", response_model=ComplianceReviewOut)
+@router.post(
+    "/standards/{standard_id}/reviews/{review_id}/complete", response_model=ComplianceReviewOut,
+    openapi_extra=APPROVAL_ACTION_ROUTE_EXTRA,
+)
 def complete_standard_review(
     organization_id: UUID, standard_id: UUID, review_id: UUID, payload: ComplianceReviewCompleteRequest,
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
+    """Completes a `SCHEDULED` standard-level review, recording its outcome.
+
+    Marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-23 hardening pass) —
+    see `project_router.reviews.complete_project_review`'s docstring for
+    why review-outcome recording is categorically MCP-excluded rather than
+    gated by `require_ai_approvals_enabled`."""
     review = _get_standard_review_or_404(db, organization_id, standard_id, review_id)
     if review.status != ComplianceReviewStatus.SCHEDULED:
         raise HTTPException(status.HTTP_409_CONFLICT, "This review is already completed.")

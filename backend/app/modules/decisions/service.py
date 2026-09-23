@@ -537,7 +537,9 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         ValueError: if `new_decision`/`old_decision` are the same row, are
             in different projects (supersession is scoped to one project's
             Decision set, same as `DecisionTypeDefinition`), `old_decision`
-            is already `SUPERSEDED`, or this exact supersession link
+            is already `SUPERSEDED`, `new_decision` is in a terminal status
+            that can never reach `APPROVED` (`REJECTED`/`SUPERSEDED` — see
+            `_ALLOWED_TRANSITIONS`), or this exact supersession link
             already exists.
     """
     if new_decision.id == old_decision.id:
@@ -546,6 +548,20 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
         raise ValueError("A Decision can only supersede another Decision in the same project.")
     if old_decision.status == DecisionStatus.SUPERSEDED:
         raise ValueError("This Decision has already been superseded.")
+    if new_decision.status in (DecisionStatus.REJECTED, DecisionStatus.SUPERSEDED):
+        # A Decision only ever flips to SUPERSEDED via `_maybe_supersede`
+        # (here) or `_supersede_predecessors` (once `new_decision` itself
+        # reaches APPROVED via `approve_decision`) — both conditioned on
+        # `new_decision.status == APPROVED`. DRAFT/PROPOSED/UNDER_REVIEW are
+        # fine (the link resolves later if/when approval happens), but
+        # REJECTED/SUPERSEDED are terminal (`_ALLOWED_TRANSITIONS` has no
+        # outgoing edges for either) — recording a supersession from either
+        # would create a link that can never resolve into the status
+        # transition its own name implies, permanently misleading the
+        # relationship graph. Found in a 2026-09-23 hardening pass.
+        raise ValueError(
+            f"A '{new_decision.status.value}' Decision can never be approved, so it cannot supersede another Decision."
+        )
 
     organization_id = _project_organization_id(db, new_decision.project_id)
     link_type = _get_or_create_link_type(

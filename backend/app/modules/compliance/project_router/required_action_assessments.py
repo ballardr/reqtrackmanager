@@ -15,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_request_channel
+from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
@@ -29,6 +31,7 @@ from app.modules.compliance.schemas import ComplianceEvidenceOut, ComplianceRequ
 from app.modules.compliance.service import build_evidence_out
 from app.services import relationships
 from app.services.audit import log_event
+from app.services.rbac import require_ai_approvals_enabled
 
 router = APIRouter(tags=["compliance-project-required-action-assessments"])
 
@@ -117,20 +120,32 @@ def update_required_action_assessment(
 def complete_required_action_assessment(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, assessment_id: UUID,
     current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    channel: str = Depends(get_request_channel),
 ):
     """Marks a required action assessment completed — mirrors
     `complete_requirement`'s own shape (`is_completed`/`completed_at`/
-    `completed_by`, 409 if already completed)."""
+    `completed_by`, 409 if already completed), including that endpoint's
+    MCP gate: when reached through the MCP server (`channel == "mcp"`),
+    additionally requires this project and its organisation to both have
+    explicitly enabled AI approval (`require_ai_approvals_enabled`) — a
+    plain UI/API call is unaffected by that flag either way. Found missing
+    in a 2026-09-23 hardening pass despite this docstring already naming
+    `complete_requirement` as this endpoint's shape template; `uncomplete_
+    required_action_assessment` below is deliberately left ungated, mirroring
+    `uncomplete_requirement`'s own documented complete/uncomplete asymmetry."""
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
+    if channel == "mcp":
+        require_ai_approvals_enabled(db, db.get(Project, project_id))
     if assessment.is_completed:
         raise HTTPException(status.HTTP_409_CONFLICT, "This required action is already marked completed.")
     assessment.is_completed = True
     assessment.completed_at = datetime.now(UTC)
     assessment.completed_by = current_user.id
     log_event(db, entity_type="compliance_required_action_assessment", entity_id=assessment.id, action="completed",
-              actor_id=current_user.id, project_id=project_id)
+              actor_id=current_user.id, project_id=project_id,
+              detail={"via": "mcp"} if channel == "mcp" else None)
     db.commit()
     db.refresh(assessment)
     return assessment

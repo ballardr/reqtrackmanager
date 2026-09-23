@@ -5,6 +5,12 @@ Relationship endpoints (Phase 3 service functions): list a Decision's
 relationships, and create a supersession, a Decision<->Requirement link,
 or a Decision<->Decision link. See the package's own `__init__.py`
 docstring for the full router-split account.
+
+Each create endpoint logs a `decision_link`/`created` audit event
+(2026-09-23 hardening pass — previously missing here despite every other
+mutating endpoint in this module logging one, and despite the sibling
+core endpoint this mirrors, `routers.requirements.links.create_link`,
+already doing so).
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ from app.modules.decisions.service import (
     create_decision_requirement_link,
     create_supersession,
 )
+from app.services.audit import log_event
 from app.services.relationships import get_all_links
 from app.services.requirements import get_current_version
 
@@ -105,6 +112,9 @@ def create_decision_supersession(
     link = _apply_value_error_as_conflict(
         create_supersession, db, new_decision=new_decision, old_decision=old_decision, actor_id=current_user.id,
     )
+    log_event(db, entity_type="decision_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"kind": "supersession", "new_decision_id": str(new_decision.id), "old_decision_id": str(old_decision.id)})
     db.commit()
     db.refresh(link)
     return _link_to_out(db, link, new_decision.id)
@@ -127,6 +137,9 @@ def create_decision_requirement_link_endpoint(
         create_decision_requirement_link, db, decision=decision, requirement=requirement,
         kind=payload.kind, actor_id=current_user.id,
     )
+    log_event(db, entity_type="decision_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"kind": payload.kind.value, "decision_id": str(decision.id), "requirement_id": str(requirement.id)})
     db.commit()
     db.refresh(link)
     return _link_to_out(db, link, decision.id)
@@ -147,6 +160,9 @@ def create_decision_decision_link_endpoint(
         create_decision_decision_link, db, source_decision=source_decision, target_decision=target_decision,
         kind=payload.kind, actor_id=current_user.id,
     )
+    log_event(db, entity_type="decision_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, project_id=project_id,
+              detail={"kind": payload.kind.value, "source_decision_id": str(source_decision.id), "target_decision_id": str(target_decision.id)})
     db.commit()
     db.refresh(link)
     return _link_to_out(db, link, source_decision.id)
