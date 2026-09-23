@@ -44,7 +44,12 @@ test.describe("server admin with zero org memberships", () => {
       // zero-membership server admin should see the same empty state
       // anyone else with no orgs would).
       await page.getByRole("link", { name: "Organisations", exact: true }).click();
-      await page.getByRole("row", { name: new RegExp(ORG_NAMES.alpha) }).getByRole("link", { name: "Edit" }).click();
+      // Style guide "Pattern: action menu" — the row's Edit/Disable-Enable/
+      // Delete buttons now live behind one `ActionMenu` kebab trigger
+      // (ServerOrganisationsPage.tsx), not a standalone "Edit" link.
+      await page.getByRole("button", { name: `${ORG_NAMES.alpha} actions` }).click();
+      await expect(page.getByRole("menu", { name: `${ORG_NAMES.alpha} actions` })).toBeVisible();
+      await page.getByRole("menuitem", { name: "Edit" }).click();
       // Org details alone are server-admin-visible (GET /orgs/{id} has a
       // documented bypass) — the degraded view shows the org's name so the
       // admin knows which org this is before deciding to join/bootstrap it
