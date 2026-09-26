@@ -153,7 +153,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-4 / 7 phases complete. Phase 4 is next.
+5 / 7 phases complete. Phase 5 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -161,7 +161,7 @@ consulted at every phase below:
 | 1 | Data model: permission atoms, sub-type registry, `CustomRoleDefinition`, grants | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 1 complete" entry for the full account, including the `CustomRoleDefinition.scope` restriction and the Decision Management sub-type provider's flat-org-union design decision, both Decided by: Agent |
 | 2 | Effective-permission resolution + `require_permission` | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 2 complete" entry for the full account, including the static fixed-role mapping, the org-scoped-custom-role-applies-org-wide design decision, and the path-params-only (never query-bindable) security choice behind `require_permission`'s scope resolution, all Decided by: Agent |
 | 3 | Backend API + frontend UI: Role Management | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 3 complete" entry for the full account: CRUD/grant endpoints, the six-endpoint `grant_roles` wiring incl. the `ORG_ADMIN` carve-out on both grant and revoke, two new MCP tools, the Role Management UI, and the Phase 0 Q8 access-split resolution, all Decided by: Agent |
-| 4 | First real consumer migrations (proof against live surfaces) | [ ] Not started |
+| 4 | First real consumer migrations (proof against live surfaces) | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 4 complete" entry: the `grant_roles` regression proof (a clean full-suite run, closing Phase 3's own open verification item) and Decision Management's `approve`/`reject` migration to `require_permission` (its first live route consumer), including a real module-enablement-404 regression found and fixed during implementation, Decided by: Agent |
 | 5 | Decision Management: per-decision-type approval scoping | [ ] Not started |
 | 6 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
 | 7 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
@@ -546,6 +546,23 @@ separate, future decision (not scoped here). The `grant_roles` migration
 can't be deferred to "a separate future decision" the way further adoption
 can, since Phase 3 already built its endpoint-side integration — this
 phase is what proves that integration is actually safe.
+
+**Status: Complete (2026-09-27).** Both migrations done as scoped above.
+Item 1 needed no new code — Phase 3 already built it — only the clean
+full-suite proof run Phase 3's own decisions-log entry left as an open
+opportunistic item; that run is now done and clean. Item 2 targeted
+`decision_approver`'s `approve`/`reject` endpoints specifically (not
+`decision_owner`), since those are exactly what Phase 5 extends next. One
+point found during implementation, **Decided by: Agent**: `require_
+permission` performs no module-enablement check of its own, unlike the
+`require_module_role` gate it replaced, which did double duty — fixed by
+keeping `_require_view` as a separate, leading `Depends` on both
+endpoints (FastAPI resolves same-level dependencies in declaration order),
+pinned by a new regression test. Full account, including exact test
+numbers, in `docs/decisions.md`'s "Fine-Grained Access Control (core) —
+Phase 4 complete" entry.
+
+Exit criteria met. Phase 5 can start.
 
 ## Phase 5 — Decision Management: per-decision-type approver binding
 

@@ -100,7 +100,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType
+from app.models.enums import ArtefactType, PermissionLevel
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -115,6 +115,7 @@ from app.modules.decisions.models import (
     DecisionTypeDefinition,
 )
 from app.services.audit import log_event
+from app.services.permissions import encode_permission
 from app.services.relationships import create_link, get_link_between, get_links_from
 
 # Source overview §13/10.2's default list, seeded per new project — a
@@ -126,6 +127,17 @@ DEFAULT_DECISION_TYPES: list[str] = ["Architecture", "Design", "Engineering", "S
 # generate_unique_code` for `Decision.unique_code`; Phase 3 will also use it
 # for Decision<->Requirement/Decision<->Decision artefact links.
 DECISION_ARTEFACT_TYPE = "decision"
+
+# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
+# plan.md` Phase 4) — the unscoped `(decision, approve_baseline)` permission
+# atom, declared on the `decision_approver` module role (`module.py`) and
+# checked directly by `project_router.workflow`'s approve/reject endpoints
+# via `require_permission`. Phase 5 will additionally check this same
+# atom's sub-type-scoped form (`encode_permission(DECISION_ARTEFACT_TYPE,
+# PermissionLevel.APPROVE_BASELINE.value, decision.decision_type.name)`)
+# for a caller who holds only a narrower, per-Decision-Type grant — this
+# constant covers the unscoped wildcard shared by both.
+DECISION_APPROVE_PERMISSION = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # This module's own key prefix for `OrgCreationChoiceOption.key` /
 # `run_on_org_created_hooks`'s `selected_choice_keys` — namespaced so a

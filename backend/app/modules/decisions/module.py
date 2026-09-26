@@ -121,7 +121,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
+from app.modules.decisions.service import DECISION_APPROVE_PERMISSION, DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
 from app.modules.registry import (
     McpToolDefinition,
     ModuleDefinition,
@@ -258,6 +258,12 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Governance-module policy mechanism rather than this module building its own."
             ),
             scope="project",
+            # Fine-Grained Access Control Phase 0 Q4 / Phase 4: a holder of this flat module role
+            # gets the equivalent unscoped `(decision, approve_baseline)` permission atom via
+            # `get_effective_permissions`, so `project_router.workflow`'s migration to
+            # `require_permission` (Phase 4) is a zero-behaviour-change swap for every existing
+            # holder of this role.
+            permissions=(DECISION_APPROVE_PERMISSION,),
         ),
     ),
     mcp_tools=(

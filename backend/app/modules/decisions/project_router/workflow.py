@@ -9,6 +9,21 @@ review/approve/reject. `approve`/`reject` carry the AI-approval MCP gate
 only other bucket that calls into a Phase 2/3 `service.py` function).
 See the package's own `__init__.py` docstring for the full router-split
 account.
+
+`approve`/`reject` are Fine-Grained Access Control Phase 4's second
+migration (`docs/plans/core-fine-grained-access-control-plan.md`) — the
+first live consumer of `require_permission` (Phase 2) as a FastAPI
+dependency, replacing the previous flat `require_module_role("decisions",
+"decision_approver")` gate. `_require_approver` below now checks the
+`(decision, approve_baseline)` permission atom instead: a caller's
+existing `PROJECT_MANAGER`/`decision_approver` grant implies it
+unchanged via the Design Principle 3 mapping table / `module.py`'s
+`permissions` declaration, so this is a zero-behaviour-change swap for
+every current holder. `_require_view` still runs first (module-enabled/
+project-membership, 404) via its own leading `Depends`, exactly as every
+sibling endpoint in this package already does — `require_permission`
+performs no module-enablement check of its own, so it is layered on top
+of, never in place of, that existing gate.
 """
 
 from __future__ import annotations
@@ -27,15 +42,23 @@ from app.modules.decisions.models import Decision
 from app.modules.decisions.project_router._shared import _get_decision_in_project, _require_edit_role, _require_view
 from app.modules.decisions.project_router.core import _decision_to_out
 from app.modules.decisions.schemas import DecisionOut, DecisionTransitionRequest
-from app.modules.decisions.service import approve_decision, propose_decision, reject_decision, submit_decision_for_review
-from app.services.rbac import require_ai_approvals_enabled, require_module_role
+from app.modules.decisions.service import (
+    DECISION_APPROVE_PERMISSION,
+    approve_decision,
+    propose_decision,
+    reject_decision,
+    submit_decision_for_review,
+)
+from app.services.rbac import require_ai_approvals_enabled, require_permission
 
 router = APIRouter(tags=["decisions-workflow"])
 
 # Factory called once, at router-definition time — same convention as
 # every other module router in this codebase (`modules.compliance.
-# project_router`'s own comment on this).
-_require_approver = require_module_role("decisions", "decision_approver")
+# project_router`'s own comment on this). See this module's own docstring
+# above for why this is `require_permission`, not `require_module_role`,
+# as of Fine-Grained Access Control Phase 4.
+_require_approver = require_permission(DECISION_APPROVE_PERMISSION)
 
 
 def _require_owner_of_decision_or_role(db: Session, current_user: User, project: Project, decision: Decision) -> None:
@@ -110,12 +133,18 @@ def submit_decision_for_review_endpoint(
 @router.post("/{decision_id}/approve", response_model=DecisionOut)
 def approve_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
-    current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view),
+    _approver: User = Depends(_require_approver),
+    db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`) — gated
     the same as every other mutating endpoint this router names as
-    approval-type (the flat `decision_approver` module role).
+    approval-type (the `(decision, approve_baseline)` permission atom,
+    Fine-Grained Access Control Phase 4 — see this module's own docstring).
+    `_require_view` (module-enabled/project-membership, 404) is declared
+    first so it is resolved before `_require_approver`'s 403, matching
+    every sibling endpoint in this package.
 
     No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
     docs/decisions.md's "Decision Management MCP approval gate" entry,
@@ -143,7 +172,9 @@ def approve_decision_endpoint(
 @router.post("/{decision_id}/reject", response_model=DecisionOut)
 def reject_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
-    current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view),
+    _approver: User = Depends(_require_approver),
+    db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
     """Formally rejects a Decision (`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`).
