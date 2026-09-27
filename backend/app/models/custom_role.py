@@ -55,19 +55,25 @@ class CustomRoleDefinition(UUIDPKMixin, TimestampMixin, Base):
             (Design Principle 2).
         name: Display name, unique within the organisation.
         description: Human-readable description of what the role is for.
-        scope: `"org"` or `"project"` — reuses `app.modules.registry.
+        scope: `"org"`, `"project"` — reuses `app.modules.registry.
             ModuleRoleDefinition.scope`'s own two core-recognised values as-
             is (Phase 0 Q2), determining whether this role is granted with
             `project_id` left `NULL` (`"org"`) or set (`"project"`) on
-            `UserCustomRoleGrant`/`GroupCustomRoleGrant`. Deliberately does
-            not also accept an arbitrary module-owned entity scope the way
-            `ModuleRoleDefinition.scope` can (e.g. compliance's `"standard"`)
-            — an org-definable role has no module of its own to supply the
-            matching `resolve_entity_organization_id` hook that scope would
-            need, so only the two scopes with a core-recognised resolution
-            path are valid here (**Decided by: Agent**; validated at the
-            service layer, Phase 3, the same "authorization is a router/
-            service concern" split this module's own docstring notes).
+            `UserCustomRoleGrant`/`GroupCustomRoleGrant` — or any key present
+            in `app.modules.registry.get_all_registered_entity_scopes()`
+            (Phase 5), a module-owned entity scope (e.g. compliance's
+            `"standard"`), determining that this role is granted with
+            `scope_entity_id` set instead. Phase 1 originally restricted this
+            to just `"org"`/`"project"`, reasoning that "an org-definable
+            role has no module of its own to supply the matching
+            `resolve_entity_organization_id` hook" — Phase 5 lifted that
+            restriction by making the hook centrally, genuinely registrable
+            (`EntityScopeDefinition`) rather than only reachable from inside
+            `require_module_role`, so any current or future module-owned
+            entity scope becomes usable by a custom role automatically, with
+            no core-file edit required per module. Validated at the service
+            layer (Phase 3/5), the same "authorization is a router/service
+            concern" split this module's own docstring notes.
         created_by: The `ORG_ADMIN` (or server admin) who created this role,
             for audit attribution independent of `AuditEvent.actor_id`,
             mirroring `UserServerRole.granted_by`'s identical rationale.
@@ -132,13 +138,24 @@ class UserCustomRoleGrant(UUIDPKMixin, TimestampMixin, Base):
             custom-role grants be queried by `organization_id` alone).
         project_id: Set only when the granted role's own `scope ==
             "project"`; `NULL` for an `"org"`-scoped grant.
+        scope_entity_id: Set only when the granted role's own `scope` is a
+            registered module-owned entity scope (Phase 5, e.g.
+            `"standard"`); `NULL` otherwise. Deliberately a bare `UUID`
+            column with no foreign key — mirrors `app.models.module_role.
+            UserModuleRole.scope_entity_id`'s identical rationale: the
+            column records a grant against a scope whose meaning (which
+            table it points into) is owned by the declaring module, not this
+            core table. Validated at grant time (Phase 5): the entity's
+            resolved organisation (via `app.modules.registry.
+            get_all_registered_entity_scopes()`) must equal this grant's own
+            `organization_id` (Design Principle 2, tenant isolation).
         granted_by: The user who made the grant (an `ORG_ADMIN`, or a
             `grant_roles` holder per Phase 0 Q6), for audit attribution
             independent of `AuditEvent.actor_id`.
     """
 
     __tablename__ = "user_custom_role_grants"
-    __table_args__ = (UniqueConstraint("user_id", "custom_role_id", "project_id"),)
+    __table_args__ = (UniqueConstraint("user_id", "custom_role_id", "project_id", "scope_entity_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
@@ -152,6 +169,7 @@ class UserCustomRoleGrant(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
+    scope_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
@@ -172,12 +190,16 @@ class GroupCustomRoleGrant(UUIDPKMixin, TimestampMixin, Base):
             rationale as `UserCustomRoleGrant.organization_id`.
         project_id: Set only when the granted role's own `scope ==
             "project"`; `NULL` for an `"org"`-scoped grant.
+        scope_entity_id: Set only when the granted role's own `scope` is a
+            registered module-owned entity scope (Phase 5); `NULL`
+            otherwise. Same rationale and validation as `UserCustomRoleGrant.
+            scope_entity_id`.
         granted_by: The user who made the grant, for audit attribution
             independent of `AuditEvent.actor_id`.
     """
 
     __tablename__ = "group_custom_role_grants"
-    __table_args__ = (UniqueConstraint("org_group_id", "custom_role_id", "project_id"),)
+    __table_args__ = (UniqueConstraint("org_group_id", "custom_role_id", "project_id", "scope_entity_id"),)
 
     org_group_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("org_groups.id", ondelete="CASCADE"), index=True
@@ -191,4 +213,5 @@ class GroupCustomRoleGrant(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
+    scope_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

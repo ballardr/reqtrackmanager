@@ -189,6 +189,52 @@ class ModuleRoleDefinition:
 
 
 @dataclass(frozen=True)
+class EntityScopeDefinition:
+    """Declares one module-owned entity scope as centrally discoverable
+    (Fine-Grained Access Control (core) plan Phase 5), so code outside
+    `require_module_role` can resolve an arbitrary `(scope_kind, entity_id)`
+    pair too.
+
+    `ModuleRoleDefinition.scope`/`resolve_entity_organization_id` already let
+    a module declare a role scoped to one specific row of its own first-class
+    entity (e.g. compliance's `"standard"`) — that mechanism itself is
+    already generic, but until this dataclass existed there was no registry
+    of *which* scope strings exist or how to resolve/enumerate their
+    entities, so nothing other than `require_module_role` (which already has
+    the specific role object in hand) could reach an entity-scoped grant at
+    all. `CustomRoleDefinition.scope` and `app.services.rbac.
+    get_effective_permissions`/`require_permission`'s new `entity_scope`
+    parameter both resolve against `get_all_registered_entity_scopes()`
+    instead.
+
+    Deliberately a second, parallel declaration alongside `ModuleRoleDefinition.
+    resolve_entity_organization_id` rather than a refactor of that field to
+    derive from this registry — `require_module_role`'s existing, heavily-
+    exercised entity-scope branch keeps reading the role's own field
+    unchanged; a module registers the *same* resolver function in both
+    places. Collapsing the two into one is a reasonable future cleanup once
+    this registry has its own track record, not required now.
+
+    Attributes:
+        resolve_organization_id: Same signature and contract as
+            `ModuleRoleDefinition.resolve_entity_organization_id` — resolves
+            one entity's id to its owning organisation's id, or `None` if no
+            such entity exists.
+        label: Human-readable name for this scope kind (e.g. "Standard"),
+            shown in the Role Management UI's scope picker and entity picker.
+        list_entities: Every entity of this scope kind that currently exists
+            in a given organisation, as `(id, display_name)` pairs — powers
+            the Role Management UI's entity picker generically, the same way
+            `get_all_permissions()` avoids hardcoding artefact types
+            client-side.
+    """
+
+    resolve_organization_id: Callable[[Session, uuid.UUID], uuid.UUID | None]
+    label: str
+    list_entities: Callable[[Session, uuid.UUID], list[tuple[uuid.UUID, str]]]
+
+
+@dataclass(frozen=True)
 class ModuleFrontendManifest:
     """Declares a module's frontend integration (compliance-module-plan.md
     Phase 3's two-tier frontend module system, extended with a third tier —
@@ -1102,6 +1148,15 @@ class ModuleDefinition:
             simply leaves this empty (every module so far, other than
             Decision Management) — `subtype=None` (the wildcard, matching
             every sub-type) remains the only option for its artefact types.
+        entity_scopes: Fine-Grained Access Control (core) plan Phase 5 —
+            maps a `ModuleRoleDefinition.scope` value this module already
+            uses for a module-owned entity scope (e.g. compliance's
+            `"standard"`) to an `EntityScopeDefinition` centrally
+            registering how to resolve/enumerate it, so `CustomRoleDefinition.
+            scope` and `app.services.rbac`'s `entity_scope`-aware functions
+            can reach it too, not just `require_module_role`. Additive and
+            defaulted empty — a module with no entity-scoped role of its own
+            (every module before Compliance) simply leaves this empty.
     """
 
     key: str
@@ -1131,6 +1186,7 @@ class ModuleDefinition:
     validate_org_group_member_removal: Callable[[Session, uuid.UUID, uuid.UUID], str | None] | None = None
     artefact_types: tuple[str, ...] = field(default=())
     subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
+    entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2041,6 +2097,45 @@ def get_subtypes(db: Session, organization_id: uuid.UUID, artefact_type: str) ->
     if provider is None:
         return []
     return provider(db, organization_id)
+
+
+def get_all_registered_entity_scopes() -> dict[str, EntityScopeDefinition]:
+    """Merges every registered module's own `ModuleDefinition.entity_scopes`
+    into one `{scope_kind: EntityScopeDefinition}` mapping (Fine-Grained
+    Access Control (core) plan Phase 5) — the centrally-discoverable
+    counterpart to `ModuleRoleDefinition.scope`/`resolve_entity_organization_id`,
+    which `require_module_role` already resolves without needing this
+    registry (it has the specific role object in hand). `CustomRoleDefinition.
+    scope` validation and `app.services.rbac`'s `entity_scope`-aware
+    functions resolve against this instead.
+
+    Unlike `get_subtype_providers` (whose "last write wins" tolerance is
+    safe because sub-type-provider collision would only mean two modules
+    redundantly declared the same, compatible lookup for one artefact type),
+    a scope-string collision here would mean two modules' *own, likely
+    incompatible* `resolve_organization_id`/`list_entities` callables both
+    claim the same key — a real registration conflict, not a harmless
+    redundancy. This is logged and the first-registered definition is kept,
+    mirroring `build_registry`'s own "detect collision, warn, keep the
+    first" handling for a duplicate module key.
+
+    Returns:
+        A dict from entity-scope string to its registered definition. A
+        scope string with no registered definition (every module before
+        Compliance's own `"standard"` registration) is simply absent.
+    """
+    scopes: dict[str, EntityScopeDefinition] = {}
+    for definition in get_module_registry().values():
+        for scope_key, entity_scope in definition.entity_scopes.items():
+            if scope_key in scopes:
+                logger.warning(
+                    "Duplicate entity scope %r registered by module %r; keeping the first one registered",
+                    scope_key,
+                    definition.key,
+                )
+                continue
+            scopes[scope_key] = entity_scope
+    return scopes
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:

@@ -1220,6 +1220,19 @@ def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uui
     return standard.organization_id if standard is not None else None
 
 
+def list_standards_for_entity_scope(db: Session, organization_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+    """This module's `EntityScopeDefinition.list_entities` hook for the
+    `"standard"` scope (Fine-Grained Access Control (core) plan Phase 5) —
+    every current standard in `organization_id`, as `(id, name)` pairs, for
+    the Role Management UI's entity picker to render generically."""
+    rows = db.execute(
+        select(ComplianceStandard.id, ComplianceStandard.name)
+        .where(ComplianceStandard.organization_id == organization_id)
+        .order_by(ComplianceStandard.name)
+    ).all()
+    return [(row.id, row.name) for row in rows]
+
+
 def _effective_org_group_member_ids(db: Session, org_group_id: uuid.UUID) -> set[uuid.UUID]:
     """Every user who is a direct or transitively-nested member of
     `org_group_id`.

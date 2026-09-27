@@ -11,6 +11,7 @@ import type {
   AssignByEmailOutcome,
   CustomRoleDefinition,
   EffectiveMember,
+  EntityScope,
   ExternalUserPolicy,
   FileAsset,
   LinkTypeDefinition,
@@ -328,11 +329,18 @@ export function OrgAdminPage() {
   // like role *definition* itself.
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [customRoles, setCustomRoles] = useState<CustomRoleDefinition[]>([]);
+  // Fine-Grained Access Control (core) Phase 5 — every registered
+  // module-owned entity scope (e.g. compliance's `"standard"`), fetched
+  // alongside `permissions`/`customRoles` above from the same non-admin-
+  // gated `GET /orgs/{id}/entity-scopes` endpoint. Powers the scope
+  // dropdown's dynamic options and the entity picker below, generically —
+  // never hardcoding a specific module's scope kind.
+  const [entityScopes, setEntityScopes] = useState<EntityScope[]>([]);
   const [customRoleModalOpen, setCustomRoleModalOpen] = useState(false);
   const [editingCustomRoleId, setEditingCustomRoleId] = useState<string | null>(null);
   const [customRoleFormName, setCustomRoleFormName] = useState("");
   const [customRoleFormDescription, setCustomRoleFormDescription] = useState("");
-  const [customRoleFormScope, setCustomRoleFormScope] = useState<"org" | "project">("org");
+  const [customRoleFormScope, setCustomRoleFormScope] = useState<string>("org");
   const [customRoleFormPermissions, setCustomRoleFormPermissions] = useState<string[]>([]);
   const [customRoleFormError, setCustomRoleFormError] = useState<string | null>(null);
   const [customRoleFormSaving, setCustomRoleFormSaving] = useState(false);
@@ -341,6 +349,10 @@ export function OrgAdminPage() {
   // below currently target — keyed by `CustomRoleDefinition.id`. An
   // org-scoped role needs no entry here (its grants carry no project_id).
   const [customRoleGrantProjectId, setCustomRoleGrantProjectId] = useState<Record<string, string>>({});
+  // Same, but for a role scoped to a registered entity scope (Phase 5) —
+  // which entity (e.g. which standard) each such role's grant/revoke
+  // pickers currently target, keyed by `CustomRoleDefinition.id`.
+  const [customRoleGrantEntityId, setCustomRoleGrantEntityId] = useState<Record<string, string>>({});
   // Same, but project-scoped — for the "manage users" modal's own
   // `ProjectMembersTable`, keyed by whichever project that modal currently
   // has open (see `openManageUsers` below).
@@ -579,9 +591,10 @@ export function OrgAdminPage() {
     // forever (its loading gate is just `if (!org) return <Spinner />`).
     let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
     let statuses: ProjectStatusDefinition[], linkTypeList: LinkTypeDefinition[];
-    let permissionsList: Permission[], customRoleList: CustomRoleDefinition[];
+    let permissionsList: Permission[], customRoleList: CustomRoleDefinition[], entityScopeList: EntityScope[];
     try {
-      [o, allG, r, projects, templates, statuses, linkTypeList, permissionsList, customRoleList] = await Promise.all([
+      [o, allG, r, projects, templates, statuses, linkTypeList, permissionsList, customRoleList, entityScopeList] =
+        await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
         // group" dropdown both need every group in the org regardless of
@@ -599,6 +612,9 @@ export function OrgAdminPage() {
         // ORG_ADMIN still needs to see what's grantable).
         api.get<Permission[]>(`/api/v1/orgs/${orgId}/permissions`),
         api.get<CustomRoleDefinition[]>(`/api/v1/orgs/${orgId}/custom-roles`),
+        // Fine-Grained Access Control (core) Phase 5 — same tier as
+        // `permissions`/`custom-roles` above.
+        api.get<EntityScope[]>(`/api/v1/orgs/${orgId}/entity-scopes`),
       ]);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : strings.common.error);
@@ -632,6 +648,7 @@ export function OrgAdminPage() {
     setLinkTypes(linkTypeList);
     setPermissions(permissionsList);
     setCustomRoles(customRoleList);
+    setEntityScopes(entityScopeList);
     await Promise.all([loadUsers(currentUserFilters(), userSearch, 0, false), loadGroups(groupSearch, 0, false), loadOrgInvites()]);
 
     try {
@@ -1474,19 +1491,48 @@ export function OrgAdminPage() {
     }
   }
 
+  /** Whether `scope` is a registered module-owned entity scope (Phase 5,
+   * e.g. compliance's `"standard"`) rather than the two core-recognised
+   * `"org"`/`"project"` values — drives the entity picker below, generically,
+   * for any current or future module's own entity scope. */
+  function isRegisteredEntityScope(scope: string): boolean {
+    return entityScopes.some((s) => s.key === scope);
+  }
+
+  /** Human-readable label for any `CustomRoleDefinition.scope` value —
+   * `"org"`/`"project"` render their fixed strings, any other value looks
+   * up its registered `EntityScope.label` (falling back to the raw key if
+   * somehow unregistered, e.g. a module disabled after the role was
+   * defined), never a hardcoded per-module branch. */
+  function customRoleScopeLabel(scope: string): string {
+    if (scope === "org") return strings.orgAdmin.customRoleScopeOrg;
+    if (scope === "project") return strings.orgAdmin.customRoleScopeProject;
+    return entityScopes.find((s) => s.key === scope)?.label ?? scope;
+  }
+
   /** The Role Management page's own grant/revoke-by-search control (below
-   * the custom-roles table), covering both org- and project-scoped roles
-   * and both user and group targets — `payload.project_id` is required iff
-   * `role.scope === "project"`, resolved from `customRoleGrantProjectId`. */
+   * the custom-roles table), covering org-, project-, and entity-scoped
+   * roles and both user and group targets — `payload.project_id` is
+   * required iff `role.scope === "project"` (`customRoleGrantProjectId`),
+   * and `payload.scope_entity_id` iff `role.scope` is a registered entity
+   * scope (`customRoleGrantEntityId`). */
   function resolveCustomRoleGrantProjectId(role: CustomRoleDefinition): string | undefined {
     return role.scope === "project" ? customRoleGrantProjectId[role.id] || undefined : undefined;
   }
 
+  function resolveCustomRoleGrantEntityId(role: CustomRoleDefinition): string | undefined {
+    return isRegisteredEntityScope(role.scope) ? customRoleGrantEntityId[role.id] || undefined : undefined;
+  }
+
   async function grantCustomRoleToUserById(role: CustomRoleDefinition, userId: string, targetLabel: string) {
     const projectId = resolveCustomRoleGrantProjectId(role);
+    const scopeEntityId = resolveCustomRoleGrantEntityId(role);
     try {
-      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${userId}`, { project_id: projectId ?? null });
-      if (!projectId) {
+      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${userId}`, {
+        project_id: projectId ?? null,
+        scope_entity_id: scopeEntityId ?? null,
+      });
+      if (!projectId && !scopeEntityId) {
         setUsers((prev) =>
           prev.map((x) =>
             x.user_id === userId && !x.custom_roles.some((g) => g.custom_role_id === role.id)
@@ -1503,10 +1549,14 @@ export function OrgAdminPage() {
 
   async function revokeCustomRoleFromUserById(role: CustomRoleDefinition, userId: string, targetLabel: string) {
     const projectId = resolveCustomRoleGrantProjectId(role);
+    const scopeEntityId = resolveCustomRoleGrantEntityId(role);
     try {
-      const qs = projectId ? `?project_id=${projectId}` : "";
+      const params = new URLSearchParams();
+      if (projectId) params.set("project_id", projectId);
+      if (scopeEntityId) params.set("scope_entity_id", scopeEntityId);
+      const qs = params.toString() ? `?${params.toString()}` : "";
       await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/users/${userId}${qs}`);
-      if (!projectId) {
+      if (!projectId && !scopeEntityId) {
         setUsers((prev) =>
           prev.map((x) =>
             x.user_id === userId
@@ -1523,8 +1573,12 @@ export function OrgAdminPage() {
 
   async function grantCustomRoleToGroupById(role: CustomRoleDefinition, groupId: string, targetLabel: string) {
     const projectId = resolveCustomRoleGrantProjectId(role);
+    const scopeEntityId = resolveCustomRoleGrantEntityId(role);
     try {
-      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/groups/${groupId}`, { project_id: projectId ?? null });
+      await api.post(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/groups/${groupId}`, {
+        project_id: projectId ?? null,
+        scope_entity_id: scopeEntityId ?? null,
+      });
       showToast(strings.orgAdmin.customRoleGrantedTo(targetLabel));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
@@ -1533,8 +1587,12 @@ export function OrgAdminPage() {
 
   async function revokeCustomRoleFromGroupById(role: CustomRoleDefinition, groupId: string, targetLabel: string) {
     const projectId = resolveCustomRoleGrantProjectId(role);
+    const scopeEntityId = resolveCustomRoleGrantEntityId(role);
     try {
-      const qs = projectId ? `?project_id=${projectId}` : "";
+      const params = new URLSearchParams();
+      if (projectId) params.set("project_id", projectId);
+      if (scopeEntityId) params.set("scope_entity_id", scopeEntityId);
+      const qs = params.toString() ? `?${params.toString()}` : "";
       await api.delete(`/api/v1/orgs/${orgId}/custom-roles/${role.id}/groups/${groupId}${qs}`);
       showToast(strings.orgAdmin.customRoleRevokedFrom(targetLabel));
     } catch (err) {
@@ -3885,7 +3943,7 @@ export function OrgAdminPage() {
                     },
                     {
                       key: "scope", label: strings.orgAdmin.customRoleScope,
-                      render: (r) => (r.scope === "org" ? strings.orgAdmin.customRoleScopeOrg : strings.orgAdmin.customRoleScopeProject),
+                      render: (r) => customRoleScopeLabel(r.scope),
                     },
                     {
                       key: "permissions", label: strings.orgAdmin.customRolePermissionsLabel,
@@ -3949,10 +4007,17 @@ export function OrgAdminPage() {
                         <select
                           className="input"
                           value={customRoleFormScope}
-                          onChange={(e) => setCustomRoleFormScope(e.target.value as "org" | "project")}
+                          onChange={(e) => setCustomRoleFormScope(e.target.value)}
                         >
                           <option value="org">{strings.orgAdmin.customRoleScopeOrg}</option>
                           <option value="project">{strings.orgAdmin.customRoleScopeProject}</option>
+                          {/* Fine-Grained Access Control (core) Phase 5 — every
+                              registered module-owned entity scope, rendered
+                              generically rather than a hardcoded per-module
+                              option (e.g. compliance's "standard"). */}
+                          {entityScopes.map((s) => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                          ))}
                         </select>
                       </label>
                       <div className="stack" style={{ gap: "0.25rem" }}>
@@ -3995,14 +4060,18 @@ export function OrgAdminPage() {
                 <div className="stack">
                   {customRoles.map((role) => {
                     const projectId = customRoleGrantProjectId[role.id] ?? "";
-                    const canPickTarget = role.scope === "org" || !!projectId;
+                    const matchingEntityScope = entityScopes.find((s) => s.key === role.scope);
+                    const entityId = customRoleGrantEntityId[role.id] ?? "";
+                    const canPickTarget =
+                      role.scope === "org" || !!projectId || (matchingEntityScope !== undefined && !!entityId);
+                    const selectScopeFirstPlaceholder = matchingEntityScope
+                      ? strings.orgAdmin.customRoleSelectScopeFirst(matchingEntityScope.label)
+                      : strings.orgAdmin.customRoleSelectProjectFirst;
                     return (
                       <div className="card stack" key={role.id} style={{ gap: "0.5rem" }}>
                         <div className="row" style={{ justifyContent: "space-between" }}>
                           <strong>{role.name}</strong>
-                          <span className="badge">
-                            {role.scope === "org" ? strings.orgAdmin.customRoleScopeOrg : strings.orgAdmin.customRoleScopeProject}
-                          </span>
+                          <span className="badge">{customRoleScopeLabel(role.scope)}</span>
                         </div>
                         {role.scope === "project" && (
                           <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
@@ -4024,6 +4093,27 @@ export function OrgAdminPage() {
                             </select>
                           </label>
                         )}
+                        {/* Fine-Grained Access Control (core) Phase 5 — the
+                            generalised form of the project picker above, for
+                            a role scoped to a registered module-owned entity
+                            scope (e.g. compliance's "standard"): populated
+                            via that scope's own `entities` list rather than
+                            a hardcoded per-module fetch. */}
+                        {matchingEntityScope !== undefined && (
+                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
+                            {matchingEntityScope.label}
+                            <select
+                              className="input"
+                              value={entityId}
+                              onChange={(e) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: e.target.value }))}
+                            >
+                              <option value="">{strings.common.selectOption}</option>
+                              {matchingEntityScope.entities.map((entity) => (
+                                <option key={entity.id} value={entity.id}>{entity.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
                           <label className="stack" style={{ gap: "0.25rem" }}>
                             {strings.orgAdmin.customRoleGrantFieldLabel}
@@ -4032,7 +4122,7 @@ export function OrgAdminPage() {
                               groups={allGroups}
                               organizationId={orgId}
                               ariaLabel={strings.orgAdmin.customRoleGrantToUserOrGroup(role.name)}
-                              placeholder={canPickTarget ? undefined : strings.orgAdmin.customRoleSelectProjectFirst}
+                              placeholder={canPickTarget ? undefined : selectScopeFirstPlaceholder}
                               onSelect={(userId) => {
                                 if (!canPickTarget) return;
                                 const target = users.find((u) => u.user_id === userId);
@@ -4052,7 +4142,7 @@ export function OrgAdminPage() {
                               groups={allGroups}
                               organizationId={orgId}
                               ariaLabel={strings.orgAdmin.customRoleRevokeFromUserOrGroup(role.name)}
-                              placeholder={canPickTarget ? undefined : strings.orgAdmin.customRoleSelectProjectFirst}
+                              placeholder={canPickTarget ? undefined : selectScopeFirstPlaceholder}
                               onSelect={(userId) => {
                                 if (!canPickTarget) return;
                                 const target = users.find((u) => u.user_id === userId);

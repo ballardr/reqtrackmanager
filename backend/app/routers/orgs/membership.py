@@ -231,6 +231,9 @@ def list_org_users(
     # module_roles above, for org-scoped (`project_id IS NULL`)
     # `CustomRoleDefinition` grants — see `CustomRoleGrantOut`'s docstring
     # for why project-scoped grants are deliberately excluded here.
+    # `scope_entity_id.is_(None)` (Phase 5) is the same exclusion for an
+    # entity-scoped grant, which also has `project_id IS NULL` and would
+    # otherwise be misreported here as an org-scoped grant.
     if by_user:
         custom_role_rows = db.execute(
             select(UserCustomRoleGrant.user_id, CustomRoleDefinition.id, CustomRoleDefinition.name)
@@ -238,6 +241,7 @@ def list_org_users(
             .where(
                 UserCustomRoleGrant.organization_id == organization_id,
                 UserCustomRoleGrant.project_id.is_(None),
+                UserCustomRoleGrant.scope_entity_id.is_(None),
                 UserCustomRoleGrant.user_id.in_(by_user.keys()),
             )
         ).all()

@@ -102,7 +102,7 @@ define a custom role.
   then be able to reference: an organisation-definable role, composed from
   atomic permissions, sitting in the same "role" vocabulary a Governance
   policy already points at. The two modules are complementary, not
-  competing — see Phase 5's soft dependency note.
+  competing — see Phase 7's soft dependency note.
 - **Not Module 0's problem**, for the same reason Module 11 wasn't, and this
   reasoning is unaffected by this plan's own reclassification to core: both
   this plan and Module 0 are now core infrastructure, but Module 0 is
@@ -153,7 +153,17 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-5 / 7 phases complete. Phase 5 is next.
+6 / 10 phases complete. Phase 6 is next.
+
+**2026-09-27 restructure note:** a Compliance-only Phase 5 was originally
+drafted here to adopt `ModuleRoleDefinition.permissions`, deliberately
+excluding `standards_manager`/`standards_contributor` (Compliance's own
+entity-scoped roles) as a documented limitation. Questioning that exclusion
+surfaced a real, generic gap — module-owned entity scopes have no central
+registry this plan's permission system can resolve against — so the plan
+was restructured into two phases instead: a new Phase 5 building that
+registry generically, and Phase 6 as Compliance's (first) consumer of it,
+covering all four of its roles rather than two. **Decided by: User.**
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -162,9 +172,11 @@ consulted at every phase below:
 | 2 | Effective-permission resolution + `require_permission` | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 2 complete" entry for the full account, including the static fixed-role mapping, the org-scoped-custom-role-applies-org-wide design decision, and the path-params-only (never query-bindable) security choice behind `require_permission`'s scope resolution, all Decided by: Agent |
 | 3 | Backend API + frontend UI: Role Management | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 3 complete" entry for the full account: CRUD/grant endpoints, the six-endpoint `grant_roles` wiring incl. the `ORG_ADMIN` carve-out on both grant and revoke, two new MCP tools, the Role Management UI, and the Phase 0 Q8 access-split resolution, all Decided by: Agent |
 | 4 | First real consumer migrations (proof against live surfaces) | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 4 complete" entry: the `grant_roles` regression proof (a clean full-suite run, closing Phase 3's own open verification item) and Decision Management's `approve`/`reject` migration to `require_permission` (its first live route consumer), including a real module-enablement-404 regression found and fixed during implementation, Decided by: Agent |
-| 5 | Decision Management: per-decision-type approval scoping | [ ] Not started |
-| 6 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
-| 7 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
+| 5 | Generic module-owned entity-scope registry for the permission system | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 5 complete" entry |
+| 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [ ] Not started — Phase 5 (its dependency) now complete |
+| 7 | Decision Management: per-decision-type approval scoping | [ ] Not started |
+| 8 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
+| 9 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -196,7 +208,7 @@ originally posed. Recorded here as final.
    if a concrete case ever needs it, not built speculatively now.
 2. **Scope model: reuse `ModuleRoleDefinition.scope` as-is, confirmed.** No
    second, parallel scope concept.
-3. **Sub-type scoping: build it now, generically — not deferred to Phase 5.**
+3. **Sub-type scoping: build it now, generically — not deferred to Phase 7.**
    This reverses the plan's original recommendation. Decision Types
    (`DecisionTypeDefinition`) are per-organisation *data*, not a fixed
    code-level enum like artefact types, so this can't just extend
@@ -209,7 +221,7 @@ originally posed. Recorded here as final.
    `None` means "every sub-type" (today's behaviour, unaffected for any
    artefact type with no registered sub-type provider), a specific value is
    validated against that org's *current* rows from the owning module's
-   callback at grant time. **Consequence for Phase 5, below: this replaces
+   callback at grant time. **Consequence for Phase 7, below: this replaces
    the originally-planned `DecisionTypeDefinition.approver_role` field
    entirely** — Decision Management registers a `get_subtypes` callback
    returning its own Decision Type keys, and the approval check becomes a
@@ -290,7 +302,7 @@ originally posed. Recorded here as final.
   permissions — no behavioural change for any module that doesn't opt in.
   Decision Management registers its own provider for `"decision"`, returning
   that organisation's current `DecisionTypeDefinition` keys — this is the
-  one piece of this phase that has a real consumer on day one (see Phase 5).
+  one piece of this phase that has a real consumer on day one (see Phase 7).
 - `CustomRoleDefinition` — org-scoped (`organization_id` FK), `name`,
   `description`, `scope` (per Phase 0 Q2), and a `CustomRolePermission`
   join table (`custom_role_id`, `permission` string, encoding
@@ -335,7 +347,7 @@ duplicated here:
    `resolve_effective_decision_types`'s per-project parent/child fallback —
    `DecisionTypeDefinition` is project-scoped data while a permission atom's
    `subtype` is compared directly against one specific decision's own type
-   name at check time (Phase 5), never re-resolved through this provider
+   name at check time (Phase 7), never re-resolved through this provider
    after role-definition time, so there is no project hierarchy for this
    function itself to walk.
 
@@ -481,7 +493,7 @@ Management's precedent. **Decided by: Agent, after that check:**
   If a genuine need for this later arises (e.g. an admin asking an AI
   assistant "who can approve Architecture decisions"), that should be a
   deliberate, explicitly user-approved addition made at that time — with
-  the same identify → verify → remediate weight this plan's own Phase 6
+  the same identify → verify → remediate weight this plan's own Phase 7
   already commits to for the module as a whole — not something this
   addendum should pre-approve by extending the generic template
   mechanically.
@@ -552,7 +564,7 @@ Item 1 needed no new code — Phase 3 already built it — only the clean
 full-suite proof run Phase 3's own decisions-log entry left as an open
 opportunistic item; that run is now done and clean. Item 2 targeted
 `decision_approver`'s `approve`/`reject` endpoints specifically (not
-`decision_owner`), since those are exactly what Phase 5 extends next. One
+`decision_owner`), since those are exactly what Phase 7 extends next. One
 point found during implementation, **Decided by: Agent**: `require_
 permission` performs no module-enablement check of its own, unlike the
 `require_module_role` gate it replaced, which did double duty — fixed by
@@ -564,7 +576,232 @@ Phase 4 complete" entry.
 
 Exit criteria met. Phase 5 can start.
 
-## Phase 5 — Decision Management: per-decision-type approver binding
+## Phase 5 — Generic module-owned entity-scope registry for the permission system
+
+**Why this phase exists, and why now.** Drafting a Compliance-specific phase
+here originally (now superseded by this phase and Phase 6 below) surfaced a
+real gap: `standards_manager`/`standards_contributor` are scoped to one
+specific standard via `ModuleRoleDefinition`'s "module-owned entity scope"
+mechanism (module system Phase 22) — Compliance's `scope="standard"` plus a
+`resolve_entity_organization_id` callback. That mechanism is **already
+generic in the sense that any module can invent a new scope string +
+resolver and `require_module_role` handles it uniformly** — but it is
+**not centrally registered or discoverable**: there is no
+`get_all_registered_entity_scopes()` analogous to
+`get_all_registered_artefact_types()`/`get_subtype_providers()`, so nothing
+outside `require_module_role` itself (which already has the specific role
+object in hand at check time) can resolve an arbitrary `(scope_kind,
+entity_id)` pair. Consequently `CustomRoleDefinition.scope` was restricted
+to `"org"`/`"project"` only at Phase 1, and `get_effective_permissions`'s
+`_module_role_permission_grants` (`backend/app/services/rbac.py:2718-2729`)
+deliberately excludes every entity-scoped grant — meaning the *one* role
+pair whose whole purpose is fine-grained, per-item delegation is exactly
+what this plan's new permission system cannot reach at all: not narrowed,
+not broadened, not composed with anything.
+
+**This is not a Compliance-specific problem.** "An org-owned catalogue of
+things, with roles scoped to one specific item in it" is a recurring shape
+— Compliance's `standard` today, a hypothetical future Requirements-library
+module's `library` tomorrow, or any other module that follows the same
+Phase-22 pattern — not a one-off. Fixing it only for Compliance would repeat
+exactly the per-module hand-edit failure mode `CLAUDE.md`'s Modular Feature
+System Boundary section exists to prevent, here applied to a *missing*
+extension point rather than an existing hand-edited one. The correct fix is
+the same shape as every other registry in this plan and this codebase:
+core code aggregates what modules declare, generically, with no
+module-specific branch anywhere in core files.
+
+**Decided by: User** (this phase's existence and direction, 2026-09-27,
+arising directly from questioning the originally-drafted Compliance-only
+phase's exclusion of `standards_manager`/`standards_contributor`); the
+concrete design below is **Decided by: Agent**, and — given this is genuine
+new mechanism rather than an adoption of an already-proven pattern the way
+Decision Management's sub-type provider was — should get the same brief
+validation weight Phase 0 gave the original design before implementation
+starts, not be treated as settled purely by being written down here.
+
+**Scope:**
+
+- A new `EntityScopeDefinition` (in `backend/app/modules/registry.py`,
+  alongside `ModuleRoleDefinition`), carrying: `resolve_organization_id:
+  Callable[[Session, uuid.UUID], uuid.UUID | None]` (the same signature
+  `ModuleRoleDefinition.resolve_entity_organization_id` already has), a
+  human-readable `label` (for the permission picker and Role Management UI,
+  Phase 3), and `list_entities: Callable[[Session, uuid.UUID], list[tuple[
+  uuid.UUID, str]]]` — every entity of this scope kind that exists in a
+  given organisation, as `(id, display_name)` pairs, so the frontend (see
+  below) never hardcodes "standards" and works for any future module's
+  entity scope the same way `get_all_permissions()` already avoids
+  hardcoding artefact types.
+- `ModuleDefinition` gains `entity_scopes: dict[str, EntityScopeDefinition]
+  = {}` (additive, defaulted empty — no existing module needs to change).
+  `get_all_registered_entity_scopes() -> dict[str, EntityScopeDefinition]`
+  merges these across every module, mirroring
+  `get_all_registered_artefact_types()`'s own merge-and-reject-duplicates
+  shape.
+- Compliance additionally registers `"standard"` here, pointing at the
+  *same* `_resolve_standard_organization_id` function its
+  `standards_manager`/`standards_contributor` `ModuleRoleDefinition`s
+  already use, plus a new `list_entities` returning that org's current
+  standards. **Deliberately not a refactor of the existing
+  `ModuleRoleDefinition.resolve_entity_organization_id` field to derive from
+  this registry instead** — that field keeps working exactly as today,
+  feeding `require_module_role`'s already-tested entity-scope branch
+  unchanged. The same resolver is referenced from two places for now,
+  mirroring Design Principle 5's own precedent (a new parallel mechanism
+  rather than a rewrite of an existing, heavily-relied-on code path) — a
+  minor, easily-code-reviewed duplication, not a functional risk. Once this
+  new registry has a track record the way the artefact-type/sub-type
+  registries now do, collapsing `ModuleRoleDefinition` to derive its
+  resolver from it is a reasonable future cleanup, not required now.
+- `CustomRoleDefinition.scope` validation widened to accept `"org"`,
+  `"project"`, or any key present in `get_all_registered_entity_scopes()` —
+  this is the actual reversal of Phase 1's restriction, but done generically
+  this time: any current or future module-owned entity scope becomes usable
+  by a custom role automatically, with no core-file edit required per
+  module, the same way `ArtefactLink.source_type` is validated against the
+  merged artefact-type registry rather than a fixed enum (the reference
+  pattern `CLAUDE.md`'s boundary section already names).
+- `UserCustomRoleGrant`/`GroupCustomRoleGrant` gain an optional
+  `scope_entity_id: uuid.UUID | None`, mirroring `UserModuleRole`/
+  `GroupModuleRole`'s existing field of the same name and purpose. Validated
+  at grant time: the entity's resolved organisation (via the registry) must
+  equal the `CustomRoleDefinition`'s own `organization_id` — tenant
+  isolation (Design Principle 2), the same check already implicit on the
+  existing module-role entity-scope grant path.
+- `get_effective_permissions` gains optional `entity_scope: str | None =
+  None, entity_id: uuid.UUID | None = None` parameters. When provided,
+  composition additionally includes any module-role or custom-role grant
+  scoped to that exact `(entity_scope, entity_id)` pair, via the
+  registered role's/custom role's `.permissions`. **When omitted — today's
+  default call shape, used everywhere Phase 2–4 already wired it up —
+  behaviour is completely unchanged**: entity-scoped grants stay excluded
+  exactly as today. This is what keeps the change purely additive (Design
+  Principle 1); it does not retroactively widen any existing check. Every
+  broader-tier grant that already composes (server admin, the static
+  org/project role mapping, an org-scoped custom role's permissions applying
+  org-wide per Phase 2 decision 2) continues to satisfy an entity-scoped
+  check too, without new code — Design Principle 3 composition, unaffected.
+- `require_permission` gains an optional `entity_scope: str | None = None`
+  parameter telling it which registered entity-scope kind (and therefore
+  which `f"{entity_scope}_id"` path parameter, mirroring
+  `require_module_role`'s existing naming convention) this specific check is
+  against. **Still path-params-only, never query-bindable** — Phase 2
+  decision 3's security rule is explicitly re-affirmed here, not relaxed,
+  since an entity-scoped check is exactly the kind of narrowly-targeted
+  authorization decision that rule was written to protect. A route whose
+  path carries both a broader (`project_id`) and a narrower (`standard_id`)
+  candidate must have its intended scope stated explicitly at the
+  `require_permission(...)` call site — never inferred by trying both.
+- Frontend (extends Phase 3's Role Management page, not a new page): the
+  custom-role-definition and grant flows gain an entity picker whenever the
+  selected scope is a registered entity-scope kind, populated via
+  `list_entities` — the generalised form of the project-picker fallback
+  Phase 3 already built for project-scoped grants (Phase 3 status point 6).
+  Per the standing testing requirements, this needs Playwright/Storybook
+  coverage once it has a real entity-scope kind to exercise, which Phase 6
+  (Compliance's `"standard"`) supplies.
+
+**Why this only extends, never replaces:** every new field defaults empty
+or `None`; `require_module_role`'s existing entity-scope branch,
+`CustomRoleDefinition`'s existing `"org"`/`"project"` scopes, and every
+existing `get_effective_permissions`/`require_permission` call site are
+untouched. An organisation that never touches an entity-scoped custom role
+sees zero behavioural change, per Design Principle 1 — the same bar every
+prior phase in this plan has held itself to.
+
+**Status:** [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-
+Grained Access Control (core) — Phase 5 complete" entry for the full
+account. Unblocks Phase 6 (Compliance is this mechanism's first real
+consumer); did not block Phase 7, 8, or 9.
+
+## Phase 6 — Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions
+
+**Why this phase exists, and why now:** Phase 1 introduced the optional
+`ModuleRoleDefinition.permissions: tuple[str, ...] = ()` field specifically
+so that "Decision Management and Compliance can adopt it incrementally in a
+later, separate change, not as part of this phase" (Phase 1 Scope, above).
+Decision Management already did — its `decision_approver` role declares
+`permissions=(DECISION_APPROVE_PERMISSION,)` (`backend/app/modules/
+decisions/module.py:266`), and Phase 4 proved that composition against a
+live route (`decisions.service.approve_decision`/`reject_decision`). Phase 1
+named exactly two modules as deferred adopters, and only one has actually
+adopted the mechanism so far — this phase closes out the other named half,
+and, thanks to Phase 5, does so for *all four* of Compliance's module roles
+rather than leaving its two entity-scoped roles out. **Decided by: User**
+(the instruction to add this phase, 2026-09-27, and the direction to build
+Phase 5 rather than accept the entity-scoped roles' exclusion); the scope
+below is **Decided by: Agent**.
+
+**Scope, grounded in Compliance's actual current shape** (`backend/app/
+modules/compliance/module.py`):
+
+- Populate `permissions` on all four `ModuleRoleDefinition`s:
+  `compliance_manager` (org scope) and `compliance_officer` (project scope)
+  — already composable today via the existing org/project module-role
+  composition path, no Phase 5 dependency for these two specifically — and
+  `standards_manager`/`standards_contributor` (Compliance's own
+  `"standard"` entity scope) — newly composable via Phase 5's extension.
+  Each role's `permissions` tuple is mapped from its existing, already-
+  documented responsibilities onto permission atoms over Compliance's three
+  registered artefact types (`compliance_evidence`,
+  `project_compliance_requirement`, `compliance_required_action_assessment`)
+  plus whichever administrative atoms apply — mirroring how the Phase 2
+  static fixed-role mapping table was derived from each existing role's
+  documented responsibilities rather than invented from scratch.
+- Compliance registers `"standard"` in Phase 5's new
+  `ModuleDefinition.entity_scopes` registry, with `list_entities` returning
+  that organisation's current standards — this module is that mechanism's
+  first real consumer, the same relationship Decision Management's
+  sub-type provider has to Phase 1's sub-type registry.
+- **Migrate two real Compliance endpoints — one per composition axis, as
+  the actual regression proof of Phase 5's extension, not just of the
+  already-proven org/project path:**
+  1. Compliance evidence create/update (`project_router/evidence.py`,
+     currently gated by `_require_officer` /
+     `require_module_role("compliance", "compliance_officer")`,
+     `project_router/_shared.py:31`) to accept plain `require_permission`
+     as an alternative — the org/project axis, the same additive pattern
+     Phase 3 built for `grant_roles` and Phase 4 proved for Decision
+     Management's approve/reject.
+  2. A standard's own requirement/version content edit (currently gated by
+     `_require_standard_manage`/`_require_standard_contribute`,
+     `router/_shared.py:57-84`) to accept `require_permission(...,
+     entity_scope="standard")` as an alternative — the entity-scoped axis,
+     this phase's own proof that Phase 5's extension actually works end to
+     end, not only in the abstract.
+  Per Phase 4's own finding, `require_permission` performs no
+  module-enablement check of its own — both migrated endpoints must keep an
+  explicit leading module-enablement `Depends` alongside it, the same fix
+  applied there, not rediscovered here.
+- An organisation can now mint a custom role scoped to one specific
+  standard (e.g. "review Architecture standard evidence only"), grant it to
+  a user or group via the Role Management page's new entity picker (Phase
+  5), and that grant composes correctly without holding
+  `standards_manager`/`standards_contributor` at all — the concrete,
+  demonstrable point of doing Phase 5 first rather than leaving these two
+  roles out.
+- `docs/decisions.md` gets this phase's own entry recording all four roles'
+  new `permissions` tuples, both migrated endpoints, and confirmation that
+  the entity-scoped proof (item 2 above) actually composes as designed.
+- Regression coverage: a backend test pinning that a caller without any new
+  permission grant sees identical behaviour to today for all four existing
+  roles, and two new tests — one per migrated endpoint — proving a custom
+  role (plain, and entity-scoped-to-one-standard respectively) composed of
+  the equivalent permission atom(s) can reach that endpoint without holding
+  the named module role at all. Playwright/Storybook coverage for the
+  Role Management page's new standard-picker (Phase 5's frontend scope,
+  first exercised here), per standing testing requirements.
+
+**Why this only extends, never replaces:** all four Compliance roles keep
+gating their existing endpoints via `require_module_role` unchanged — the
+new `require_permission` paths are additive, so an organisation that never
+touches custom roles sees zero behavioural change, per Design Principle 1.
+
+**Status:** not started. Depends on Phase 5 (entity-scoped composition);
+does not block Phase 7, 8, or 9.
+
+## Phase 7 — Decision Management: per-decision-type approver binding
 
 **Scope:** this is where the request that started this whole plan actually
 gets fulfilled — and, per Phase 0 Q3's resolution, more simply than
@@ -599,12 +836,12 @@ Because this phase no longer adds its own field to `DecisionTypeDefinition`
 nothing Decision-Management-specific left to migrate away from when
 Governance ships — Governance's own policies become just another way to
 grant the same underlying `(decision, approve_baseline, subtype=...)`
-permission, not a replacement for a bespoke field. Not blocking Phase 5 on
+permission, not a replacement for a bespoke field. Not blocking Phase 7 on
 Governance's own, currently-unscheduled build remains a direct trade-off,
 now lower-cost than originally assessed given there's no field to later
 deprecate.
 
-## Phase 6 — SOC 2 policy update + identify→verify→remediate review
+## Phase 8 — SOC 2 policy update + identify→verify→remediate review
 
 **Scope:** `docs/soc2/policies/access-control-policy.md` gains a new
 numbered item under Authorization describing this mechanism — mirroring
@@ -643,13 +880,13 @@ commits to and every module-role-system extension to date
 than the rest of this capability — not assessed only as part of the
 capability's overall review.
 
-## Phase 7 — Docs website coverage
+## Phase 9 — Docs website coverage
 
 **Goal:** add "Role Management" (naming per Phase 0 Q9) to `docs/website/`
 — what a custom role is, the permission-atom model (including the
 sub-type dimension), how it composes with existing fixed roles, the
 `grant_roles` delegated-assignment capability and its documented scope,
-and (once it exists) the per-decision-type approval scoping from Phase 5
+and (once it exists) the per-decision-type approval scoping from Phase 7
 — following the site's existing structure, tone, and Mermaid-diagram
 conventions.
 
@@ -680,7 +917,7 @@ pure relationship-wiring integration work does.
   never removes or replaces the fixed roles) stated in plain,
   non-implementation language for an org-admin reader; how to create a
   role and grant it to a user or group; what `grant_roles` lets a delegate
-  do and its documented scope (per Phase 6); and the explicit invariant
+  do and its documented scope (per Phase 8); and the explicit invariant
   this plan itself is graded against — a custom role can never grant more
   than an `ORG_ADMIN` already has, and is never usable outside the
   organisation that defined it.
@@ -689,7 +926,7 @@ pure relationship-wiring integration work does.
   independently-resolving path per `access-control-policy.md`'s own
   role-resolution diagram note, adapted for a docs-site (non-implementation)
   audience.
-- Once Phase 5 ships: a subsection on per-decision-type approval scoping,
+- Once Phase 7 ships: a subsection on per-decision-type approval scoping,
   cross-linked from Decision Management's own docs-website page (which by
   then documents the flat `decision_approver` role per its own Phase 6) —
   updating that page's approval-model description to note the optional
@@ -721,7 +958,7 @@ pure relationship-wiring integration work does.
 
 **Status:** not started. Depends on Phase 3 (the Role Management UI)
 shipping — there is no real user-facing workflow to document before then.
-The Phase 5 subsection depends additionally on Phase 5 shipping and can be
+The Phase 7 subsection depends additionally on Phase 7 shipping and can be
 added incrementally once it does, without blocking the rest of this page.
 Not a blocker for Phases 4–6.
 
@@ -730,7 +967,7 @@ Not a blocker for Phases 4–6.
 Beyond the standard per-phase `docs/decisions.md` entry every module or
 core-capability plan gets: this capability changes the authoritative answer
 to "what can this user do," so `docs/soc2/policies/access-control-policy.md`
-(Phase 6) is not optional follow-up documentation — it is a completion
+(Phase 8) is not optional follow-up documentation — it is a completion
 criterion, the same as Module 11's own equivalent obligation. `docs/
 modules.md` also needs a note if the optional `ModuleRoleDefinition.
 permissions` field (Phase 0 Q4 / Phase 1) ships, documenting it as a new,
@@ -762,7 +999,7 @@ touches; this plan itself is not a `docs/modules.md` entry.
   unchanged (Phase 4).
 - Decisions can optionally require a specific role (fixed or custom) to
   approve a given Decision Type, via a sub-type-scoped permission, defaulting
-  to today's flat behaviour when no narrower grant exists (Phase 5).
+  to today's flat behaviour when no narrower grant exists (Phase 7).
 - `docs/soc2/policies/access-control-policy.md` documents the mechanism,
   including the `grant_roles` residual-risk scope, reviewed against its own
   tenant-isolation and composition invariants, before this capability ships

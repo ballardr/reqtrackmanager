@@ -387,6 +387,28 @@ class PermissionOut(BaseModel):
     subtype: str | None
 
 
+class EntityScopeEntityOut(BaseModel):
+    """One entity of a registered module-owned entity scope (Fine-Grained
+    Access Control (core) plan Phase 5, `GET /orgs/{id}/entity-scopes`) —
+    e.g. one `ComplianceStandard` row for the `"standard"` scope."""
+
+    id: UUID
+    name: str
+
+
+class EntityScopeOut(BaseModel):
+    """One registered module-owned entity scope (`app.modules.registry.
+    get_all_registered_entity_scopes()`), with this organisation's current
+    entities — backs the Role Management UI's scope/entity pickers so the
+    frontend never hardcodes a specific module's scope kind, mirroring `GET
+    /orgs/{id}/permissions`'s identical "derived, not hand-maintained"
+    principle one tier up."""
+
+    key: str
+    label: str
+    entities: list[EntityScopeEntityOut]
+
+
 class CustomRoleDefinitionOut(BaseModel):
     """One organisation-defined `CustomRoleDefinition` (Fine-Grained Access
     Control Phase 3), with its full permission-atom set — `GET /orgs/{id}/
@@ -415,8 +437,9 @@ class CustomRoleDefinitionOut(BaseModel):
 class CustomRoleDefinitionCreate(BaseModel):
     """Body for `POST /orgs/{id}/custom-roles` — `ORG_ADMIN`-only, never
     delegable via `grant_roles` (Phase 0 Q5: no "manage custom roles"
-    permission atom exists or should be invented). `scope` must be `"org"`
-    or `"project"` (`CustomRoleDefinition.scope`'s own restriction) and
+    permission atom exists or should be invented). `scope` must be `"org"`,
+    `"project"`, or a key currently present in `app.modules.registry.
+    get_all_registered_entity_scopes()` (Phase 5, e.g. `"standard"`) — and
     every entry of `permissions` must be a currently-valid key for this
     organisation (`app.services.permissions.validate_permission_key`) —
     both checked server-side, not just implied by this schema's typing.
@@ -484,10 +507,15 @@ class CustomRoleGrantTarget(BaseModel):
     granted (not just by this schema's typing), mirroring `UserCustomRoleGrant`/
     `GroupCustomRoleGrant`'s own model docstrings: a `scope="org"` role must
     never accept a `project_id`, and a `scope="project"` role must always
-    require one.
+    require one. `scope_entity_id` is the Phase 5 analogue, required if and
+    only if the target role's own `scope` is a registered module-owned
+    entity scope (e.g. `"standard"`) — the two are mutually exclusive,
+    exactly as `project_id`/`scope_entity_id` already are on `UserModuleRole`/
+    `GroupModuleRole` one tier up.
     """
 
     project_id: UUID | None = None
+    scope_entity_id: UUID | None = None
 
 
 class OrgUserCreate(BaseModel):

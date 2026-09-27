@@ -939,6 +939,7 @@ const en = {
     customRoleAssignmentHint:
       "Fixed and module roles are granted from the Users table above. A custom role can also be granted here, to a user or an organisation group — there is no roster of who currently holds a role shown here, so granting/revoking acts immediately rather than toggling a checked state.",
     customRoleSelectProjectFirst: "Select a {project} first",
+    customRoleSelectScopeFirst: (scopeLabel: string) => `Select a ${scopeLabel} first`,
     customRoleGrantToUserOrGroup: (role: string) => `Grant ${role} — search a user or group`,
     customRoleRevokeFromUserOrGroup: (role: string) => `Revoke ${role} — search a user or group`,
     customRoleGrantFieldLabel: "Grant to user or group",

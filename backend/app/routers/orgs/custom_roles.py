@@ -32,12 +32,15 @@ from app.models.notification import NotificationType
 from app.models.organization import OrgGroup
 from app.models.project import Project
 from app.models.user import User
+from app.modules.registry import get_all_registered_entity_scopes
 from app.routers.projects.core import _require_user_in_org
 from app.schemas.org import (
     CustomRoleDefinitionCreate,
     CustomRoleDefinitionOut,
     CustomRoleDefinitionUpdate,
     CustomRoleGrantTarget,
+    EntityScopeEntityOut,
+    EntityScopeOut,
     PermissionOut,
 )
 from app.services.audit import log_event
@@ -102,8 +105,11 @@ def _get_org_custom_role(db: Session, organization_id: UUID, role_id: UUID) -> C
 
 
 def _validate_scope(scope: str) -> None:
-    if scope not in ("org", "project"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "scope must be 'org' or 'project'.")
+    if scope in ("org", "project"):
+        return
+    if scope in get_all_registered_entity_scopes():
+        return
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "scope must be 'org', 'project', or a registered entity scope.")
 
 
 def _validate_permission_keys(db: Session, organization_id: UUID, permissions: list[str]) -> None:
@@ -114,23 +120,50 @@ def _validate_permission_keys(db: Session, organization_id: UUID, permissions: l
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
-def _validate_grant_project_id(
-    db: Session, role: CustomRoleDefinition, organization_id: UUID, project_id: UUID | None
+def _validate_grant_target(
+    db: Session,
+    role: CustomRoleDefinition,
+    organization_id: UUID,
+    project_id: UUID | None,
+    scope_entity_id: UUID | None = None,
 ) -> None:
-    """Enforces `CustomRoleGrantTarget.project_id`'s own documented
-    constraint against the actual role being granted: required if and only
-    if `role.scope == "project"` (mirroring `UserCustomRoleGrant`/
-    `GroupCustomRoleGrant`'s own model docstrings) — never left to the
+    """Enforces `CustomRoleGrantTarget.project_id`/`scope_entity_id`'s own
+    documented constraints against the actual role being granted: exactly
+    one of `project_id` (iff `role.scope == "project"`) or `scope_entity_id`
+    (iff `role.scope` is a registered entity scope, Phase 5) may be set,
+    matching whichever scope the role actually declares — never left to the
     schema layer alone, since the schema has no access to the role's own
-    `scope` to validate against."""
+    `scope` to validate against.
+
+    A `scope_entity_id` is additionally checked to resolve (via the
+    registered scope's own `resolve_organization_id`) to this exact
+    `organization_id` — tenant isolation (Design Principle 2), the same
+    check already implicit on the existing module-role entity-scope grant
+    path (`require_module_role`'s own entity branch)."""
     if role.scope == "project":
         if project_id is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This role is project-scoped; project_id is required.")
         project = db.get(Project, project_id)
         if project is None or project.organization_id != organization_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "project_id must be a project in this organisation.")
-    elif project_id is not None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This role is org-scoped; project_id must not be given.")
+        return
+    if project_id is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This role is not project-scoped; project_id must not be given.")
+
+    entity_scope = get_all_registered_entity_scopes().get(role.scope)
+    if entity_scope is not None:
+        if scope_entity_id is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"This role is scoped to {role.scope!r}; scope_entity_id is required."
+            )
+        resolved_organization_id = entity_scope.resolve_organization_id(db, scope_entity_id)
+        if resolved_organization_id != organization_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "scope_entity_id must belong to this organisation."
+            )
+        return
+    if scope_entity_id is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This role is org-scoped; scope_entity_id must not be given.")
 
 
 @router.get("/{organization_id}/permissions", response_model=list[PermissionOut])
@@ -147,6 +180,33 @@ def list_org_permissions(
     return [
         PermissionOut(key=p.key, label=p.label, artefact_type=p.artefact_type, level=p.level, subtype=p.subtype)
         for p in get_all_permissions(db, organization_id)
+    ]
+
+
+@router.get("/{organization_id}/entity-scopes", response_model=list[EntityScopeOut])
+def list_org_entity_scopes(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(*_VIEW_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """Lists every registered module-owned entity scope (Fine-Grained
+    Access Control (core) plan Phase 5, `app.modules.registry.
+    get_all_registered_entity_scopes()`), with this organisation's current
+    entities of each kind — backs the Role Management UI's scope/entity
+    pickers so the frontend never hardcodes a specific module's scope kind
+    (e.g. compliance's `"standard"`), mirroring `list_org_permissions`'s
+    identical "derived, not hand-maintained" role one tier up. Same
+    `require_org_role` gate as `list_org_permissions`/`list_custom_roles`."""
+    return [
+        EntityScopeOut(
+            key=key,
+            label=definition.label,
+            entities=[
+                EntityScopeEntityOut(id=entity_id, name=name)
+                for entity_id, name in definition.list_entities(db, organization_id)
+            ],
+        )
+        for key, definition in get_all_registered_entity_scopes().items()
     ]
 
 
@@ -356,8 +416,9 @@ def grant_custom_role_to_user(
     holder (Phase 0 Q6: role *assignment*, unlike *definition* above, is
     delegable). The affected user is always the `{user_id}` path
     parameter, never a body field (see `CustomRoleGrantTarget`'s
-    docstring). `payload.project_id` is required if and only if the role's
-    own `scope == "project"`.
+    docstring). `payload.project_id`/`payload.scope_entity_id` is required
+    if and only if the role's own `scope` is `"project"`/a registered
+    entity scope, respectively.
 
     Mirrors C-U-02 (`_require_user_in_org`): the target must already be a
     member of this organisation. No-op-safe on an already-held grant
@@ -367,7 +428,7 @@ def grant_custom_role_to_user(
     `NotificationType.PERMISSION_GRANTED` call exactly.
     """
     role = _get_org_custom_role(db, organization_id, role_id)
-    _validate_grant_project_id(db, role, organization_id, payload.project_id)
+    _validate_grant_target(db, role, organization_id, payload.project_id, payload.scope_entity_id)
     _require_user_in_org(db, user_id, organization_id)
 
     target = db.get(User, user_id)
@@ -381,6 +442,7 @@ def grant_custom_role_to_user(
             UserCustomRoleGrant.user_id == user_id,
             UserCustomRoleGrant.custom_role_id == role.id,
             UserCustomRoleGrant.project_id == payload.project_id,
+            UserCustomRoleGrant.scope_entity_id == payload.scope_entity_id,
         )
     )
     if existing is None:
@@ -390,6 +452,7 @@ def grant_custom_role_to_user(
                 custom_role_id=role.id,
                 organization_id=organization_id,
                 project_id=payload.project_id,
+                scope_entity_id=payload.scope_entity_id,
                 granted_by=current_user.id,
             )
         )
@@ -401,7 +464,11 @@ def grant_custom_role_to_user(
             actor_id=current_user.id,
             organization_id=organization_id,
             project_id=payload.project_id,
-            detail={"custom_role_id": str(role.id), "custom_role_name": role.name},
+            detail={
+                "custom_role_id": str(role.id),
+                "custom_role_name": role.name,
+                "scope_entity_id": str(payload.scope_entity_id) if payload.scope_entity_id else None,
+            },
         )
         if target is not None:
             notify(
@@ -426,22 +493,28 @@ def revoke_custom_role_from_user(
         description="Required iff the role's scope is 'project' — a project-scoped role may be granted to the "
         "same user across more than one project, so the specific grant to revoke must be named explicitly.",
     ),
+    scope_entity_id: UUID | None = Query(
+        None,
+        description="Required iff the role's scope is a registered entity scope (Phase 5, e.g. 'standard') — "
+        "the specific grant to revoke must be named explicitly, mirroring project_id above.",
+    ),
     current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Revokes a custom role grant from a user — `grant_custom_role_to_user`'s
-    counterpart, same gate. A query parameter (not a body) carries
-    `project_id` here, matching this codebase's existing DELETE-endpoint
-    convention (e.g. `revoke_project_role`) of taking no request body.
-    No-op if the grant doesn't currently exist."""
+    counterpart, same gate. Query parameters (not a body) carry
+    `project_id`/`scope_entity_id` here, matching this codebase's existing
+    DELETE-endpoint convention (e.g. `revoke_project_role`) of taking no
+    request body. No-op if the grant doesn't currently exist."""
     role = _get_org_custom_role(db, organization_id, role_id)
-    _validate_grant_project_id(db, role, organization_id, project_id)
+    _validate_grant_target(db, role, organization_id, project_id, scope_entity_id)
 
     existing = db.scalar(
         select(UserCustomRoleGrant).where(
             UserCustomRoleGrant.user_id == user_id,
             UserCustomRoleGrant.custom_role_id == role.id,
             UserCustomRoleGrant.project_id == project_id,
+            UserCustomRoleGrant.scope_entity_id == scope_entity_id,
         )
     )
     if existing is not None:
@@ -454,7 +527,11 @@ def revoke_custom_role_from_user(
             actor_id=current_user.id,
             organization_id=organization_id,
             project_id=project_id,
-            detail={"custom_role_id": str(role.id), "custom_role_name": role.name},
+            detail={
+                "custom_role_id": str(role.id),
+                "custom_role_name": role.name,
+                "scope_entity_id": str(scope_entity_id) if scope_entity_id else None,
+            },
         )
         db.commit()
 
@@ -475,7 +552,7 @@ def grant_custom_role_to_group(
     mirroring `assign_group_project_role`'s own precedent (a group grant
     potentially affects many users at once)."""
     role = _get_org_custom_role(db, organization_id, role_id)
-    _validate_grant_project_id(db, role, organization_id, payload.project_id)
+    _validate_grant_target(db, role, organization_id, payload.project_id, payload.scope_entity_id)
 
     org_group = db.get(OrgGroup, org_group_id)
     if org_group is None or org_group.organization_id != organization_id:
@@ -486,6 +563,7 @@ def grant_custom_role_to_group(
             GroupCustomRoleGrant.org_group_id == org_group_id,
             GroupCustomRoleGrant.custom_role_id == role.id,
             GroupCustomRoleGrant.project_id == payload.project_id,
+            GroupCustomRoleGrant.scope_entity_id == payload.scope_entity_id,
         )
     )
     if existing is None:
@@ -495,6 +573,7 @@ def grant_custom_role_to_group(
                 custom_role_id=role.id,
                 organization_id=organization_id,
                 project_id=payload.project_id,
+                scope_entity_id=payload.scope_entity_id,
                 granted_by=current_user.id,
             )
         )
@@ -506,7 +585,11 @@ def grant_custom_role_to_group(
             actor_id=current_user.id,
             organization_id=organization_id,
             project_id=payload.project_id,
-            detail={"custom_role_id": str(role.id), "custom_role_name": role.name},
+            detail={
+                "custom_role_id": str(role.id),
+                "custom_role_name": role.name,
+                "scope_entity_id": str(payload.scope_entity_id) if payload.scope_entity_id else None,
+            },
         )
         db.commit()
 
@@ -519,19 +602,23 @@ def revoke_custom_role_from_group(
     role_id: UUID,
     org_group_id: UUID,
     project_id: UUID | None = Query(None, description="Required iff the role's scope is 'project' — see the user revoke endpoint's docstring."),
+    scope_entity_id: UUID | None = Query(
+        None, description="Required iff the role's scope is a registered entity scope — see the user revoke endpoint's docstring."
+    ),
     current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
     """Revokes a custom role grant from an organisation group —
     `grant_custom_role_to_group`'s counterpart, same gate. No-op if absent."""
     role = _get_org_custom_role(db, organization_id, role_id)
-    _validate_grant_project_id(db, role, organization_id, project_id)
+    _validate_grant_target(db, role, organization_id, project_id, scope_entity_id)
 
     existing = db.scalar(
         select(GroupCustomRoleGrant).where(
             GroupCustomRoleGrant.org_group_id == org_group_id,
             GroupCustomRoleGrant.custom_role_id == role.id,
             GroupCustomRoleGrant.project_id == project_id,
+            GroupCustomRoleGrant.scope_entity_id == scope_entity_id,
         )
     )
     if existing is not None:
@@ -544,6 +631,10 @@ def revoke_custom_role_from_group(
             actor_id=current_user.id,
             organization_id=organization_id,
             project_id=project_id,
-            detail={"custom_role_id": str(role.id), "custom_role_name": role.name},
+            detail={
+                "custom_role_id": str(role.id),
+                "custom_role_name": role.name,
+                "scope_entity_id": str(scope_entity_id) if scope_entity_id else None,
+            },
         )
         db.commit()

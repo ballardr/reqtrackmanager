@@ -110,10 +110,15 @@ def test_create_custom_role_rejects_invalid_permission_key(client, admin_token):
 
 
 def test_create_custom_role_rejects_invalid_scope(client, admin_token):
+    # Fine-Grained Access Control (core) Phase 5 widened valid `scope`
+    # values to include any registered module-owned entity scope (e.g.
+    # compliance's own `"standard"`, exercised in `test_entity_scope_
+    # permissions.py`) — this test now uses a scope string no module could
+    # ever register, so it stays a genuine "always invalid" case.
     org, org_admin_token = create_org_admin_in(client, admin_token, "Invalid Scope Org")
     resp = client.post(
         f"/api/v1/orgs/{org['id']}/custom-roles",
-        json={"name": "Bad Scope Role", "description": "", "scope": "standard", "permissions": []},
+        json={"name": "Bad Scope Role", "description": "", "scope": "not_a_registered_scope", "permissions": []},
         headers=auth_headers(org_admin_token),
     )
     assert resp.status_code == 400, resp.text

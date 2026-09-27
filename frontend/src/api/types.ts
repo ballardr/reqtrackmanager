@@ -526,14 +526,19 @@ export interface Permission {
  * `Permission.key` strings, grantable to a user or org group exactly like
  * a fixed `OrgRole`/`ProjectRole` or a module-contributed role. `scope`
  * determines whether a grant of this role needs a `project_id`
- * (`"project"`) or not (`"org"`) — mirrors `ModuleRoleDefinition.scope`'s
- * own two core-recognised values. */
+ * (`"project"`), a `scope_entity_id` (any other value — a registered
+ * module-owned entity scope key from `GET /orgs/{id}/entity-scopes`, Phase
+ * 5, e.g. `"standard"`), or neither (`"org"`) — mirrors `ModuleRoleDefinition.
+ * scope`'s own trichotomy. Deliberately `string`, not a literal union: the
+ * set of valid non-`"org"`/`"project"` values is server-derived and grows
+ * as modules register their own entity scopes, the same reason `Permission.
+ * key` itself is a plain `string`. */
 export interface CustomRoleDefinition {
   id: string;
   organization_id: string;
   name: string;
   description: string;
-  scope: "org" | "project";
+  scope: string;
   created_by: string | null;
   created_at: string;
   permissions: string[];
@@ -548,13 +553,13 @@ export interface CustomRoleDefinition {
 export interface CustomRoleDefinitionCreate {
   name: string;
   description: string;
-  scope: "org" | "project";
+  scope: string;
   permissions: string[];
 }
 export interface CustomRoleDefinitionUpdate {
   name?: string;
   description?: string;
-  scope?: "org" | "project";
+  scope?: string;
   permissions?: string[];
 }
 
@@ -562,12 +567,45 @@ export interface CustomRoleDefinitionUpdate {
  * `OrgUser.custom_roles` — deliberately minimal (just enough to match
  * against a `CustomRoleDefinition.id`), the same "held-grant marker"
  * shape `ModuleRoleGrant` already gives module-contributed roles one tier
- * up. Limited to org-scoped (`project_id` null) grants — see the backend
- * `CustomRoleGrantOut` schema's own docstring for why a project-scoped
- * grant has no single row on this org-wide table to attach to instead. */
+ * up. Limited to org-scoped (`project_id` and `scope_entity_id` both null)
+ * grants — see the backend `CustomRoleGrantOut` schema's own docstring for
+ * why a project-scoped or entity-scoped grant has no single row on this
+ * org-wide table to attach to instead. */
 export interface CustomRoleGrant {
   custom_role_id: string;
   name: string;
+}
+
+/** Body for granting/revoking a `CustomRoleDefinition` to/from a user or
+ * org group (Fine-Grained Access Control Phase 3/5) — mirrors the backend
+ * `CustomRoleGrantTarget` schema. Exactly one of `project_id`/
+ * `scope_entity_id` is required, matching whichever scope the target role
+ * declares (`"project"` or a registered entity scope respectively); neither
+ * is given for an `"org"`-scoped role. */
+export interface CustomRoleGrantTarget {
+  project_id?: string | null;
+  scope_entity_id?: string | null;
+}
+
+/** One entity of a registered module-owned entity scope (Fine-Grained
+ * Access Control (core) plan Phase 5), as listed for a specific
+ * organisation. */
+export interface EntityScopeEntity {
+  id: string;
+  name: string;
+}
+
+/** One registered module-owned entity scope (`GET /orgs/{id}/entity-scopes`)
+ * — the generalised form of the project picker Phase 3 already built for
+ * project-scoped custom-role grants: the Role Management page's scope
+ * dropdown and entity picker render these generically, never hardcoding a
+ * specific module's scope kind (e.g. compliance's `"standard"`), mirroring
+ * how `Permission`/`ModuleRoleDefinition` are already server-derived rather
+ * than client-known vocabularies. */
+export interface EntityScope {
+  key: string;
+  label: string;
+  entities: EntityScopeEntity[];
 }
 
 export interface OrgUser {

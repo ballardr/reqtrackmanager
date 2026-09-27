@@ -91,11 +91,49 @@ def test_user_and_group_custom_role_grants_round_trip(client, admin_token):
         db.add_all([user_grant, group_grant])
         db.commit()
 
-        # Duplicate (user, role, project) is rejected...
+        # Fine-Grained Access Control (core) Phase 5 widened this table's
+        # unique constraint to a 4th column, `scope_entity_id` (NULL for
+        # both rows here, this test's `role.scope == "project"`) — Postgres
+        # treats NULL as distinct from NULL for uniqueness purposes, so an
+        # exact-duplicate (user, role, project, NULL) row no longer raises
+        # `IntegrityError` at the DB layer, the identical NULL-distinctness
+        # caveat `0034_module_role_scope_entity.py`'s own docstring already
+        # documents for `user_module_roles` one tier up since module system
+        # Phase 22. This was never the actual dedup mechanism in practice —
+        # `grant_custom_role_to_user`'s own check-then-insert shape is (see
+        # `test_grant_custom_role_no_op_on_duplicate`, `test_custom_roles_
+        # api.py`) — so this is a documented behaviour change, not a
+        # regression to guard against here.
+        db.add(
+            UserCustomRoleGrant(
+                user_id=user_id, custom_role_id=role.id, organization_id=org["id"], project_id=project["id"],
+            )
+        )
+        db.flush()
+        db.rollback()
+
+        # The constraint still does its job once *every* column is non-NULL
+        # for both rows (Postgres's NULL-distinctness is per-column, not
+        # per-constraint — `project_id` must also be set here, or this
+        # would hit the exact same NULL-distinctness non-trigger as above
+        # for that column instead). Proves the widened constraint isn't
+        # simply inert, only that a NULL column no longer triggers it.
+        # `role`'s own `scope` is irrelevant to this DB-level mechanics
+        # check (no CHECK constraint ties `scope_entity_id` to `role.scope`
+        # — that pairing is validated at the router layer, Phase 5).
+        entity_id = uuid.uuid4()
+        db.add(
+            UserCustomRoleGrant(
+                user_id=user_id, custom_role_id=role.id, organization_id=org["id"],
+                project_id=project["id"], scope_entity_id=entity_id,
+            )
+        )
+        db.flush()
         with db.begin_nested():
             db.add(
                 UserCustomRoleGrant(
-                    user_id=user_id, custom_role_id=role.id, organization_id=org["id"], project_id=project["id"],
+                    user_id=user_id, custom_role_id=role.id, organization_id=org["id"],
+                    project_id=project["id"], scope_entity_id=entity_id,
                 )
             )
             with pytest.raises(IntegrityError):

@@ -232,6 +232,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.modules.registry import (
+    EntityScopeDefinition,
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
@@ -348,6 +349,15 @@ def _resolve_standard_organization_id(db: Session, standard_id: UUID) -> UUID | 
     from app.modules.compliance.service import resolve_standard_organization_id
 
     return resolve_standard_organization_id(db, standard_id)
+
+
+def _list_standards_for_entity_scope(db: Session, organization_id: UUID) -> list[tuple[UUID, str]]:
+    """This module's `EntityScopeDefinition.list_entities` hook for the
+    `"standard"` scope (Fine-Grained Access Control (core) plan Phase 5) —
+    imported lazily for the same import-cycle reason as `get_router()`."""
+    from app.modules.compliance.service import list_standards_for_entity_scope
+
+    return list_standards_for_entity_scope(db, organization_id)
 
 
 def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> None:
@@ -468,6 +478,13 @@ MODULE_DEFINITION = ModuleDefinition(
     on_project_created=_reconcile_new_project,
     validate_org_group_member_removal=_validate_org_group_member_removal,
     artefact_types=_ARTEFACT_TYPES,
+    entity_scopes={
+        "standard": EntityScopeDefinition(
+            resolve_organization_id=_resolve_standard_organization_id,
+            label="Standard",
+            list_entities=_list_standards_for_entity_scope,
+        ),
+    },
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=_export_org_data,
         import_=_import_org_data,

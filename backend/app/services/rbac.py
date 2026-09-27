@@ -2734,8 +2734,39 @@ def _module_role_pairs_for_scope(
     return pairs
 
 
+def _module_role_pairs_for_entity(
+    db: Session,
+    model: type[UserModuleRole] | type[GroupModuleRole],
+    identifying_filter,
+    *,
+    organization_id: UUID,
+    entity_id: UUID,
+) -> set[tuple[str, str]]:
+    """Every `(module_key, role_key)` pair `model` grants `identifying_filter`
+    scoped to this exact `entity_id` (Fine-Grained Access Control (core)
+    plan Phase 5) — the entity-scoped counterpart to `_module_role_pairs_
+    for_scope` above, which deliberately excludes these rows
+    (`scope_entity_id IS NULL`). Callers (`_module_role_permission_grants`)
+    additionally filter each returned role by `role.scope == entity_scope`
+    before unioning its `permissions`, as defense in depth against a
+    same-valued `entity_id` coincidentally matching a different module's
+    unrelated entity scope (practically negligible with UUIDs, but free to
+    guard against).
+    """
+    query = select(model.module_key, model.role_key).where(
+        identifying_filter, model.organization_id == organization_id, model.scope_entity_id == entity_id
+    )
+    return set(db.execute(query).all())
+
+
 def _module_role_permission_grants(
-    db: Session, user_id: UUID, *, organization_id: UUID, project_id: UUID | None
+    db: Session,
+    user_id: UUID,
+    *,
+    organization_id: UUID,
+    project_id: UUID | None,
+    entity_scope: str | None = None,
+    entity_id: UUID | None = None,
 ) -> set[str]:
     """Every permission implied by module-contributed roles `user_id`
     holds at this org/project scope (Phase 0 Q4 / Phase 1's optional
@@ -2772,8 +2803,22 @@ def _module_role_permission_grants(
             project_id=project_id,
         )
 
+    entity_role_pairs: set[tuple[str, str]] = set()
+    if entity_id is not None:
+        entity_role_pairs = _module_role_pairs_for_entity(
+            db, UserModuleRole, UserModuleRole.user_id == user_id, organization_id=organization_id, entity_id=entity_id
+        )
+        if all_group_ids:
+            entity_role_pairs |= _module_role_pairs_for_entity(
+                db,
+                GroupModuleRole,
+                GroupModuleRole.org_group_id.in_(all_group_ids),
+                organization_id=organization_id,
+                entity_id=entity_id,
+            )
+
     permissions: set[str] = set()
-    for module_key, role_key in role_pairs:
+    for module_key, role_key in role_pairs | entity_role_pairs:
         definition = get_module(module_key)
         if definition is None:
             continue
@@ -2785,6 +2830,11 @@ def _module_role_permission_grants(
             continue
         role = next((r for r in definition.roles if r.role_key == role_key), None)
         if role is None:
+            continue
+        if (module_key, role_key) in entity_role_pairs and role.scope != entity_scope:
+            # Defense in depth (see `_module_role_pairs_for_entity`'s own
+            # docstring) — a same-valued `entity_id` matching a role of a
+            # different scope contributes nothing.
             continue
         permissions.update(role.permissions)
     return permissions
@@ -2815,16 +2865,63 @@ def _custom_role_ids_for_scope(
     permission atoms an org-scoped role may hold (**Decided by: Agent**):
     an org admin who wants a role scoped to one specific project instead
     simply defines it with `scope == "project"` and grants it there.
+
+    `scope_entity_id IS NULL` on every branch (Phase 5) — an entity-scoped
+    grant also has `project_id IS NULL` (the two are mutually exclusive,
+    never both set), so without this exclusion it would be misidentified as
+    an org-scoped grant here and its permissions applied org-wide instead
+    of only against its one specific entity — resolved instead by
+    `_custom_role_ids_for_entity_scope`, mirroring `_module_role_pairs_for_
+    scope`'s identical `scope_entity_id.is_(None)` guard one tier up.
     """
-    query = select(model.custom_role_id).where(identifying_filter, model.organization_id == organization_id)
+    query = select(model.custom_role_id).where(
+        identifying_filter, model.organization_id == organization_id, model.scope_entity_id.is_(None)
+    )
     role_ids = set(db.scalars(query.where(model.project_id.is_(None))).all())
     if project_id is not None:
         role_ids |= set(db.scalars(query.where(model.project_id == project_id)).all())
     return role_ids
 
 
+def _custom_role_ids_for_entity_scope(
+    db: Session,
+    model: type[UserCustomRoleGrant] | type[GroupCustomRoleGrant],
+    identifying_filter,
+    *,
+    organization_id: UUID,
+    entity_scope: str,
+    entity_id: UUID,
+) -> set[UUID]:
+    """Every `custom_role_id` `model` grants `identifying_filter` scoped to
+    this exact `(entity_scope, entity_id)` pair (Fine-Grained Access Control
+    (core) plan Phase 5) — the entity-scoped counterpart to `_custom_role_
+    ids_for_scope` above. Joins to `CustomRoleDefinition` to additionally
+    require `scope == entity_scope`, unlike `_module_role_pairs_for_entity`'s
+    own after-the-fact filter, since a custom role's `scope` is available
+    directly on the grant's own definition row rather than requiring a
+    second in-process registry lookup.
+    """
+    query = (
+        select(model.custom_role_id)
+        .join(CustomRoleDefinition, CustomRoleDefinition.id == model.custom_role_id)
+        .where(
+            identifying_filter,
+            model.organization_id == organization_id,
+            model.scope_entity_id == entity_id,
+            CustomRoleDefinition.scope == entity_scope,
+        )
+    )
+    return set(db.scalars(query).all())
+
+
 def _custom_role_permission_grants(
-    db: Session, user_id: UUID, *, organization_id: UUID, project_id: UUID | None
+    db: Session,
+    user_id: UUID,
+    *,
+    organization_id: UUID,
+    project_id: UUID | None,
+    entity_scope: str | None = None,
+    entity_id: UUID | None = None,
 ) -> set[str]:
     """Every permission implied by `CustomRoleDefinition` grants `user_id`
     holds at this org/project scope — direct (`UserCustomRoleGrant`) or via
@@ -2851,6 +2948,16 @@ def _custom_role_permission_grants(
             db, GroupCustomRoleGrant, GroupCustomRoleGrant.org_group_id.in_(all_group_ids),
             organization_id=organization_id, project_id=project_id,
         )
+    if entity_id is not None and entity_scope is not None:
+        role_ids |= _custom_role_ids_for_entity_scope(
+            db, UserCustomRoleGrant, UserCustomRoleGrant.user_id == user_id,
+            organization_id=organization_id, entity_scope=entity_scope, entity_id=entity_id,
+        )
+        if all_group_ids:
+            role_ids |= _custom_role_ids_for_entity_scope(
+                db, GroupCustomRoleGrant, GroupCustomRoleGrant.org_group_id.in_(all_group_ids),
+                organization_id=organization_id, entity_scope=entity_scope, entity_id=entity_id,
+            )
     if not role_ids:
         return set()
     return set(
@@ -2866,7 +2973,13 @@ def _custom_role_permission_grants(
 
 
 def get_effective_permissions(
-    db: Session, user_id: UUID, *, organization_id: UUID | None = None, project_id: UUID | None = None
+    db: Session,
+    user_id: UUID,
+    *,
+    organization_id: UUID | None = None,
+    project_id: UUID | None = None,
+    entity_scope: str | None = None,
+    entity_id: UUID | None = None,
 ) -> set[str]:
     """Resolves the full set of permission-atom keys (`app.services.
     permissions.encode_permission`/`ADMINISTRATIVE_PERMISSIONS`) `user_id`
@@ -2909,6 +3022,23 @@ def get_effective_permissions(
     admin itself, at its own call site, rather than baking the bypass into
     the underlying resolution function; `require_permission` below follows
     that same convention.
+
+    Args:
+        entity_scope: Fine-Grained Access Control (core) plan Phase 5 — a
+            registered module-owned entity scope key (`app.modules.registry.
+            get_all_registered_entity_scopes()`, e.g. compliance's
+            `"standard"`). When given (with `entity_id`), sources 2 and 3/4
+            additionally include any module-role or custom-role grant scoped
+            to this exact `(entity_scope, entity_id)` pair. **Omitted —
+            every existing call site — behaviour is completely unchanged**:
+            entity-scoped grants stay excluded exactly as before Phase 5
+            (Design Principle 1). Every broader-tier grant that already
+            composes (server admin, the static org/project role mapping, an
+            org-scoped custom role's permissions applying org-wide) continues
+            to satisfy an entity-scoped check too, without new code, since
+            this parameter only ever adds sources, never removes one.
+        entity_id: The specific entity's id, required alongside
+            `entity_scope` (and ignored if `entity_scope` is `None`).
     """
     if organization_id is None and project_id is not None:
         organization_id = _project_organization_id(db, project_id)
@@ -2926,8 +3056,14 @@ def get_effective_permissions(
         for role in project_roles:
             permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(role, ()))
 
-    permissions |= _module_role_permission_grants(db, user_id, organization_id=organization_id, project_id=project_id)
-    permissions |= _custom_role_permission_grants(db, user_id, organization_id=organization_id, project_id=project_id)
+    permissions |= _module_role_permission_grants(
+        db, user_id, organization_id=organization_id, project_id=project_id,
+        entity_scope=entity_scope, entity_id=entity_id,
+    )
+    permissions |= _custom_role_permission_grants(
+        db, user_id, organization_id=organization_id, project_id=project_id,
+        entity_scope=entity_scope, entity_id=entity_id,
+    )
 
     return permissions
 
@@ -2947,7 +3083,7 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     satisfy it.
 
     This is the function Decision Management's own per-decision-type
-    approval check (Phase 5) calls directly, alongside `get_effective_
+    approval check (Phase 7) calls directly, alongside `get_effective_
     permissions`, for a sub-type known only from a loaded row rather than
     a path parameter — see `require_permission`'s own docstring for why
     that case can't go through the FastAPI dependency below.
@@ -2962,7 +3098,7 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     return encode_permission(artefact_type, level) in held
 
 
-def require_permission(*allowed: str):
+def require_permission(*allowed: str, entity_scope: str | None = None):
     """FastAPI dependency factory requiring at least one of the given
     Fine-Grained Access Control permission atoms (Phase 2), resolved via
     `get_effective_permissions`/`permission_satisfied` — coexisting with,
@@ -2972,21 +3108,22 @@ def require_permission(*allowed: str):
     migrate keeps working exactly as today, indefinitely (Design
     Principle 1).
 
-    Expects an `organization_id` and/or `project_id` path parameter, read
-    directly off `request.path_params` (never a query parameter — unlike a
-    normal FastAPI-bound argument, reading only the resolved path template
-    values here means a caller can never inject an arbitrary `organization_
-    id`/`project_id` via the query string to redirect which scope gets
-    checked, the same safety property `require_module_role`'s own
-    module-owned-entity-scope branch already relies on for its
-    `f"{scope}_id"` lookup). Unlike `require_org_role`/`require_project_
-    role`, which each expect exactly one, this tolerates either: when
-    `project_id` is present it takes priority and `organization_id` is
-    derived from it (mirroring `require_project_role`'s own lookup,
-    ignoring any independently-present `organization_id` path segment,
-    since the project's own organisation is authoritative); otherwise
-    `organization_id` alone is used. A route declaring neither is a
-    construction-time contract violation, raised as a 500 rather than
+    Expects an `organization_id` and/or `project_id` path parameter (or,
+    when `entity_scope` is given, an `f"{entity_scope}_id"` path parameter
+    instead — see below), read directly off `request.path_params` (never a
+    query parameter — unlike a normal FastAPI-bound argument, reading only
+    the resolved path template values here means a caller can never inject
+    an arbitrary `organization_id`/`project_id`/entity id via the query
+    string to redirect which scope gets checked, the same safety property
+    `require_module_role`'s own module-owned-entity-scope branch already
+    relies on for its `f"{scope}_id"` lookup). Unlike `require_org_role`/
+    `require_project_role`, which each expect exactly one, this tolerates
+    either: when `project_id` is present it takes priority and
+    `organization_id` is derived from it (mirroring `require_project_role`'s
+    own lookup, ignoring any independently-present `organization_id` path
+    segment, since the project's own organisation is authoritative);
+    otherwise `organization_id` alone is used. A route declaring neither is
+    a construction-time contract violation, raised as a 500 rather than
     silently checking nothing.
 
     Server admins bypass every check, consistent with every existing
@@ -2995,9 +3132,29 @@ def require_permission(*allowed: str):
     This factory only covers the *static*, path-parameter-derived case. A
     sub-type-scoped check where the sub-type is only known from a loaded
     row rather than a path parameter (Decision Management's own
-    per-decision-type approval, Phase 5) calls `get_effective_permissions`
+    per-decision-type approval, Phase 7) calls `get_effective_permissions`
     and `permission_satisfied` directly from inside the service function
     instead of through this dependency.
+
+    Args:
+        entity_scope: Fine-Grained Access Control (core) plan Phase 5 —
+            when given, this specific check is against a registered
+            module-owned entity scope (`app.modules.registry.
+            get_all_registered_entity_scopes()`, e.g. `"standard"`) rather
+            than the plain org/project axis: the entity's id is read from
+            the `f"{entity_scope}_id"` path parameter (mirroring `require_
+            module_role`'s identical `f"{scope}_id"` convention), its owning
+            organisation resolved via that scope's own registered
+            `resolve_organization_id`, and `organization_id`/`project_id`
+            path parameters are not consulted at all — **the route's
+            intended scope must be stated explicitly here, never inferred
+            by trying multiple path params** when a route's path happens to
+            carry more than one candidate (e.g. both `project_id` and
+            `standard_id`). A 404 (not 403/500) if the scope key is
+            unregistered or the entity doesn't exist, matching every other
+            module-gated dependency's "module disabled or entity absent ->
+            404" posture. `None` (the default) is every existing call
+            site's shape — completely unaffected.
     """
 
     def _dependency(
@@ -3007,27 +3164,53 @@ def require_permission(*allowed: str):
         if current_user.is_server_admin:
             return current_user
 
-        raw_project_id = request.path_params.get("project_id")
-        if raw_project_id is not None:
-            project_id = raw_project_id if isinstance(raw_project_id, UUID) else UUID(str(raw_project_id))
-            check_pat_scope_for_project(request, db, project_id)
-            organization_id = _project_organization_id(db, project_id)
-        else:
-            project_id = None
-            raw_org_id = request.path_params.get("organization_id")
-            if raw_org_id is None:
+        entity_id: UUID | None = None
+        if entity_scope is not None:
+            from app.modules.registry import get_all_registered_entity_scopes
+
+            scope_definition = get_all_registered_entity_scopes().get(entity_scope)
+            if scope_definition is None:
                 raise HTTPException(
                     status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "require_permission: route declares neither organization_id nor project_id.",
+                    f"require_permission: entity_scope {entity_scope!r} is not registered.",
                 )
-            organization_id = raw_org_id if isinstance(raw_org_id, UUID) else UUID(str(raw_org_id))
+            raw_entity_id = request.path_params.get(f"{entity_scope}_id")
+            if raw_entity_id is None:
+                raise HTTPException(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    f"require_permission: route declares no {entity_scope}_id path parameter.",
+                )
+            entity_id = raw_entity_id if isinstance(raw_entity_id, UUID) else UUID(str(raw_entity_id))
+            organization_id = scope_definition.resolve_organization_id(db, entity_id)
+            if organization_id is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+            project_id = None
             check_pat_scope(request, organization_id)
+        else:
+            raw_project_id = request.path_params.get("project_id")
+            if raw_project_id is not None:
+                project_id = raw_project_id if isinstance(raw_project_id, UUID) else UUID(str(raw_project_id))
+                check_pat_scope_for_project(request, db, project_id)
+                organization_id = _project_organization_id(db, project_id)
+            else:
+                project_id = None
+                raw_org_id = request.path_params.get("organization_id")
+                if raw_org_id is None:
+                    raise HTTPException(
+                        status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        "require_permission: route declares neither organization_id nor project_id.",
+                    )
+                organization_id = raw_org_id if isinstance(raw_org_id, UUID) else UUID(str(raw_org_id))
+                check_pat_scope(request, organization_id)
 
         if organization_id is not None:
             _require_org_active(db, organization_id)
             _require_org_2fa(db, organization_id, current_user)
 
-        held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
+        held = get_effective_permissions(
+            db, current_user.id, organization_id=organization_id, project_id=project_id,
+            entity_scope=entity_scope, entity_id=entity_id,
+        )
         if not any(permission_satisfied(held, permission) for permission in allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
         return current_user
