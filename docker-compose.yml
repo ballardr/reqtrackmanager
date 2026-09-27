@@ -55,6 +55,7 @@ services:
   # were, just under S3's own generic names.
   storage:
     image: chrislusf/seaweedfs:3.97
+    container_name: reqtrack-storage
     command: server -dir=/data -s3 -s3.port=9000
     environment:
       AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER:-minioadmin}
@@ -71,7 +72,22 @@ services:
       # the master's cluster-status endpoint instead, which the same
       # `server -s3` process also serves on port 9333. wget, not curl —
       # this image has no curl binary.
-      test: ["CMD", "wget", "-qO-", "http://localhost:9333/cluster/status"]
+      #
+      # Uses the container's own name (`reqtrack-storage`, set above),
+      # not `localhost`: on GitHub Actions' runners this healthcheck
+      # consistently failed every probe with "Connection refused" for the
+      # full retry budget even though `weed`'s own logs showed
+      # master/filer/S3 all up within ~16s — `weed` binds its HTTP/gRPC
+      # ports to the container's real interface (and, environment-
+      # dependently, apparently not always to the IPv4 loopback address
+      # `localhost` resolves to first), so a same-container `wget` to
+      # `localhost` isn't reliable across environments. Going via the
+      # container's own name resolves through Docker's embedded DNS to
+      # the same address every other service already reaches it on,
+      # which `weed` definitely listens on (it's how filer/master/S3
+      # talk to each other internally) — verified this route works via a
+      # local repro of the exact failure. See docs/decisions.md.
+      test: ["CMD", "wget", "-qO-", "http://reqtrack-storage:9333/cluster/status"]
       interval: 10s
       timeout: 5s
       retries: 10
