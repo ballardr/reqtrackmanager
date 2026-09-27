@@ -304,6 +304,19 @@ jobs:
         working-directory: tests/container
         run: docker compose up -d db storage mailhog backend
 
+      # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
+      # if a `depends_on: condition: service_healthy` dependency never
+      # reaches healthy, so the step above carries no dependency's own logs.
+      # This dumps every service's state/logs so a stuck healthcheck (e.g.
+      # the `storage` service never becoming healthy) is diagnosable from
+      # the run's own log instead of requiring a local repro.
+      - name: Diagnose dev/test stack on startup failure
+        if: failure()
+        working-directory: tests/container
+        run: |
+          docker compose ps -a
+          docker compose logs
+
       - name: Wait for backend to become healthy
         working-directory: tests/container
         run: |
@@ -483,6 +496,17 @@ jobs:
       - name: Start the dev/test stack
         working-directory: tests/container
         run: docker compose up -d
+
+      # See the backend-tests job's identical step for why this exists:
+      # `docker compose up -d` fails outright, with no per-service logs, if
+      # a `depends_on: condition: service_healthy` dependency never reaches
+      # healthy.
+      - name: Diagnose dev/test stack on startup failure
+        if: failure()
+        working-directory: tests/container
+        run: |
+          docker compose ps -a
+          docker compose logs
 
       - name: Wait for backend to become healthy
         working-directory: tests/container
