@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { CustomRoleDefinition, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { CustomRoleDefinition, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
@@ -54,6 +54,14 @@ function mockOrgAdminApis(overrides: {
   // below. Default to empty — the real-world-default "no custom roles
   // defined yet" case.
   permissions?: Permission[]; customRoles?: CustomRoleDefinition[];
+  // Fine-Grained Access Control (core) Phase 5 — fetched unconditionally in
+  // the same `reload()` bundle as `permissions`/`customRoles` above (see
+  // `OrgAdminPage.tsx`'s own comment there); left unmocked here would 500
+  // the whole bundle's `Promise.all` for every story, not just Role
+  // Management ones — the exact regression this comment exists to prevent
+  // a future edit from reintroducing. Defaults to empty, same as the other
+  // two.
+  entityScopes?: EntityScope[];
   /** Simulates a non-ORG_ADMIN caller (e.g. a plain `grant_roles` holder)
    * for whom `GET .../advanced-settings` 403s — the same signal the Role
    * Management group's own role-*definition* half is gated on (Phase 0
@@ -107,6 +115,16 @@ function mockOrgAdminApis(overrides: {
     // it, same ordering reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return overrides.permissions ?? [];
     if (path.includes("/custom-roles")) return overrides.customRoles ?? [];
+    // Fine-Grained Access Control (core) Phase 5 — checked before the
+    // plain "/users" branch below, same ordering reasoning as the two
+    // branches above.
+    if (path.includes("/entity-scopes")) return overrides.entityScopes ?? [];
+    // `UserAutocomplete`'s debounced server-side search (`organizationId`
+    // mode, used by the custom-role assignment card's grant/revoke
+    // controls) — checked before the plain "/users" catch-all below, which
+    // that path also matches, mirroring `mockProjectsWorkflowWithOneProject`'s
+    // own identical branch one function up.
+    if (path.includes("/users/search")) return { members: orgUsers, external: null };
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
@@ -1744,6 +1762,12 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     // reload() throws" reasoning as `/module-roles`/`/modules` above.
     if (path.includes("/permissions")) return [];
     if (path.includes("/custom-roles")) return [];
+    // Fine-Grained Access Control (core) Phase 5 — same reasoning; this
+    // function fully replaces `mockOrgAdminApis`'s own `api.get` mock (see
+    // the comment above `/module-roles` in this same function), so its
+    // `/entity-scopes` branch has to be duplicated here too, not just added
+    // once there.
+    if (path.includes("/entity-scopes")) return [];
     if (path.includes("/sso-config")) return ssoConfig;
     if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
     if (path.includes("/access")) return { org_groups: [], projects: [] };
@@ -2229,6 +2253,76 @@ export const UsersSectionCustomRoleGrantAndRevoke: Story = {
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles/role-1/users/user-2`)
     );
+  },
+};
+
+/** Fine-Grained Access Control (core) Phase 5 built the entity-scope picker
+ * generically, with no real registered scope to exercise it against yet
+ * (its own tests deferred Playwright/Storybook coverage to "once Phase 6
+ * gives it a real workflow"); Phase 6 (Compliance's `"standard"` scope) is
+ * that first real workflow. Proves: the scope dropdown's "Standard" option
+ * comes from `GET .../entity-scopes` (never hardcoded), the assignment
+ * card's entity picker is disabled (placeholder text, not a real search)
+ * until an entity is chosen, and choosing one before granting sends
+ * `scope_entity_id` (never `project_id`) on the grant call. */
+const fixtureEntityScopeStandard = { key: "standard", label: "Standard", entities: [{ id: "std-1", name: "ISO 27001" }] };
+const fixtureStandardScopedRole: CustomRoleDefinition = {
+  id: "role-2", organization_id: ORG_ID, name: "Standard Reviewer", description: "Reviews one standard's content.",
+  scope: "standard", created_by: "user-1", created_at: "2026-02-01T00:00:00Z",
+  permissions: ["project_compliance_requirement:manage:"],
+};
+
+export const RoleManagementEntityScopedGrantAndRevoke: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      permissions: [
+        ...fixturePermissions,
+        {
+          key: "project_compliance_requirement:manage:", label: "project_compliance_requirement — manage",
+          artefact_type: "project_compliance_requirement", level: "manage", subtype: null,
+        },
+      ],
+      customRoles: [fixtureStandardScopedRole],
+      entityScopes: [fixtureEntityScopeStandard],
+    });
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Role management" }));
+    await waitFor(() => expect(canvas.getAllByText("Standard Reviewer").length).toBe(2));
+
+    // The scope column in the definitions table renders the registered
+    // scope's own label, not the raw "standard" key.
+    await expect(canvas.getByRole("cell", { name: "Standard" })).toBeInTheDocument();
+
+    const grantBox = canvas.getByRole("combobox", { name: "Grant Standard Reviewer — search a user or group" });
+    await expect(grantBox).toHaveAttribute("placeholder", "Select a Standard first");
+
+    const entityPicker = canvas.getByLabelText("Standard", { selector: "select" });
+    await userEvent.selectOptions(entityPicker, "std-1");
+
+    await userEvent.type(grantBox, "Alex");
+    const grantOption = await canvas.findByRole("option", { name: /Alex Morgan/ });
+    await userEvent.click(grantOption);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/custom-roles/role-2/users/user-1`, {
+        project_id: null, scope_entity_id: "std-1",
+      })
+    );
+    await waitFor(() => expect(within(document.body).getByText("Granted to Alex Morgan")).toBeInTheDocument());
+
+    const revokeBox = canvas.getByRole("combobox", { name: "Revoke Standard Reviewer — search a user or group" });
+    await userEvent.type(revokeBox, "Alex");
+    const revokeOption = await canvas.findByRole("option", { name: /Alex Morgan/ });
+    await userEvent.click(revokeOption);
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/custom-roles/role-2/users/user-1?scope_entity_id=std-1`
+      )
+    );
+    await waitFor(() => expect(within(document.body).getByText("Revoked from Alex Morgan")).toBeInTheDocument());
   },
 };
 

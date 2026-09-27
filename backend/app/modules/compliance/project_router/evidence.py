@@ -7,16 +7,27 @@ side effect, `_invalidate_approvals_supported_by_evidence`, local to
 this file only), links to a requirement or a required-action
 assessment, and file attachment (upload or link an existing org
 resource).
+
+`create_evidence`/`update_evidence` are Fine-Grained Access Control Phase
+6's org/project-axis migration (`docs/plans/core-fine-grained-access-
+control-plan.md`) — `_require_evidence_manage` (below) tries the existing
+`_require_officer` (`compliance_officer`) gate first, falling back to
+`require_permission`'s `(compliance_evidence, manage)` atom only on a 403
+(never a 404 — module-disabled must propagate immediately), the same
+try/except composition `router/_shared.py::_require_standard_manage_or_
+contribute` already established one package up. Every other endpoint in
+this file stays on the plain `_require_officer` gate, unchanged.
 """
 
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user_or_module_frame
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
@@ -46,6 +57,7 @@ from app.modules.compliance.schemas import (
     ComplianceEvidenceUpdate,
 )
 from app.modules.compliance.service import (
+    COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
     build_evidence_out,
     find_pcrs_linked_to_evidence,
     invalidate_approval_if_in_flight,
@@ -55,8 +67,37 @@ from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import relationships
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.rbac import require_permission
 
 router = APIRouter(tags=["compliance-project-evidence"])
+
+
+def _require_evidence_manage(
+    project_id: UUID, request: Request,
+    current_user: User = Depends(get_current_user_or_module_frame("compliance")),
+    db: Session = Depends(get_db),
+) -> User:
+    """`create_evidence`/`update_evidence`'s gate (Fine-Grained Access
+    Control Phase 6, see this module's own docstring) — additive: a caller
+    who already holds `compliance_officer` sees no behaviour change; a
+    caller who instead holds a custom role granting `(compliance_evidence,
+    manage)` (org- or project-scoped) reaches these two endpoints without
+    ever holding `compliance_officer` at all. Local to this file since it
+    has only these two call sites, per this package's own "shared only past
+    two-plus call sites" split convention (`_shared.py`'s own docstring)."""
+    try:
+        return _require_officer(project_id=project_id, request=request, current_user=current_user, db=db)
+    except HTTPException as officer_exc:
+        if officer_exc.status_code != status.HTTP_403_FORBIDDEN:
+            raise
+        try:
+            return require_permission(COMPLIANCE_EVIDENCE_MANAGE_PERMISSION)(
+                request=request, current_user=current_user, db=db
+            )
+        except HTTPException as perm_exc:
+            if perm_exc.status_code != status.HTTP_403_FORBIDDEN:
+                raise
+            raise officer_exc from perm_exc
 
 
 def _invalidate_approvals_supported_by_evidence(
@@ -99,7 +140,7 @@ def _invalidate_approvals_supported_by_evidence(
 @router.post("/evidence", response_model=ComplianceEvidenceOut, status_code=status.HTTP_201_CREATED)
 def create_evidence(
     project_id: UUID, payload: ComplianceEvidenceCreate,
-    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_evidence_manage), db: Session = Depends(get_db),
 ):
     """Creates a piece of supporting evidence for this project (§13),
     optionally linked to one or more requirement/required-action
@@ -174,7 +215,7 @@ def get_evidence(
 @router.patch("/evidence/{evidence_id}", response_model=ComplianceEvidenceOut)
 def update_evidence(
     project_id: UUID, evidence_id: UUID, payload: ComplianceEvidenceUpdate,
-    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_evidence_manage), db: Session = Depends(get_db),
 ):
     """Updates evidence metadata — deliberately excludes `expiry_date`;
     see `ComplianceEvidenceUpdate`'s own docstring for §15's

@@ -110,6 +110,83 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
     await expect(page.getByRole("cell", { name: roleName, exact: true })).not.toBeVisible();
   });
 
+  test("org admin creates a standard-scoped (entity-scoped) custom role and grants/revokes it via the entity picker", async ({
+    page,
+  }) => {
+    // Fine-Grained Access Control (core) Phase 6 — the first real
+    // workflow to exercise Phase 5's generic entity-scope picker
+    // end-to-end: Compliance's own "FGAC Demo Standard" (seeded by
+    // `backend/scripts/seed_e2e_dataset.py`) is this suite's first real
+    // registered entity-scope entity. Unlike the plain org-scoped flow
+    // above (a checkbox in the Users table whose checked state can be
+    // reasserted after reload), this entity-scoped assignment card
+    // deliberately has no "who currently holds this" listing to read back
+    // (this plan's own MCP/docs-site addenda treat a grant roster as a
+    // privilege-reconnaissance disclosure not safe to expose) — so this
+    // test's own proof of wiring is the grant/revoke success toasts and
+    // the "select a Standard first" placeholder gating the picker until an
+    // entity is actually chosen, not a reload-and-reassert round trip.
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto("/orgs");
+    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
+
+    await selectOrgAdminGroup(page, "Role management");
+
+    const roleName = `E2E Standard Role ${Date.now()}`;
+
+    await page.getByRole("button", { name: "New custom role" }).click();
+    const createDialog = page.getByRole("dialog", { name: "New custom role" });
+    await createDialog.getByLabel("Name").fill(roleName);
+    await createDialog.getByLabel("Description").fill("Created by role-management.spec.ts (entity-scoped)");
+    // Populated from the real `GET /orgs/{id}/entity-scopes` (Phase 5) —
+    // never hardcoded by the frontend — so selecting "Standard" here at
+    // all proves that endpoint returned Compliance's own registration.
+    await createDialog.getByLabel("Scope").selectOption({ label: "Standard" });
+    await createDialog.getByRole("checkbox", { name: "project_compliance_requirement — manage", exact: true }).check();
+    await createDialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText("Custom role created")).toBeVisible();
+    await expect(createDialog).not.toBeVisible();
+
+    // `.card` also matches the two ancestor `CollapsibleSection` wrappers
+    // ("Custom roles" and "Grant roles to users or groups"), both of which
+    // contain this role's name too (and, if an earlier run of this test
+    // left a same-titled leftover role behind, several roles' worth of
+    // "Standard" text) — `.last()` picks the innermost, this-role-specific
+    // card: `querySelectorAll` returns matches in document order, and an
+    // ancestor is always found before its own nested descendant, so the
+    // one actual per-role card among the matches is always the last one.
+    const roleCard = page.locator(".card", { hasText: roleName }).last();
+    await expect(roleCard).toBeVisible();
+
+    const grantBox = roleCard.getByRole("combobox", { name: `Grant ${roleName} — search a user or group` });
+    // Before an entity is chosen, the grant/revoke pickers are disabled
+    // with a "select a Standard first" placeholder (Phase 3's project-
+    // picker fallback, generalised to any entity scope by Phase 5).
+    await expect(grantBox).toHaveAttribute("placeholder", "Select a Standard first");
+
+    // `exact: true` — a loose match would also catch the grant/revoke
+    // comboboxes below, whose own accessible names embed this role's own
+    // name ("E2E Standard Role ...") and so contain "Standard" too.
+    await roleCard.getByRole("combobox", { name: "Standard", exact: true }).selectOption({ label: "FGAC Demo Standard" });
+
+    await grantBox.fill(PERSONAS.memberAlphaBeta.name);
+    await roleCard.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
+    await expect(page.getByText(`Granted to ${PERSONAS.memberAlphaBeta.name}`)).toBeVisible();
+
+    // --- Revoke, then delete the role definition itself -----------------
+    const revokeBox = roleCard.getByRole("combobox", { name: `Revoke ${roleName} — search a user or group` });
+    await revokeBox.fill(PERSONAS.memberAlphaBeta.name);
+    await roleCard.getByRole("option", { name: new RegExp(PERSONAS.memberAlphaBeta.name) }).click();
+    await expect(page.getByText(`Revoked from ${PERSONAS.memberAlphaBeta.name}`)).toBeVisible();
+
+    await page.getByRole("button", { name: `Delete ${roleName}` }).click();
+    const deleteDialog = page.getByRole("dialog", { name: "Delete custom role?" });
+    await deleteDialog.getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByText("Custom role deleted")).toBeVisible();
+  });
+
   test("a caller without ORG_ADMIN cannot see the role-definition half but the group is still reachable", async ({ page }) => {
     // memberAlphaBeta holds only `member` in Alpha (no ORG_ADMIN) — proves
     // Phase 0 Q8's access-split decision: `GET .../advanced-settings`

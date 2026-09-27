@@ -212,6 +212,22 @@ RBAC role grant/revoke, which point 2 of that note keeps off the MCP
 surface on principle, the same way Modules 8/11/12 stay read-only-only or
 untouched for being RBAC/Governance in nature.
 
+Fine-Grained Access Control (core) plan Phase 6 populates `permissions` on
+all four roles above (`app.modules.registry.ModuleRoleDefinition`'s optional
+field, added at that plan's own Phase 1 and left empty here until now) and
+migrates two endpoints to accept `app.services.rbac.require_permission` as
+an alternative to their existing `require_module_role` gate: `create_
+evidence`/`update_evidence` (`project_router/evidence.py`, the org/project
+composition axis) and `update_requirement` (`router/version_requirements.
+py`, the entity-scoped `"standard"` axis this same plan's Phase 5 added the
+generic registry for — `standards_manager`/`standards_contributor` are this
+mechanism's first real consumer). Every existing `require_module_role` gate
+stays exactly as it was; the new path is additive only — an organisation
+that never touches a custom role sees zero behavioural change. See `service.
+py`'s own module-level comment for the permission-atom constants these
+roles declare and why the two entity-scoped ones reuse the `project_
+compliance_requirement` artefact type rather than a dedicated one.
+
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.global_router`/
 `.service`/`.scheduler` (each imported lazily, inside `get_router()`/
@@ -231,6 +247,19 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.compliance.service import (
+    COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
+    COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
+    COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
+    COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
+    COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
+    COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION,
+    COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION,
+    COMPLIANCE_REQUIREMENT_PROPOSE_CREATE_PERMISSION,
+    COMPLIANCE_REQUIREMENT_VIEW_PERMISSION,
+    COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION,
+    COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION,
+)
 from app.modules.registry import (
     EntityScopeDefinition,
     McpToolDefinition,
@@ -520,6 +549,24 @@ MODULE_DEFINITION = ModuleDefinition(
                 "actions; assigns standards to projects; views compliance across projects (§3)."
             ),
             scope="org",
+            # Fine-Grained Access Control Phase 6 — the broadest of this
+            # module's roles, so it gets every level on every registered
+            # artefact type (mirroring Phase 2's own `PROJECT_MANAGER`
+            # mapping's "every artefact-type permission at every level"
+            # precedent), rather than a hand-picked subset: §3 already
+            # describes this role as full org-wide compliance management,
+            # not a narrower slice of it.
+            permissions=(
+                COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
+                COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
+                COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
+                COMPLIANCE_REQUIREMENT_VIEW_PERMISSION,
+                COMPLIANCE_REQUIREMENT_PROPOSE_CREATE_PERMISSION,
+                COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION,
+                COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION,
+                COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
+                COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
+            ),
         ),
         ModuleRoleDefinition(
             role_key="compliance_officer",
@@ -529,6 +576,29 @@ MODULE_DEFINITION = ModuleDefinition(
                 "authorised approval/sign-off for the projects they are assigned to (§11/§26)."
             ),
             scope="project",
+            # Fine-Grained Access Control Phase 6 — mapped from this role's
+            # own documented responsibilities: evidence (create/edit,
+            # `project_router/evidence.py`'s now-migrated `create_evidence`/
+            # `update_evidence`), assessment/applicability
+            # (`project_compliance_requirement`), and "authorised
+            # approval/sign-off" (`APPROVE_BASELINE` on the same artefact
+            # type) — the last of these isn't yet checked by any migrated
+            # endpoint (`approve_requirement`/`reject_requirement` stay on
+            # `require_module_role` this phase; only evidence create/update
+            # and the standard-content-edit proof below migrate), included
+            # here anyway since the role's own description already grants
+            # it today and this field is meant to describe what the role
+            # *can do*, not only what's been wired through the new gate.
+            permissions=(
+                COMPLIANCE_EVIDENCE_VIEW_PERMISSION,
+                COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION,
+                COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
+                COMPLIANCE_REQUIREMENT_VIEW_PERMISSION,
+                COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION,
+                COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION,
+                COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
+                COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
+            ),
         ),
         # Phase 22 (docs/compliance-module-plan.md): standard-scoped
         # working-group roles, distinct from org-wide `compliance_manager`
@@ -550,6 +620,23 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="standard",
             overridden_by=(("org", "compliance_manager"),),
             resolve_entity_organization_id=_resolve_standard_organization_id,
+            # Fine-Grained Access Control Phase 6 (entity-scoped composition,
+            # Phase 5's own extension) — `MANAGE` for draft content editing,
+            # `APPROVE_BASELINE` for publish/retire (a version baseline,
+            # the same tier Decision Management's own approval scoping uses
+            # for a comparable "finalise this artefact" action). No atom
+            # exists for "manage this standard's own member list" (§3's
+            # other named responsibility) — that stays `require_module_
+            # role`-only, unaffected by this field, since the permission
+            # vocabulary has no admin-membership-grant concept scoped to a
+            # single entity; see `service.py`'s own comment on why these
+            # atoms reuse `project_compliance_requirement` rather than a
+            # dedicated artefact type.
+            permissions=(
+                COMPLIANCE_REQUIREMENT_VIEW_PERMISSION,
+                COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION,
+                COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION,
+            ),
         ),
         ModuleRoleDefinition(
             role_key="standards_contributor",
@@ -562,6 +649,14 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="standard",
             overridden_by=(("org", "compliance_manager"),),
             resolve_entity_organization_id=_resolve_standard_organization_id,
+            # No `APPROVE_BASELINE` — this role may not publish/retire a
+            # version, and the level distinction alone (not a separate
+            # atom) is what enforces that: a caller holding only this
+            # narrower grant never satisfies a check for the broader level.
+            permissions=(
+                COMPLIANCE_REQUIREMENT_VIEW_PERMISSION,
+                COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION,
+            ),
         ),
     ),
     mcp_tools=(

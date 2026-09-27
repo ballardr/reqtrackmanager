@@ -153,7 +153,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-6 / 10 phases complete. Phase 6 is next.
+7 / 10 phases complete. Phase 7 is next.
 
 **2026-09-27 restructure note:** a Compliance-only Phase 5 was originally
 drafted here to adopt `ModuleRoleDefinition.permissions`, deliberately
@@ -173,7 +173,7 @@ covering all four of its roles rather than two. **Decided by: User.**
 | 3 | Backend API + frontend UI: Role Management | [x] Complete (2026-09-23) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 3 complete" entry for the full account: CRUD/grant endpoints, the six-endpoint `grant_roles` wiring incl. the `ORG_ADMIN` carve-out on both grant and revoke, two new MCP tools, the Role Management UI, and the Phase 0 Q8 access-split resolution, all Decided by: Agent |
 | 4 | First real consumer migrations (proof against live surfaces) | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 4 complete" entry: the `grant_roles` regression proof (a clean full-suite run, closing Phase 3's own open verification item) and Decision Management's `approve`/`reject` migration to `require_permission` (its first live route consumer), including a real module-enablement-404 regression found and fixed during implementation, Decided by: Agent |
 | 5 | Generic module-owned entity-scope registry for the permission system | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 5 complete" entry |
-| 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [ ] Not started — Phase 5 (its dependency) now complete |
+| 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 6 complete" entry |
 | 7 | Decision Management: per-decision-type approval scoping | [ ] Not started |
 | 8 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
 | 9 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
@@ -798,8 +798,17 @@ gating their existing endpoints via `require_module_role` unchanged — the
 new `require_permission` paths are additive, so an organisation that never
 touches custom roles sees zero behavioural change, per Design Principle 1.
 
-**Status:** not started. Depends on Phase 5 (entity-scoped composition);
-does not block Phase 7, 8, or 9.
+**Status:** [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-
+Grained Access Control (core) — Phase 6 complete" entry for the full
+account, including a candidly-documented design compromise (the two
+entity-scoped roles' permission atoms reuse the `project_compliance_
+requirement` artefact type rather than a dedicated one, since Compliance
+has no artefact type for a standard's own catalogue content and adding one
+purely for this was judged scope creep) and two pre-existing Storybook
+mocking gaps found and fixed along the way (Phase 5's own `/entity-scopes`
+fetch had no mock branch in either of `OrgAdminPage.stories.tsx`'s two
+mock functions, breaking 73 of 76 stories in that file outright; a related
+`/users/search` gap in one of them). Did not block Phase 7, 8, or 9.
 
 ## Phase 7 — Decision Management: per-decision-type approver binding
 
