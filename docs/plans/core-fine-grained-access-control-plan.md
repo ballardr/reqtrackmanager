@@ -153,7 +153,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-9 / 10 phases complete. Phase 9 (docs website coverage) is next.
+10 / 10 phases complete.
 
 **2026-09-27 restructure note:** a Compliance-only Phase 5 was originally
 drafted here to adopt `ModuleRoleDefinition.permissions`, deliberately
@@ -176,7 +176,7 @@ covering all four of its roles rather than two. **Decided by: User.**
 | 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 6 complete" entry |
 | 7 | Decision Management: per-decision-type approver binding | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 7 complete" entry |
 | 8 | SOC 2 policy update + identify→verify→remediate review | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 8 complete" entry; found and fixed a real defense-in-depth gap in `require_permission` (no `_enforce_module_frame_scope` check) |
-| 9 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
+| 9 | Docs website coverage | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 9 complete" entry |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -1005,11 +1005,51 @@ pure relationship-wiring integration work does.
   more than a single, clearly-fictional demo grant visible rather than a
   full roster.
 
-**Status:** not started. Depends on Phase 3 (the Role Management UI)
-shipping — there is no real user-facing workflow to document before then.
-The Phase 7 subsection depends additionally on Phase 7 shipping and can be
-added incrementally once it does, without blocking the rest of this page.
-Not a blocker for Phases 4–6.
+**Status:** [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-
+Grained Access Control (core) — Phase 9 complete" entry for the full
+account. A few points this section's own text left implicit, resolved
+during implementation, **Decided by: Agent**: the new page
+(`docs/website/docs/core-features/role-management.md`) is grouped under
+Core Features (not a new "organisation-settings" category — this site has
+none; every comparable admin-facing page, e.g. two-factor authentication
+and personal access tokens, already lives there), sequenced last in that
+category (`sidebar_position: 13`); the composed-resolution Mermaid diagram
+is a plain top-to-bottom decision flow (server admin → org/project role →
+module role → custom role → denied) rather than a literal adaptation of
+`access-control-policy.md`'s own request-resolution diagram, since that
+diagram's node shapes (JWT resolution, `Implies` branching) are
+implementation detail this page's org-admin audience doesn't need: the
+docs-site diagram was intentionally simplified to a check-satisfied-by-any-
+of-four-paths shape instead. Three pre-existing docs-site pages were found
+stale against this plan's shipped behaviour and corrected in the same
+change, per this repo's fix-don't-defer rule (not part of this section's
+original Scope, which only anticipated the Decision Management overview
+page needing an update once Phase 7 shipped):
+`concepts/roles-groups-and-access-control.md`'s "Why fixed roles, not a
+custom permission builder" section (reframed as "Why the fixed roles
+remain the default," since a custom-permission system is no longer a
+rejected idea); `modules/decision-management-module/overview.md`'s Roles
+section (no longer describes Decision Approver as having no narrowing
+option); and `modules/decision-management-module/known-limitations.md`'s
+now-resolved "single, flat, project-wide role" limitation entry (rewritten
+to note only the real remaining nuance — no Decision-Management-specific
+admin surface for it). `docs/modules.md` already documented
+`ModuleRoleDefinition.permissions` (plus `subtype_providers` and
+`entity_scopes`) in full via its own §4c, added during an earlier phase,
+so no further edit was needed there for this phase's documentation
+obligation. Screenshot captured against the seeded demo dataset at
+1440×900 (`docs/website/static/img/screenshots/role-management.png`): the
+"New custom role" dialog (name, description, scope, and the grouped
+permission-atom picker with one atom checked), not a role's grant/holder
+list, per this section's own privilege-reconnaissance caution. No custom
+role existed in the seed data, so a plausible, on-topic one was created
+live — "Architecture Decision Approver," scoped to
+`decision:approve_baseline:Architecture` — and left in place as real demo
+state after the screenshot, rather than reverted, matching this repo's own
+precedent for prior docs-site screenshot phases; it also now demonstrates
+the very per-Decision-Type scoping this page documents. `npm run build`
+and `npm run typecheck` both clean (zero broken-link/broken-anchor errors)
+after all page and sidebar changes.
 
 ## Documentation obligations specific to this capability
 

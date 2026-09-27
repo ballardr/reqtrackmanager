@@ -51,7 +51,7 @@ Decision Management defines two of its own roles, module-contributed rather than
 
 Both compose with roles that already carry equivalent authority elsewhere: a server admin, an org admin, or the project's own Project Manager can do everything either role can, on that project. Every other project member has read access once the module is enabled, plus the ability to create a Decision and propose/submit their own for review — no role grant is needed just to participate.
 
-**Decision Approver is today a single, flat, project-wide role** — it applies to every Decision Type in the project equally. There is no way yet to restrict approval to a specific Decision Type (e.g. "only an Architecture Approver may approve an Architecture decision") — see [Known limitations](./known-limitations.md).
+**Decision Approver works, by default, as a single flat, project-wide role** — it applies to every Decision Type in the project equally, and this remains true for a project that doesn't touch Role Management at all. An organisation can optionally narrow approval to specific Decision Types (e.g. "only an Architecture Approver may approve an Architecture decision") by defining a role scoped to that Decision Type's approval permission — see [Role Management → Per-Decision-Type approval scoping](../../core-features/role-management.md#per-decision-type-approval-scoping).
 
 ## Decision Types
 
