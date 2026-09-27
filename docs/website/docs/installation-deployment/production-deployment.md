@@ -16,7 +16,7 @@ JWT_SECRET=<random 32+ byte secret>
 APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # distinct from JWT_SECRET — see Configuration reference
 SERVER_ADMIN_PASSWORD=<strong password>
 POSTGRES_PASSWORD=<strong password>
-MINIO_ROOT_PASSWORD=<strong password>          # if using the bundled MinIO
+STORAGE_ROOT_PASSWORD=<strong password>        # if using the bundled storage service
 
 # Networking
 CORS_ORIGINS=https://your-domain.example
@@ -42,14 +42,14 @@ The full list of backend environment variables — with defaults and which are a
 
 ## Beyond the two obvious containers
 
-- **MinIO** is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store bundled in the compose file so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem — see [Storage, database, and migrations](./storage-database-and-migrations.md).
+- **The bundled storage service** ([SeaweedFS](https://github.com/seaweedfs/seaweedfs)) is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem — see [Storage, database, and migrations](./storage-database-and-migrations.md).
 - **OAuth/OIDC SSO** is per-organisation, not global: each organisation configures its own identity provider (issuer URL, client ID/secret) under its admin settings, so a single deployment can serve organisations with completely different IdPs — or none at all, staying on native email/password login. There's no bundled identity provider in the production stack; the dev/eval stack's Keycloak instance exists purely so SSO login can be tested end-to-end and should never be pointed at from a real deployment.
 - **The MCP server** (`mcp-server`, port 8100) is optional but on by default — it holds no credentials of its own and does no authorization itself, only forwarding whatever access token the calling AI assistant already has. Leave it running (nothing reaches it without a valid token) or stop the container if you don't want to expose it at all.
 
 ```mermaid
 flowchart TD
     DB[(db: PostgreSQL)] --> BE[backend]
-    MinIO[(minio: S3-compatible storage)] --> BE
+    Storage[(storage: S3-compatible storage)] --> BE
     BE --> FE[frontend]
     BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
@@ -74,27 +74,11 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is baked into it at build time, so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's and the backend's version, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no build args (the default for both paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
 
-## Hardening: scope MinIO credentials
+## Storage credential scope (known gap)
 
-By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`, so the backend authenticates to MinIO as its full administrator rather than a credential limited to its own bucket. That's fine to get started, but worth narrowing for a real deployment: a backend compromise (or a leaked environment variable) then only grants access to this app's own files, not the ability to manage every MinIO user/bucket/policy. Provision a scoped service account once, then point the backend at it instead of the root credentials:
+By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `STORAGE_ROOT_USER`/`STORAGE_ROOT_PASSWORD`, so the backend authenticates to the bundled storage service as its single admin identity rather than a credential limited to its own bucket — a backend compromise (or a leaked environment variable) currently grants access to the whole storage service, not just this app's own files.
 
-```bash
-docker compose exec minio mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
-docker compose exec minio mc admin user add local reqtrackmanager-app <a-different-strong-password>
-docker compose exec minio mc admin policy create local reqtrackmanager-app-policy - <<'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-    "Resource": ["arn:aws:s3:::reqtrackmanager", "arn:aws:s3:::reqtrackmanager/*"]
-  }]
-}
-EOF
-docker compose exec minio mc admin policy attach local reqtrackmanager-app-policy --user reqtrackmanager-app
-```
-
-Then set `STORAGE_S3_ACCESS_KEY=reqtrackmanager-app` and `STORAGE_S3_SECRET_KEY=<the password you chose above>` in your `.env`, instead of reusing `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` there. Keep the root credentials only for this one-time setup (and for the admin console at `:9001`).
+This used to be narrowable via MinIO's `mc admin user`/`mc admin policy` CLI, but the bundled storage service is now [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (MinIO discontinued free/anonymous image distribution — see the decisions log), which scopes credentials differently, via a filer IAM identity config rather than an `mc`-style CLI, and that path hasn't been set up or verified against this stack yet. If you need scoped storage credentials for a production deployment today, either configure SeaweedFS's own IAM identity file yourself (see the [SeaweedFS S3 API docs](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API)) or point `STORAGE_S3_ENDPOINT_URL` at a real external S3-compatible provider with its own IAM instead of the bundled service.
 
 ## Next steps
 

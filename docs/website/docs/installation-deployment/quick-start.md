@@ -12,7 +12,7 @@ cd reqtrackmanager/tests/container
 docker compose up --build -d
 ```
 
-This starts Postgres (its own `reqtrack_test` database), MinIO (S3-compatible file storage), MailHog (SMTP catcher), Keycloak (a real OIDC provider, for testing per-organisation SSO end-to-end), the backend, and the frontend. On first boot the backend automatically runs database migrations and creates a bootstrap **server admin** user and default organisation.
+This starts Postgres (its own `reqtrack_test` database), the bundled `storage` service (S3-compatible file storage, via SeaweedFS), MailHog (SMTP catcher), Keycloak (a real OIDC provider, for testing per-organisation SSO end-to-end), the backend, and the frontend. On first boot the backend automatically runs database migrations and creates a bootstrap **server admin** user and default organisation.
 
 Once every container reports healthy:
 
@@ -25,7 +25,6 @@ Once every container reports healthy:
 | Prometheus metrics | http://localhost:8000/metrics |
 | MCP server (see [AI assistants (MCP)](../api-integrations/ai-assistants-mcp/overview.md)) | http://localhost:8100/mcp |
 | MailHog UI (view sent notification emails) | http://localhost:8025 |
-| MinIO console (view uploaded files) | http://localhost:9001 |
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 

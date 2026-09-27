@@ -55,14 +55,14 @@ Want to click through it yourself instead? [docs/development.md](docs/developmen
 
 ## Production deployment
 
-Production runs from the root [`docker-compose.yml`](docker-compose.yml): Postgres, the backend, the frontend, MinIO, and the MCP server, plus an optional observability profile. It's deliberately strict rather than convenient — no MailHog, no baked-in secret defaults — and refuses to start (`docker compose up` fails fast with a clear error naming the missing variable) until you provide real values via a `.env` file next to the compose file. At minimum:
+Production runs from the root [`docker-compose.yml`](docker-compose.yml): Postgres, the backend, the frontend, a bundled S3-compatible storage service, and the MCP server, plus an optional observability profile. It's deliberately strict rather than convenient — no MailHog, no baked-in secret defaults — and refuses to start (`docker compose up` fails fast with a clear error naming the missing variable) until you provide real values via a `.env` file next to the compose file. At minimum:
 
 ```bash
 JWT_SECRET=<random 32+ byte secret>              # access token signing
 APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # encrypts stored secrets at rest — distinct from JWT_SECRET
 SERVER_ADMIN_PASSWORD=<strong password>           # bootstrap admin account
 POSTGRES_PASSWORD=<strong password>
-MINIO_ROOT_PASSWORD=<strong password>             # if using the bundled MinIO
+STORAGE_ROOT_PASSWORD=<strong password>           # if using the bundled storage service
 CORS_ORIGINS=https://your-domain.example
 SMTP_HOST=smtp.your-provider.example              # a real provider — MailHog is dev/test-only
 ```
@@ -73,11 +73,11 @@ Then:
 docker compose up --build -d
 ```
 
-The full list of variables, defaults, and which are actually required is in [Configuration](#configuration) below; the complete deployment guide — including a `.env` walkthrough, a MinIO credential-scoping hardening step, backups, migrations, and troubleshooting — is [docs/deployment.md](docs/deployment.md).
+The full list of variables, defaults, and which are actually required is in [Configuration](#configuration) below; the complete deployment guide — including a `.env` walkthrough, backups, migrations, and troubleshooting — is [docs/deployment.md](docs/deployment.md).
 
 **Beyond the two obvious containers**, a full deployment brings a few more pieces together:
 
-- **MinIO** is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store bundled in the compose file so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem (see [Storage backend](docs/deployment.md#storage-backend)).
+- **The bundled storage service** ([SeaweedFS](https://github.com/seaweedfs/seaweedfs); see `docker-compose.yml`'s `storage` service) is the default file-storage backend (`STORAGE_BACKEND=s3`) — an S3-compatible object store so file attachments and shared resources work out of the box. Point `STORAGE_S3_ENDPOINT_URL` at real AWS S3 (or another S3-compatible provider) instead if you'd rather not self-host it, or set `STORAGE_BACKEND=local` to use the backend container's own filesystem (see [Storage backend](docs/deployment.md#storage-backend)).
 - **OAuth/OIDC SSO** is per-organisation, not global: each organisation configures its own identity provider (issuer URL, client ID/secret) under its admin settings, so a single deployment can serve organisations with completely different IdPs — or none, staying on native email/password login. There's no bundled identity provider in the production stack; `tests/container/docker-compose.yml`'s Keycloak instance exists purely so SSO login can be tested end-to-end in dev/CI, and should never be pointed at from a real deployment.
 - **The MCP server** (`mcp-server`, port 8100) is optional but on by default in the compose file — it holds no credentials of its own and does no authorization itself, only forwarding whatever access token the calling AI assistant already has. Leave it running (nothing reaches it without a valid token) or stop the container if you don't want to expose it at all. See [docs/mcp-server.md](docs/mcp-server.md).
 
@@ -125,10 +125,10 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `SERVER_ADMIN_PASSWORD` | `ChangeMe123!` | **Yes** | Bootstrap server-admin password |
 | `SERVER_ADMIN_CREATE_ORG` | `true` | — | Also create a default org with the admin as org admin (I-M-08) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Recommended | Comma-separated allowed frontend origins |
-| `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (MinIO/S3-compatible), I-M-10 |
+| `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible), I-M-10 |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |
 | `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
-| `MINIO_ROOT_PASSWORD` / `STORAGE_S3_SECRET_KEY` | `minioadmin` | **Yes** | MinIO admin password, shared with the backend's S3 secret key |
+| `STORAGE_ROOT_PASSWORD` / `STORAGE_S3_SECRET_KEY` | `minioadmin` | **Yes** | Bundled storage service's admin password, shared with the backend's S3 secret key |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host (C-N-03) — a real provider in production, MailHog in the dev/test stack |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space (I-M-09, I-M-11) |
@@ -155,7 +155,7 @@ flowchart LR
     UI --> API[Python/FastAPI Backend]
     MCP -->|forwards the caller's own token| API
     API --> DB[(PostgreSQL)]
-    API --> FS[(File Storage: local or MinIO/S3)]
+    API --> FS[(File Storage: local or S3-compatible)]
     API --> Mail[Email: MailHog or SMTP]
     API -. metrics .-> Prom[Prometheus]
     API -. optional .-> WS[WebSocket clients]

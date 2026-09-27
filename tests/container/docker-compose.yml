@@ -1,4 +1,4 @@
-# Local development / test stack: db + minio + mailhog + backend + frontend.
+# Local development / test stack: db + storage + mailhog + backend + frontend.
 # This is the stack used to develop locally, to run the backend pytest suite,
 # and to run the Playwright end-to-end suite — it is NOT the production
 # stack (see the root docker-compose.yml for that). Keeping this stack
@@ -51,19 +51,38 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
-    command: server /data --console-address ":9001"
+  # S3-compatible object storage for the backend's STORAGE_BACKEND=s3 mode.
+  # This used to be MinIO, but MinIO discontinued anonymous/free pulls of
+  # its own images from both Docker Hub (repos deleted 2026-09-11) and
+  # quay.io (anonymous pulls cut off 2026-09-24) — see docs/decisions.md,
+  # "Storage backend: MinIO images no longer pullable, replaced with
+  # SeaweedFS". SeaweedFS's S3 gateway is a verified drop-in replacement for
+  # the plain head_bucket/create_bucket/put_object/get_object/delete_object
+  # calls `backend/app/storage_backends/s3.py` makes (no presigned URLs,
+  # multipart, versioning, or MinIO Admin API in use anywhere in the app),
+  # and its `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars are the
+  # same bootstrap shape MinIO's `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
+  # were, just under S3's own generic names. There's no bundled admin
+  # console UI in this replacement (SeaweedFS has no equivalent to MinIO's
+  # `:9001` console) — see docs/deployment.md's storage backend section for
+  # how to inspect bucket contents without one.
+  storage:
+    image: chrislusf/seaweedfs:3.97
+    command: server -dir=/data -s3 -s3.port=9000
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD:-minioadmin}
     volumes:
-      - reqtrack_test_minio_data:/data
+      - reqtrack_test_storage_data:/data
     ports:
       - "9000:9000"
-      - "9001:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # The S3 API's own /healthz is broken in this image (returns 404 —
+      # it's parsed as a bucket name; see seaweedfs#8243), so this checks
+      # the master's cluster-status endpoint instead, which the same
+      # `server -s3` process also serves on port 9333. wget, not curl —
+      # this image has no curl binary.
+      test: ["CMD", "wget", "-qO-", "http://localhost:9333/cluster/status"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -122,9 +141,9 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
-      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://minio:9000}
-      STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_ROOT_PASSWORD:-minioadmin}
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
@@ -140,7 +159,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -223,4 +242,4 @@ services:
 
 volumes:
   reqtrack_test_db_data:
-  reqtrack_test_minio_data:
+  reqtrack_test_storage_data:

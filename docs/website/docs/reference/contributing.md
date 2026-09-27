@@ -13,7 +13,7 @@ cd tests/container
 docker compose up --build -d
 ```
 
-brings up the full dev/evaluation stack (Postgres, MinIO, MailHog, Keycloak, backend, frontend) with sensible defaults and no secrets to configure — this is the stack contributors and CI both use, deliberately kept separate from the production Compose file. See [Installation & Deployment → Quick start](../installation-deployment/quick-start.md) for the full walkthrough, including demo data.
+brings up the full dev/evaluation stack (Postgres, the bundled S3-compatible storage service, MailHog, Keycloak, backend, frontend) with sensible defaults and no secrets to configure — this is the stack contributors and CI both use, deliberately kept separate from the production Compose file. See [Installation & Deployment → Quick start](../installation-deployment/quick-start.md) for the full walkthrough, including demo data.
 
 ## Test suites
 

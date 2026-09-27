@@ -5,26 +5,26 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 ## Prerequisites
 
 - Docker and Docker Compose v2 (`docker compose`, not the legacy `docker-compose`).
-- A host with persistent volume storage for PostgreSQL (and MinIO, if using the bundled S3-compatible storage backend).
+- A host with persistent volume storage for PostgreSQL (and the bundled `storage` service, if using the bundled S3-compatible storage backend).
 - For production: a domain name and TLS termination in front of the frontend/backend (ReqTrackManager does not terminate TLS itself — see [Production deployment](#production-deployment) below).
 
 ## Two separate Compose stacks
 
 ReqTrackManager ships **two** Compose files with different purposes — using the wrong one for the wrong purpose is the single most important thing to get right:
 
-- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
+- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
 - **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog and a real Keycloak instance (for testing per-organisation SSO end-to-end, E-U-01), with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest), `tests/playwright/`, and CI (`.github/workflows/ci.yml`) all run against.
 
 These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
 
 ## Components
 
-The diagram below shows every container in the production stack and how they depend on each other at startup. Reading top to bottom: `db` and `minio` must be healthy before `backend` starts (the backend runs migrations and talks to storage immediately on boot); `backend` must be healthy before `frontend` *or* `mcp-server` start (the frontend's and mcp-server's own health checks are independent, but there is no reason to serve either before the API they both depend on is reachable); the backend sends outgoing mail to whatever `SMTP_HOST` points at, which in production is an external provider, not a container in this stack. This matters operationally because it tells you the correct order to check when something won't come up: `db`/`minio` first, then `backend`, then `frontend`/`mcp-server`.
+The diagram below shows every container in the production stack and how they depend on each other at startup. Reading top to bottom: `db` and `storage` must be healthy before `backend` starts (the backend runs migrations and talks to storage immediately on boot); `backend` must be healthy before `frontend` *or* `mcp-server` start (the frontend's and mcp-server's own health checks are independent, but there is no reason to serve either before the API they both depend on is reachable); the backend sends outgoing mail to whatever `SMTP_HOST` points at, which in production is an external provider, not a container in this stack. This matters operationally because it tells you the correct order to check when something won't come up: `db`/`storage` first, then `backend`, then `frontend`/`mcp-server`.
 
 ```mermaid
 flowchart TD
     DB[(db: PostgreSQL)] --> BE[backend]
-    MinIO[(minio: S3-compatible storage)] --> BE
+    Storage[(storage: S3-compatible storage)] --> BE
     BE --> FE[frontend]
     BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
@@ -35,7 +35,7 @@ flowchart TD
 | `db` | PostgreSQL, the primary data store | Yes (no host port published) | Yes (`reqtrack_test`, port 5432 published) |
 | `backend` | FastAPI application, runs migrations on startup | Yes | Yes |
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
-| `minio` | Bundled S3-compatible file storage | Yes, if `STORAGE_BACKEND=s3` | Yes |
+| `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes, if `STORAGE_BACKEND=s3` | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
@@ -49,7 +49,7 @@ cd reqtrackmanager/tests/container
 docker compose up --build
 ```
 
-This is sufficient for evaluating the product or for development — see [development.md](development.md#quick-start--local-development--evaluation) for the URLs it exposes. It uses dev-friendly defaults: a fixed bootstrap admin password, MailHog instead of a real mail provider, and MinIO with default credentials, all in an isolated `reqtrack_test` database. **Never point this stack at the internet, and never confuse it with the production stack below.**
+This is sufficient for evaluating the product or for development — see [development.md](development.md#quick-start--local-development--evaluation) for the URLs it exposes. It uses dev-friendly defaults: a fixed bootstrap admin password, MailHog instead of a real mail provider, and the bundled storage service with default credentials, all in an isolated `reqtrack_test` database. **Never point this stack at the internet, and never confuse it with the production stack below.**
 
 For a populated instance to actually evaluate (rather than an empty bootstrap admin with nothing in it), run `docker compose exec backend python scripts/seed_demo_data.py` afterward — see [development.md](development.md#demo-data)'s Demo data section.
 
@@ -63,7 +63,7 @@ JWT_SECRET=<random 32+ byte secret>
 APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # distinct from JWT_SECRET — see README's Configuration table
 SERVER_ADMIN_PASSWORD=<strong password>
 POSTGRES_PASSWORD=<strong password>
-MINIO_ROOT_PASSWORD=<strong password>          # if using the bundled MinIO
+STORAGE_ROOT_PASSWORD=<strong password>        # if using the bundled storage service
 
 # Networking
 CORS_ORIGINS=https://your-domain.example
@@ -102,27 +102,11 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI job — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
 
-### Hardening: scope MinIO credentials
+### Storage credential scope (known gap)
 
-By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (see `docker-compose.yml`), so the backend authenticates to MinIO as its full administrator rather than a credential limited to its own bucket. That's fine to get started, but for a production deployment it's worth narrowing: a backend compromise (or a leaked environment variable) then only grants access to this app's own files, not the ability to manage every MinIO user/bucket/policy. Provision a scoped service account once, then point the backend at it instead of the root credentials:
+By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `STORAGE_ROOT_USER`/`STORAGE_ROOT_PASSWORD` (see `docker-compose.yml`), so the backend authenticates to the bundled storage service as its single admin identity rather than a credential limited to its own bucket — a backend compromise (or a leaked environment variable) currently grants access to the whole storage service, not just this app's own files.
 
-```bash
-docker compose exec minio mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
-docker compose exec minio mc admin user add local reqtrackmanager-app <a-different-strong-password>
-docker compose exec minio mc admin policy create local reqtrackmanager-app-policy - <<'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-    "Resource": ["arn:aws:s3:::reqtrackmanager", "arn:aws:s3:::reqtrackmanager/*"]
-  }]
-}
-EOF
-docker compose exec minio mc admin policy attach local reqtrackmanager-app-policy --user reqtrackmanager-app
-```
-
-Then set `STORAGE_S3_ACCESS_KEY=reqtrackmanager-app` and `STORAGE_S3_SECRET_KEY=<the password you chose above>` in your `.env`, instead of reusing `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` there. Keep the root credentials only for this one-time setup (and for the admin console at `:9001`).
+This used to be narrowable via MinIO's `mc admin user`/`mc admin policy` CLI (a scoped service-account recipe lived here previously), but the bundled storage service is now SeaweedFS (see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry, forced by MinIO discontinuing free image distribution), which scopes credentials differently — via a filer `identities.json`/IAM config rather than an `mc`-style CLI — and that path hasn't been set up or verified against this stack yet. Documented here as an open gap rather than silently dropped: if you need scoped storage credentials for a production deployment today, either configure SeaweedFS's own IAM identity file yourself (see the [SeaweedFS S3 API docs](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API)) or point `STORAGE_S3_ENDPOINT_URL` at a real external S3-compatible provider with its own IAM instead of the bundled service.
 
 ### TLS and reverse proxy
 
@@ -179,7 +163,7 @@ This pattern was verified against a real reverse proxy (not just described): an 
 ### Storage backend
 
 - `STORAGE_BACKEND=local` (default outside Compose) stores files on the backend container's filesystem at `STORAGE_LOCAL_DIR`. The root `docker-compose.yml` mounts this as the named volume `reqtrack_local_files` so files survive container recreation; if you run the backend outside this Compose file, mount an equivalent persistent volume yourself. The built-in disk-usage monitor (I-M-11) only runs for this backend, emailing `DEPLOYMENT_NOTIFICATION_EMAIL` when usage crosses `DISK_USAGE_WARNING_THRESHOLD_PERCENT`.
-- `STORAGE_BACKEND=s3` (the Compose default) stores files in any S3-compatible bucket — the bundled MinIO, a self-hosted MinIO cluster, or real AWS S3. Set `STORAGE_S3_ENDPOINT_URL` to your provider (omit or point at AWS's endpoint for real S3), and set `STORAGE_S3_BUCKET`/`STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY`/`STORAGE_S3_REGION` accordingly. This is the recommended choice for any deployment with more than one backend replica, since local disk storage doesn't get shared across replicas.
+- `STORAGE_BACKEND=s3` (the Compose default) stores files in any S3-compatible bucket — the bundled SeaweedFS service, a self-hosted SeaweedFS/MinIO cluster, or real AWS S3. Set `STORAGE_S3_ENDPOINT_URL` to your provider (omit or point at AWS's endpoint for real S3), and set `STORAGE_S3_BUCKET`/`STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY`/`STORAGE_S3_REGION` accordingly. This is the recommended choice for any deployment with more than one backend replica, since local disk storage doesn't get shared across replicas.
 
 ### Database
 
@@ -190,7 +174,7 @@ PostgreSQL is not started with automatic backups. Use the provided scripts on a 
 ./scripts/restore.sh <backup-file>   # restores a .sql.gz into db, or a reqtrack-files-*.tar.gz into backend
 ```
 
-`backup.sh` covers everything in one run for the common case: it always dumps the database, and additionally archives `reqtrack_local_files` when the running deployment has `STORAGE_BACKEND=local`. If you use `STORAGE_BACKEND=s3` (the Compose default, via MinIO), back up the `reqtrack_minio_data` volume with MinIO's own backup/replication tooling instead — it isn't a plain file tree this script can tar up.
+`backup.sh` covers everything in one run for the common case: it always dumps the database, and additionally archives `reqtrack_local_files` when the running deployment has `STORAGE_BACKEND=local`. If you use `STORAGE_BACKEND=s3` (the Compose default, via the bundled SeaweedFS service), back up the `reqtrack_storage_data` volume with SeaweedFS's own backup/replication tooling instead — it isn't a plain file tree this script can tar up.
 
 Test restores periodically — a backup that has never been restored is not a verified backup.
 

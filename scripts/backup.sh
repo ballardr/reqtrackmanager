@@ -6,9 +6,10 @@
 #
 # Usage: ./scripts/backup.sh [output-directory]
 #
-# If STORAGE_BACKEND=s3 (the default, via MinIO), file data lives in the
-# `reqtrack_minio_data` volume — use MinIO's own backup/replication tooling
-# for that instead, since it isn't a plain file tree this script can tar up.
+# If STORAGE_BACKEND=s3 (the default, via the bundled SeaweedFS storage
+# service), file data lives in the `reqtrack_storage_data` volume — use
+# SeaweedFS's own backup/replication tooling for that instead, since it
+# isn't a plain file tree this script can tar up.
 set -euo pipefail
 
 OUT_DIR="${1:-./backups}"
@@ -20,7 +21,7 @@ docker compose exec -T db pg_dump -U reqtrack -d reqtrack | gzip > "$DB_FILE"
 echo "Database backup written to $DB_FILE"
 
 # Only the local storage backend has a plain file tree this script can
-# archive directly; skip entirely for s3/MinIO (see note above).
+# archive directly; skip entirely for s3/SeaweedFS (see note above).
 STORAGE_BACKEND="$(docker compose exec -T backend printenv STORAGE_BACKEND 2>/dev/null | tr -d '\r' || true)"
 if [ "$STORAGE_BACKEND" = "local" ]; then
     FILES_ARCHIVE="$OUT_DIR/reqtrack-files-${TIMESTAMP}.tar.gz"

@@ -6,7 +6,7 @@
 #                          coverage
 #   2. backend-tests     - the same dev/test Docker Compose stack developers
 #                          run locally, but only the services backend pytest
-#                          actually needs (db, minio, mailhog, backend — not
+#                          actually needs (db, storage, mailhog, backend — not
 #                          frontend/mcp-server/keycloak, which only
 #                          e2e-tests below exercises); backend pytest with
 #                          coverage + JUnit reporting, ruff lint.
@@ -290,7 +290,7 @@ jobs:
       # DATABASE_URL doesn't resolve to a database whose name ends in
       # `_test` (see docs/decisions.md, "Database: the test suite was
       # wiping the live database"). Only the services backend pytest
-      # actually needs come up here — db and minio are backend's own
+      # actually needs come up here — db and storage are backend's own
       # declared `depends_on`, so `docker compose up -d backend` would
       # start them regardless, but mailhog isn't (backend just points
       # SMTP_HOST at it with no formal dependency) and several backend
@@ -302,7 +302,7 @@ jobs:
       # a second time with none of buildx's GHA cache wired in.
       - name: Start the dev/test stack (backend + its dependencies)
         working-directory: tests/container
-        run: docker compose up -d db minio mailhog backend
+        run: docker compose up -d db storage mailhog backend
 
       - name: Wait for backend to become healthy
         working-directory: tests/container
@@ -471,7 +471,7 @@ jobs:
           cache-from: type=gha,scope=mcp-server
           cache-to: type=gha,mode=max,scope=mcp-server
 
-      # The dev/test stack (db, minio, mailhog, keycloak, backend, frontend,
+      # The dev/test stack (db, storage, mailhog, keycloak, backend, frontend,
       # mcp-server) is the same one developers run locally. Using the real
       # compose file here, rather than hand-rolled GitHub Actions
       # `services:` blocks, keeps CI's environment identical to what's
