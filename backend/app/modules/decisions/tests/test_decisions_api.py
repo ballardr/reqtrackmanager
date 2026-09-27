@@ -372,6 +372,110 @@ def test_approve_still_404s_when_module_disabled_after_reaching_under_review(cli
     assert resp.status_code == 404
 
 
+# --- Fine-Grained Access Control Phase 7: per-decision-type approver ------
+# binding (`docs/plans/core-fine-grained-access-control-plan.md`) —
+# approve/reject's permission check now composes the decision's own
+# Decision Type name as a permission sub-type: `(decision, approve_
+# baseline, subtype=<type name>)`. The Phase 4 tests above already pin
+# that the wildcard (`subtype=None`) grant — the flat `decision_approver`
+# role and an unscoped custom-role grant alike — keeps satisfying every
+# specific type unchanged; the tests below pin the new, narrower
+# capability itself, and its isolation from a *different* type.
+
+
+def _decision_type_id_by_name(client, token, project_id, name) -> str:
+    """Every project is seeded with `DEFAULT_DECISION_TYPES` (`service.py`,
+    including "Architecture" and "Strategy") on creation, so these tests
+    look one up by name rather than creating a new one — creating a
+    same-named type would 400 (unique-per-project) against the seed."""
+    resp = client.get(f"{_base(project_id)}/decision-types", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return next(t["id"] for t in resp.json() if t["name"] == name)
+
+
+def _grant_custom_role_permission(org, project, user_id, permission) -> None:
+    db = SessionLocal()
+    try:
+        role = CustomRoleDefinition(
+            organization_id=uuid.UUID(org["id"]), name=f"Custom role ({permission})", description="", scope="project",
+        )
+        db.add(role)
+        db.flush()
+        db.add(CustomRolePermission(custom_role_id=role.id, permission=permission))
+        db.add(
+            UserCustomRoleGrant(
+                user_id=uuid.UUID(user_id), custom_role_id=role.id,
+                organization_id=uuid.UUID(org["id"]), project_id=uuid.UUID(project["id"]),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_approve_reachable_via_subtype_scoped_custom_role_for_the_decisions_own_type(client, admin_token):
+    org, project, org_admin_token = _setup(client, admin_token, "Decision API Subtype Approver Co")
+    architecture_type_id = _decision_type_id_by_name(client, org_admin_token, project["id"], "Architecture")
+    member_id, member_token = _add_plain_member(
+        client, org_admin_token, org["id"], project["id"], "decisions_subtype_approver@example.com"
+    )
+    decision = _create_decision(client, org_admin_token, project["id"], architecture_type_id)
+    _advance_to_under_review(client, org_admin_token, project["id"], decision["id"])
+
+    forbidden = client.post(
+        f"{_base(project['id'])}/{decision['id']}/approve", json={}, headers=auth_headers(member_token)
+    )
+    assert forbidden.status_code == 403
+
+    permission = encode_permission("decision", PermissionLevel.APPROVE_BASELINE.value, "Architecture")
+    _grant_custom_role_permission(org, project, member_id, permission)
+
+    approved = client.post(
+        f"{_base(project['id'])}/{decision['id']}/approve", json={"comment": "OK"}, headers=auth_headers(member_token)
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
+
+
+def test_approve_403s_when_subtype_scoped_grant_is_for_a_different_decision_type(client, admin_token):
+    org, project, org_admin_token = _setup(client, admin_token, "Decision API Subtype Isolation Co")
+    architecture_type_id = _decision_type_id_by_name(client, org_admin_token, project["id"], "Architecture")
+    member_id, member_token = _add_plain_member(
+        client, org_admin_token, org["id"], project["id"], "decisions_subtype_isolation@example.com"
+    )
+    decision = _create_decision(client, org_admin_token, project["id"], architecture_type_id)
+    _advance_to_under_review(client, org_admin_token, project["id"], decision["id"])
+
+    # Grant approval only for "Strategy" decisions, not this "Architecture" one.
+    permission = encode_permission("decision", PermissionLevel.APPROVE_BASELINE.value, "Strategy")
+    _grant_custom_role_permission(org, project, member_id, permission)
+
+    resp = client.post(
+        f"{_base(project['id'])}/{decision['id']}/approve", json={"comment": "OK"}, headers=auth_headers(member_token)
+    )
+    assert resp.status_code == 403
+
+
+def test_reject_reachable_via_subtype_scoped_custom_role_for_the_decisions_own_type(client, admin_token):
+    org, project, org_admin_token = _setup(client, admin_token, "Decision API Subtype Reject Co")
+    architecture_type_id = _decision_type_id_by_name(client, org_admin_token, project["id"], "Architecture")
+    member_id, member_token = _add_plain_member(
+        client, org_admin_token, org["id"], project["id"], "decisions_subtype_reject@example.com"
+    )
+    decision = _create_decision(client, org_admin_token, project["id"], architecture_type_id)
+    _advance_to_under_review(client, org_admin_token, project["id"], decision["id"])
+
+    permission = encode_permission("decision", PermissionLevel.APPROVE_BASELINE.value, "Architecture")
+    _grant_custom_role_permission(org, project, member_id, permission)
+
+    rejected = client.post(
+        f"{_base(project['id'])}/{decision['id']}/reject", json={"comment": "Needs more work"},
+        headers=auth_headers(member_token),
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+
+
 def test_decision_type_management_requires_decision_owner_role(client, admin_token):
     org, project, org_admin_token = _setup(client, admin_token, "Decision API Owner RBAC Co")
     _member_id, member_token = _add_plain_member(

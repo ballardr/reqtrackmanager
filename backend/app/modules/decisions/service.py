@@ -130,13 +130,17 @@ DECISION_ARTEFACT_TYPE = "decision"
 
 # Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
 # plan.md` Phase 4) — the unscoped `(decision, approve_baseline)` permission
-# atom, declared on the `decision_approver` module role (`module.py`) and
-# checked directly by `project_router.workflow`'s approve/reject endpoints
-# via `require_permission`. Phase 5 will additionally check this same
-# atom's sub-type-scoped form (`encode_permission(DECISION_ARTEFACT_TYPE,
-# PermissionLevel.APPROVE_BASELINE.value, decision.decision_type.name)`)
-# for a caller who holds only a narrower, per-Decision-Type grant — this
-# constant covers the unscoped wildcard shared by both.
+# atom, declared on the `decision_approver` module role (`module.py`). Phase
+# 7 additionally checks this same atom's sub-type-scoped form
+# (`encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_
+# BASELINE.value, subtype)`, `subtype` looked up from the decision's own
+# `DecisionTypeDefinition.name` — `Decision` has no ORM relationship to it,
+# only `decision_type_id`) directly via `get_effective_permissions`/
+# `permission_satisfied`, for a caller who holds only a narrower,
+# per-Decision-Type grant — see `project_router.workflow`'s own
+# `_require_approve_permission_for_decision`. This constant is the
+# unscoped wildcard both the flat role and that narrower check compose
+# against.
 DECISION_APPROVE_PERMISSION = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # This module's own key prefix for `OrgCreationChoiceOption.key` /

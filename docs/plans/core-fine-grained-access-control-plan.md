@@ -153,7 +153,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-7 / 10 phases complete. Phase 7 is next.
+8 / 10 phases complete. Phase 8 is next.
 
 **2026-09-27 restructure note:** a Compliance-only Phase 5 was originally
 drafted here to adopt `ModuleRoleDefinition.permissions`, deliberately
@@ -174,7 +174,7 @@ covering all four of its roles rather than two. **Decided by: User.**
 | 4 | First real consumer migrations (proof against live surfaces) | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 4 complete" entry: the `grant_roles` regression proof (a clean full-suite run, closing Phase 3's own open verification item) and Decision Management's `approve`/`reject` migration to `require_permission` (its first live route consumer), including a real module-enablement-404 regression found and fixed during implementation, Decided by: Agent |
 | 5 | Generic module-owned entity-scope registry for the permission system | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 5 complete" entry |
 | 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 6 complete" entry |
-| 7 | Decision Management: per-decision-type approval scoping | [ ] Not started |
+| 7 | Decision Management: per-decision-type approver binding | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 7 complete" entry |
 | 8 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
 | 9 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
 
@@ -849,6 +849,22 @@ permission, not a replacement for a bespoke field. Not blocking Phase 7 on
 Governance's own, currently-unscheduled build remains a direct trade-off,
 now lower-cost than originally assessed given there's no field to later
 deprecate.
+
+**Status:** [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-
+Grained Access Control (core) — Phase 7 complete" entry for the full
+account. One correction to this section's own text, **Decided by: Agent**:
+`require_permission`'s FastAPI-dependency form cannot express a sub-type
+known only from a loaded row (rather than a path parameter), so
+`approve_decision_endpoint`/`reject_decision_endpoint` call `get_effective_
+permissions`/`permission_satisfied` directly from inside the route body
+after loading the decision, not `require_permission` itself as this
+section's Scope literally said — `rbac.py`'s own docstrings on both
+functions already documented this exact call shape in anticipation of this
+phase. No frontend or Decision-Management-specific admin-surface work was
+needed, confirming this section's own claim: Phase 3's generic
+`PermissionPicker` already renders Decision Type sub-types for any
+artefact type with a registered `get_subtypes` provider, Decision
+Management's own included since Phase 1.
 
 ## Phase 8 — SOC 2 policy update + identify→verify→remediate review
 
