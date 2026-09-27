@@ -100,7 +100,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType
+from app.models.enums import ArtefactType, PermissionLevel
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -115,6 +115,7 @@ from app.modules.decisions.models import (
     DecisionTypeDefinition,
 )
 from app.services.audit import log_event
+from app.services.permissions import encode_permission
 from app.services.relationships import create_link, get_link_between, get_links_from
 
 # Source overview §13/10.2's default list, seeded per new project — a
@@ -126,6 +127,21 @@ DEFAULT_DECISION_TYPES: list[str] = ["Architecture", "Design", "Engineering", "S
 # generate_unique_code` for `Decision.unique_code`; Phase 3 will also use it
 # for Decision<->Requirement/Decision<->Decision artefact links.
 DECISION_ARTEFACT_TYPE = "decision"
+
+# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
+# plan.md` Phase 4) — the unscoped `(decision, approve_baseline)` permission
+# atom, declared on the `decision_approver` module role (`module.py`). Phase
+# 7 additionally checks this same atom's sub-type-scoped form
+# (`encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_
+# BASELINE.value, subtype)`, `subtype` looked up from the decision's own
+# `DecisionTypeDefinition.name` — `Decision` has no ORM relationship to it,
+# only `decision_type_id`) directly via `get_effective_permissions`/
+# `permission_satisfied`, for a caller who holds only a narrower,
+# per-Decision-Type grant — see `project_router.workflow`'s own
+# `_require_approve_permission_for_decision`. This constant is the
+# unscoped wildcard both the flat role and that narrower check compose
+# against.
+DECISION_APPROVE_PERMISSION = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value)
 
 # This module's own key prefix for `OrgCreationChoiceOption.key` /
 # `run_on_org_created_hooks`'s `selected_choice_keys` — namespaced so a
@@ -267,6 +283,48 @@ def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list
             return list(own)
         current_id = db.scalar(select(Project.parent_project_id).where(Project.id == current_id))
     return []
+
+
+def list_decision_type_names_for_organization(db: Session, organization_id: uuid.UUID) -> list[str]:
+    """Returns the distinct `DecisionTypeDefinition.name` values currently
+    in use anywhere in `organization_id`, sorted — this module's `Module
+    Definition.subtype_providers["decision"]` registration (`module.py`)
+    for Fine-Grained Access Control (`docs/plans/core-fine-grained-access-
+    control-plan.md` Phase 1 Q3/Phase 1), used to populate the Role
+    Management UI's sub-type picker and to validate a `CustomRolePermission`
+    /`ModuleRoleDefinition.permissions` sub-type value at write time
+    (`app.services.permissions.validate_permission_key`).
+
+    **Deliberately a flat union across every project in the organisation,
+    not `resolve_effective_decision_types`'s own per-project hierarchy
+    fallback** (Decided by: Agent) — a permission atom's `subtype` is a
+    plain string compared directly against a *specific decision's own*
+    `DecisionTypeDefinition.name` at check time (Phase 5), never resolved
+    through this function again, so there is no parent/child project to
+    walk here: this function's only job is enumerating which sub-type
+    *strings* currently mean something somewhere in the org, for an
+    org-scoped role definition to reference. A role scoped to a sub-type
+    name that happens not to exist in some particular project simply never
+    matches a decision in that project — the same harmless non-match any
+    other unrecognised sub-type value would produce, not a fallback
+    concern this function needs to resolve.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve current Decision Type
+            names for.
+
+    Returns:
+        Sorted, deduplicated Decision Type names currently defined by any
+        project in this organisation.
+    """
+    names = db.scalars(
+        select(DecisionTypeDefinition.name)
+        .join(Project, Project.id == DecisionTypeDefinition.project_id)
+        .where(Project.organization_id == organization_id)
+        .distinct()
+    ).all()
+    return sorted(names)
 
 
 def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_keys: frozenset[str]) -> None:

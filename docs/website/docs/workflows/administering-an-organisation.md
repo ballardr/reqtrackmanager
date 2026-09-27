@@ -31,6 +31,10 @@ Set the organisation's logo and, under **Templates & reports**, define **report 
 
 Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for the full setup.
 
+## Role management
+
+Under **Role management**, define custom roles and grant fixed, module, or custom roles to users and groups — see [Core Features → Role Management](../core-features/role-management.md).
+
 ## Advanced settings
 
 **Advanced settings** controls organisation-wide policy:

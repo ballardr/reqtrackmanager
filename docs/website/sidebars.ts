@@ -64,6 +64,7 @@ const sidebars: SidebarsConfig = {
         'core-features/personal-access-tokens',
         'core-features/project-templates',
         'core-features/zip-export-import',
+        'core-features/role-management',
       ],
     },
     {

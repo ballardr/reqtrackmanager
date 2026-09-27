@@ -8,17 +8,29 @@ narrow published-version, mandatory-note exception. Required actions
 nested under a requirement are `version_required_actions.py`'s own
 sibling bucket, split out separately since this one was still large
 on its own.
+
+`update_requirement` is Fine-Grained Access Control Phase 6's
+entity-scoped-axis migration (`docs/plans/core-fine-grained-access-
+control-plan.md`) — `_require_standard_content_manage` (below) tries the
+existing `_require_standard_manage_or_contribute` gate first, falling back
+to `require_permission(..., entity_scope="standard")`'s `(project_
+compliance_requirement, manage)` atom only on a 403 (never a 404 — both
+role checks already perform their own module-enabled check first, so a 403
+here means the module was confirmed enabled). Every other endpoint in this
+file stays on `_require_standard_manage_or_contribute`/`_require_standard_
+manage`, unchanged.
 """
 
 import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user_or_module_frame
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
 from app.modules.compliance.models import ComplianceRequirement
@@ -36,11 +48,43 @@ from app.modules.compliance.schemas import (
     ComplianceRequirementOut,
     ComplianceRequirementUpdate,
 )
+from app.modules.compliance.service import COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
+from app.services.rbac import require_permission
 
 router = APIRouter(tags=["compliance-org-version-requirements"])
+
+
+def _require_standard_content_manage(
+    request: Request,
+    current_user: User = Depends(get_current_user_or_module_frame("compliance")),
+    db: Session = Depends(get_db),
+) -> User:
+    """`update_requirement`'s gate (Fine-Grained Access Control Phase 6,
+    see this module's own docstring) — additive: a caller who already
+    holds `standards_manager`/`standards_contributor` (or org-wide
+    `compliance_manager`, via `overridden_by`) sees no behaviour change; a
+    caller who instead holds a custom role granting `(project_compliance_
+    requirement, manage)` scoped to this one standard reaches this endpoint
+    without ever holding either standard-scoped module role. Local to this
+    file since it has only this one call site so far, per this package's
+    own "shared only past two-plus call sites" split convention
+    (`_shared.py`'s own docstring)."""
+    try:
+        return _require_standard_manage_or_contribute(request=request, current_user=current_user, db=db)
+    except HTTPException as role_exc:
+        if role_exc.status_code != status.HTTP_403_FORBIDDEN:
+            raise
+        try:
+            return require_permission(COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION, entity_scope="standard")(
+                request=request, current_user=current_user, db=db
+            )
+        except HTTPException as perm_exc:
+            if perm_exc.status_code != status.HTTP_403_FORBIDDEN:
+                raise
+            raise role_exc from perm_exc
 
 
 def _flatten_requirements_dfs(requirements: list[ComplianceRequirement]) -> list[ComplianceRequirement]:
@@ -155,7 +199,7 @@ def get_requirement(
 def update_requirement(
     organization_id: UUID, standard_id: UUID, version_id: UUID, requirement_id: UUID,
     payload: ComplianceRequirementUpdate,
-    current_user: User = Depends(_require_standard_manage_or_contribute), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_standard_content_manage), db: Session = Depends(get_db),
 ):
     """Updates a requirement's reference/name/description/reasoning. 409 if
     the owning version is no longer a draft. Does not support reparenting

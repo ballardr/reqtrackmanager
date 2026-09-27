@@ -26,7 +26,11 @@ from app.schemas.org import ModuleFrameTokenOut, ModuleFrontendManifestOut, Modu
 from app.security import create_module_frame_token
 from app.services.audit import log_event
 from app.services.notifications import notify
-from app.services.rbac import require_project_manage, require_project_module_enabled_dynamic, require_project_view_or_manage
+from app.services.rbac import (
+    require_project_manage_or_grant_roles,
+    require_project_module_enabled_dynamic,
+    require_project_view_or_manage,
+)
 
 router = APIRouter(tags=["projects-module-roles"])
 
@@ -160,16 +164,17 @@ def assign_project_module_role(
     project_id: UUID,
     user_id: UUID,
     payload: ModuleRoleAssign,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Grants a project-scoped module-contributed role to a user (module
     system Phase 2) — the module-role counterpart to `routers.projects.
-    roles.assign_project_role`, same `require_project_manage` gate (a
-    project manager already implicitly holds every project-scoped module
-    role via `require_module_role`'s own override, so it's consistent
-    that a project manager is also who explicitly grants/revokes the row).
+    roles.assign_project_role`, same gate (a project manager already
+    implicitly holds every project-scoped module role via `require_module_
+    role`'s own override, so it's consistent that a project manager is
+    also who explicitly grants/revokes the row) plus a `grant_roles`
+    holder (Fine-Grained Access Control Phase 0 Q6/Phase 3).
 
     400s if `(payload.module_key, payload.role_key)` doesn't name a real
     `scope="project"` role of a currently-enabled module for this
@@ -224,13 +229,13 @@ def revoke_project_module_role(
     user_id: UUID,
     module_key: str,
     role_key: str,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Revokes a project-scoped module-contributed role grant —
-    `assign_project_module_role`'s counterpart, mirroring `routers.
-    projects.roles.revoke_project_role`'s shape minus its "last manager"
+    `assign_project_module_role`'s counterpart, same gate, mirroring
+    `routers.projects.roles.revoke_project_role`'s shape minus its "last manager"
     guard, which is meaningless for module roles (they carry no admin-tier
     significance of their own — a `PROJECT_MANAGER` retains full access to
     every project-scoped module role regardless of this table's contents,

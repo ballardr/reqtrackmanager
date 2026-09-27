@@ -283,7 +283,7 @@ The database layer should include:
 ### File Storage Layer
 Files such as supporting documents and uploaded attachments are stored in a configurable backend. The initial deployment can use local filesystem storage, while the design should allow later migration to object storage such as S3 or MinIO.
 
-**Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against MinIO or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs MinIO and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract. See [decisions.md](decisions.md).
+**Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against any S3-compatible server or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs the bundled SeaweedFS S3 gateway (formerly MinIO — see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry) and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract.
 
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:

@@ -6,13 +6,16 @@ Read-only by default. An opt-in **write mode** — `MCP_WRITES_ENABLED`, default
 
 ## What it can do
 
-Fifteen read tools, always available:
+Eighteen read tools, always available:
 
 | Tool | Purpose |
 | --- | --- |
 | `list_organizations` | Organisations the caller's account belongs to or administers |
 | `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
 | `get_project` | A single project's detail |
+| `list_permissions` | An organisation's full Fine-Grained Access Control permission-atom vocabulary (artefact types x levels, plus the fixed administrative permissions) |
+| `list_custom_roles` | An organisation's custom roles (Fine-Grained Access Control) — each role's own definition, never who holds it |
+| `get_custom_role` | A single custom role's own definition (name, description, scope, permission-atom set) |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |

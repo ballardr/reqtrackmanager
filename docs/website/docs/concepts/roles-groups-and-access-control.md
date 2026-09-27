@@ -11,7 +11,7 @@ Access control is enforced by the server at two levels, and they answer differen
 - **Organisation roles** — `org_admin`, `project_creator`, `member` — govern administration of the organisation itself: users, groups, SSO, branding, report defaults.
 - **Project roles** — `project_manager`, `project_administrator`, `stakeholder`, `member` — govern what someone can do inside one specific project: author and review requirements, approve change requests, manage project settings, or just view.
 
-A project manager implies administrator and stakeholder capabilities on that project, and any assigned role implies baseline (view) access — roles are additive, not a single fixed rank.
+A project manager implies administrator and stakeholder capabilities on that project, and any assigned role implies baseline (view) access — roles are additive, not a single fixed rank. On top of these fixed roles, an organisation can also define its own **custom roles** for finer-grained cases the fixed set doesn't cover, and delegate who may assign roles at all — see [Role Management](../core-features/role-management.md).
 
 ## The org admin ≠ automatic content access rule
 
@@ -30,8 +30,10 @@ The reasoning: organisation administration and project content are different tru
 
 Assigning someone a project role directly — one user, one role — is the default, simplest path, and is how a project's creator gets their own initial Project Manager grant. For onboarding more than a person at a time, a project can also define its own named **project groups** (any name, created as needed — not a fixed set seeded on every project) and grant a role to the group as a whole; organisation members, whole organisation-level groups one level deep, or even another project's own member roster can be added to a group, making onboarding and offboarding a matter of group membership rather than hunting down every individual grant.
 
-## Why fixed roles, not a custom permission builder
+## Why the fixed roles remain the default
 
-The role vocabulary is fixed rather than freely definable. A custom permission-authoring system is a materially larger feature with its own failure modes (a misconfigured custom role silently under- or over-granting access); a small, well-understood set of roles that combine predictably is easier to audit and reason about — which matters more for a tool whose whole purpose is an auditable trail of who could do what, and when.
+The core role vocabulary above is fixed rather than freely definable, and stays the default and baseline for every organisation. A small, well-understood set of roles that combine predictably is easier to audit and reason about than an arbitrary permission-authoring system — which matters more for a tool whose whole purpose is an auditable trail of who could do what, and when.
+
+This is why custom roles ([Role Management](../core-features/role-management.md)) are additive rather than a replacement for this vocabulary: an organisation that never touches Role Management sees exactly the fixed-role behaviour described on this page, with no risk of a misconfigured custom role silently under- or over-granting access by surprise. An organisation that does need finer-grained cases the fixed roles don't cover — restricting who can approve a specific Decision Type, for example — can define a custom role for that case specifically, without the fixed roles' own predictability being affected for anyone else.
 
 See [Organisations and projects](./organisations-and-projects.md) for the containment model these roles apply within, and [Workflows → Administering an organisation](../workflows/administering-an-organisation.md) / [Administering a project](../workflows/administering-a-project.md) for the day-to-day mechanics.

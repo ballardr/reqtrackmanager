@@ -45,7 +45,7 @@ Covers encryption of data in transit, encryption of data at rest, and the handli
 
 ## Implementation in ReqTrackManager
 
-- **Fail-fast secret enforcement**: the production `docker-compose.yml` requires `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, and `SMTP_HOST` to be set, refusing to start otherwise (see [deployment.md](../deployment.md) §Production deployment).
+- **Fail-fast secret enforcement**: the production `docker-compose.yml` requires `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_ROOT_PASSWORD`, and `SMTP_HOST` to be set, refusing to start otherwise (see [deployment.md](../deployment.md) §Production deployment).
 - **Password hashing**: `backend/app/security.py` (`_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")`).
 - **Application-layer secret encryption**: `backend/app/models/encrypted_type.py` (`EncryptedString`), applied to `Organization.oidc_client_secret`, `Organization.smtp_password`, and `User.totp_secret`; covered by `backend/tests/test_encrypted_type.py`, which confirms the raw database value is genuinely ciphertext, not just a formatting difference.
 - **Secret sourcing**: `backend/app/config.py` — every credential is a `Settings` field read from the environment, never a literal in application code.

@@ -24,7 +24,7 @@ function orgUser(overrides: Partial<OrgUser> = {}): OrgUser {
   return {
     user_id: "user-1", email: "alex@example.com", display_name: "Alex Rivera", is_active: true,
     is_archived: false, roles: [], display_name_locked: false, last_login_at: null, is_2fa_enabled: false,
-    module_roles: [], ...overrides,
+    module_roles: [], custom_roles: [], ...overrides,
   };
 }
 

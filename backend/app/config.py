@@ -40,7 +40,8 @@ class Settings(BaseSettings):
             the bootstrap server admin and grant them org admin (I-M-08).
         cors_origins: Comma-separated list of allowed frontend origins.
         storage_backend: Which `FileStorageBackend` to use: "local" or "s3"
-            (I-M-10). "s3" works against MinIO or real S3.
+            (I-M-10). "s3" works against any S3-compatible server (the
+            bundled Compose stack's SeaweedFS service) or real S3.
         storage_local_dir: Filesystem directory for the local backend.
         storage_s3_*: Connection details for the S3-compatible backend.
         smtp_*: SMTP connection details for outgoing email (C-N-03).
@@ -207,7 +208,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     storage_local_dir: str = "./data/files"
     storage_s3_bucket: str = "reqtrackmanager"
-    storage_s3_endpoint_url: str = "http://minio:9000"
+    storage_s3_endpoint_url: str = "http://storage:9000"
     storage_s3_access_key: str = "minioadmin"
     storage_s3_secret_key: str = "minioadmin"
     storage_s3_region: str = "us-east-1"

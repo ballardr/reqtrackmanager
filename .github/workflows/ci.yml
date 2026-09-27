@@ -6,7 +6,7 @@
 #                          coverage
 #   2. backend-tests     - the same dev/test Docker Compose stack developers
 #                          run locally, but only the services backend pytest
-#                          actually needs (db, minio, mailhog, backend — not
+#                          actually needs (db, storage, mailhog, backend — not
 #                          frontend/mcp-server/keycloak, which only
 #                          e2e-tests below exercises); backend pytest with
 #                          coverage + JUnit reporting, ruff lint.
@@ -290,7 +290,7 @@ jobs:
       # DATABASE_URL doesn't resolve to a database whose name ends in
       # `_test` (see docs/decisions.md, "Database: the test suite was
       # wiping the live database"). Only the services backend pytest
-      # actually needs come up here — db and minio are backend's own
+      # actually needs come up here — db and storage are backend's own
       # declared `depends_on`, so `docker compose up -d backend` would
       # start them regardless, but mailhog isn't (backend just points
       # SMTP_HOST at it with no formal dependency) and several backend
@@ -302,7 +302,31 @@ jobs:
       # a second time with none of buildx's GHA cache wired in.
       - name: Start the dev/test stack (backend + its dependencies)
         working-directory: tests/container
-        run: docker compose up -d db minio mailhog backend
+        run: docker compose up -d db storage mailhog backend
+
+      # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
+      # if a `depends_on: condition: service_healthy` dependency never
+      # reaches healthy, so the step above carries no dependency's own logs.
+      # This dumps every service's state/logs so a stuck healthcheck (e.g.
+      # the `storage` service never becoming healthy) is diagnosable from
+      # the run's own log instead of requiring a local repro. The
+      # `docker inspect .State.Health` call is the important one: a prior
+      # investigation found the `storage` service's own app logs showed
+      # master/filer/S3 all starting cleanly within ~16s, so `docker compose
+      # logs` alone didn't explain the healthcheck still failing for the
+      # full retry budget — `.State.Health` carries each individual
+      # `wget -qO- http://localhost:9333/cluster/status` probe's own
+      # stdout/stderr and exit code, which `docker compose logs` never
+      # shows (that's the container's own stdout, not the exec'd
+      # healthcheck's).
+      - name: Diagnose dev/test stack on startup failure
+        if: failure()
+        working-directory: tests/container
+        run: |
+          docker compose ps -a
+          docker compose logs
+          echo "--- storage healthcheck probe history ---"
+          docker inspect --format '{{json .State.Health}}' "$(docker compose ps -q storage)" | python3 -m json.tool
 
       - name: Wait for backend to become healthy
         working-directory: tests/container
@@ -471,7 +495,7 @@ jobs:
           cache-from: type=gha,scope=mcp-server
           cache-to: type=gha,mode=max,scope=mcp-server
 
-      # The dev/test stack (db, minio, mailhog, keycloak, backend, frontend,
+      # The dev/test stack (db, storage, mailhog, keycloak, backend, frontend,
       # mcp-server) is the same one developers run locally. Using the real
       # compose file here, rather than hand-rolled GitHub Actions
       # `services:` blocks, keeps CI's environment identical to what's
@@ -483,6 +507,19 @@ jobs:
       - name: Start the dev/test stack
         working-directory: tests/container
         run: docker compose up -d
+
+      # See the backend-tests job's identical step for why this exists:
+      # `docker compose up -d` fails outright, with no per-service logs, if
+      # a `depends_on: condition: service_healthy` dependency never reaches
+      # healthy.
+      - name: Diagnose dev/test stack on startup failure
+        if: failure()
+        working-directory: tests/container
+        run: |
+          docker compose ps -a
+          docker compose logs
+          echo "--- storage healthcheck probe history ---"
+          docker inspect --format '{{json .State.Health}}' "$(docker compose ps -q storage)" | python3 -m json.tool
 
       - name: Wait for backend to become healthy
         working-directory: tests/container

@@ -249,6 +249,23 @@ def _resolve_organization_id(organization_id: str | None) -> str | None:
     return _require_uuid(resolved, "organization_id") if resolved else None
 
 
+def _require_organization_id(organization_id: str | None) -> str:
+    """Like `_require_project_id`, but for a tool whose `organization_id`
+    is genuinely required once resolved against this connection's default
+    (unlike `list_projects`/`_resolve_organization_id`, where omitting it
+    means "every organisation" — there is no equivalent "every
+    organisation's vocabulary/roles" meaning for the Fine-Grained Access
+    Control tools below, since neither is scoped any other way)."""
+    resolved = organization_id or _default_scope()[0]
+    if not resolved:
+        raise ValueError(
+            "'organization_id' was not given, and no X-Default-Organization-Id header is configured on this "
+            "MCP connection either. Pass organization_id explicitly (see list_organizations), or configure a "
+            "default scope header — see docs/mcp-server.md."
+        )
+    return _require_uuid(resolved, "organization_id")
+
+
 def _detail(response: httpx.Response) -> str:
     """Extracts FastAPI's `{"detail": "..."}` error body shape into a plain
     string when present, falling back to the raw response text otherwise —
@@ -391,6 +408,80 @@ async def get_project(project_id: str | None = None) -> dict:
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}")
+    return response.json()
+
+
+@mcp.tool
+async def list_permissions(organization_id: str | None = None) -> list[dict]:
+    """Lists an organisation's full, currently-valid Fine-Grained Access
+    Control permission-atom vocabulary — every registered artefact type
+    crossed with View/Propose-Create/Manage/Approve-Baseline (plus any
+    registered sub-type for that artefact type), and the fixed
+    administrative permissions (e.g. grant_roles). Describes what
+    permissions *exist* to grant, not who currently holds them — see
+    `list_custom_roles`/`get_custom_role` for role definitions built from
+    this vocabulary.
+
+    Args:
+        organization_id: The organisation's UUID (from `list_organizations`),
+            or omit if this connection has a configured default
+            (X-Default-Organization-Id).
+
+    Returns:
+        A list of permission atoms, each with `key`, `label`,
+        `artefact_type`, `level`, and `subtype` — the latter three `None`
+        for a bare administrative permission like `grant_roles`.
+    """
+    oid = _require_organization_id(organization_id)
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/permissions")
+    return response.json()
+
+
+@mcp.tool
+async def list_custom_roles(organization_id: str | None = None) -> list[dict]:
+    """Lists an organisation's custom roles (Fine-Grained Access Control) —
+    each role's own definition (name, description, scope, permission-atom
+    set) only, never who currently holds it.
+
+    Deliberately excludes grant-roster visibility (which users/groups hold
+    a role) — per `docs/plans/core-fine-grained-access-control-plan.md`'s
+    own MCP-tools addendum, an access-control privilege map (who holds
+    elevated permissions) is a real reconnaissance-value disclosure this
+    server's read tools otherwise never expose, unlike a role/standard/
+    decision-type *definition*. There is no tool to list or query grants.
+
+    Args:
+        organization_id: The organisation's UUID (from `list_organizations`),
+            or omit if this connection has a configured default
+            (X-Default-Organization-Id).
+
+    Returns:
+        A list of custom roles, each with `id`, `organization_id`, `name`,
+        `description`, `scope`, and `permissions` (the encoded permission
+        keys this role definition holds).
+    """
+    oid = _require_organization_id(organization_id)
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/custom-roles")
+    return response.json()
+
+
+@mcp.tool
+async def get_custom_role(organization_id: str | None = None, *, role_id: str) -> dict:
+    """Gets a single custom role's own definition — same grant-roster
+    exclusion as `list_custom_roles`.
+
+    Args:
+        organization_id: The organisation's UUID (from `list_organizations`),
+            or omit if this connection has a configured default.
+        role_id: The custom role's UUID (from `list_custom_roles`).
+
+    Returns:
+        The role's `id`, `organization_id`, `name`, `description`, `scope`,
+        and `permissions`.
+    """
+    oid = _require_organization_id(organization_id)
+    rid = _require_uuid(role_id, "role_id")
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/custom-roles/{rid}")
     return response.json()
 
 

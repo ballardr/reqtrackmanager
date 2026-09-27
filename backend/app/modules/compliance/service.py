@@ -99,6 +99,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditEvent
+from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.modules.compliance.enums import (
     ComplianceApplicability,
@@ -152,8 +153,62 @@ from app.modules.compliance.schemas import (
     StandardVersionDiffOut,
 )
 from app.services import relationships
+from app.services.permissions import encode_permission
 
 ApplicabilityResolution = dict[uuid.UUID, tuple[ComplianceApplicability, ComplianceApplicabilitySource]]
+
+# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
+# plan.md` Phase 6) — the permission atoms this module's four
+# `ModuleRoleDefinition`s declare via their `permissions` field (`module.py`)
+# and the two endpoints migrated to accept `require_permission` as an
+# alternative to their existing `require_module_role` gate (`project_router/
+# evidence.py`'s `create_evidence`/`update_evidence`; `router/version_
+# requirements.py`'s `update_requirement`) check directly — the same
+# "declare the constant once in `service.py`, import it from both `module.py`
+# and the router" shape Decision Management's `DECISION_APPROVE_PERMISSION`
+# already established.
+#
+# `COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION`/`_APPROVE_BASELINE_
+# PERMISSION` reuse the `project_compliance_requirement` artefact type
+# rather than a dedicated one for `ComplianceRequirement` (a standard's own
+# catalogue content — `standards_manager`/`standards_contributor`'s actual
+# subject — which is a distinct model from `ProjectComplianceRequirement`,
+# a project's own tracked instance of it). Compliance registers only three
+# linkable artefact types (`models.py`), and none of them is this one;
+# adding a fourth purely to obtain an accurately-named permission atom, with
+# no `ArtefactLink` ever pointing at it, was judged not worth the scope
+# creep here (**Decided by: Agent** — see `docs/decisions.md`'s Phase 6
+# entry for the full reasoning). The `MANAGE`/`APPROVE_BASELINE` *level*
+# distinction still maps cleanly onto "edit this standard's draft content"
+# vs. "publish/retire one of its versions," even though the atom's
+# artefact-type label in the Role Management UI's permission picker reads
+# "project_compliance_requirement" rather than "compliance_requirement."
+COMPLIANCE_EVIDENCE_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.VIEW.value)
+COMPLIANCE_EVIDENCE_PROPOSE_CREATE_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.PROPOSE_CREATE.value)
+COMPLIANCE_EVIDENCE_MANAGE_PERMISSION = encode_permission(ARTEFACT_TYPE_EVIDENCE, PermissionLevel.MANAGE.value)
+COMPLIANCE_REQUIREMENT_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, PermissionLevel.VIEW.value)
+COMPLIANCE_REQUIREMENT_PROPOSE_CREATE_PERMISSION = encode_permission(
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, PermissionLevel.PROPOSE_CREATE.value
+)
+COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION = encode_permission(ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, PermissionLevel.MANAGE.value)
+COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION = encode_permission(
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, PermissionLevel.APPROVE_BASELINE.value
+)
+COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION = encode_permission(ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, PermissionLevel.VIEW.value)
+COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION = encode_permission(
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, PermissionLevel.MANAGE.value
+)
+
+# Aliases used by the entity-scoped (`entity_scope="standard"`) call site
+# specifically, kept as their own names so that call site
+# (`router/version_requirements.py`) reads with the label matching what it
+# actually means ("this standard's own content"), even though both names
+# currently resolve to the identical encoded string as the plain
+# `COMPLIANCE_REQUIREMENT_*` constants above — see the module comment above
+# for why there is no separate artefact type to derive a truly distinct atom
+# from.
+COMPLIANCE_STANDARD_CONTENT_MANAGE_PERMISSION = COMPLIANCE_REQUIREMENT_MANAGE_PERMISSION
+COMPLIANCE_STANDARD_CONTENT_APPROVE_BASELINE_PERMISSION = COMPLIANCE_REQUIREMENT_APPROVE_BASELINE_PERMISSION
 
 # Mirrors `services.definitions.DEFAULT_ACTION_TYPES`' two names — chosen to
 # match what `backend/scripts/seed_demo_data.py` already invented by hand
@@ -1218,6 +1273,19 @@ def resolve_standard_organization_id(db: Session, standard_id: uuid.UUID) -> uui
     for `"project"`-scoped roles (`app.services.rbac._project_organization_id`)."""
     standard = db.get(ComplianceStandard, standard_id)
     return standard.organization_id if standard is not None else None
+
+
+def list_standards_for_entity_scope(db: Session, organization_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+    """This module's `EntityScopeDefinition.list_entities` hook for the
+    `"standard"` scope (Fine-Grained Access Control (core) plan Phase 5) —
+    every current standard in `organization_id`, as `(id, name)` pairs, for
+    the Role Management UI's entity picker to render generically."""
+    rows = db.execute(
+        select(ComplianceStandard.id, ComplianceStandard.name)
+        .where(ComplianceStandard.organization_id == organization_id)
+        .order_by(ComplianceStandard.name)
+    ).all()
+    return [(row.id, row.name) for row in rows]
 
 
 def _effective_org_group_member_ids(db: Session, org_group_id: uuid.UUID) -> set[uuid.UUID]:

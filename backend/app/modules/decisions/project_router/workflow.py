@@ -9,6 +9,30 @@ review/approve/reject. `approve`/`reject` carry the AI-approval MCP gate
 only other bucket that calls into a Phase 2/3 `service.py` function).
 See the package's own `__init__.py` docstring for the full router-split
 account.
+
+`approve`/`reject` were Fine-Grained Access Control Phase 4's second
+migration (`docs/plans/core-fine-grained-access-control-plan.md`) — the
+first live consumer of `require_permission` (Phase 2) as a FastAPI
+dependency, replacing the previous flat `require_module_role("decisions",
+"decision_approver")` gate, checking the unscoped `(decision,
+approve_baseline)` permission atom.
+
+Phase 7 narrows this further to a **sub-type-scoped** check: `(decision,
+approve_baseline, subtype=<this decision's own Decision Type name>)`,
+via `_require_approve_permission_for_decision` below. Because the
+sub-type is per-instance data (the loaded `Decision` row's own
+`decision_type_id`), not a path parameter, this can no longer go through
+`require_permission`'s FastAPI-dependency form — see that factory's own
+docstring for why — so it is called directly from inside the route body,
+after `_get_decision_in_project_for_update` loads the row, instead of as
+a leading `Depends`. A caller holding the flat, unscoped
+`decision_approver`/`(decision, approve_baseline)` grant is unaffected:
+`permission_satisfied`'s wildcard rule lets that unscoped grant satisfy
+any specific sub-type, so today's flat-approval behaviour is unchanged
+for every existing holder with zero configuration (Design Principle 1).
+`_require_view` still runs first (module-enabled/project-membership,
+404) via its own leading `Depends`, exactly as every sibling endpoint in
+this package already does.
 """
 
 from __future__ import annotations
@@ -21,21 +45,43 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_request_channel
+from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.models.user import User
-from app.modules.decisions.models import Decision
+from app.modules.decisions.models import Decision, DecisionTypeDefinition
 from app.modules.decisions.project_router._shared import _get_decision_in_project, _require_edit_role, _require_view
 from app.modules.decisions.project_router.core import _decision_to_out
 from app.modules.decisions.schemas import DecisionOut, DecisionTransitionRequest
-from app.modules.decisions.service import approve_decision, propose_decision, reject_decision, submit_decision_for_review
-from app.services.rbac import require_ai_approvals_enabled, require_module_role
+from app.modules.decisions.service import (
+    DECISION_ARTEFACT_TYPE,
+    approve_decision,
+    propose_decision,
+    reject_decision,
+    submit_decision_for_review,
+)
+from app.services.permissions import encode_permission
+from app.services.rbac import get_effective_permissions, permission_satisfied, require_ai_approvals_enabled
 
 router = APIRouter(tags=["decisions-workflow"])
 
-# Factory called once, at router-definition time — same convention as
-# every other module router in this codebase (`modules.compliance.
-# project_router`'s own comment on this).
-_require_approver = require_module_role("decisions", "decision_approver")
+
+def _require_approve_permission_for_decision(
+    db: Session, current_user: User, project_id: UUID, decision: Decision,
+) -> None:
+    """Sub-type-scoped `(decision, approve_baseline, subtype=<this
+    decision's own Decision Type name>)` check (Fine-Grained Access
+    Control Phase 7) — see this module's own docstring above for why this
+    is a direct `get_effective_permissions`/`permission_satisfied` call
+    rather than a `require_permission` `Depends`. Server admin bypasses,
+    consistent with every existing `require_*` check in `rbac.py`."""
+    if current_user.is_server_admin:
+        return
+    decision_type = db.get(DecisionTypeDefinition, decision.decision_type_id)
+    subtype = decision_type.name if decision_type is not None else None
+    held = get_effective_permissions(db, current_user.id, project_id=project_id)
+    required = encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_BASELINE.value, subtype)
+    if not permission_satisfied(held, required):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
 
 
 def _require_owner_of_decision_or_role(db: Session, current_user: User, project: Project, decision: Decision) -> None:
@@ -110,12 +156,17 @@ def submit_decision_for_review_endpoint(
 @router.post("/{decision_id}/approve", response_model=DecisionOut)
 def approve_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
-    current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`) — gated
-    the same as every other mutating endpoint this router names as
-    approval-type (the flat `decision_approver` module role).
+    by the `(decision, approve_baseline, subtype=<this decision's own
+    Decision Type>)` permission atom (Fine-Grained Access Control Phase 7
+    — see this module's own docstring). `_require_view` (module-enabled/
+    project-membership, 404) is declared first so it is resolved before
+    `_require_approve_permission_for_decision`'s 403, matching every
+    sibling endpoint in this package.
 
     No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22, see
     docs/decisions.md's "Decision Management MCP approval gate" entry,
@@ -132,6 +183,7 @@ def approve_decision_endpoint(
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project_for_update(db, project_id, decision_id)
+    _require_approve_permission_for_decision(db, current_user, project_id, decision)
     _apply_value_error_as_conflict(
         approve_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
     )
@@ -143,7 +195,8 @@ def approve_decision_endpoint(
 @router.post("/{decision_id}/reject", response_model=DecisionOut)
 def reject_decision_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionTransitionRequest,
-    current_user: User = Depends(_require_approver), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
     """Formally rejects a Decision (`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`).
@@ -151,7 +204,9 @@ def reject_decision_endpoint(
     mandatory-comment-on-`FAILED` rule (`routers.requirements.py`) and
     `reject_requirement`'s mandatory `decision_note`
     (`modules.compliance.project_router`): a rejection must never appear
-    with no indication of why.
+    with no indication of why. Gated by the same sub-type-scoped
+    permission check as `approve` (Fine-Grained Access Control Phase 7) —
+    see `approve_decision_endpoint`'s docstring above.
 
     No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see
     `approve_decision_endpoint`'s docstring above; gated the same way when
@@ -162,6 +217,7 @@ def reject_decision_endpoint(
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project_for_update(db, project_id, decision_id)
+    _require_approve_permission_for_decision(db, current_user, project_id, decision)
     _apply_value_error_as_conflict(
         reject_decision, db, decision, current_user.id, comment=payload.comment, via_mcp=channel == "mcp",
     )

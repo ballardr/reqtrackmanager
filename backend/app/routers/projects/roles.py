@@ -43,6 +43,7 @@ from app.services.rbac import (
     is_inherited_manager,
     lock_project_for_update,
     require_project_manage,
+    require_project_manage_or_grant_roles,
 )
 
 router = APIRouter(tags=["projects-roles"])
@@ -51,11 +52,15 @@ router = APIRouter(tags=["projects-roles"])
 @router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
 def assign_project_role(
     project_id: UUID, payload: UserProjectRoleAssign,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Assigns a direct (non-group) project role to a user."""
+    """Assigns a direct (non-group) project role to a user. Gated by
+    `require_project_manage_or_grant_roles` (Fine-Grained Access Control
+    Phase 0 Q6/Phase 3) — no `OrgRole.ORG_ADMIN`-equivalent carve-out is
+    needed at project-role scope (no `ProjectRole` value is non-delegable
+    per Phase 0's own resolution)."""
     _require_user_in_org(db, payload.user_id, project.organization_id)  # C-U-02
     existing = db.scalar(
         select(UserProjectRole).where(
@@ -119,7 +124,7 @@ def list_group_project_roles(
 @router.post("/{project_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)
 def assign_group_project_role(
     project_id: UUID, payload: OrgGroupProjectRoleAssign,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -348,7 +353,7 @@ def resend_pending_project_invite(
 @router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_project_role(
     project_id: UUID, user_id: UUID, role: ProjectRole,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -391,7 +396,7 @@ def revoke_project_role(
 @router.delete("/{project_id}/group-roles/{org_group_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_group_project_role(
     project_id: UUID, org_group_id: UUID, role: ProjectRole,
-    project: Project = Depends(require_project_manage),
+    project: Project = Depends(require_project_manage_or_grant_roles),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

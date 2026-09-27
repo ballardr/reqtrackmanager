@@ -48,6 +48,11 @@ READ_ONLY_TOOLS = {
     "list_change_request_tasks", "list_change_request_comments",
     "list_requirement_comments", "list_notifications",
     "list_my_reviews_due", "list_project_reviews_due",
+    # Fine-Grained Access Control (docs/plans/core-fine-grained-access-
+    # control-plan.md Phase 3) — read-only permission-vocabulary and
+    # custom-role-definition tools; no grant-roster tool exists (see that
+    # plan's own MCP-tools addendum).
+    "list_permissions", "list_custom_roles", "get_custom_role",
 }
 WRITE_TOOLS = {"create_requirement", "update_requirement"}
 # AI approval via MCP (docs/decisions.md): approval-type tools, always
@@ -252,6 +257,79 @@ async def test_notifications_and_reviews_due_tools_return_lists(admin_token):
             pytest.skip("No projects visible to the admin account — seed data hasn't been loaded.")
         project_reviews = await client.call_tool("list_project_reviews_due", {"project_id": projects[0]["id"]})
         assert isinstance(project_reviews.data, list)
+
+
+@pytest.mark.asyncio
+async def test_list_permissions_returns_the_vocabulary(admin_token):
+    """Fine-Grained Access Control (docs/plans/core-fine-grained-access-
+    control-plan.md Phase 3): `list_permissions` returns at least the
+    fixed administrative permissions (they exist for every organisation,
+    with no artefact-type registry dependency), each with the expected
+    shape."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_id = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10
+    ).json()[0]["id"]
+
+    async with _client(admin_token) as client:
+        permissions = (await client.call_tool("list_permissions", {"organization_id": org_id})).data
+
+    assert isinstance(permissions, list)
+    keys = {p["key"] for p in permissions}
+    assert "grant_roles" in keys
+    grant_roles_entry = next(p for p in permissions if p["key"] == "grant_roles")
+    assert grant_roles_entry["artefact_type"] is None
+    assert grant_roles_entry["level"] is None
+    assert grant_roles_entry["subtype"] is None
+    for p in permissions:
+        assert set(p.keys()) >= {"key", "label", "artefact_type", "level", "subtype"}
+
+
+@pytest.mark.asyncio
+async def test_list_and_get_custom_role_round_trip(admin_token):
+    """Creates a real custom role via the backend API (this server has no
+    write tool for it — see the module docstring's "not exposed" section),
+    then confirms `list_custom_roles`/`get_custom_role` surface it with its
+    own definition (name/description/scope/permissions), never a grant
+    roster — there is no tool that could even ask for one."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_id = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10
+    ).json()[0]["id"]
+    suffix = uuid.uuid4().hex[:8]
+    created = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/orgs/{org_id}/custom-roles",
+        json={"name": f"MCP Test Role {suffix}", "description": "", "scope": "org", "permissions": ["grant_roles"]},
+        headers=headers, timeout=10,
+    )
+    created.raise_for_status()
+    role = created.json()
+
+    async with _client(admin_token) as client:
+        roles = (await client.call_tool("list_custom_roles", {"organization_id": org_id})).data
+        assert any(r["id"] == role["id"] for r in roles)
+
+        detail = (
+            await client.call_tool("get_custom_role", {"organization_id": org_id, "role_id": role["id"]})
+        ).data
+        assert detail["id"] == role["id"]
+        assert detail["name"] == role["name"]
+        assert detail["scope"] == "org"
+        assert "grant_roles" in detail["permissions"]
+        # No grant-roster field of any kind is present on this shape.
+        assert "granted_users" not in detail and "grants" not in detail
+
+
+@pytest.mark.asyncio
+async def test_get_custom_role_unknown_id_fails_clearly(admin_token):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_id = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10
+    ).json()[0]["id"]
+
+    async with _client(admin_token) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool("get_custom_role", {"organization_id": org_id, "role_id": str(uuid.uuid4())})
 
 
 def _create_test_project(admin_token: str) -> tuple[str, str, str]:

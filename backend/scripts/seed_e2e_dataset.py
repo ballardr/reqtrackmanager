@@ -125,6 +125,21 @@ def assign_project_role(headers: dict, project_id: str, user_id: str, role: str)
     r.raise_for_status()
 
 
+def create_compliance_standard(headers: dict, org_id: str, *, reference: str, name: str) -> dict:
+    """Creates a `ComplianceStandard` together with its mandatory first
+    version (§2/§4) — mirrors `backend/scripts/seed_demo_data.py`'s own
+    `create_compliance_standard` helper, trimmed to only the fields this
+    file's own single seeded standard needs (see FGAC_STANDARD_NAME's own
+    comment below for why this file needs one at all)."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/modules/compliance/standards",
+        json={"reference": reference, "name": name, "initial_version_label": "1.0"},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def set_project_terminology(headers: dict, project_id: str, terminology: dict[str, str]) -> dict:
     """Sets a project's per-project terminology overrides (C-C-03), the same
     `PUT /projects/{id}/terminology` endpoint Project Admin's Terminology tab
@@ -146,6 +161,16 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
 # these values.
 TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
 TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
+
+# A real, standing compliance standard for Alpha — Fine-Grained Access
+# Control Phase 6 (`docs/plans/core-fine-grained-access-control-plan.md`)
+# needs one real registered `"standard"` entity-scope entity for role-
+# management.spec.ts's entity-picker coverage to select (Phase 5 built the
+# picker generically; this module's own compliance standard is its first
+# real thing to pick). This module previously had no seeded data in this
+# script at all.
+FGAC_STANDARD_REFERENCE = "FGAC-1"
+FGAC_STANDARD_NAME = "FGAC Demo Standard"
 
 # Platform review 2026-09, Phase 8: a project dedicated solely to the
 # require-change-request-for-links Playwright coverage, per this file's own
@@ -409,6 +434,9 @@ def main() -> None:
     r.raise_for_status()
     seed_project_content(h_ab, epsilon1, 0)
 
+    print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
+    fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
+
     print("Assigning project-scoped roles...")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a["user_id"], "stakeholder")
     assign_project_role(h_ab, alpha1["id"], stakeholder_a2["user_id"], "stakeholder")
@@ -512,6 +540,8 @@ def main() -> None:
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")
     print(f"Files on Alpha-1 ({alpha1['id']}): direct attachment on {alpha1_reqs[4]['unique_code']}, action attachment on "
           f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
+    print(f"Compliance standard {FGAC_STANDARD_NAME!r} (id {fgac_standard['id']}) on Alpha — Role Management page's"
+          " entity-scope picker fixture.")
 
 
 if __name__ == "__main__":

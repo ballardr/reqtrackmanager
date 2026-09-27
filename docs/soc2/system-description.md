@@ -17,7 +17,7 @@ ReqTrackManager ships as a set of Docker containers, deployed via Docker Compose
 | `backend` | FastAPI application; all business logic, authentication, and API surface |
 | `frontend` | Static React single-page app, served by nginx |
 | `db` | PostgreSQL — the sole system of record |
-| `minio` (or an external S3-compatible service) | Uploaded file storage |
+| `storage` (bundled SeaweedFS, or an external S3-compatible service) | Uploaded file storage |
 | `mcp-server` | Read-only Model Context Protocol server exposing requirements to AI assistants (Claude Code, VS Code Copilot Chat, Microsoft Copilot Studio, etc.); see [mcp-server.md](../mcp-server.md). Holds no credentials of its own — every request forwards the calling user's own access token, so it introduces no new privilege model, only a new *client* of the existing API |
 | External SMTP provider | Outgoing transactional/notification email |
 | Optional: external OIDC identity provider (customer-supplied, e.g. Keycloak, Authentik, Entra ID) | Per-organization SSO, when an org enables it |
@@ -96,7 +96,7 @@ A subservice organization is any third party whose controls this report's contro
 | --- | --- | --- |
 | **[Cloud/hosting provider]** | Compute, network, physical security, and (if used) managed PostgreSQL/object storage | Typically carve-out — relies on the provider's own SOC 2 report for physical/environmental security |
 | **[SMTP provider]** | Outgoing transactional email | Carve-out |
-| **[Object storage provider, if not self-hosted MinIO]** | File attachment storage | Carve-out |
+| **[Object storage provider, if not the self-hosted bundled service]** | File attachment storage | Carve-out |
 | **Customer-supplied OIDC identity provider** (only for organizations that enable SSO) | Authenticates that organization's users; asserts group membership used for role provisioning | Carve-out — the customer's own IdP is entirely outside the Company's control; see [enterprise-integration.md](../enterprise-integration.md) |
 
 See [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md) for the due-diligence process these vendors should go through.
@@ -113,4 +113,4 @@ Controls the report assumes the *customer* (an organization using ReqTrackManage
 
 ## 10. Complementary subservice organization controls (CSOCs)
 
-Controls the report assumes the underlying infrastructure provider is responsible for: physical and environmental security of hosting facilities, network infrastructure security up to the point the Company's containers run, and — if a managed database/storage service is used instead of self-hosted PostgreSQL/MinIO — that provider's own backup, patching, and encryption-at-rest mechanisms. **[Company must state which of these it relies on versus operates itself.]**
+Controls the report assumes the underlying infrastructure provider is responsible for: physical and environmental security of hosting facilities, network infrastructure security up to the point the Company's containers run, and — if a managed database/storage service is used instead of self-hosted PostgreSQL/the bundled storage service — that provider's own backup, patching, and encryption-at-rest mechanisms. **[Company must state which of these it relies on versus operates itself.]**

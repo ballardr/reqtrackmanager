@@ -1,7 +1,7 @@
 """Unit tests for LocalFileStorageBackend (I-M-10), exercised directly
 rather than through the HTTP API: the default dev/test stack runs
-STORAGE_BACKEND=s3 against MinIO, so nothing else in the suite ever
-instantiates the local filesystem backend."""
+STORAGE_BACKEND=s3 against the bundled S3-compatible storage service, so
+nothing else in the suite ever instantiates the local filesystem backend."""
 
 import pytest
 

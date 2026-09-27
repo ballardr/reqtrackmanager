@@ -98,6 +98,18 @@ don't decide anything (mirroring Compliance's own `submit-for-approval`
 treatment) and the rest are ordinary CRUD/collaboration actions this
 addendum never asked to expand, not approval-type actions this gate
 concerns.
+
+Fine-Grained Access Control Phase 1 (2026-09-23, `docs/plans/core-fine-
+grained-access-control-plan.md`): registers `subtype_providers={
+DECISION_ARTEFACT_TYPE: _decision_subtypes}`, the first (and, as of this
+phase, only) module to populate that new `ModuleDefinition` field — see
+`_decision_subtypes`'s own docstring and `service.list_decision_type_
+names_for_organization` for what it returns. This is Phase 0 Q3's
+resolution of the request that originally motivated the whole plan
+("certain people only do some types of decisions"): Phase 5 will express
+that as a `require_permission(decision, approve_baseline, subtype=<type>)`
+check rather than a bespoke field on `DecisionTypeDefinition` — no change
+to this module's own approval logic lands until then.
 """
 
 from __future__ import annotations
@@ -109,7 +121,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
+from app.modules.decisions.service import DECISION_APPROVE_PERMISSION, DECISION_ARTEFACT_TYPE, DECISION_TEMPLATE_PACKS
 from app.modules.registry import (
     McpToolDefinition,
     ModuleDefinition,
@@ -150,6 +162,17 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     from app.modules.decisions.service import resolve_decision_file_project_id
 
     return resolve_decision_file_project_id(db, file_id)
+
+
+def _decision_subtypes(db: Session, organization_id: uuid.UUID) -> list[str]:
+    """This module's `ModuleDefinition.subtype_providers[DECISION_ARTEFACT_
+    TYPE]` hook — Fine-Grained Access Control (`docs/plans/core-fine-
+    grained-access-control-plan.md` Phase 1's "one piece of this phase that
+    has a real consumer on day one"). Imported lazily for the same import-
+    cycle reason as this module's other hook functions."""
+    from app.modules.decisions.service import list_decision_type_names_for_organization
+
+    return list_decision_type_names_for_organization(db, organization_id)
 
 
 def _seed_new_project(db: Session, project: Project, actor_id: uuid.UUID) -> None:
@@ -204,6 +227,7 @@ MODULE_DEFINITION = ModuleDefinition(
     get_router=get_router,
     get_project_router=get_project_router,
     resolve_file_owner_project_id=resolve_file_owner_project_id,
+    subtype_providers={DECISION_ARTEFACT_TYPE: _decision_subtypes},
     models_import_path="app.modules.decisions.models",
     migrations_dir="app/modules/decisions/migrations",
     on_project_created=_seed_new_project,
@@ -234,6 +258,12 @@ MODULE_DEFINITION = ModuleDefinition(
                 "Governance-module policy mechanism rather than this module building its own."
             ),
             scope="project",
+            # Fine-Grained Access Control Phase 0 Q4 / Phase 4: a holder of this flat module role
+            # gets the equivalent unscoped `(decision, approve_baseline)` permission atom via
+            # `get_effective_permissions`, so `project_router.workflow`'s migration to
+            # `require_permission` (Phase 4) is a zero-behaviour-change swap for every existing
+            # holder of this role.
+            permissions=(DECISION_APPROVE_PERMISSION,),
         ),
     ),
     mcp_tools=(

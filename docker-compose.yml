@@ -1,4 +1,4 @@
-# Production-oriented stack: db + minio + backend + frontend, plus an
+# Production-oriented stack: db + storage + backend + frontend, plus an
 # optional observability profile. This is what a real deployment runs (see
 # docs/deployment.md) — it intentionally does NOT include MailHog (a
 # dev/test-only SMTP catcher) or a test database. Local development and all
@@ -8,7 +8,7 @@
 # wiping the live database").
 #
 # Before running this in production, override at minimum JWT_SECRET,
-# APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, MINIO_ROOT_PASSWORD,
+# APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, STORAGE_ROOT_PASSWORD,
 # CORS_ORIGINS, and the SMTP_* variables via a `.env` file — see
 # docs/deployment.md.
 #
@@ -41,23 +41,53 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
-    command: server /data --console-address ":9001"
+  # S3-compatible object storage for the backend's STORAGE_BACKEND=s3 mode.
+  # This used to be MinIO, but MinIO discontinued anonymous/free pulls of
+  # its own images from both Docker Hub (repos deleted 2026-09-11) and
+  # quay.io (anonymous pulls cut off 2026-09-24) — see docs/decisions.md,
+  # "Storage backend: MinIO images no longer pullable, replaced with
+  # SeaweedFS". SeaweedFS's S3 gateway is a verified drop-in replacement for
+  # the plain head_bucket/create_bucket/put_object/get_object/delete_object
+  # calls `backend/app/storage_backends/s3.py` makes (no presigned URLs,
+  # multipart, versioning, or MinIO Admin API in use anywhere in the app),
+  # and its `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars are the
+  # same bootstrap shape MinIO's `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
+  # were, just under S3's own generic names.
+  storage:
+    image: chrislusf/seaweedfs:3.97
+    container_name: reqtrack-storage
+    command: server -dir=/data -s3 -s3.port=9000
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in production}
+      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD:?Set STORAGE_ROOT_PASSWORD in production}
     volumes:
-      - reqtrack_minio_data:/data
-    # Only the admin console is published; the S3 API port (9000) doesn't
-    # need to be reachable from outside the Compose network since only the
-    # backend talks to it. Put the console behind the same reverse
-    # proxy/VPN as the rest of the stack rather than relying on this port
-    # alone (see docs/deployment.md).
-    ports:
-      - "9001:9001"
+      - reqtrack_storage_data:/data
+    # No host port published: only the backend talks to this over the
+    # Compose network. There's no bundled admin console UI here (unlike
+    # MinIO's old `:9001` console) — see docs/deployment.md's storage
+    # backend section for how to inspect bucket contents without one.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # The S3 API's own /healthz is broken in this image (returns 404 —
+      # it's parsed as a bucket name; see seaweedfs#8243), so this checks
+      # the master's cluster-status endpoint instead, which the same
+      # `server -s3` process also serves on port 9333. wget, not curl —
+      # this image has no curl binary.
+      #
+      # Uses the container's own name (`reqtrack-storage`, set above),
+      # not `localhost`: on GitHub Actions' runners this healthcheck
+      # consistently failed every probe with "Connection refused" for the
+      # full retry budget even though `weed`'s own logs showed
+      # master/filer/S3 all up within ~16s — `weed` binds its HTTP/gRPC
+      # ports to the container's real interface (and, environment-
+      # dependently, apparently not always to the IPv4 loopback address
+      # `localhost` resolves to first), so a same-container `wget` to
+      # `localhost` isn't reliable across environments. Going via the
+      # container's own name resolves through Docker's embedded DNS to
+      # the same address every other service already reaches it on,
+      # which `weed` definitely listens on (it's how filer/master/S3
+      # talk to each other internally) — verified this route works via a
+      # local repro of the exact failure. See docs/decisions.md.
+      test: ["CMD", "wget", "-qO-", "http://reqtrack-storage:9333/cluster/status"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -88,9 +118,9 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
-      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://minio:9000}
-      STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in production}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_ROOT_PASSWORD:?Set STORAGE_ROOT_PASSWORD in production}
       SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST to a real SMTP provider in production}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
@@ -102,14 +132,14 @@ services:
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
     volumes:
-      # Only used if STORAGE_BACKEND=local is set (default is s3/MinIO
+      # Only used if STORAGE_BACKEND=local is set (default is s3/storage
       # above). Named so it survives container recreation and so
       # scripts/backup.sh (I-M-04) can archive it alongside the database.
       - reqtrack_local_files:/app/data/files
     depends_on:
       db:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -242,5 +272,5 @@ services:
 
 volumes:
   reqtrack_db_data:
-  reqtrack_minio_data:
+  reqtrack_storage_data:
   reqtrack_local_files:

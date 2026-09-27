@@ -2,10 +2,10 @@
 Module: storage_backends.s3
 
 S3-compatible file storage backend (I-M-10), using boto3's S3 client. Works
-against MinIO (the bundled docker-compose service) or real AWS S3 by
-pointing `endpoint_url` at either. This is the concrete second backend that
-proves the storage abstraction genuinely supports "different backends", not
-just local disk.
+against the bundled docker-compose `storage` service (SeaweedFS) or real AWS
+S3 by pointing `endpoint_url` at either. This is the concrete second backend
+that proves the storage abstraction genuinely supports "different backends",
+not just local disk.
 """
 
 from __future__ import annotations

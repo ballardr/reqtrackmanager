@@ -55,7 +55,10 @@ improvised).
 ## Status / Resume Here
 
 8 / 9 phases complete. Phase 7 is blocked on Module 1/Module 6; Phase 8 is
-blocked on Module 12 — neither is actionable right now.
+blocked on Fine-Grained Access Control (core platform capability, formerly
+"Module 12"), whose Phase 0 completed 2026-09-23 specifically to unblock
+this — Phase 1 (data model) is next over there —
+neither phase is actionable right now, but Phase 8 should be soon.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -67,7 +70,7 @@ blocked on Module 12 — neither is actionable right now.
 | 5 | Frontend — Decision list/detail/create/approve UI | [x] Complete (2026-09-21) — see "Phase 5 notes" below |
 | 6 | Docs website coverage | [x] Complete (2026-09-21) — see "Phase 6 notes" below |
 | 7 | Reserved-relationship wiring, once Context & Strategy / Engineering Design exist | [ ] Blocked on Module 1 and/or Module 6 |
-| 8 | Per-decision-type approver binding | [ ] Blocked on [Module 12](module-12-fine-grained-access-control-plan.md) (not started) — see note below |
+| 8 | Per-decision-type approver binding | [ ] Blocked on [Fine-Grained Access Control (core)](core-fine-grained-access-control-plan.md) (Phase 0 complete, Phase 1 next) — see note below |
 | 9 | UX/architecture follow-up: template & type placement, nested decision types, detail page | [x] Complete (2026-09-22) — see "Phase 9 notes" below |
 
 ## Phase 2 notes (2026-09-21)
@@ -1114,25 +1117,36 @@ deliberately built only the flat placeholder role instead, specifically
 module will likely replace outright." Building per-type restriction
 directly into this module without a general mechanism to express "which
 role can do what" would repeat exactly the mistake that decision already
-avoided once. [Module 12 — Fine-Grained Access Control](module-12-fine-grained-access-control-plan.md)
+avoided once. [Fine-Grained Access Control (core platform capability, originally scoped as "Module 12")](core-fine-grained-access-control-plan.md)
 (requested by the user 2026-09-21, itself partly motivated by this exact
-question) is that general mechanism: an organisation-definable custom
-role, composed of atomic permissions, that this phase can bind to a
-specific `DecisionTypeDefinition` row.
+question; reclassified from an optional module to core infrastructure
+2026-09-23 — see that plan's own opening section) is that general
+mechanism: an organisation-definable custom role, composed of atomic
+permissions, that this phase can bind to a specific `DecisionTypeDefinition`
+row.
 
-**Scope, once Module 12 exists:** add an optional `approver_role`
-reference to `DecisionTypeDefinition` (a role/permission identifier —
-either a fixed role or a Module-12 custom role); when set, the approval
-endpoint (Phase 4) requires the caller to hold that specific role for the
-Decision's own type, instead of the flat `decision_approver` role. Left
-unset (the default), behaviour is unchanged — this is strictly additive,
-per Module 12's own Design Principle 1. Full detail lives in Module 12's
-own plan, Phase 5, rather than duplicated here.
+**Scope, once this capability exists — simpler than originally planned
+(updated 2026-09-23, once that plan's Phase 0 resolved its sub-type-scoping
+question generically rather than deferring it here):** **no new field on
+`DecisionTypeDefinition` after all.** Decision Management registers a
+`get_subtypes` provider with the core capability, returning this
+organisation's current Decision Type keys; the approval endpoint (Phase 4)
+calls `require_permission` scoped to `(decision, approve_baseline,
+subtype=<this decision's own type>)` instead of the flat `decision_
+approver` role check. A caller holding the flat `decision_approver` role
+still passes, via a `subtype=None` wildcard grant implied by that role —
+so **behaviour is unchanged by default**, and an org narrows approval to
+specific types purely by granting a role (fixed or custom) scoped to that
+type through Fine-Grained Access Control's own Role Management UI, with no
+Decision-Management-specific admin surface needed at all.
 
-**Status:** blocked until Module 12 exists. Not a blocker for Phases 1–7.
-Superseded, not duplicated, if/when Module 8 (Governance) later ships its
-own generic per-artefact-type Approval Policies (Module 8 Phase 2) — see
-Module 12's Phase 5 note.
+**Status:** blocked until Fine-Grained Access Control (core) exists — its
+Phase 0 completed 2026-09-23 (see that plan's own Status section); Phase 1
+(data model, including the sub-type registry this phase depends on) is
+next. Not a blocker for Phases 1–7. Superseded, not duplicated, if/when
+Module 8 (Governance) later ships its own generic per-artefact-type
+Approval Policies (Module 8 Phase
+2) — see that plan's Phase 5 note.
 
 ## Phase 9 — UX/architecture follow-up: template & type placement, nested decision types, detail page
 
