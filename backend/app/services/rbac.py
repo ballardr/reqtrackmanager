@@ -3127,7 +3127,14 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
     silently checking nothing.
 
     Server admins bypass every check, consistent with every existing
-    `require_*` dependency in this module.
+    `require_*` dependency in this module — but only after `_enforce_
+    module_frame_scope` has already run for the resolved scope (Phase 8
+    finding, see the inner `_dependency`'s own docstring): a mis-scoped
+    Tier B `<ModuleFrame>` token must never be rescued by the fact that
+    the underlying real user happens to be a server admin (or to hold a
+    broader permission at a *different* org/project/entity than the one
+    the token was minted for), the same invariant `require_module_role`
+    already holds elsewhere in this module.
 
     This factory only covers the *static*, path-parameter-derived case. A
     sub-type-scoped check where the sub-type is only known from a loaded
@@ -3160,10 +3167,28 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
     def _dependency(
         request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
     ) -> User:
-        """See the enclosing `require_permission` factory's docstring."""
-        if current_user.is_server_admin:
-            return current_user
+        """See the enclosing `require_permission` factory's docstring.
 
+        Resolves scope and enforces `_enforce_module_frame_scope` **before**
+        the `is_server_admin` bypass, matching every other `require_*`
+        dependency's ordering (`require_module_role`/`require_org_module_
+        enabled`) — found necessary during Phase 8's identify->verify->
+        remediate review: this dependency's own `Depends(get_current_user)`
+        default rejects a module-frame token outright (so ordinary FastAPI-
+        DI usage was never actually exposed), but two Compliance Phase 6
+        call sites (`_require_evidence_manage`/`_require_standard_content_
+        manage`) invoke this closure directly as a plain function with an
+        already-resolved `current_user` from `get_current_user_or_module_
+        frame`, bypassing that default. Without this check, a module-frame
+        token minted for one project/organisation could reach a different
+        one through this fallback path, provided the underlying real user
+        happened to hold the required permission there too — exactly the
+        "mis-scoped token rescued by the real user's broader access"
+        scenario `_enforce_module_frame_scope`'s own docstring says must
+        never happen. A no-op for a normal session/PAT request, since
+        `request.state.module_frame_scope` is only ever set for an actual
+        module-frame token.
+        """
         entity_id: UUID | None = None
         if entity_scope is not None:
             from app.modules.registry import get_all_registered_entity_scopes
@@ -3185,11 +3210,13 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
             if organization_id is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
             project_id = None
+            _enforce_module_frame_scope(request, organization_id=organization_id)
             check_pat_scope(request, organization_id)
         else:
             raw_project_id = request.path_params.get("project_id")
             if raw_project_id is not None:
                 project_id = raw_project_id if isinstance(raw_project_id, UUID) else UUID(str(raw_project_id))
+                _enforce_module_frame_scope(request, project_id=project_id)
                 check_pat_scope_for_project(request, db, project_id)
                 organization_id = _project_organization_id(db, project_id)
             else:
@@ -3201,7 +3228,11 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
                         "require_permission: route declares neither organization_id nor project_id.",
                     )
                 organization_id = raw_org_id if isinstance(raw_org_id, UUID) else UUID(str(raw_org_id))
+                _enforce_module_frame_scope(request, organization_id=organization_id)
                 check_pat_scope(request, organization_id)
+
+        if current_user.is_server_admin:
+            return current_user
 
         if organization_id is not None:
             _require_org_active(db, organization_id)

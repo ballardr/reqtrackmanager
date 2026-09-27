@@ -387,12 +387,57 @@ def test_permission_satisfied_wildcard_composition():
 
 
 def test_require_permission_server_admin_bypasses(client, admin_token):
+    """A route declaring an `organization_id` path parameter, as every real
+    caller does, still needs one even for a server admin (Phase 8 fix moved
+    scope resolution ahead of the `is_server_admin` check, so the "no scope
+    path parameter at all" construction error below now fires for every
+    caller, not only a non-admin — see `test_require_permission_raises_
+    construction_error_without_scope_path_param`); the admin bypass itself
+    is unaffected once a scope resolves."""
     db = SessionLocal()
     try:
         admin_user = db.query(User).filter(User.email == "admin@example.com").first()
         dependency = require_permission("grant_roles")
-        result = dependency(request=_FakeRequest(path_params={}), current_user=admin_user, db=db)
+        result = dependency(
+            request=_FakeRequest(path_params={"organization_id": str(uuid_lib.uuid4())}),
+            current_user=admin_user, db=db,
+        )
         assert result.id == admin_user.id
+    finally:
+        db.close()
+
+
+def test_require_permission_module_frame_scope_mismatch_403s_even_for_server_admin(client, admin_token):
+    """Fine-Grained Access Control Phase 8 finding: `_enforce_module_frame_
+    scope` must run, and 403, before the `is_server_admin` bypass — the
+    same invariant `test_require_module_role_scope_mismatch_403s_even_for_
+    server_admin` (test_module_frontend_integration.py) already pins for
+    `require_module_role`. `require_permission`'s own `Depends(get_current_
+    user)` rejects a real module-frame token outright, so this can only be
+    reached by a caller invoking the dependency directly with an
+    already-resolved `current_user` and a `request.state.module_frame_
+    scope` already set — exactly what Compliance's Phase 6 fallback call
+    sites (`_require_evidence_manage`/`_require_standard_content_manage`)
+    do. Covers both the org-scoped and the project-scoped branch."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.email == "admin@example.com").first()
+        other_org_id = str(uuid_lib.uuid4())
+        other_project_id = str(uuid_lib.uuid4())
+
+        org_request = _FakeRequest(path_params={"organization_id": str(uuid_lib.uuid4())})
+        org_request.state.module_frame_scope = {"organization_id": other_org_id, "project_id": None}
+        with pytest.raises(HTTPException) as exc_info:
+            require_permission("grant_roles")(request=org_request, current_user=admin_user, db=db)
+        assert exc_info.value.status_code == 403
+
+        project_request = _FakeRequest(path_params={"project_id": str(uuid_lib.uuid4())})
+        project_request.state.module_frame_scope = {"organization_id": None, "project_id": other_project_id}
+        with pytest.raises(HTTPException) as exc_info:
+            require_permission(encode_permission("requirement", PermissionLevel.VIEW.value))(
+                request=project_request, current_user=admin_user, db=db
+            )
+        assert exc_info.value.status_code == 403
     finally:
         db.close()
 

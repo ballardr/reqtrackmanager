@@ -153,7 +153,7 @@ consulted at every phase below:
 
 ## Status / Resume Here
 
-8 / 10 phases complete. Phase 8 is next.
+9 / 10 phases complete. Phase 9 (docs website coverage) is next.
 
 **2026-09-27 restructure note:** a Compliance-only Phase 5 was originally
 drafted here to adopt `ModuleRoleDefinition.permissions`, deliberately
@@ -175,7 +175,7 @@ covering all four of its roles rather than two. **Decided by: User.**
 | 5 | Generic module-owned entity-scope registry for the permission system | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 5 complete" entry |
 | 6 | Compliance module: adopt `ModuleRoleDefinition.permissions` and entity-scoped permissions | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 6 complete" entry |
 | 7 | Decision Management: per-decision-type approver binding | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 7 complete" entry |
-| 8 | SOC 2 policy update + identify→verify→remediate review | [ ] Not started |
+| 8 | SOC 2 policy update + identify→verify→remediate review | [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-Grained Access Control (core) — Phase 8 complete" entry; found and fixed a real defense-in-depth gap in `require_permission` (no `_enforce_module_frame_scope` check) |
 | 9 | Docs website coverage | [ ] Not started — depends on Phase 3 (now complete) |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
@@ -904,6 +904,30 @@ commits to and every module-role-system extension to date
 3/4) is this review's own explicit line item, given its wider blast radius
 than the rest of this capability — not assessed only as part of the
 capability's overall review.
+
+**Status:** [x] Complete (2026-09-27) — see `docs/decisions.md`'s "Fine-
+Grained Access Control (core) — Phase 8 complete" entry for the full
+identify→verify→remediate account. The policy update (this section's own
+first paragraph) landed as `access-control-policy.md`'s new item 5 under
+Authorization, plus an update to the role-resolution diagram's "Scope,
+not exhaustiveness" note naming this as a fourth independently-resolving
+path, and the `grant_roles` residual risk documented as its own explicit
+sub-paragraph within that item, per this section's own instruction not to
+fold it in quietly. The review itself found and fixed one real
+defense-in-depth gap, not previously caught by any single phase's own
+narrower review: `require_permission`'s FastAPI dependency had no
+`_enforce_module_frame_scope` check anywhere, unlike every sibling
+`require_*` dependency in `rbac.py` — latent (its own `Depends(get_
+current_user)` default rejects a module-frame token outright, so ordinary
+FastAPI-DI usage was never actually exposed) but reachable via Compliance's
+own two Phase 6 fallback call sites (`_require_evidence_manage`/`_require_
+standard_content_manage`), which invoke it as a plain function with an
+already-resolved, potentially module-frame-authenticated `current_user`,
+bypassing that default. Fixed by resolving scope and calling `_enforce_
+module_frame_scope` before the `is_server_admin` bypass, mirroring `require_
+module_role`'s own ordering, with regression coverage added pinning that a
+mis-scoped module-frame token 403s even for a server admin (both the
+org-scoped and the project-scoped branch).
 
 ## Phase 9 — Docs website coverage
 

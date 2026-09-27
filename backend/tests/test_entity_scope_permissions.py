@@ -380,12 +380,22 @@ def test_require_permission_unregistered_entity_scope_is_a_construction_error(cl
 
 
 def test_require_permission_server_admin_bypasses_entity_scope_check(client, admin_token, fake_entity_scope_module):
+    """The entity must actually resolve to a real organisation even for a
+    server admin (Phase 8 fix moved scope resolution — including the
+    entity-id lookup — ahead of the `is_server_admin` bypass, matching
+    `require_module_role`'s own entity branch, which already 404s on an
+    unresolvable entity before any admin-override check); the bypass itself
+    is unaffected once the entity resolves."""
+    org, _org_admin_token = create_org_admin_in(client, admin_token, "Require Permission Admin Entity Scope Org")
+    entity_id = uuid_lib.uuid4()
+    _fake_entities[entity_id] = uuid_lib.UUID(org["id"])
+
     db = SessionLocal()
     try:
         admin_user = db.query(User).filter(User.email == "admin@example.com").first()
         dependency = require_permission("grant_roles", entity_scope=FAKE_SCOPE_KEY)
         result = dependency(
-            request=_FakeRequest(path_params={f"{FAKE_SCOPE_KEY}_id": str(uuid_lib.uuid4())}), current_user=admin_user, db=db
+            request=_FakeRequest(path_params={f"{FAKE_SCOPE_KEY}_id": str(entity_id)}), current_user=admin_user, db=db
         )
         assert result.id == admin_user.id
     finally:
