@@ -30,6 +30,33 @@ returned by its own create/override endpoints), and `PainPointCreate`/
 `Update`/`Out`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
 `CommentOut` for the artefact itself — no `PainPointVersionOut` (no version
 table; see `models.py`'s own docstring).
+
+Phase 4 (Guiding Principles) adds `GuidingPrincipleCreate`/`Update`/`Out`/
+`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut`
+for the standalone Guiding Principle artefact, following every one of the
+conventions above identically (`GuidingPrincipleOut` always built explicitly
+by the router, merging identity + current version; `is_locked` computed).
+
+Phase 5 (Open Questions) adds `OpenQuestionCreate`/`Update`/`Out`/
+`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut` — back to
+Pain Point's shape (no `OpenQuestionVersionOut`; no version table, see
+`models.py`'s own docstring).
+
+Phase 6 (Cross-artefact relationships) adds one shared `ContextStrategyLinkOut`
+(returned by every source artefact's `GET .../relationships` and `POST
+.../relationships` endpoints alike — one shape covers all five source types,
+unlike Decision Management's single `DecisionLinkOut`, since this module has
+five source types rather than one; `other_type`/`other_display_code`/
+`other_display_name` are resolved the same best-effort way `modules.
+decisions.project_router.relationships._resolve_other_artefact_display`
+does, including declining to resolve a Decision-typed target per this
+module's own "Decision-target relationships stay reserved" call, see
+`service.py`'s own docstring) and one `*LinkCreate` request payload per
+source artefact type (`kind` + `target_id` — `kind` is the corresponding
+`service.*LinkKind` enum, so an invalid `target_type` string is never a
+possible client input at all), plus `StrategySupersessionCreate`/
+`FutureStateSupersessionCreate`/`GuidingPrincipleSupersessionCreate` (each
+just `{old_<artefact>_id, comment}`, mirroring `DecisionSupersessionCreate`).
 """
 
 from __future__ import annotations
@@ -42,12 +69,24 @@ from pydantic import BaseModel
 from app.modules.context_strategy.enums import (
     FutureStateScope,
     FutureStateStatus,
+    GuidingPrinciplePriority,
+    GuidingPrincipleScope,
+    GuidingPrincipleStatus,
+    OpenQuestionPriority,
+    OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
     StrategyTimeHorizon,
+)
+from app.modules.context_strategy.service import (
+    FutureStateLinkKind,
+    GuidingPrincipleLinkKind,
+    OpenQuestionLinkKind,
+    PainPointLinkKind,
+    StrategyLinkKind,
 )
 from app.schemas.file import FileAssetOut
 
@@ -454,4 +493,261 @@ class PainPointCommentOut(BaseModel):
     body: str
     created_at: datetime
     edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+# --- Guiding Principles (Phase 4) --------------------------------------------
+
+
+class GuidingPrincipleCreate(BaseModel):
+    name: str
+    principle_statement: str
+    rationale: str = ""
+    priority: GuidingPrinciplePriority = GuidingPrinciplePriority.MEDIUM
+    owner_id: UUID | None = None
+
+
+class GuidingPrincipleUpdate(BaseModel):
+    """Full replace of every content field — rejected outright (409) by the
+    router once the Guiding Principle's own current version is locked (past
+    `PROPOSED` — see `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`), exact
+    mirror of `StrategyUpdate`/`FutureStateUpdate`."""
+
+    name: str
+    principle_statement: str
+    rationale: str = ""
+    priority: GuidingPrinciplePriority
+    owner_id: UUID | None = None
+    change_note: str = ""
+
+
+class GuidingPrincipleOut(BaseModel):
+    """Always built explicitly by the router (`guiding_principle_to_out`) —
+    exact mirror of `StrategyOut`/`FutureStateOut`."""
+
+    id: UUID
+    scope: GuidingPrincipleScope
+    organization_id: UUID | None
+    project_id: UUID | None
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+
+    name: str
+    principle_statement: str
+    rationale: str
+    priority: GuidingPrinciplePriority
+    status: GuidingPrincipleStatus
+    owner_id: UUID | None
+    version_number: int
+    is_locked: bool
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class GuidingPrincipleVersionOut(BaseModel):
+    """One historical `GuidingPrincipleVersion` snapshot — exact mirror of
+    `StrategyVersionOut`/`FutureStateVersionOut`."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    guiding_principle_id: UUID
+    version_number: int
+    valid_from: datetime
+    valid_to: datetime | None
+    name: str
+    principle_statement: str
+    rationale: str
+    priority: GuidingPrinciplePriority
+    status: GuidingPrincipleStatus
+    owner_id: UUID | None
+    change_note: str
+    created_by: UUID
+    created_at: datetime
+
+
+class GuidingPrincipleTransitionRequest(BaseModel):
+    """Payload for every Guiding Principle lifecycle-transition endpoint
+    (`propose`/`send-back`/`approve`/`activate`/`supersede`/`retire`) —
+    exact mirror of `StrategyTransitionRequest`/`FutureStateTransitionRequest`."""
+
+    comment: str | None = None
+
+
+class GuidingPrincipleCommentCreate(BaseModel):
+    body: str
+
+
+class GuidingPrincipleCommentUpdate(BaseModel):
+    body: str
+
+
+class GuidingPrincipleCommentOut(BaseModel):
+    """Built explicitly by the router — exact mirror of `StrategyCommentOut`."""
+
+    id: UUID
+    guiding_principle_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    attachments: list[FileAssetOut] = []
+
+
+# --- Open Questions (Phase 5) -------------------------------------------------
+
+
+class OpenQuestionCreate(BaseModel):
+    question: str
+    context: str = ""
+    evidence: str = ""
+    priority: OpenQuestionPriority = OpenQuestionPriority.MEDIUM
+    due_date: date | None = None
+
+
+class OpenQuestionUpdate(BaseModel):
+    """Full content update — rejected outright (409) by the router once the
+    Open Question is in a `service.OPEN_QUESTION_LOCKED_STATUSES` terminal
+    state. Manager-only (`_shared.require_open_question_manage_role`),
+    exact mirror of `PainPointUpdate`'s creator-may-not-edit posture — the
+    broad-creation model (§9.4) grants create/comment/evidence, not a
+    standing edit right over a submitted question."""
+
+    question: str
+    context: str = ""
+    evidence: str = ""
+    priority: OpenQuestionPriority
+    owner_id: UUID | None = None
+    due_date: date | None = None
+
+
+class OpenQuestionOut(BaseModel):
+    id: UUID
+    project_id: UUID
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    archived_by: UUID | None
+
+    question: str
+    context: str
+    evidence: str
+    priority: OpenQuestionPriority
+    status: OpenQuestionStatus
+    owner_id: UUID | None
+    due_date: date | None
+    is_locked: bool
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class OpenQuestionTransitionRequest(BaseModel):
+    """Payload for every lifecycle-transition endpoint (`investigate`/
+    `mark-ready-for-decision`/`withdraw`/`resolve`). `comment` is validated
+    as mandatory specifically for `withdraw`, at the router layer, not here
+    — mirrors `PainPointTransitionRequest`'s identical optional-here,
+    enforced-at-the-router shape."""
+
+    comment: str | None = None
+
+
+class OpenQuestionCommentCreate(BaseModel):
+    body: str
+
+
+class OpenQuestionCommentUpdate(BaseModel):
+    body: str
+
+
+class OpenQuestionCommentOut(BaseModel):
+    """Built explicitly by the router — exact mirror of `StrategyCommentOut`."""
+
+    id: UUID
+    open_question_id: UUID
+    author_id: UUID
+    author_display_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+
+
+# --- Phase 6: cross-artefact relationships -----------------------------------
+
+
+class ContextStrategyLinkOut(BaseModel):
+    """A relationship touching one specific source artefact, from that
+    artefact's own viewpoint — shared by every source artefact type's `GET
+    .../relationships` and `POST .../relationships` endpoints (`router.py`/
+    `project_router.py`). Mirrors `modules.decisions.schemas.DecisionLinkOut`'s
+    shape and "built explicitly per request, from the viewpoint artefact"
+    reasoning exactly, generalised to five possible source types instead of
+    one.
+
+    `other_display_code`/`other_display_name` are resolved best-effort: `None`
+    for an `other_type` this module doesn't know how to resolve (in
+    practice, only ever `"decision"` today — a Decision-target relationship
+    is reserved, not yet created by any endpoint, but a future link of that
+    shape reaching this schema, e.g. once Module 4's own Phase 7 starts
+    writing rows this module can also read via `GET .../relationships`,
+    still renders without erroring)."""
+
+    id: UUID
+    source_type: str
+    source_id: UUID
+    target_type: str
+    target_id: UUID
+    link_type_id: UUID | None
+    direction: str
+    display_name: str
+    other_type: str
+    other_id: UUID
+    other_display_code: str | None
+    other_display_name: str | None
+    created_by: UUID
+    created_at: datetime
+
+
+class StrategyLinkCreate(BaseModel):
+    kind: StrategyLinkKind
+    target_id: UUID
+
+
+class PainPointLinkCreate(BaseModel):
+    kind: PainPointLinkKind
+    target_id: UUID
+
+
+class GuidingPrincipleLinkCreate(BaseModel):
+    kind: GuidingPrincipleLinkKind
+    target_id: UUID
+
+
+class FutureStateLinkCreate(BaseModel):
+    kind: FutureStateLinkKind
+    target_id: UUID
+
+
+class OpenQuestionLinkCreate(BaseModel):
+    kind: OpenQuestionLinkKind
+    target_id: UUID
+
+
+class StrategySupersessionCreate(BaseModel):
+    old_strategy_id: UUID
+    comment: str | None = None
+
+
+class FutureStateSupersessionCreate(BaseModel):
+    old_future_state_id: UUID
+    comment: str | None = None
+
+
+class GuidingPrincipleSupersessionCreate(BaseModel):
+    old_guiding_principle_id: UUID
+    comment: str | None = None
     attachments: list[FileAssetOut] = []

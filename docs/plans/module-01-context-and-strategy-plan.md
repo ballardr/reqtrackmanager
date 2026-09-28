@@ -17,18 +17,26 @@ Open Questions).
 "Phase 0 resolutions" below). Phase 1 complete (2026-09-28 — see "Phase 1
 notes" below). Phase 2 (Future State) complete (2026-09-28 — see "Phase 2
 notes" below). Phase 3 (Pain Points) complete (2026-09-28 — see "Phase 3
-notes" below); Phase 4 (Guiding Principles) is next. First *content* module in
+notes" below). Phase 4 (Guiding Principles) complete (2026-09-28 — see
+"Phase 4 notes" below). Phase 5 (Open Questions) complete (2026-09-28 —
+see "Phase 5 notes" below). Phase 6 (Cross-artefact relationships) complete
+(2026-09-29 — see "Phase 6 notes" below); Phase 7 (frontend UI) is next.
+First *content* module in
 the overview's recommended build order (§46 Phase 1, after Module 0),
 though the user asked for Decision Management (Module 4) and Fine-Grained
 Access Control (core) to be picked up first in practice — both now shipped;
 see [future-modules-2026-09-index.md](future-modules-2026-09-index.md)'s
 resequenced table. This module remains a soft dependency for Decision
 Management's own Phase 7 (the reserved relationship targets and the
-"Create Decision from Open Question" workflow), but nothing here blocks any
-other already-shipped module.
+"Create Decision from Open Question" workflow) — Phase 6 confirmed those
+three relationship types (Strategy -> informs -> Decision, Guiding
+Principle -> guides -> Decision, Open Question -> resolved by -> Decision)
+stay reserved, not populatable, until Module 4's own Phase 7 builds the
+wiring from its own side (see "Phase 6 notes" below) — but nothing here
+blocks any other already-shipped module.
 
 **2026-09-28 update:** Phase 0 sign-off changed the shape of this module
-from five artefact types to **six** — Future State is now a separate,
+from four artefact types to **five** — Future State is now a separate,
 first-class artefact rather than fields folded into Strategy (Phase 0 Q1,
 **Decided by: User**, reversing this plan's own original recommendation).
 This added a phase (Future State gets its own build phase, inserted as
@@ -38,7 +46,7 @@ pre-2026-09-28 numbering from other plans without checking this note.
 
 ## Status / Resume Here
 
-4 / 9 phases complete.
+7 / 9 phases complete.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -46,17 +54,17 @@ pre-2026-09-28 numbering from other plans without checking this note.
 | 1 | Organisation & Project Strategy | [x] Complete (2026-09-28) |
 | 2 | Future State | [x] Complete (2026-09-28) |
 | 3 | Pain Points | [x] Complete (2026-09-28) |
-| 4 | Guiding Principles | [ ] Not started |
-| 5 | Open Questions | [ ] Not started |
-| 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [ ] Not started |
-| 7 | Frontend UI for all six artefact types | [ ] Not started |
+| 4 | Guiding Principles | [x] Complete (2026-09-28) |
+| 5 | Open Questions | [x] Complete (2026-09-28) |
+| 6 | Cross-artefact relationships wired between all of the above (via Module 0) | [x] Complete (2026-09-29) |
+| 7 | Frontend UI for all five artefact types | [ ] Not started |
 | 8 | Docs website coverage | [ ] Not started — depends on Phase 7 shipping |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
 **Why this phase exists:** this module introduces new artefact types at
 once (Strategy, Pain Point, Future State, Guiding Principle, Open
-Question — six, after Q1's resolution below). Getting their field lists
+Question — five, after Q1's resolution below). Getting their field lists
 and lifecycle states wrong is expensive to unwind once real project data
 exists, so each gets confirmed before Phase 1.
 
@@ -81,7 +89,7 @@ exists, so each gets confirmed before Phase 1.
 5. Produced a confirmed field-level spec addendum below — **user sign-off
    obtained 2026-09-28.**
 
-**Exit criteria:** user sign-off on the six artefacts' field lists and
+**Exit criteria:** user sign-off on the five artefacts' field lists and
 lifecycle states below, before any migration. **Met.**
 
 ### Phase 0 resolutions (2026-09-28, all Decided by: User unless noted)
@@ -184,7 +192,7 @@ lifecycle states below, before any migration. **Met.**
    and *reserves* the relationship type only; the "Create Decision from
    Open Question" workflow itself lives in Module 4's Phase 7 (renumbered
    from Phase 6 — see that plan's own Status section), not duplicated here.
-6. **Comments/attachments/evidence reuse.** Confirmed: all six artefact
+6. **Comments/attachments/evidence reuse.** Confirmed: all five artefact
    types reuse the existing generic `ReviewComment`/`CommentFile`
    machinery via new `ReviewTargetType` members
    (`STRATEGY`, `FUTURE_STATE`, `PAIN_POINT`, `GUIDING_PRINCIPLE`,
@@ -192,11 +200,11 @@ lifecycle states below, before any migration. **Met.**
 7. **Nav placement.** This plan originally recommended one grouped
    "Context & Strategy" nav section using the UX style guide's `Tabs`
    pattern. **User overrode this: separate top-level nav-rail entries**
-   for each of the six artefact types, diverging from the style guide's
+   for each of the five artefact types, diverging from the style guide's
    usual grouping preference. Noted explicitly per `CLAUDE.md`'s
    requirement to flag style-guide deviations rather than silently diverge
    — this is the user's deliberate call, not an oversight, so Phase 7
-   should proceed with six top-level entries and does not need a `Tabs`
+   should proceed with five top-level entries and does not need a `Tabs`
    grouping component built for this module.
 
 ## Phase 1 — Organisation & Project Strategy
@@ -802,6 +810,183 @@ decisions can be checked against them; §8.4 explicitly calls out that
 revision control here "protects historical Decision rationale" — i.e. this
 directly serves Module 4's audit trail, not just this module's own users.
 
+## Phase 4 notes (2026-09-28)
+
+Built the Guiding Principle artefact's full backend into the same
+`backend/app/modules/context_strategy/` package Phases 1–3 already
+established — data model, temporal versioning, lifecycle, module-
+contributed RBAC for both org- and project-scoped Guiding Principles,
+module-local comments/attachments, and a working CRUD/lifecycle API for
+both scopes — an exact structural mirror of Phase 1/2's Strategy/Future
+State implementation throughout (identity+version split, org/project
+`scope` discriminator, owner+approver RBAC pair at both scopes), per this
+phase's own instruction to replicate that pattern "extremely closely,"
+with a **shorter** lifecycle than Strategy/Future State's (see below).
+
+**Files changed** (all existing Phase 1–3 files extended, plus one new
+migration and one new sibling test file, matching Phase 2/3's own "keep
+adding to the existing single large module-wide files" convention):
+`__init__.py`/`enums.py`/`models.py`/`service.py`/`_shared.py`/`schemas.py`
+(module docstrings updated, new `GuidingPrinciple*` symbols under distinct
+names from their `Strategy*`/`FutureState*`/`PainPoint*` counterparts),
+`router.py` (new org-scoped `/guiding-principles` CRUD/lifecycle/comments/
+files surface appended after the Pain Point type-vocabulary section),
+`project_router.py` (new project-scoped `/guiding-principles` surface
+appended after the Pain Point section), `module.py`
+(`GUIDING_PRINCIPLE_ARTEFACT_TYPE` added to `artefact_types`, a new
+`"guiding_principle"` sub-component, four new `ModuleRoleDefinition`
+entries — `guiding_principle_owner`/`guiding_principle_approver` project-
+scoped, `org_guiding_principle_owner`/`org_guiding_principle_approver`
+org-scoped — and `resolve_file_owner_project_id` now tries Strategy's
+resolution, then Future State's, then Pain Point's, then Guiding
+Principle's), `migrations/0053_guiding_principle_data_model.py` (five
+tables: `guiding_principles`, `guiding_principle_versions`,
+`guiding_principle_comments`, `guiding_principle_comment_files`,
+`guiding_principle_files`), and a new sibling test file,
+`tests/test_context_strategy_guiding_principle_api.py` (19 tests).
+
+**Scope decisions, each a judgment call this phase had to make that the
+plan text didn't fully settle:**
+
+- **`GuidingPrincipleStatus`'s shape: six members, a linear chain with no
+  `UNDER_REVIEW` step, `SUPERSEDED` kept despite the scope text's own
+  hedge (Decided by: Agent — the specific judgment call this phase's own
+  brief flagged as needing weighing, not a literal reading).** This
+  phase's scope text describes the lifecycle as "propose -> approve/
+  activate -> retire, no 'Under Review'/'Superseded' split called out
+  explicitly in §8." Read literally that could mean either a four-state
+  chain or something narrower than Strategy/Future State's seven states.
+  Resolved as: `Draft -> Proposed -> Approved -> Active -> Superseded/
+  Retired` (six enum members — see `enums.GuidingPrincipleStatus`'s own
+  docstring for the full reasoning). Two specific calls within that:
+  - **No `UNDER_REVIEW`.** §8's own text never describes a formal review
+    step distinct from the act of approving (unlike Strategy/Future
+    State's explicit "Under Review" state), so `PROPOSED` moves directly
+    to `APPROVED`.
+  - **`SUPERSEDED` kept, not dropped**, despite the scope text's own "no...
+    'Superseded' split called out explicitly" phrasing — re-examined
+    against source overview §8.4's own reasoning ("revision control here
+    protects historical Decision rationale"): a Decision citing a Guiding
+    Principle as its rationale needs that Principle's history to stay
+    resolvable even after a newer Principle replaces it in practice, the
+    same reasoning `StrategyStatus`'s own docstring already uses to keep
+    Strategy's `SUPERSEDED`. This is the one point in this phase where the
+    brief's own instruction to "weigh" rather than take the literal
+    scope-text reading actually changed the outcome from what a surface
+    reading of "no Superseded" would have produced.
+  - **`PROPOSED` can still send back to `DRAFT`** (mandatory comment,
+    `send_guiding_principle_back_to_draft`) — every other lifecycle in
+    this module has a rework path and nothing in §8 suggests Guiding
+    Principle is uniquely exempt from needing one before approval.
+- **Content lock past `PROPOSED` (i.e. at `APPROVED` and beyond), not past
+  `UNDER_REVIEW` (Decided by: Agent) — the direct consequence of dropping
+  `UNDER_REVIEW`, not a separately-weighed call.** Strategy/Future State
+  lock the first state past their last pre-approval state (`UNDER_
+  REVIEW`); Guiding Principle's last pre-approval state is `PROPOSED`
+  itself, so `GUIDING_PRINCIPLE_LOCKED_STATUSES` covers `APPROVED`/
+  `ACTIVE`/`SUPERSEDED`/`RETIRED` — same shape, one state earlier.
+- **RBAC: four module roles (owner+approver pair, both scopes), not Pain
+  Point's single-role shape (Decided by: Agent, following directly from
+  Guiding Principle's own org/project dual scope).** The task brief named
+  this as the default expectation "unless review of the plan text suggests
+  otherwise" — reviewed and confirmed: source overview §8 gives no
+  indication Guiding Principle needs a narrower single-role model the way
+  §6.5 explicitly named for Pain Point, and Guiding Principle's org/project
+  dual scope (Phase 0 Q2's pattern, applied here) is the same shape
+  Strategy/Future State already have, so `guiding_principle_owner`/
+  `guiding_principle_approver` (project) and `org_guiding_principle_owner`/
+  `org_guiding_principle_approver` (org) follow that precedent directly.
+- **`owner_id` lives on `GuidingPrincipleVersion`, not the identity row
+  (Decided by: Agent).** Source overview §8.3 lists "owner" as a plain
+  field, without saying whether it should be versioned. Phase 0 Q4's full
+  version-history requirement applies to Guiding Principle's *whole* row,
+  unlike Pain Point (no version table at all, so `PainPoint.owner_id` has
+  nowhere else to live) — so, consistent with every other content field on
+  this artefact, `owner_id` is versioned too, gaining the same `owner_id`/
+  `owner_id_explicitly_set` pair `apply_future_state_new_version`'s
+  `target_date`/`target_date_explicitly_set` already established for a
+  nullable field on a version-apply function.
+- **No `type` field (Decided by: Agent, confirming Phase 0's own note
+  rather than re-deciding it).** Phase 0 Q3's resolution already flagged
+  that the plan's original text mistakenly listed "Guiding Principle type
+  configurability" alongside Pain Point's — re-checked against source
+  overview §8.3 directly during this phase: confirmed no `type` field or
+  configurable type vocabulary exists for Guiding Principle at all, only
+  `scope` (already resolved, org/project, same pattern as Strategy).
+- **Nested-projects fallback check (per `CLAUDE.md`'s "Nested (Hierarchical)
+  Projects" rule), Decided by: Agent — no fallback needed, and no new
+  project-scoped config/definition table was added.** `GuidingPrinciple`
+  is an artefact record (org- or project-scoped via the `scope`
+  discriminator), not a project-scoped closed vocabulary/definition table
+  a project defines its own rows of the way `ActionTypeDefinition`/
+  `DecisionTypeDefinition`/`PainPointTypeDefinition` are — so the parent/
+  child fallback question this rule targets doesn't apply here, the same
+  reasoning that already excluded Strategy/Future State from needing it.
+- **Comments/attachments: module-local tables again, not a `ReviewTargetType.
+  GUIDING_PRINCIPLE` member (Decided by: Agent, by direct extension of
+  Phase 1's own flagged deviation, not a re-litigation of it).** Same
+  reasoning as `StrategyComment`/`StrategyCommentFile`/`StrategyFile` —
+  see Phase 1 notes above and `models.py`'s own docstring.
+- **No automatic supersession-link side effect on `supersede_guiding_
+  principle` (Decided by: Agent), for the same reason `supersede_strategy`/
+  `supersede_future_state` have none** — building the actual `ArtefactLink`
+  recording which Guiding Principle supersedes which is Phase 6's job.
+- **A new sibling test file, `test_context_strategy_guiding_principle_api.py`,
+  rather than appending to an existing one (Decided by: Agent), matching
+  Phase 2/3's own precedent exactly.**
+- **`seed_e2e_dataset.py` deliberately left untouched (Decided by: Agent),
+  matching Phase 1–3's own precedent exactly** — this module still has no
+  frontend (Phase 7). `seed_demo_data.py` **was** updated (see below).
+
+**`seed_demo_data.py` changes:** added `create_org_guiding_principle`/
+`create_project_guiding_principle`/`propose_and_approve_org_guiding_
+principle`/`propose_and_approve_project_guiding_principle` helpers
+(mirroring the existing Strategy/Future State helpers, minus the
+`submit-for-review` step their seven-state lifecycle needs and this one
+doesn't) and one seeded Guiding Principle of each scope on the existing
+demo org/project, both walked to `Active` — the org-scoped one ("Operate
+safely under degraded connectivity") reads against the org Strategy/Future
+State seeded in Phase 1/2, and the project-scoped one ("Field reports are
+captured once, at the point of inspection") reads directly against the
+accepted paper-re-keying Pain Point seeded in Phase 3 (no actual
+`ArtefactLink` relationship yet — that's Phase 6's job; just demo content
+that traces in spirit, matching Phase 2/3's own convention) — ran the full
+script end-to-end against the live dev/test stack to confirm it actually
+works, not just that it parses.
+
+**Tests:** `backend/app/modules/context_strategy/tests/
+test_context_strategy_guiding_principle_api.py`, 19 tests — create/get for
+both scopes, any-project-member-may-create (no owner role required), update
+creates a new version, an explicit owner-assign-then-clear update (the one
+behaviour Guiding Principle's own field set adds over Strategy/Future
+State's), plain-member-cannot-edit (403), the full lifecycle to `Active`
+via `guiding_principle_approver` (propose -> approve -> activate, no
+submit-for-review step), a separate active-to-superseded transition test,
+mandatory-comment-on-send-back, illegal-transition 409,
+owner-role-cannot-approve (403), a custom-role `approve_baseline` grant
+satisfying the approve gate, the org-scoped lifecycle via `org_guiding_
+principle_approver`, disabled-module-404, disabled-`guiding_principle`-
+subcomponent-404 (both scopes), cross-project 404 isolation, comment
+add/list/author-only-edit, and direct file attachment upload/list/unlink
+plus the lock check once approved.
+
+**Verified:** `ruff check` clean on every new/changed file (and across the
+whole backend). The new test file's 19 tests pass on their own, and the
+full backend pytest suite passed as a single invocation (per this repo's
+own concurrency rule) — **1374 passed, 0 failed**, in 32m17s, against the
+already-running `tests/container` stack (`mailhog`/`keycloak` both up, so
+no DNS-gap noise). `test_schema_migrations_match_models.py` (the
+model/migration drift guard) green — migration 0053 replays cleanly
+alongside 0001–0052. Rebuilt the backend container before testing against
+the live stack (Compose services don't bind-mount source). `seed_demo_
+data.py` run end-to-end against a freshly reset dev/test stack (`docker
+compose down -v && up -d --build`, needed since the pre-existing demo org
+would otherwise short-circuit the idempotent-skip guard before ever
+calling this phase's new seeding code, the same reset Phase 2/3's own
+verification needed) — the two new Guiding Principle rows independently
+confirmed via direct SQL (both scopes, `active` status, `owner_id`
+round-tripping correctly for the project-scoped one).
+
 ## Phase 5 — Open Questions
 
 **Scope** (fields §9.2, lifecycle §9.3): question, context, owner,
@@ -815,6 +1000,185 @@ project state rather than something only visible in a meeting note.
 **Reserved, not built here:** the "Create Decision from Open Question"
 workflow itself (§9.5) — owned by Module 4's own Phase 7 (renumbered from
 Phase 6), once both sides exist.
+
+## Phase 5 notes (2026-09-28)
+
+Built the Open Question artefact's full backend into the same
+`backend/app/modules/context_strategy/` package Phases 1–4 already
+established — data model, the branching lifecycle, RBAC, module-local
+comments/attachments, and a working CRUD/lifecycle API, all project-scoped
+only. This is the module's fifth and final artefact type; the "Open
+Question → resolved by → Decision" relationship stays reserved (Phase 0
+Q5) — Module 4's own Phase 7 builds the actual workflow. This phase's own
+brief flagged three genuine judgment calls needing actual source-text
+reading rather than pattern-matching the nearest sibling artefact: scope,
+versioning, and RBAC tiering. All three are answered below.
+
+**Files changed** (all existing Phase 1–4 files extended, plus one new
+migration and one new sibling test file; `router.py` deliberately
+**untouched**, a first for this module — see judgment call 1 below):
+`__init__.py`/`enums.py`/`models.py`/`service.py`/`_shared.py`/`schemas.py`
+(module docstrings updated, new `OpenQuestion*` symbols under distinct
+names from their `Strategy*`/`FutureState*`/`PainPoint*`/`GuidingPrinciple*`
+counterparts), `project_router.py` (new `/open-questions` CRUD/lifecycle/
+comments/files surface appended after the Guiding Principle section),
+`module.py` (`OPEN_QUESTION_ARTEFACT_TYPE` added to `artefact_types`, a new
+`"open_question"` sub-component, two new `ModuleRoleDefinition` entries —
+`open_question_owner`/`open_question_resolver`, both project-scoped only
+— and `resolve_file_owner_project_id` now tries Strategy's resolution,
+then Future State's, then Pain Point's, then Guiding Principle's, then
+Open Question's), `migrations/0054_open_question_data_model.py` (four
+tables: `open_questions`, `open_question_comments`,
+`open_question_comment_files`, `open_question_files`), and a new sibling
+test file, `tests/test_context_strategy_open_question_api.py` (24 tests).
+
+**Scope decisions, each a judgment call this phase had to make that the
+plan text didn't fully settle:**
+
+- **Project-scoped only, no organisation scope at all (Decided by:
+  Agent) — the most consequential call in this phase, per the brief's own
+  instruction to read §9 carefully rather than default to this module's
+  more common dual-scope shape.** Source overview §9 never once discusses
+  an organisation-level Open Question, unlike Strategy/Future State/
+  Guiding Principle, whose org/project duality Phase 0 Q2 named
+  explicitly by name. The deciding signal is structural, not just an
+  absence of text: §9.5's "Create Decision from Open Question" workflow
+  means an Open Question's meaningful terminal outcome is always a
+  `Decision` (`app.modules.decisions.models.Decision`), and `Decision` is
+  itself **project-scoped only** with no organisation-level counterpart —
+  an org-scoped Open Question would have no valid resolution path into a
+  Decision to begin with. Reinforced by §9.1's own framing ("what's
+  blocking this decision") and by Pain Point's precedent as this module's
+  other project-scoped-only artefact. Consequence: `router.py` (org-scoped)
+  needed no Open Question changes at all — the first artefact in this
+  module for which that file is untouched.
+- **No `OpenQuestionVersion` table (Decided by: Agent).** Phase 0 Q4's
+  full version-history requirement was scoped explicitly to Strategy,
+  Future State, and (via its own follow-on) Guiding Principle; Open
+  Question was never named there, so this follows the absence of
+  instruction rather than adding an unrequested version table by analogy.
+  An Open Question is an operational, investigatory tracking record —
+  closer in kind to a Pain Point moving through triage than to formally-
+  reviewed governance content needing a full audit-defensible revision
+  history — so `OpenQuestion` is a single mutable row, mutated in place
+  (`service.update_open_question`), with every change recorded only via
+  `services.audit.log_event`.
+- **RBAC: two flat project-scoped roles, neither Pain Point's one-role
+  shape nor Strategy/Future State/Guiding Principle's dual-scope owner+
+  approver shape (Decided by: Agent) — the specific judgment call this
+  phase's own brief flagged as needing actual source-text reading.**
+  Source overview §9.4 names **three** distinct permission tiers: project
+  members (create/comment/add evidence/suggest resolution — broad,
+  matching Pain Point's §6.5); "Question Owner / Project Manager" (assign/
+  prioritise/change status/close); and a **separate** "Decision Maker"
+  tier (resolve through a Decision). Collapsing "Decision Maker" into the
+  same role as "Question Owner / Project Manager" would silently narrow
+  what the source text treats as two independent capabilities, the same
+  way Pain Point's single role would be too broad here. `open_question_
+  owner` (`_shared.require_open_question_manage_role`, no Fine-Grained
+  Access Control fallback, mirrors `require_pain_point_manage_role`) gates
+  content edits/archive/`investigate`/`mark-ready-for-decision`/`withdraw`;
+  `open_question_resolver` (`_shared.require_open_question_resolve_
+  permission`, with an FGAC fallback via the unscoped `(open_question,
+  approve_baseline)` atom, mirrors `require_pain_point_decide_permission`)
+  gates `resolve` alone.
+- **The branching lifecycle has two branch points, not Pain Point's one
+  (Decided by: Agent, following the brief's own instruction to replicate
+  Pain Point's `_PP_ALLOWED_TRANSITIONS` mechanism, not its exact data
+  shape).** `Open -> Investigating -> {Withdrawn | Ready for Decision ->
+  {Resolved | Withdrawn}}` — both `INVESTIGATING` and `READY_FOR_DECISION`
+  can reach `WITHDRAWN` directly, since a question can turn out to be moot
+  or already answered elsewhere while still under active investigation,
+  not only once it's ready for a decision. `OPEN` itself does **not**
+  branch directly to `WITHDRAWN` (only to `INVESTIGATING`) — mirroring
+  Pain Point's own precedent that a lifecycle's very first state doesn't
+  skip straight to a terminal outcome, only a middle state does.
+  `_OQ_ALLOWED_TRANSITIONS` is the same dict-of-frozensets mechanism as
+  `_PP_ALLOWED_TRANSITIONS`, just with two branching keys instead of one.
+  No rework/"send back" path — this lifecycle is investigatory, not a
+  review-and-approval gate, the same reasoning Pain Point's own lifecycle
+  already established.
+- **Mandatory comment on `withdraw` only, not on `resolve` (Decided by:
+  Agent)** — this codebase's standing "comment required on a negative/
+  terminal-branch outcome, not a positive one" convention
+  (`reject_pain_point`/`mark_pain_point_duplicate` vs. `accept_pain_point`).
+- **Content lock covers only the two true terminal states (`RESOLVED`/
+  `WITHDRAWN`), not `INVESTIGATING`/`READY_FOR_DECISION` (Decided by:
+  Agent)** — same reasoning as Pain Point's `PAIN_POINT_LOCKED_STATUSES`:
+  an `open_question_owner` may still need to reassign `owner_id`/adjust
+  `priority`/`due_date` while investigation is genuinely in progress.
+- **`question`/`context`/`evidence` are `Text`, no separate `title` field
+  (Decided by: Agent)** — source overview §9.2 names "Question" as the
+  primary field, which doubles as this artefact's natural display title
+  (the same precedent `GuidingPrinciple.name` already established, rather
+  than Strategy/Future State's added-by-convention `title`).
+- **`resolve_open_question` is a plain status transition, no
+  `ArtefactLink` side effect (Decided by: Agent)** — building the real
+  "Create Decision from Open Question" workflow (§9.5) and its
+  relationship is explicitly Module 4's own Phase 7 (Phase 0 Q5,
+  unchanged), the same "ship the plain transition now, wire the
+  relationship later" posture `supersede_strategy`/`supersede_future_
+  state`/`supersede_guiding_principle` already established.
+- **Nested-projects fallback check (per `CLAUDE.md`'s "Nested
+  (Hierarchical) Projects" rule), Decided by: Agent — does not apply,
+  confirming the pattern rather than re-deciding it.** `OpenQuestion` is
+  an artefact record (project-scoped), not a project-scoped closed
+  vocabulary/definition table a project defines its own rows of the way
+  `ActionTypeDefinition`/`DecisionTypeDefinition`/`PainPointTypeDefinition`
+  are — the same reasoning that already excluded Strategy/Future State/
+  Guiding Principle.
+- **`seed_e2e_dataset.py` deliberately left untouched (Decided by:
+  Agent), matching Phase 1–4's own precedent exactly** — this module
+  still has no frontend (Phase 7). `seed_demo_data.py` **was** updated
+  (see below).
+
+**`seed_demo_data.py` changes:** added `create_open_question`/`investigate_
+open_question`/`mark_open_question_ready_for_decision`/`resolve_open_
+question`/`withdraw_open_question` helpers and two seeded Open Questions
+on the existing Falcon-3 demo project: a battery-vendor-standardisation
+question walked `Open -> Investigating -> Ready for Decision` (reads
+against the org/project Strategy and the project Guiding Principle already
+seeded, left ready for a future Decision to resolve it), and a UI-
+presentation question walked `Open -> Investigating -> Withdrawn` (with a
+reasoned withdrawal comment) — ran the full script end-to-end against the
+live dev/test stack to confirm it actually works, not just that it parses.
+
+**Tests:** `backend/app/modules/context_strategy/tests/
+test_context_strategy_open_question_api.py`, 24 tests — create/get,
+any-project-member-may-create (§9.4's broad-creation model), plain-member-
+cannot-update (403) vs. owner-can-update, the full `Ready for Decision ->
+Resolved` branch, `Withdrawn` from `Ready for Decision` requiring a
+mandatory comment (400 without one), `Withdrawn` reachable directly from
+`Investigating` (the mid-chain branch), `Open` cannot skip directly to
+`Withdrawn` (409), a general illegal-transition 409, plain-member-cannot-
+investigate (403) vs. `open_question_owner`-role-can-investigate,
+`open_question_owner` alone cannot `resolve` (403, proving the two-role
+split is real, not just declared), `open_question_resolver`-role-can-
+resolve, a custom-role `(open_question, approve_baseline)` grant
+satisfying the resolve gate, disabled-module-404 and disabled-`open_
+question`-subcomponent-404, cross-project 404 isolation, comment add/list/
+author-only-edit, and the deliberately-broad any-member evidence-file
+upload plus its lock check once an Open Question reaches a terminal
+outcome.
+
+**Verified:** `ruff check` clean on every new/changed file (and across the
+whole backend). Full backend pytest suite run as a single invocation (per
+this repo's own concurrency rule), against a rebuilt `tests/container`
+backend (Compose services don't bind-mount source). `test_schema_
+migrations_match_models.py` (the model/migration drift guard) green —
+migration 0054 replays cleanly alongside 0001–0053. `seed_demo_data.py`
+run end-to-end against a freshly reset dev/test stack (`docker compose
+down -v && up -d --build`, the same reset every prior phase's own
+verification needed since the pre-existing demo org would otherwise
+short-circuit the idempotent-skip guard) — the two new Open Question rows
+independently confirmed via direct SQL (project-scoped, `ready_for_
+decision`/`withdrawn` statuses respectively). `docs/solution-
+architecture.md`'s exhaustive table-count list re-verified against a live
+migrated database's `information_schema.tables` — matches 107 (Phase 4's
+own verified count) + this phase's own 4 new tables = 111 exactly, so no
+further documentation drift was found this time. See `docs/decisions.md`'s
+"Module 1 (Context & Strategy) Phase 5" entry for the full account,
+including the exact pytest pass count.
 
 ## Phase 6 — Cross-artefact relationships wired between all of the above
 
@@ -842,7 +1206,7 @@ precedent to follow. This module has no single dedicated "backend API"
 phase the way Decision Management's later, more granular plan does — each
 of Phases 1–5 stands up one artefact's own data model, RBAC, and (per this
 codebase's own convention of never landing a model with no way to reach
-it) its CRUD endpoints together, so the full REST surface across all six
+it) its CRUD endpoints together, so the full REST surface across all five
 artefact types is only actually complete once this phase's relationship
 endpoints land, immediately before Phase 7's frontend consumes it. Once
 this phase (and the endpoints it depends on from Phases 1–5) exists,
@@ -873,9 +1237,209 @@ is a judgment call at plan-time (**Decided by: Agent**) about *which*
 option (a)/(b) to pick per action; the underlying instruction to move this
 plan off read-only-only is **Decided by: User** (2026-09-22).
 
+## Phase 6 notes (2026-09-29)
+
+Wired the `ArtefactLink` relationships every prior phase of this module
+deferred, using Module 0's already-shipped generic relationship layer
+(`ArtefactLink`, `RequirementLinkTypeDefinition`, `services.relationships.
+create_link`/`get_link_between`) directly — **no new migration or table**,
+the first phase of this module not to add one. One `create_<source>_link`
+dispatcher per source artefact type (`StrategyLinkKind`/`PainPointLinkKind`/
+`GuidingPrincipleLinkKind`/`FutureStateLinkKind`/`OpenQuestionLinkKind`),
+each calling a single generic `create_context_strategy_link` underneath
+that validates same-organisation, fetches-or-creates the named link type
+(or leaves it untyped for a plain "related to" association), and rejects a
+duplicate before creating the link — mirroring `modules.decisions.service`'s
+own Phase 3 "relationships" section structurally. Also adds this module's
+first `mcp_tools` (62 declared tools) and the write/approvals-gate design
+described below. This module's Phase 6 was implemented across two agent
+sessions (the first interrupted mid-task by a session limit); this section
+presents it as one coherent phase rather than narrating the handoff.
+
+**Files changed** (all existing Phase 1-5 files extended in place, plus two
+new sibling test files — no new migration): `__init__.py`/`enums.py`/
+`_shared.py`/`models.py`/`module.py`/`project_router.py`/`router.py`/
+`schemas.py`/`service.py` (a new "Phase 6: cross-artefact relationships"
+section appended to each), `tests/test_context_strategy_relationships_api.py`
+(13 tests) and `tests/test_context_strategy_mcp_tools.py` (6 tests).
+
+**Scope decisions, each a judgment call this phase had to make that the
+plan text didn't fully settle:**
+
+- **Decision-target relationships confirmed to stay reserved, not
+  populatable, even though `Decision` (Module 4) has since fully shipped
+  (Decided by: Agent).** Strategy -> informs -> Decision, Guiding
+  Principle -> guides -> Decision, and Open Question -> resolved by ->
+  Decision (§5.6/§8.5/§9.5) remain undeclared on any `*LinkKind` enum.
+  Checked directly against `docs/plans/module-04-decision-management-plan.md`
+  before treating this as settled: that plan's own Phase 7 is not yet
+  built, and its own Goal text explicitly assigns "wire the four
+  Module-1-reserved relationship types" to itself, once Module 1 ships —
+  not to Module 1. Building it here anyway would also hit the same
+  structural wall Module 4's own Phase 7 exists to solve: this module
+  cannot `import app.modules.decisions.models.Decision` to validate a
+  target id (the Modular Feature System Boundary rule — Decision is
+  module-owned, not core), and Decision Management would hit the identical
+  problem in reverse. `Decision` is nonetheless now a real, registered
+  artefact type, so only the wiring code is still pending, on Module 4's
+  side — see `docs/decisions.md`'s dated Phase 6 entry for the full
+  reasoning.
+- **Bespoke, module-specific endpoints that call straight through to
+  Module 0's generic relationship functions underneath, not a second copy
+  of Module 0's own generic endpoints (Decided by: Agent).** Every source
+  artefact's own `POST .../relationships`/`POST .../supersessions`
+  endpoint is thin (resolve the artefact, check RBAC, call the shared
+  `create_<source>_link`/`create_<source>_supersession` service function),
+  keeping each artefact's own RBAC gate (already established per-artefact
+  by Phases 1-5) attached to its own endpoint rather than building one
+  generic cross-module relationship endpoint that would need to re-derive
+  which RBAC check applies to an arbitrary source type at request time.
+- **Relationship kinds organised per-*source*-artefact-type, not Decision
+  Management's per-target-type shape (Decided by: Agent).** This module has
+  five source artefact types fanning out to a shared pool of targets
+  (Requirement, each other, and the reserved Decision) — the inverse of
+  Decision's one source type fanning out to two targets.
+- **Every relationship built once, from whichever side the source text
+  states the causal verb from, never duplicated from both ends (Decided by:
+  Agent).** E.g. `Strategy -> defines -> Future State` is
+  `StrategyLinkKind.DEFINES_FUTURE_STATE` only; `ArtefactLink`'s own
+  `direction`/`display_name` resolution already makes it visible correctly
+  labelled from either artefact's own `GET .../relationships` endpoint.
+- **Typed vs. untyped split follows source overview §6.6's own instruction
+  literally (Decided by: Agent).** A relationship with a causal/rationale
+  verb in the source text gets a real, lazily-created
+  `RequirementLinkTypeDefinition` row; one the source text only calls
+  "related to"/"linkable to" (Future State's own links per §7, Open
+  Question's per §9.2) is created with `link_type_id=None` and renders as
+  a plain "Related to".
+- **`PainPointLinkKind.DUPLICATE_OF` added even though it isn't one of
+  §6.6's own named relationship types (Decided by: Agent), closing a gap
+  Phase 3's own notes explicitly flagged for this phase** — `mark_
+  pain_point_duplicate`'s mandatory comment (Phase 3) named the canonical
+  Pain Point in free text only, "standing in for the real `ArtefactLink`
+  Phase 6 will add" per that phase's own notes.
+- **`StrategyLinkKind.DRIVES_REQUIREMENT` and `PainPointLinkKind.
+  DRIVES_STRATEGY` deliberately reuse the same org `"Drives"` link-type row
+  (Decided by: Agent)**, not two separately-named types — both express the
+  same causal concept one level apart in the Pain Point -> Strategy ->
+  Requirement chain (§5.2), and `RequirementLinkTypeDefinition` is keyed on
+  `(organization_id, forward_name)` alone with no per-pair constraint.
+- **MCP tools: write-enabled from the start (Decided by: User for the
+  underlying 2026-09-22 reversal, Decided by: Agent for which specific
+  action goes through which gating option).** 62 tools total — reads gated
+  only by ordinary RBAC; ordinary writes (create/update, relationships,
+  supersessions, non-decisive lifecycle transitions) gated by
+  `MCP_WRITES_ENABLED` + RBAC; the five approve/decide-tier tools
+  (`approve_strategy`/`approve_future_state`/`activate_guiding_principle`/
+  `retire_guiding_principle`/`resolve_open_question`) additionally call
+  `app.services.rbac.require_ai_approvals_enabled` inline when the request
+  channel is `"mcp"`, mirroring Decision Management's own approve-gate
+  pattern exactly. Guiding Principle's own gated pair is `activate`/
+  `retire`, not `approve` — asymmetric with Strategy/Future State — since
+  Guiding Principle's lifecycle has no `UNDER_REVIEW` step, so its
+  `approve` reads closer to a review sign-off than `activate`/`retire`'s
+  real decisions; this is the plan's own literal text, re-verified against
+  the actual lifecycle.
+- **Org-scoped Strategy/Future State/Guiding Principle endpoints
+  (`router.py`) are not declared as MCP tools at all (Decided by: Agent),
+  following directly from the point above** — `require_ai_approvals_
+  enabled` needs a `Project` to check, which an org-scoped artefact has
+  none of; every declared tool's `path_template` uses the project router
+  prefix only, verified by `test_context_strategy_org_scoped_endpoints_
+  have_no_mcp_tools`.
+- **No new migration (Decided by: Agent, confirming the design rather than
+  a late discovery).** Every relationship *type* this phase needs is a
+  plain, lazily-created `RequirementLinkTypeDefinition` row; every
+  relationship *instance* is a plain `ArtefactLink` row — both tables
+  already exist from Module 0.
+- **`seed_demo_data.py`'s deferred stub relationships retrofitted into real
+  `ArtefactLink` rows (Decided by: Agent), closing gaps Phases 2-3
+  explicitly flagged for this phase.** The Future State rows are now
+  linked to the Strategies they elaborate via a real `defines_future_state`
+  relationship; the rejected Pain Point is now linked to the Falcon-3
+  Strategy via a real `drives_strategy` relationship; the duplicate Pain
+  Point is now linked to its canonical original via a real `duplicate_of`
+  relationship; the org/project Guiding Principles are now linked to the
+  Strategies they support via a real `supports_strategy` relationship. A
+  stale final-summary `print()`, found incidentally while fixing the above,
+  still claimed no relationship existed for the Future State pair after the
+  code above it already created one, and never mentioned Pain Points/
+  Guiding Principles/Open Questions at all — rewritten to describe the
+  actual final seeded state.
+- **The Open Question -> Decision stub comment left as-is, not retrofitted
+  (Decided by: Agent)** — correctly distinct from the point above: this one
+  is the reserved relationship (first judgment call above), not a
+  deferred-but-buildable one, and its wording is still accurate.
+- **A pre-existing "six artefact types" miscount found and fixed across
+  this plan document and three source docstrings, incidental to this
+  phase's own work (Decided by: Agent, per this repo's "fix, don't defer"
+  rule).** This module registers, and always has registered, exactly
+  **five** artefact types (`MODULE_DEFINITION.artefact_types`/
+  `sub_components` both confirm five) — the plan's own Phase 0 text and
+  several later cross-references had said "six" throughout, a
+  narrative-doc-only miscount (`docs/solution-architecture.md`'s own Phase
+  5 paragraph already said "fifth and final artefact type" correctly).
+  Fixed at every occurrence in this document plus `module.py` (x2),
+  `service.py`, and `__init__.py`.
+- **`seed_e2e_dataset.py` deliberately left untouched (Decided by: Agent),
+  matching Phase 1-5's own precedent exactly** — this module still has no
+  frontend (Phase 7).
+
+**MCP tool manifest:** 62 tools — 15 read tools (list/get per artefact
+type plus `list_<artefact>_relationships` for all five), 10 create/update
+tools, 8 relationship/supersession-write tools (`create_<artefact>_
+relationship` for all five, `create_<artefact>_supersession` for the three
+that support one), 24 plain lifecycle-transition tools, and the 5
+`require_ai_approvals_enabled`-gated tools above — verified against the
+real registry (`build_mcp_tool_manifest`) by `test_context_strategy_mcp_
+tools.py`, not just that the declared strings look right.
+
+**`seed_demo_data.py` changes:** the relationship-creation calls and
+stale-print fix described above, plus six new small HTTP helpers backing
+them (`create_org_strategy_relationship`/`create_project_strategy_
+relationship`/`create_project_pain_point_relationship`/`create_org_
+guiding_principle_relationship`/`create_project_guiding_principle_
+relationship`/`create_project_open_question_relationship`) — no new
+seeded artefacts, only new relationships between artefacts Phases 1-5
+already seed.
+
+**Tests:** `backend/app/modules/context_strategy/tests/
+test_context_strategy_relationships_api.py` (13 tests) — typed
+relationship creation (Pain Point -> drives -> Strategy, Strategy -> drives
+-> Requirement reusing the same `"Drives"` link type, Guiding Principle ->
+informs -> Requirement), an untyped "related to" association (Future State
+-> Pain Point), duplicate-link rejection (409), the org-scoped
+Strategy-defines-Future-State retrofit case via `router.py`,
+cross-organisation rejection (409), plain-member-cannot-create (403),
+Strategy supersession (creates the typed link *and* transitions the old
+Strategy to `Superseded`), supersession-of-a-non-`Active`-Strategy 409, and
+the MCP AI-approvals gate on `approve_strategy` both directions.
+`tests/test_context_strategy_mcp_tools.py` (6 tests) — all 62 declared
+tools resolve against the real registry, read tools are `GET`/non-mutating,
+create tools have the expected shape/params, relationship/supersession
+tools resolve to the right paths, the five gated tools are present and
+mutating (Guiding Principle's `approve` confirmed present but *not* one of
+the five), and every tool's `path_template` is project-scoped only.
+
+**Verified:** `ruff check` clean on every new/changed file and across the
+whole backend. Both new test files pass in isolation (19 tests) against a
+rebuilt `tests/container` backend. Full backend pytest suite run as a
+single invocation (per this repo's own concurrency rule), against a
+freshly reset `tests/container` stack (`docker compose down -v && up -d
+--build`) — **1413 passed, 0 failed**, in 34m41s. `test_schema_migrations_
+match_models.py` (the model/migration drift guard) green.
+`seed_demo_data.py` run end-to-end against the freshly reset dev/test
+stack; the retrofitted `ArtefactLink` rows independently confirmed via
+direct SQL against `artefact_links` — correct `source_type`/`source_id`/
+`target_type`/`target_id`/`link_type_id` for each. `docs/solution-
+architecture.md`'s exhaustive table-count list re-verified against a live
+migrated database's `information_schema.tables` — still 111 (unchanged
+from Phase 5, this phase adds no tables). See `docs/decisions.md`'s
+"Module 1 (Context & Strategy) Phase 6" entry for the full account.
+
 ## Phase 7 — Frontend UI
 
-**Goal:** list/detail/create/edit/approve UI for all six artefact types,
+**Goal:** list/detail/create/edit/approve UI for all five artefact types,
 using **separate top-level nav-rail entries** per Phase 0 Q7's resolution
 (a deliberate divergence from the UX style guide's usual grouping
 preference — see that resolution's note; no `Tabs` grouping component
@@ -894,7 +1458,7 @@ docs-website phase of the same name.
 
 **Goal:** add Context & Strategy's user-facing surface to `docs/website/`
 (the published docs site, `docs/plans/docs-website-plan.md`) — what each of
-the six artefact types is and when to use it, how they relate to each
+the five artefact types is and when to use it, how they relate to each
 other and to Requirements, and their lifecycle states — following the
 site's existing structure, tone, and Mermaid-diagram conventions (per this
 repo's Documentation Requirements: prefer diagrams, validate they render
@@ -906,7 +1470,7 @@ on every change with a user-facing surface, performed in the same change
 rather than deferred — so in the ordinary case this would just be part of
 Phase 7's own work. It's broken out explicitly here, mirroring Decision
 Management's own docs phase reasoning, because this module's user-facing
-surface is unusually broad for one phase — six artefact types (Strategy,
+surface is unusually broad for one phase — five artefact types (Strategy,
 Future State, Pain Point, Guiding Principle, Open Question), each with its
 own lifecycle, landing in the same Phase 7 UI at once — so a dedicated,
 checklist-visible phase makes the docs-site update harder to under-scope
@@ -929,7 +1493,7 @@ or miss amid everything else Phase 7 ships.
   targets (Decision) are reserved pending Module 4's own Phase 7.
 - Update the site's module/feature index or nav to include Context &
   Strategy alongside the other installed modules it already lists, and to
-  reflect the six separate top-level nav entries (Phase 0 Q7).
+  reflect the five separate top-level nav entries (Phase 0 Q7).
 - Cross-link from the Requirements documentation to the new page wherever
   the site already documents how a Requirement's rationale traces back to
   an upstream Pain Point or Strategy, if it does.

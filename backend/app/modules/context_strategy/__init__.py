@@ -2,20 +2,35 @@
 Module: modules.context_strategy
 
 The Context & Strategy Module (docs/plans/module-01-context-and-strategy-
-plan.md) — Phases 1–3 (Organisation & Project Strategy; Future State; Pain
-Points). Phase 1 records a formal Strategy artefact, either organisation-
-or project-scoped, with a `Draft -> Proposed -> Under Review -> Approved ->
-Active -> Superseded/Retired` review lifecycle and a full version-history
-table. Phase 2 adds a standalone Future State artefact (Phase 0 Q1: kept
-separate from Strategy rather than folded into it) with an identical
-lifecycle shape and its own version-history table. Phase 3 adds Pain
-Points — project-scoped only, no version-history table, a **branching**
-`Submitted -> Triaged -> {Rejected | Duplicate | Accepted -> Addressed ->
-Closed}` lifecycle, and a two-tier (org-shared-base, project-override)
-configurable type vocabulary (Phase 0 Q3). Self-contained, mirroring
-`app.modules.decisions`'s own "as a module" design principle: this
-package owns its enums, models, and `ModuleDefinition` registration
-rather than adding any of it to `app.models`/`app.models.enums`.
+plan.md) — Phases 1–6 (Organisation & Project Strategy; Future State; Pain
+Points; Guiding Principles; Open Questions; cross-artefact relationships).
+Phase 1 records a formal
+Strategy artefact, either organisation- or project-scoped, with a `Draft ->
+Proposed -> Under Review -> Approved -> Active -> Superseded/Retired` review
+lifecycle and a full version-history table. Phase 2 adds a standalone
+Future State artefact (Phase 0 Q1: kept separate from Strategy rather than
+folded into it) with an identical lifecycle shape and its own
+version-history table. Phase 3 adds Pain Points — project-scoped only, no
+version-history table, a **branching** `Submitted -> Triaged -> {Rejected |
+Duplicate | Accepted -> Addressed -> Closed}` lifecycle, and a two-tier
+(org-shared-base, project-override) configurable type vocabulary (Phase 0
+Q3). Phase 4 adds Guiding Principles — back to the Strategy/Future State
+shape (org/project scope, full version-history table), but with a
+**shorter** `Draft -> Proposed -> Approved -> Active -> Superseded/Retired`
+lifecycle (no `Under Review` step — see `enums.GuidingPrincipleStatus`'s own
+docstring). Phase 5 adds Open Questions — back to Pain Point's shape
+(project-scoped only, no version-history table), with its own **branching**
+`Open -> Investigating -> {Withdrawn | Ready for Decision -> {Resolved |
+Withdrawn}}` lifecycle and two distinct project-scoped roles
+(`open_question_owner`/`open_question_resolver`, source overview §9.4's
+"Question Owner / Project Manager" and "Decision Maker" tiers) rather than
+Pain Point's single-role model — see `module.py`'s own docstring. This
+module's fifth and final artefact type; the "Open Question -> resolved by
+-> Decision" relationship is reserved, not wired, here (Phase 0 Q5) — that
+workflow is Module 4's own Phase 7. Self-contained, mirroring
+`app.modules.decisions`'s own "as a module" design principle: this package
+owns its enums, models, and `ModuleDefinition` registration rather than
+adding any of it to `app.models`/`app.models.enums`.
 
 Responsibilities:
 - `enums`: `StrategyScope` (org/project discriminator), `StrategyPriority`/
@@ -81,7 +96,41 @@ alone; `router.py` (org-scoped) gains only the org-level
 `PainPointTypeDefinition` CRUD Pain Point's own type vocabulary needs
 (Phase 0 Q3), not a Pain Point resource itself.
 
-External dependencies/integrations: none of its own. No cross-artefact
-relationship wiring, MCP tools, or frontend UI — all explicitly Phase 6/7
-(and Phase 8 for docs-site coverage), out of scope for these phases.
+Phase 4 (Guiding Principles) repeats Phase 2's own posture — both org- and
+project-scoped backend API surfaces ship in this one phase, since Guiding
+Principle's org/project dual scope is again central to its field spec, not
+an add-on — and repeats the module-local comments/attachments choice above
+a third time (`GuidingPrincipleComment`/`GuidingPrincipleCommentFile`/
+`GuidingPrincipleFile`), by the same direct extension, not a re-litigation.
+
+Phase 5 (Open Questions) goes back to Phase 3's posture instead — project-
+scoped only, so its full CRUD/lifecycle/comments/files surface ships in
+`project_router.py` alone; `router.py` (org-scoped) gains nothing at all
+this time, since (unlike Pain Point) Open Question has no org-level type
+vocabulary or any other org-scoped half to speak of. Repeats the
+module-local comments/attachments choice a fourth time (`OpenQuestionComment`/
+`OpenQuestionCommentFile`/`OpenQuestionFile`). See `module.py`'s own
+docstring for why this phase's RBAC needs two distinct flat roles rather
+than reusing Pain Point's single-role-plus-FGAC-fallback shape.
+
+Phase 6 (Cross-artefact relationships) adds the actual `ArtefactLink`
+wiring Phases 1-5 each deferred (Pain Point -> drives -> Strategy,
+Strategy -> defines -> Future State, Guiding Principle -> supports ->
+Strategy, the three artefacts' own supersession links, etc.), using
+Module 0's generic relationship layer directly — no new migration, since
+`RequirementLinkTypeDefinition`/`ArtefactLink` already cover it. Also adds
+this module's first `mcp_tools` declarations: read tools for all five
+artefact types plus their relationships, and (per the 2026-09-22
+write-enabled-MCP decision) write tools for create/update/relationship/
+supersession/lifecycle-transition endpoints, with the five approve/
+decide-tier actions additionally gated by `app.services.rbac.
+require_ai_approvals_enabled` when reached through MCP. The three
+relationship types whose target is a Decision Management `Decision`
+(Strategy -> informs -> Decision, Guiding Principle -> guides -> Decision,
+Open Question -> resolved by -> Decision) stay reserved, not built here —
+see `service.py`'s own "Decision-target relationships stay reserved"
+docstring section and `docs/decisions.md`'s dated Phase 6 entry.
+
+External dependencies/integrations: none of its own. No frontend UI yet —
+Phase 7 (and Phase 8 for docs-site coverage), out of scope for this phase.
 """

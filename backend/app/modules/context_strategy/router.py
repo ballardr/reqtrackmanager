@@ -14,6 +14,14 @@ multi-word URL-segment convention — see e.g. `modules.compliance`'s
 manage_role`/`require_future_state_approve_permission` — exact structural
 mirror of the Strategy surface below, under distinct function names.
 
+Phase 4 adds the same surface for **organisation-scoped** Guiding
+Principle records, at `/guiding-principles`, gated by `require_org_
+subcomponent_enabled("context_strategy", "guiding_principle")` and
+`_shared.require_guiding_principle_manage_role`/`require_guiding_principle_
+approve_permission` — exact structural mirror of the Strategy/Future State
+surfaces, minus the `submit-for-review` endpoint (`enums.
+GuidingPrincipleStatus` has no `UNDER_REVIEW` state to submit into).
+
 RBAC: reads/creation are gated by `require_org_subcomponent_enabled
 ("context_strategy", "strategy")` (`_require_view`) — any org member with
 the module *and* this sub-component enabled may browse and propose a
@@ -61,22 +69,31 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.modules.context_strategy._shared import (
     apply_value_error_as_conflict,
+    context_strategy_link_to_out,
     future_state_to_out,
     get_future_state_in_scope,
+    get_guiding_principle_in_scope,
     get_strategy_in_scope,
+    guiding_principle_to_out,
     require_approve_permission,
     require_future_state_approve_permission,
     require_future_state_manage_role,
+    require_guiding_principle_approve_permission,
+    require_guiding_principle_manage_role,
     require_manage_role,
     require_pain_point_type_admin_role,
     strategy_to_out,
 )
-from app.modules.context_strategy.enums import FutureStateScope, StrategyScope
+from app.modules.context_strategy.enums import FutureStateScope, GuidingPrincipleScope, StrategyScope
 from app.modules.context_strategy.models import (
     FutureState,
     FutureStateComment,
     FutureStateCommentFile,
     FutureStateFile,
+    GuidingPrinciple,
+    GuidingPrincipleComment,
+    GuidingPrincipleCommentFile,
+    GuidingPrincipleFile,
     PainPointTypeDefinition,
     Strategy,
     StrategyComment,
@@ -84,14 +101,27 @@ from app.modules.context_strategy.models import (
     StrategyFile,
 )
 from app.modules.context_strategy.schemas import (
+    ContextStrategyLinkOut,
     FutureStateCommentCreate,
     FutureStateCommentOut,
     FutureStateCommentUpdate,
     FutureStateCreate,
+    FutureStateLinkCreate,
     FutureStateOut,
+    FutureStateSupersessionCreate,
     FutureStateTransitionRequest,
     FutureStateUpdate,
     FutureStateVersionOut,
+    GuidingPrincipleCommentCreate,
+    GuidingPrincipleCommentOut,
+    GuidingPrincipleCommentUpdate,
+    GuidingPrincipleCreate,
+    GuidingPrincipleLinkCreate,
+    GuidingPrincipleOut,
+    GuidingPrincipleSupersessionCreate,
+    GuidingPrincipleTransitionRequest,
+    GuidingPrincipleUpdate,
+    GuidingPrincipleVersionOut,
     PainPointTypeCreate,
     PainPointTypeOut,
     PainPointTypeUpdate,
@@ -99,41 +129,62 @@ from app.modules.context_strategy.schemas import (
     StrategyCommentOut,
     StrategyCommentUpdate,
     StrategyCreate,
+    StrategyLinkCreate,
     StrategyOut,
+    StrategySupersessionCreate,
     StrategyTransitionRequest,
     StrategyUpdate,
     StrategyVersionOut,
 )
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
+    GUIDING_PRINCIPLE_ARTEFACT_TYPE,
     STRATEGY_ARTEFACT_TYPE,
     activate_future_state,
+    activate_guiding_principle,
     activate_strategy,
     apply_future_state_new_version,
+    apply_guiding_principle_new_version,
     apply_new_version,
     approve_future_state,
+    approve_guiding_principle,
     approve_strategy,
     archive_future_state,
+    archive_guiding_principle,
     archive_strategy,
     create_future_state,
+    create_future_state_link,
+    create_future_state_supersession,
+    create_guiding_principle,
+    create_guiding_principle_link,
+    create_guiding_principle_supersession,
     create_org_pain_point_type,
     create_strategy,
+    create_strategy_link,
+    create_strategy_supersession,
     delete_org_pain_point_type,
     get_current_future_state_version,
+    get_current_guiding_principle_version,
     get_current_version,
     is_future_state_locked,
+    is_guiding_principle_locked,
     is_locked,
     propose_future_state,
+    propose_guiding_principle,
     propose_strategy,
     retire_future_state,
+    retire_guiding_principle,
     retire_strategy,
     send_future_state_back_to_draft,
+    send_guiding_principle_back_to_draft,
     send_strategy_back_to_draft,
     submit_future_state_for_review,
     submit_strategy_for_review,
     supersede_future_state,
+    supersede_guiding_principle,
     supersede_strategy,
     unarchive_future_state,
+    unarchive_guiding_principle,
     unarchive_strategy,
 )
 from app.schemas.file import FileAssetOut
@@ -142,6 +193,7 @@ from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.ordering import move_ordered
 from app.services.rbac import require_org_subcomponent_enabled
+from app.services.relationships import get_all_links
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}/modules/context_strategy", tags=["context-strategy-org"])
 
@@ -150,6 +202,9 @@ _require_view = require_org_subcomponent_enabled("context_strategy", "strategy")
 
 _FS_SCOPE = FutureStateScope.ORGANIZATION
 _require_future_state_view = require_org_subcomponent_enabled("context_strategy", "future_state")
+
+_GP_SCOPE = GuidingPrincipleScope.ORGANIZATION
+_require_guiding_principle_view = require_org_subcomponent_enabled("context_strategy", "guiding_principle")
 
 
 def _get_strategy(db: Session, organization_id: UUID, strategy_id: UUID) -> Strategy:
@@ -1137,3 +1192,681 @@ def delete_pain_point_type(
     log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type_id, action="deleted",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
+
+
+# =============================================================================
+# --- Guiding Principles (Phase 4) --------------------------------------------
+# =============================================================================
+
+
+def _get_guiding_principle(db: Session, organization_id: UUID, guiding_principle_id: UUID) -> GuidingPrinciple:
+    return get_guiding_principle_in_scope(
+        db, _GP_SCOPE, organization_id=organization_id, guiding_principle_id=guiding_principle_id,
+    )
+
+
+def _require_gp_creator_or_manage(
+    db: Session, current_user: User, organization_id: UUID, guiding_principle: GuidingPrinciple
+) -> None:
+    if current_user.id == guiding_principle.creator_id:
+        return
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+
+
+# --- Guiding Principle CRUD ---------------------------------------------------
+
+
+@router.post("/guiding-principles", response_model=GuidingPrincipleOut, status_code=status.HTTP_201_CREATED)
+def create_org_guiding_principle(
+    organization_id: UUID, payload: GuidingPrincipleCreate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Creates an organisation-scoped Guiding Principle in `DRAFT` status.
+    Any org member with the module enabled may create one — no `org_
+    guiding_principle_owner` grant required, same posture as Strategy/
+    Future State creation."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    guiding_principle = create_guiding_principle(
+        db, scope=_GP_SCOPE, organization_id=organization_id, project_id=None, creator=current_user,
+        name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
+        priority=payload.priority, owner_id=payload.owner_id,
+    )
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": payload.name})
+    db.commit()
+    db.refresh(guiding_principle)
+    return guiding_principle_to_out(guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
+
+
+@router.get("/guiding-principles", response_model=list[GuidingPrincipleOut])
+def list_org_guiding_principles(
+    organization_id: UUID, include_archived: bool = False,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    query = select(GuidingPrinciple).where(
+        GuidingPrinciple.organization_id == organization_id, GuidingPrinciple.scope == _GP_SCOPE,
+    )
+    if not include_archived:
+        query = query.where(GuidingPrinciple.is_archived.is_(False))
+    guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+    return [
+        guiding_principle_to_out(gp, get_current_guiding_principle_version(db, gp.id)) for gp in guiding_principles
+    ]
+
+
+@router.get("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
+def get_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.put("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
+def update_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleUpdate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Direct edit of a Guiding Principle's content (a new `GuidingPrinciple
+    Version`, same status). 409s once the current version is locked (past
+    `PROPOSED` — see `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`)."""
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    if is_guiding_principle_locked(current_version):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This Guiding Principle is past review; its content can no longer be edited in place.",
+        )
+    apply_guiding_principle_new_version(
+        db, guiding_principle, current_version, current_user,
+        name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
+        priority=payload.priority, owner_id=payload.owner_id, owner_id_explicitly_set=True,
+        change_note=payload.change_note,
+    )
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.get("/guiding-principles/{guiding_principle_id}/versions", response_model=list[GuidingPrincipleVersionOut])
+def list_org_guiding_principle_versions(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    return list(guiding_principle.versions)
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/archive", response_model=GuidingPrincipleOut)
+def archive_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    if guiding_principle.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Guiding Principle is already archived.")
+    archive_guiding_principle(db, guiding_principle, current_user)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="archived",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/unarchive", response_model=GuidingPrincipleOut)
+def unarchive_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    if not guiding_principle.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Guiding Principle is not archived.")
+    unarchive_guiding_principle(db, guiding_principle)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="unarchived",
+              actor_id=current_user.id, organization_id=organization_id)
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+# --- Guiding Principle lifecycle transitions ----------------------------------
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/propose", response_model=GuidingPrincipleOut)
+def propose_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    _require_gp_creator_or_manage(db, current_user, organization_id, guiding_principle)
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(propose_guiding_principle, db, guiding_principle, current_version, current_user)
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/send-back", response_model=GuidingPrincipleOut)
+def send_org_guiding_principle_back(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Sends a `PROPOSED` Guiding Principle back to `DRAFT` for rework —
+    this module's "reject"-equivalent (see `enums.GuidingPrincipleStatus`'s
+    own docstring). A comment is required, mirroring every other
+    mandatory-comment-on-rejection rule in this codebase."""
+    if not (payload.comment or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "A comment is required to send a Guiding Principle back to draft.",
+        )
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(
+        send_guiding_principle_back_to_draft, db, guiding_principle, current_version, current_user,
+        comment=payload.comment,
+    )
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/approve", response_model=GuidingPrincipleOut)
+def approve_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(
+        approve_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
+    )
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/activate", response_model=GuidingPrincipleOut)
+def activate_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(
+        activate_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
+    )
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/supersede", response_model=GuidingPrincipleOut)
+def supersede_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(
+        supersede_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
+    )
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+@router.post("/guiding-principles/{guiding_principle_id}/retire", response_model=GuidingPrincipleOut)
+def retire_org_guiding_principle(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    apply_value_error_as_conflict(
+        retire_guiding_principle, db, guiding_principle, current_version, current_user, comment=payload.comment,
+    )
+    db.commit()
+    return guiding_principle_to_out(
+        guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
+    )
+
+
+# --- Guiding Principle comments -----------------------------------------------
+
+
+def _gp_comment_to_out(db: Session, comment: GuidingPrincipleComment) -> GuidingPrincipleCommentOut:
+    author = db.get(User, comment.author_id)
+    attachments = db.scalars(
+        select(FileAsset)
+        .join(GuidingPrincipleCommentFile, GuidingPrincipleCommentFile.file_id == FileAsset.id)
+        .where(GuidingPrincipleCommentFile.comment_id == comment.id)
+    ).all()
+    return GuidingPrincipleCommentOut(
+        id=comment.id, guiding_principle_id=comment.guiding_principle_id, author_id=comment.author_id,
+        author_display_name=author.display_name if author is not None else "Unknown user",
+        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
+        attachments=[FileAssetOut.model_validate(a) for a in attachments],
+    )
+
+
+@router.post(
+    "/guiding-principles/{guiding_principle_id}/comments", response_model=GuidingPrincipleCommentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_org_guiding_principle_comment(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleCommentCreate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    comment = GuidingPrincipleComment(
+        guiding_principle_id=guiding_principle.id, author_id=current_user.id, body=payload.body,
+    )
+    db.add(comment)
+    db.flush()
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="comment_added",
+              actor_id=current_user.id, organization_id=organization_id, detail={"comment_id": str(comment.id)})
+    db.commit()
+    db.refresh(comment)
+    return _gp_comment_to_out(db, comment)
+
+
+@router.get("/guiding-principles/{guiding_principle_id}/comments", response_model=list[GuidingPrincipleCommentOut])
+def list_org_guiding_principle_comments(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    comments = db.scalars(
+        select(GuidingPrincipleComment).where(GuidingPrincipleComment.guiding_principle_id == guiding_principle.id)
+        .order_by(GuidingPrincipleComment.created_at)
+    ).all()
+    return [_gp_comment_to_out(db, c) for c in comments]
+
+
+@router.patch("/guiding-principles/{guiding_principle_id}/comments/{comment_id}", response_model=GuidingPrincipleCommentOut)
+def edit_org_guiding_principle_comment(
+    organization_id: UUID, guiding_principle_id: UUID, comment_id: UUID, payload: GuidingPrincipleCommentUpdate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Author-only — not even a Guiding Principle Owner may edit someone
+    else's words."""
+    _get_guiding_principle(db, organization_id, guiding_principle_id)
+    comment = db.get(GuidingPrincipleComment, comment_id)
+    if comment is None or comment.guiding_principle_id != guiding_principle_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
+    comment.body = payload.body
+    comment.edited_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(comment)
+    return _gp_comment_to_out(db, comment)
+
+
+@router.post(
+    "/guiding-principles/{guiding_principle_id}/comments/{comment_id}/files", response_model=FileAssetOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_org_guiding_principle_comment_attachment(
+    organization_id: UUID, guiding_principle_id: UUID, comment_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Author-only, mirrors Strategy's identical comment-attachment pattern."""
+    _get_guiding_principle(db, organization_id, guiding_principle_id)
+    comment = db.get(GuidingPrincipleComment, comment_id)
+    if comment is None or comment.guiding_principle_id != guiding_principle_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+    )
+    db.flush()
+    db.add(GuidingPrincipleCommentFile(comment_id=comment.id, file_id=asset.id, uploaded_by=current_user.id))
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle_id,
+              action="comment_file_attached", actor_id=current_user.id, organization_id=organization_id,
+              detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete(
+    "/guiding-principles/{guiding_principle_id}/comments/{comment_id}/files/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_org_guiding_principle_comment_attachment(
+    organization_id: UUID, guiding_principle_id: UUID, comment_id: UUID, file_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    _get_guiding_principle(db, organization_id, guiding_principle_id)
+    comment = db.get(GuidingPrincipleComment, comment_id)
+    if comment is None or comment.guiding_principle_id != guiding_principle_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    if comment.author_id != current_user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may remove its attachments.")
+    link = db.scalar(
+        select(GuidingPrincipleCommentFile).where(
+            GuidingPrincipleCommentFile.comment_id == comment.id, GuidingPrincipleCommentFile.file_id == file_id
+        )
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this comment.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    db.flush()
+    if asset is not None:
+        delete_file(db, asset)
+    db.commit()
+
+
+# --- Guiding Principle direct file attachments --------------------------------
+
+
+@router.post(
+    "/guiding-principles/{guiding_principle_id}/files", response_model=FileAssetOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_org_guiding_principle_file(
+    organization_id: UUID, guiding_principle_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    """Uploaded as an organisation shared resource (`is_org_resource=True`)
+    — same reasoning as Strategy's/Future State's own org-scoped file
+    uploads."""
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    current_version = get_current_guiding_principle_version(db, guiding_principle.id)
+    if is_guiding_principle_locked(current_version):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This Guiding Principle is past review; new attachments can no longer be added.",
+        )
+    data = await file.read()
+    asset = upload_file(
+        db, organization_id=organization_id, uploaded_by=current_user.id,
+        filename=file.filename or "file", content_type=file.content_type or "application/octet-stream", data=data,
+        is_org_resource=True,
+    )
+    db.flush()
+    db.add(
+        GuidingPrincipleFile(
+            guiding_principle_id=guiding_principle.id, file_id=asset.id, linked_by=current_user.id,
+            created_at=asset.created_at,
+        )
+    )
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="file_attached",
+              actor_id=current_user.id, organization_id=organization_id, detail={"filename": asset.filename})
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.get("/guiding-principles/{guiding_principle_id}/files", response_model=list[FileAssetOut])
+def list_org_guiding_principle_files(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    return db.scalars(
+        select(FileAsset).join(GuidingPrincipleFile, GuidingPrincipleFile.file_id == FileAsset.id).where(
+            GuidingPrincipleFile.guiding_principle_id == guiding_principle.id
+        )
+    ).all()
+
+
+@router.delete("/guiding-principles/{guiding_principle_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_org_guiding_principle_file(
+    organization_id: UUID, guiding_principle_id: UUID, file_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    link = db.scalar(
+        select(GuidingPrincipleFile).where(
+            GuidingPrincipleFile.guiding_principle_id == guiding_principle.id, GuidingPrincipleFile.file_id == file_id
+        )
+    )
+    if link is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not attached to this Guiding Principle.")
+    asset = db.get(FileAsset, file_id)
+    db.delete(link)
+    db.flush()
+    if asset is not None:
+        delete_file(db, asset)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="file_unlinked",
+              actor_id=current_user.id, organization_id=organization_id, detail={"file_id": str(file_id)})
+    db.commit()
+
+
+# --- Phase 6: cross-artefact relationships -----------------------------------
+#
+# Org-scoped list + create relationship endpoints for Strategy/Future State/
+# Guiding Principle (the three artefact types with an org-scoped half — Pain
+# Point has no artefact of its own at org scope, only its type vocabulary,
+# already covered above, and Open Question has no org scope at all) — exact
+# structural mirror of `project_router.py`'s own relationship section, under
+# distinct function names, `organization_id` in place of `project_id`. See
+# `service.py`'s own Phase 6 docstring section for the overall design.
+
+
+@router.get("/strategies/{strategy_id}/relationships", response_model=list[ContextStrategyLinkOut])
+def list_org_strategy_relationships(
+    organization_id: UUID, strategy_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    strategy = _get_strategy(db, organization_id, strategy_id)
+    links = get_all_links(db, STRATEGY_ARTEFACT_TYPE, strategy.id)
+    return [context_strategy_link_to_out(db, link, viewpoint_type=STRATEGY_ARTEFACT_TYPE, viewpoint_id=strategy.id) for link in links]
+
+
+@router.post(
+    "/strategies/{strategy_id}/relationships", response_model=ContextStrategyLinkOut, status_code=status.HTTP_201_CREATED,
+)
+def create_org_strategy_relationship(
+    organization_id: UUID, strategy_id: UUID, payload: StrategyLinkCreate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    strategy = _get_strategy(db, organization_id, strategy_id)
+    require_manage_role(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
+    link = apply_value_error_as_conflict(
+        create_strategy_link, db, strategy=strategy, kind=payload.kind, target_id=payload.target_id,
+        actor_id=current_user.id,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": payload.kind.value, "strategy_id": str(strategy.id), "target_id": str(payload.target_id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(db, link, viewpoint_type=STRATEGY_ARTEFACT_TYPE, viewpoint_id=strategy.id)
+
+
+@router.post(
+    "/strategies/{strategy_id}/supersessions", response_model=ContextStrategyLinkOut, status_code=status.HTTP_201_CREATED,
+)
+def create_org_strategy_supersession(
+    organization_id: UUID, strategy_id: UUID, payload: StrategySupersessionCreate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    new_strategy = _get_strategy(db, organization_id, strategy_id)
+    require_approve_permission(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
+    old_strategy = db.get(Strategy, payload.old_strategy_id)
+    if old_strategy is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Strategy not found.")
+    link, _new_version = apply_value_error_as_conflict(
+        create_strategy_supersession, db, new_strategy=new_strategy, old_strategy=old_strategy,
+        actor=current_user, comment=payload.comment,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": "supersession", "new_strategy_id": str(new_strategy.id), "old_strategy_id": str(old_strategy.id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(db, link, viewpoint_type=STRATEGY_ARTEFACT_TYPE, viewpoint_id=new_strategy.id)
+
+
+@router.get("/future-states/{future_state_id}/relationships", response_model=list[ContextStrategyLinkOut])
+def list_org_future_state_relationships(
+    organization_id: UUID, future_state_id: UUID,
+    current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
+):
+    future_state = _get_future_state(db, organization_id, future_state_id)
+    links = get_all_links(db, FUTURE_STATE_ARTEFACT_TYPE, future_state.id)
+    return [
+        context_strategy_link_to_out(db, link, viewpoint_type=FUTURE_STATE_ARTEFACT_TYPE, viewpoint_id=future_state.id)
+        for link in links
+    ]
+
+
+@router.post(
+    "/future-states/{future_state_id}/relationships", response_model=ContextStrategyLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_org_future_state_relationship(
+    organization_id: UUID, future_state_id: UUID, payload: FutureStateLinkCreate,
+    current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
+):
+    future_state = _get_future_state(db, organization_id, future_state_id)
+    require_future_state_manage_role(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
+    link = apply_value_error_as_conflict(
+        create_future_state_link, db, future_state=future_state, kind=payload.kind, target_id=payload.target_id,
+        actor_id=current_user.id,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": payload.kind.value, "future_state_id": str(future_state.id), "target_id": str(payload.target_id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(db, link, viewpoint_type=FUTURE_STATE_ARTEFACT_TYPE, viewpoint_id=future_state.id)
+
+
+@router.post(
+    "/future-states/{future_state_id}/supersessions", response_model=ContextStrategyLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_org_future_state_supersession(
+    organization_id: UUID, future_state_id: UUID, payload: FutureStateSupersessionCreate,
+    current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
+):
+    new_future_state = _get_future_state(db, organization_id, future_state_id)
+    require_future_state_approve_permission(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
+    old_future_state = db.get(FutureState, payload.old_future_state_id)
+    if old_future_state is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Future State not found.")
+    link, _new_version = apply_value_error_as_conflict(
+        create_future_state_supersession, db, new_future_state=new_future_state, old_future_state=old_future_state,
+        actor=current_user, comment=payload.comment,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": "supersession", "new_future_state_id": str(new_future_state.id),
+                      "old_future_state_id": str(old_future_state.id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(
+        db, link, viewpoint_type=FUTURE_STATE_ARTEFACT_TYPE, viewpoint_id=new_future_state.id,
+    )
+
+
+@router.get("/guiding-principles/{guiding_principle_id}/relationships", response_model=list[ContextStrategyLinkOut])
+def list_org_guiding_principle_relationships(
+    organization_id: UUID, guiding_principle_id: UUID,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    links = get_all_links(db, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principle.id)
+    return [
+        context_strategy_link_to_out(
+            db, link, viewpoint_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, viewpoint_id=guiding_principle.id,
+        )
+        for link in links
+    ]
+
+
+@router.post(
+    "/guiding-principles/{guiding_principle_id}/relationships", response_model=ContextStrategyLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_org_guiding_principle_relationship(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleLinkCreate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
+    link = apply_value_error_as_conflict(
+        create_guiding_principle_link, db, guiding_principle=guiding_principle, kind=payload.kind,
+        target_id=payload.target_id, actor_id=current_user.id,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": payload.kind.value, "guiding_principle_id": str(guiding_principle.id),
+                      "target_id": str(payload.target_id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(
+        db, link, viewpoint_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, viewpoint_id=guiding_principle.id,
+    )
+
+
+@router.post(
+    "/guiding-principles/{guiding_principle_id}/supersessions", response_model=ContextStrategyLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_org_guiding_principle_supersession(
+    organization_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleSupersessionCreate,
+    current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+):
+    new_guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
+    require_guiding_principle_approve_permission(
+        db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None,
+    )
+    old_guiding_principle = db.get(GuidingPrinciple, payload.old_guiding_principle_id)
+    if old_guiding_principle is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Guiding Principle not found.")
+    link, _new_version = apply_value_error_as_conflict(
+        create_guiding_principle_supersession, db, new_guiding_principle=new_guiding_principle,
+        old_guiding_principle=old_guiding_principle, actor=current_user, comment=payload.comment,
+    )
+    log_event(db, entity_type="context_strategy_link", entity_id=link.id, action="created",
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"kind": "supersession", "new_guiding_principle_id": str(new_guiding_principle.id),
+                      "old_guiding_principle_id": str(old_guiding_principle.id)})
+    db.commit()
+    db.refresh(link)
+    return context_strategy_link_to_out(
+        db, link, viewpoint_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, viewpoint_id=new_guiding_principle.id,
+    )

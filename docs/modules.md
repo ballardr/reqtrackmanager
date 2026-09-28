@@ -489,7 +489,27 @@ only, gating a different table (`PainPointTypeDefinition`) than the one
 per-artefact-type constraint — a module is free to mix single-scope roles
 alongside dual-scope pairs in the same `roles` tuple as its own artefacts'
 shapes actually require, not obligated to always declare both halves of a
-pair.
+pair. Phase 4 (Guiding Principles) goes back to the dual-scope pairing —
+`guiding_principle_owner`/`guiding_principle_approver` (project) and
+`org_guiding_principle_owner`/`org_guiding_principle_approver` (org) —
+since Guiding Principle, like Strategy/Future State and unlike Pain Point,
+is itself scoped at either level; this brings Context & Strategy to
+fourteen roles total across four artefact types, three of which follow the
+dual-scope pattern (four roles each) and one (Pain Point, two roles) which
+doesn't. Phase 5 (Open Questions) adds a third shape neither of the first
+two covers: `open_question_owner`/`open_question_resolver` — two roles,
+like Pain Point (Open Question has no organisation scope either), but
+*not* a single role the way Pain Point's own two-tier permission model
+collapses to. Source overview §9.4 names three distinct tiers (broad
+project members; "Question Owner / Project Manager"; a separate "Decision
+Maker"), so this phase's two roles split "change status" from "resolve"
+rather than one role covering every decide-tier action the way `pain_
+point_manager` does — confirming a module's roles are free to mix all
+three shapes (dual-scope pairs, a single project-only role, or two
+project-only roles) as each artefact's own source text actually requires,
+not obligated to reuse whichever shape a sibling artefact in the same
+module already happened to need. This brings Context & Strategy to sixteen
+roles total across five artefact types.
 
 At every process startup, `sync_module_role_definitions` mirrors the live
 registry's roles into a `module_role_definitions` table — deliberately

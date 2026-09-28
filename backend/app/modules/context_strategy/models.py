@@ -92,6 +92,62 @@ Future State's identity+version split, not a further structural mirror:
   `StrategyFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
   member — see this module's own `__init__.py` docstring for the full
   reasoning, repeated identically for Pain Point).
+
+Phase 4 (Guiding Principles, docs/plans/module-01-context-and-strategy-
+plan.md Phase 4) adds `GuidingPrinciple`/`GuidingPrincipleVersion`/
+`GuidingPrincipleComment`/`GuidingPrincipleCommentFile`/
+`GuidingPrincipleFile` — a structural mirror of `Strategy`/`StrategyVersion`
+and friends (identity+version split, org/project `scope` discriminator,
+module-local comments/files, Phase 0 Q4's full version-history requirement
+applied here too), with a smaller field set (source overview §8.3: `name`,
+`principle_statement`, `rationale`, `priority`, `owner_id` — no `type`
+field, no `time_horizon`/`expected_outcomes`/`constraints`/`measures_of_
+success`) and a **shorter** `status` lifecycle (`enums.GuidingPrincipleStatus`
+— see that enum's own docstring for the full reconciliation of source
+overview §8's scope text against its six actual members). `owner_id` lives
+on `GuidingPrincipleVersion`, not the identity row — every mutable field on
+this artefact is versioned, per Phase 0 Q4, unlike `PainPoint.owner_id`
+(Phase 3, no version table at all).
+
+Phase 5 (Open Questions, docs/plans/module-01-context-and-strategy-plan.md
+Phase 5) adds `OpenQuestion`/`OpenQuestionComment`/`OpenQuestionCommentFile`/
+`OpenQuestionFile` — back to Pain Point's shape (Phase 3), not Strategy/
+Future State/Guiding Principle's identity+version split:
+
+- **No `OpenQuestionVersion` table (Decided by: Agent).** Phase 0 Q4's full
+  version-history requirement was scoped explicitly to Strategy, Future
+  State, and (by its own follow-on) Guiding Principle; Open Question was
+  never named there, the same absence-of-instruction reasoning
+  `enums.PainPointStatus`'s own docstring already used to skip a version
+  table for Pain Point. An Open Question is an operational, investigatory
+  tracking record — closer in kind to a Pain Point moving through triage
+  than to a Strategy/Guiding Principle's formally-reviewed governance
+  content — so every mutable field lives directly on this one row, updated
+  in place (`service.update_open_question`), with every change recorded
+  only via `services.audit.log_event`.
+- **Project-scoped only, no `scope`/`organization_id` discriminator
+  (Decided by: Agent).** Source overview §9 never discusses an
+  organisation-level Open Question at all (unlike Strategy/Future State/
+  Guiding Principle, whose org/project duality Phase 0 Q2 resolved
+  explicitly by name) — the strongest single signal is §9.5's own "Create
+  Decision from Open Question" workflow: `Decision` (`app.modules.decisions.
+  models.Decision`) is itself project-scoped only, with no organisation-
+  level counterpart at all, so an org-scoped Open Question would have no
+  valid resolution path into a Decision in the first place. This is
+  reinforced by §9.1's own framing ("what's blocking this decision") and by
+  Pain Point's precedent as this module's other project-scoped-only
+  artefact. See `docs/decisions.md`'s dated entry for this phase for the
+  full reasoning.
+- `OpenQuestion.question`/`context`/`evidence` are `Text`, not `String`
+  (source overview §9.2's own field names — no separate `title` the way
+  Strategy/Future State needed one, mirroring `GuidingPrinciple.name`'s own
+  precedent that the artefact's natural primary field doubles as its
+  display title when the source text already gives one).
+- `OpenQuestionComment`/`OpenQuestionCommentFile`/`OpenQuestionFile` — this
+  module's own module-local comment-thread and attachment tables, exact
+  structural mirror of `PainPointComment`/`PainPointCommentFile`/
+  `PainPointFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
+  member).
 """
 
 from __future__ import annotations
@@ -120,6 +176,11 @@ from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.modules.context_strategy.enums import (
     FutureStateScope,
     FutureStateStatus,
+    GuidingPrinciplePriority,
+    GuidingPrincipleScope,
+    GuidingPrincipleStatus,
+    OpenQuestionPriority,
+    OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
     StrategyPriority,
@@ -644,6 +705,279 @@ class PainPointFile(UUIDPKMixin, Base):
 
     pain_point_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pain_points.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Guiding Principles (Phase 4) --------------------------------------------
+
+
+class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
+    """A Guiding Principle's stable identity (organisation- or project-
+    scoped) — exact structural mirror of `Strategy`/`FutureState` (see
+    module docstring).
+
+    Attributes:
+        scope: `GuidingPrincipleScope.ORGANIZATION` or `.PROJECT` — which of
+            `organization_id`/`project_id` is populated.
+        organization_id: Set (and `project_id` null) for an org-scoped
+            Guiding Principle.
+        project_id: Set (and `organization_id` null) for a project-scoped
+            Guiding Principle.
+        creator_id: Who created this record.
+        is_archived / archived_at / archived_by: Soft-delete, matching
+            `Strategy`/`FutureState`'s own convention.
+    """
+
+    __tablename__ = "guiding_principles"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
+            "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
+            name="ck_guiding_principles_scope_matches_owner",
+        ),
+    )
+
+    scope: Mapped[GuidingPrincipleScope] = mapped_column(str_enum(GuidingPrincipleScope, 20))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    versions: Mapped[list[GuidingPrincipleVersion]] = relationship(
+        back_populates="guiding_principle", order_by="GuidingPrincipleVersion.version_number"
+    )
+
+
+class GuidingPrincipleVersion(UUIDPKMixin, Base):
+    """A single point-in-time snapshot of a Guiding Principle's content —
+    exact temporal shape of `StrategyVersion`/`FutureStateVersion` (see
+    module docstring), for the Phase 4 field set (source overview §8.3).
+
+    Attributes:
+        valid_from / valid_to: Effective time interval; `valid_to` is null
+            for the current version.
+        name: Short display name (source overview §8.3's own field, not an
+            added-by-convention `title` the way Strategy/Future State
+            needed one).
+        principle_statement: The principle's own statement text — this
+            artefact's core content.
+        rationale: Why this principle exists / matters.
+        priority: `enums.GuidingPrinciplePriority`.
+        status: Lifecycle state — see `enums.GuidingPrincipleStatus`. Lives
+            here, not on `GuidingPrinciple`, for the same reason `Strategy
+            Version.status` does (see module docstring).
+        owner_id: The user responsible for this principle — `NULL` if
+            unassigned. Versioned along with every other content field
+            (Phase 0 Q4's full version-history model applies to the whole
+            row here, unlike `PainPoint.owner_id`, which has no version
+            table to live on).
+        change_note: Free-text reason for the change.
+        created_by / created_at: Who created this version snapshot, and
+            when.
+    """
+
+    __tablename__ = "guiding_principle_versions"
+    __table_args__ = (
+        UniqueConstraint("guiding_principle_id", "version_number"),
+        Index(
+            "ix_guiding_principle_versions_current", "guiding_principle_id", unique=False,
+            postgresql_where=sa_text("valid_to IS NULL"),
+        ),
+    )
+
+    guiding_principle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guiding_principles.id", ondelete="CASCADE")
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    name: Mapped[str] = mapped_column(String(300))
+    principle_statement: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[GuidingPrinciplePriority] = mapped_column(
+        str_enum(GuidingPrinciplePriority, 20), default=GuidingPrinciplePriority.MEDIUM
+    )
+    status: Mapped[GuidingPrincipleStatus] = mapped_column(
+        str_enum(GuidingPrincipleStatus, 20), default=GuidingPrincipleStatus.DRAFT
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    change_note: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    guiding_principle: Mapped[GuidingPrinciple] = relationship(back_populates="versions")
+
+
+class GuidingPrincipleComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on a `GuidingPrinciple` — module-local
+    analogue of `StrategyComment` (see module docstring).
+
+    Attributes:
+        guiding_principle_id: The commented-on Guiding Principle.
+        author_id: Who wrote the comment.
+        body: Comment text.
+        edited_at: Set only when the body is actually changed after
+            creation; `None` for a never-edited comment.
+    """
+
+    __tablename__ = "guiding_principle_comments"
+
+    guiding_principle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guiding_principles.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GuidingPrincipleCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `GuidingPrincipleComment` — module-local
+    analogue of `StrategyCommentFile`."""
+
+    __tablename__ = "guiding_principle_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guiding_principle_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class GuidingPrincipleFile(UUIDPKMixin, Base):
+    """Links a directly-uploaded file to a `GuidingPrinciple` — module-local
+    analogue of `StrategyFile`. A project-scoped Guiding Principle's files
+    are ordinary, project-authorized uploads (resolved via `service.
+    resolve_guiding_principle_file_project_id`); an org-scoped Guiding
+    Principle's files are uploaded as organisation shared resources
+    (`FileAsset.is_org_resource=True`) instead, authorized by org
+    membership alone — see `project_router.files`/`router.files`'s own
+    upload endpoints for the split."""
+
+    __tablename__ = "guiding_principle_files"
+    __table_args__ = (UniqueConstraint("guiding_principle_id", "file_id"),)
+
+    guiding_principle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guiding_principles.id", ondelete="CASCADE")
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --- Open Questions (Phase 5) -------------------------------------------------
+
+
+class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
+    """An Open Question (source overview §9) — project-scoped only, no
+    identity+version split (see this module's own docstring for why), every
+    mutable field on this one row.
+
+    Attributes:
+        project_id: The owning project.
+        question: The question itself — this artefact's core content and
+            natural display title (source overview §9.2's own field name;
+            no separate `title` field, mirroring `GuidingPrinciple.name`'s
+            precedent).
+        context: Free-text background — why this question matters / what
+            prompted it.
+        evidence: Free-text supporting evidence (in addition to any
+            `OpenQuestionFile`/`OpenQuestionCommentFile` attachments),
+            mirroring `PainPoint.evidence`.
+        priority: `enums.OpenQuestionPriority`.
+        status: `enums.OpenQuestionStatus` — the branching lifecycle.
+        owner_id: The user responsible for driving this question to
+            resolution, assigned by an `open_question_owner` (§9.4's
+            "Question Owner / Project Manager": Assign) — `NULL` until
+            assigned.
+        due_date: The due/review date (§9.2) — `NULL` if none has been set.
+        creator_id: Who raised this Open Question (§9.4's broad-creation
+            model — any project member).
+        is_archived / archived_at / archived_by: Soft-delete, matching
+            `PainPoint`/`Strategy`'s own convention.
+    """
+
+    __tablename__ = "open_questions"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+
+    question: Mapped[str] = mapped_column(Text)
+    context: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[OpenQuestionPriority] = mapped_column(
+        str_enum(OpenQuestionPriority, 20), default=OpenQuestionPriority.MEDIUM
+    )
+    status: Mapped[OpenQuestionStatus] = mapped_column(str_enum(OpenQuestionStatus, 20), default=OpenQuestionStatus.OPEN)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class OpenQuestionComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion-thread comment on an `OpenQuestion` — module-local
+    analogue of `PainPointComment` (see module docstring). Also this
+    artefact's mechanism for §9.4's "Suggest resolution" (any project
+    member) — a plain comment, not a separate field.
+
+    Attributes:
+        open_question_id: The commented-on Open Question.
+        author_id: Who wrote the comment.
+        body: Comment text.
+        edited_at: Set only when the body is actually changed after
+            creation; `None` for a never-edited comment.
+    """
+
+    __tablename__ = "open_question_comments"
+
+    open_question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("open_questions.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OpenQuestionCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to an `OpenQuestionComment` — module-local analogue
+    of `PainPointCommentFile`."""
+
+    __tablename__ = "open_question_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("open_question_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class OpenQuestionFile(UUIDPKMixin, Base):
+    """Links a directly-uploaded file to an `OpenQuestion` — module-local
+    analogue of `PainPointFile`. Open Question is project-scoped only, so
+    (like Pain Point, unlike Strategy/Future State/Guiding Principle) there
+    is no org-resource upload branch — every `OpenQuestionFile` upload is an
+    ordinary project-authorized upload, resolved via `service.resolve_open_
+    question_file_project_id`. This is §9.4's "Add evidence" capability,
+    deliberately open to any project member (see `project_router.upload_
+    project_open_question_file`'s own docstring)."""
+
+    __tablename__ = "open_question_files"
+    __table_args__ = (UniqueConstraint("open_question_id", "file_id"),)
+
+    open_question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("open_questions.id", ondelete="CASCADE")
     )
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
