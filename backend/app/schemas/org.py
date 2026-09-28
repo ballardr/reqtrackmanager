@@ -318,6 +318,102 @@ class OrgModuleEnablementUpdate(BaseModel):
     enabled: bool
 
 
+class ProjectModuleEnablementOut(BaseModel):
+    """One module's state as seen by one project (Module 0 — Platform
+    Foundations — Phase 5) — `GET`/`PUT /projects/{id}/modules/{module_key}`,
+    the project-tier sibling of `OrgModuleOut`'s org-tier whole-module view,
+    one level below it in the same `registry default -> org default ->
+    project override` stack `ProjectModuleSubComponentOut` already uses for
+    sub-components.
+
+    Returns the effective state alongside the organisation's own default
+    and whether this project has its own override, rather than a flat
+    boolean, so the frontend can render "using org default: X" vs.
+    "overridden to: Y" distinctly (`docs/ux-style-guide.md`'s
+    "platform-default override visibility" principle), the same reasoning
+    `ProjectModuleSubComponentOut` already documents.
+    """
+
+    module_key: str
+    name: str
+    effective_enabled: bool
+    org_default_enabled: bool
+    has_project_override: bool
+    project_override_enabled: bool | None = None
+
+
+class ProjectModuleEnablementUpdate(BaseModel):
+    """Sets a project's own explicit override of whole-module enablement —
+    see `routers.projects.module_roles.update_project_module_enablement`.
+    Symmetric: a project admin's own choice always wins over the
+    organisation's default in either direction (Decided by: User)."""
+
+    enabled: bool
+
+
+class ModuleSubComponentOut(BaseModel):
+    """One sub-component `module_key` declares (Module 0 — Platform
+    Foundations — Phase 4), with this organisation's own effective default
+    state for it — `GET`/`PUT /orgs/{id}/modules/{module_key}/subcomponents
+    [/{subcomponent_key}]`, mirroring `OrgModuleOut`'s shape one level
+    down.
+
+    `default_enabled` is the registry's own `ModuleSubComponentDefinition.
+    default_enabled` (unaffected by this organisation's own choice);
+    `org_default_enabled` is the *effective* default this organisation
+    currently has — its own explicit override if `has_org_override`,
+    else `default_enabled`. Both are returned (rather than just the
+    effective value) so an org admin's UI can show "default: on,
+    overridden to: off" distinctly, the same "platform-default override
+    visibility" pattern `docs/ux-style-guide.md` names.
+    """
+
+    module_key: str
+    subcomponent_key: str
+    name: str
+    default_enabled: bool
+    org_default_enabled: bool
+    has_org_override: bool
+
+
+class ModuleSubComponentDefaultUpdate(BaseModel):
+    """Sets an organisation's own explicit default enable/disable choice
+    for one sub-component of a module — see `routers.orgs.
+    update_org_module_subcomponent_default`."""
+
+    enabled: bool
+
+
+class ProjectModuleSubComponentOut(BaseModel):
+    """One sub-component `module_key` declares, as seen from one project
+    (Module 0 — Platform Foundations — Phase 4) — `GET`/`PUT /projects/
+    {id}/modules/{module_key}/subcomponents[/{subcomponent_key}]`.
+
+    Returns the effective state alongside the organisation's own default
+    and whether this project has its own override, rather than a single
+    flat boolean, so the frontend can render "using org default: X" vs.
+    "overridden to: Y" distinctly (`docs/ux-style-guide.md`'s
+    "platform-default override visibility" principle) instead of losing
+    that distinction the way a bare effective-only value would.
+    """
+
+    module_key: str
+    subcomponent_key: str
+    name: str
+    effective_enabled: bool
+    org_default_enabled: bool
+    has_project_override: bool
+    project_override_enabled: bool | None = None
+
+
+class ProjectModuleSubComponentEnablementUpdate(BaseModel):
+    """Sets a project's own explicit override for one sub-component of a
+    module — see `routers.projects.module_roles.
+    update_project_module_subcomponent_enablement`."""
+
+    enabled: bool
+
+
 class ModuleRoleDefinitionOut(BaseModel):
     """One available module-contributed role (module system Phase 2,
     `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —

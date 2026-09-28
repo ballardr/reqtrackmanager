@@ -31,8 +31,13 @@ ten-module list. Module 11 was considered for the same move and explicitly
 kept as an optional module instead; see that capability's own plan for why
 the two weren't treated symmetrically.
 
-**Status:** Proposed. No module in this roadmap has started implementation.
-Each module plan's Phase 0 is an **exploratory phase** — it re-examines the
+**Status:** Proposed, as a ten-module roadmap. Module 0 (Platform
+Foundations) and Module 4 (Decision Management, 9/10 phases — Phase 7 still
+blocked on Module 1/Module 6) have since been built, along with the
+reclassified-to-core Fine-Grained Access Control capability (10/10); see
+each plan's own Status section for current detail. Modules 1–3 and 5–11
+have not started implementation. Each module plan's Phase 0 is an
+**exploratory phase** — it re-examines the
 overview's proposal for that module, surfaces gaps and ambiguities the
 overview doesn't resolve, and gets explicit user sign-off on scope *before*
 any schema, endpoint or UI work begins. This mirrors this repository's
@@ -69,29 +74,41 @@ explicitly), not something this plan does on its own.
 
 ## Module plans
 
-| # | Module | Plan | Depends on (hard) | Depends on (soft — enriches, not blocks) | Overview section(s) |
-|---|---|---|---|---|---|
-| 0 | Platform Foundations | [module-00-platform-foundations-plan.md](module-00-platform-foundations-plan.md) | — (build this first) | — | not in the overview's own list — see "Module dependency graph" below |
-| 1 | Context & Strategy | [module-01-context-and-strategy-plan.md](module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
-| 2 | Stakeholders & Personas | [module-02-stakeholders-and-personas-plan.md](module-02-stakeholders-and-personas-plan.md) | Module 0, Requirements (existing) | — | §10 |
-| 3 | Risk Management | [module-03-risk-management-plan.md](module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) | §11 |
-| 4 | Decision Management | [module-04-decision-management-plan.md](module-04-decision-management-plan.md) | Module 0 | Context & Strategy (1) — Open Question/Pain Point/Strategy/Guiding Principle relationship targets only (Phase 7) | §13 (labelled §10 in the source doc; see note in that plan) |
-| 5 | Requirements & Requirement Libraries | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
-| 6 | Engineering Design | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
-| 7 | Traceability | [module-07-traceability-plan.md](module-07-traceability-plan.md) | Module 0, Module 8 (Governance) | Every artefact type its configured rules target (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–28 |
-| 8 | Governance / Policies | [module-08-governance-plan.md](module-08-governance-plan.md) | — (does not itself need Module 0 — it governs artefacts, it doesn't create relationships between them) | Traceability (7) and Compliance (9) results, once those exist, feed Governance Health | §29–36 |
-| 9 | Compliance Integration | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7, Module 8 | Risk (3), Decisions (4) — reserved relationship targets | §37 |
-| 10 | Reporting & Analysis | [module-10-reporting-and-analysis-plan.md](module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
-| 11 | Acting on Behalf Of | [module-11-acting-on-behalf-of-plan.md](module-11-acting-on-behalf-of-plan.md) | — (depends on nothing; enriches everything) | Every approval-shaped action across the product, existing and new — Requirement/ChangeRequest approval today, Decision/Design/Risk/Strategy/Compliance approval once those modules exist | not in the overview at all — requested directly by the user 2026-09-16, security-sensitive (see that plan's SOC 2 policy consultation) |
+**Table order (2026-09-28 resequencing):** rows below are ordered by actual
+build order — built modules first, then remaining modules in build-order
+sequence — rather than by module number, so this table doubles as "what's
+done / what's next," not just a reference list. The `#` column keeps each
+module's original numbering from the overview for cross-referencing other
+plans. See the **Recommended build order** discussion below the table for
+the reasoning behind this specific sequence (unchanged in substance from
+that discussion; this just reorders the table to match it).
+
+| Order | # | Module | Status | Plan | Depends on (hard) | Depends on (soft — enriches, not blocks) | Overview section(s) |
+|---|---|---|---|---|---|---|---|
+| — | — | Platform Foundations | **Built** | [module-00-platform-foundations-plan.md](module-00-platform-foundations-plan.md) | — (build this first) | — | not in the overview's own list — see "Module dependency graph" below |
+| — | — | Fine-Grained Access Control (core, formerly "Module 12") | **Built** (10/10, 2026-09-27) | [core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md) | — (core infrastructure, no content module "depends on" it — see note below) | — | not in the overview at all — requested by the user 2026-09-21, reclassified to core 2026-09-23 |
+| — | 4 | Decision Management | **9/10** — Phase 7 (reserved-relationship wiring) blocked on Module 1 and/or Module 6 below | [module-04-decision-management-plan.md](module-04-decision-management-plan.md) | Module 0 | Context & Strategy (1) — Open Question/Pain Point/Strategy/Guiding Principle relationship targets only (Phase 7) | §13 (labelled §10 in the source doc; see note in that plan) |
+| **Next** | 1 | Context & Strategy | 2/9 — Phase 1 (Organisation & Project Strategy) complete 2026-09-28, Phase 2 (Future State) next | [module-01-context-and-strategy-plan.md](module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
+| 2 | 2 | Stakeholders & Personas | Not started | [module-02-stakeholders-and-personas-plan.md](module-02-stakeholders-and-personas-plan.md) | Module 0, Requirements (existing) | — | §10 |
+| 3 | 5 | Requirements & Requirement Libraries | Not started | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
+| 4 | 6 | Engineering Design | Not started | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below; now satisfiable immediately, Decision Management having shipped | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
+| 5 | 3 | Risk Management | Not started | [module-03-risk-management-plan.md](module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
+| 6 | 8 | Governance / Policies | Not started | [module-08-governance-plan.md](module-08-governance-plan.md) | — (does not itself need Module 0 — it governs artefacts, it doesn't create relationships between them) | Traceability (7) and Compliance (9) results, once those exist, feed Governance Health | §29–36 |
+| 7 | 7 | Traceability | Not started | [module-07-traceability-plan.md](module-07-traceability-plan.md) | Module 0, Module 8 (Governance) | Every artefact type its configured rules target (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–28 |
+| 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7, Module 8 | Risk (3), Decisions (4) — reserved relationship targets | §37 |
+| 9 | 10 | Reporting & Analysis | Not started | [module-10-reporting-and-analysis-plan.md](module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
+| — | 11 | Acting on Behalf Of | Not started — **not part of this sequence** | [module-11-acting-on-behalf-of-plan.md](module-11-acting-on-behalf-of-plan.md) | — (depends on nothing; enriches everything) | Every approval-shaped action across the product, existing and new — Requirement/ChangeRequest approval today, Decision/Design/Risk/Strategy/Compliance approval once those modules exist | not in the overview at all — requested directly by the user 2026-09-16, security-sensitive (see that plan's SOC 2 policy consultation) |
 
 Fine-Grained Access Control (Custom Roles & Permissions) — formerly listed
-here as "Module 12" — is **not** in this table: it was reclassified to core
+here as "Module 12" — has its own row above only as a **build-status
+entry**, so the table can show it as done; it was reclassified to core
 platform infrastructure on 2026-09-23 (see the top of this document and
-[core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md)),
-so it isn't an enablement toggle any module row above can be said to
-"depend on" or "not depend on" — it's unconditionally present, the same way
-Module 0 is excluded from being a table row here despite everything in this
-table needing it.
+[core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md))
+and is deliberately excluded from the **module dependency graph and
+dependency columns**, the same way Module 0 is: neither is an enablement
+toggle any content-module row can be said to "depend on" or "not depend
+on," they're unconditionally present, and are given `—` rather than a
+number in the `#` column for exactly that reason.
 
 **Recommended build order** (from overview §46, with Module 0 inserted
 ahead of everything as this session's own addition): 0 → 1 → 2 → 4 → 5 →
@@ -99,14 +116,43 @@ ahead of everything as this session's own addition): 0 → 1 → 2 → 4 → 5 �
 (Decision Management) is the one to pick up first after Module 0 exists,
 ahead of Module 1 and 2 in strict overview order — see "Is building Module
 4 first actually possible?" below, and that plan's own Status section, for
-the resulting dependency note. **Fine-Grained Access Control (core, formerly
-Module 12) is next after Module 4**, ahead of Module 1, specifically because
-it unblocks Decision Management's own Phase 8 and lets every subsequent
-content module build its approval design against it from day one — see its
-own plan's Status section. **Module 11 is deliberately left out of
-this sequence** — it depends on nothing and blocks nothing, so it can be
-picked up whenever, independent of everywhere else in the
-list.
+the resulting dependency note. Fine-Grained Access Control (core, formerly
+Module 12) was picked up next after Module 4, ahead of Module 1, and is now
+complete (10/10 phases, 2026-09-27) — it unblocked Decision Management's
+own Phase 8 (also now complete) and every subsequent content module can
+build its approval design against it from day one — see its own plan's
+Status section.
+
+**What's next, and why the table above resumes in 1 → 2 → 5 → 6 → 3 → 8 →
+7 → 9 → 10 order rather than module-number order (2026-09-28):** this is
+the original recommended order above with 4 and Fine-Grained Access Control
+pulled out of the front (already built, out of strict order per the user's
+own earlier instruction) and everything else left in its original relative
+sequence — not a fresh optimization pass, but it already accounts for soft
+dependencies, which is why it holds up under scrutiny: **Module 1 (Context
+& Strategy) is next**, both because it resumes the original order and
+because it and Module 6 (Engineering Design) are the two soft dependencies
+of Decision Management's own still-open Phase 7 (reserved relationship
+wiring) — picking either up makes concrete progress on a 90%-complete
+module rather than leaving it indefinitely dangling, and Module 1 has no
+unmet hard dependencies (Module 0 only, already built). Module 6 comes
+right after Requirements & Libraries (5) rather than being paired with Risk
+(3) as the original "(3 & 6 together)" grouping had it — that pairing
+existed to have Design ready by the time Risk needed its own soft
+dependency on it; now that Decision Management (Module 6's own soft
+dependency) has already shipped, Module 6 has nothing left to wait on and
+gains no more from staying paired with Risk than from moving up. Risk (3)
+moves to directly after Module 6 instead, so that by the time it ships,
+three of its four soft dependencies (Context, Decisions, Design) are
+already built and only Verification (already existing) was ever
+unconditional. Governance (8), Traceability (7 — its one hard dependency),
+and Compliance Integration (9 — hard-depends on both) keep their original
+relative order so Traceability ships with the maximum practical rule
+surface (content modules 1–6 plus 9's precursor work) available, short of
+waiting on literally everything; Reporting (10) closes the list since it
+only ever consumes whatever else exists. **Module 11 is deliberately left
+out of this sequence** — it depends on nothing and blocks nothing, so it
+can be picked up whenever, independent of everywhere else in the list.
 
 ## Is building Module 4 (Decision Management) first actually possible?
 

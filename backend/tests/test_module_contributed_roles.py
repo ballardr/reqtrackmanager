@@ -427,6 +427,50 @@ def test_require_module_role_404_when_module_disabled_even_for_admins(client, ad
         db.close()
 
 
+def test_require_module_role_project_scope_respects_phase5_project_override(client, admin_token, org_id, fake_module):
+    """Module 0 (Platform Foundations) Phase 5 regression: `require_module_
+    role`'s project-scoped branch used to resolve whole-module state via
+    the org-only `is_module_enabled` directly, bypassing any project-level
+    override entirely. It must now 404 when *this project's own*
+    `ProjectModuleEnablement` override disables the module, even though
+    the organisation's own default is still enabled — and, symmetrically,
+    must still pass when a project override re-enables a module the
+    organisation's own default has turned off."""
+    from app.models.module import ProjectModuleEnablement
+
+    project = create_project(client, admin_token, org_id, "Require Module Role Phase 5 Project Override")
+    db = SessionLocal()
+    try:
+        project_uuid = uuid_lib.UUID(project["id"])
+        org_uuid = uuid_lib.UUID(org_id)
+        admin_user = _get_admin_user(db)
+        dependency = require_module_role(fake_module, PROJECT_ROLE_KEY)
+
+        # Org default stays enabled; this project alone disables the
+        # module via its own Phase 5 override.
+        db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=False))
+        db.commit()
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
+        assert exc_info.value.status_code == 404
+
+        # Symmetric direction: org default off, this project's own
+        # override turns it back on — must pass (admin_user is a
+        # ProjectRole.PROJECT_MANAGER on this project, which `require_
+        # module_role`'s core-role override already satisfies).
+        db.query(ProjectModuleEnablement).filter(
+            ProjectModuleEnablement.project_id == project_uuid, ProjectModuleEnablement.module_key == fake_module,
+        ).delete()
+        _disable_module(db, org_uuid, fake_module)
+        db.add(ProjectModuleEnablement(project_id=project_uuid, module_key=fake_module, enabled=True))
+        db.commit()
+        result = dependency(project_id=project_uuid, request=_FakeRequest(), current_user=admin_user, db=db)
+        assert result.id == admin_user.id
+    finally:
+        _enable_module(db, uuid_lib.UUID(org_id), fake_module)
+        db.close()
+
+
 def test_require_module_role_unknown_module_or_role_raises_value_error_at_construction():
     with pytest.raises(ValueError):
         require_module_role("no_such_module_key", "whatever")

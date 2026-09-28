@@ -9,6 +9,26 @@ to). See `app.modules.registry` for how these combine with the static
 module registry to produce an effective enabled/disabled value, and
 `app.models.server_role` for the sibling Phase 0 server-tier RBAC table
 this phase builds on.
+
+Also holds `ProjectModuleEnablement` (Module 0 — Platform Foundations —
+Phase 5): a project-tier override of whole-module enablement itself,
+mirroring `OrganizationModuleEnablement`'s own shape one level down. See
+`app.modules.registry.is_module_enabled_for_project` for the resolution
+formula (entitlement -> project override -> org default -> registry
+default).
+
+Also holds `OrganizationModuleSubComponentDefault`/`ProjectModuleSubComponentEnablement`
+(Module 0 — Platform Foundations — Phase 4): a second, finer-grained pair
+of gating tables one tier *below* whole-module enablement, for toggling an
+individual sub-component of an already-enabled module (e.g. Context &
+Strategy's "Strategy" vs. "Pain Point" vs. "Future State"). See
+`app.modules.registry.is_module_subcomponent_enabled`/`is_org_module_
+subcomponent_enabled` for the full two/one-tier resolution formula each
+combines with `ModuleDefinition.sub_components` to produce — Phase 5's own
+`is_module_enabled_for_project` is what `is_module_subcomponent_enabled`'s
+own first (whole-module) check now calls, so a project-level whole-module
+override correctly cascades to disable/enable that module's sub-components
+too.
 """
 
 from __future__ import annotations
@@ -119,5 +139,148 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
     )
     module_key: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ProjectModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
+    """Project-tier override of whole-module enablement (Module 0 —
+    Platform Foundations — Phase 5, added immediately after Phase 4's own
+    sub-component layer) — a project admin's own choice, taking precedence
+    over the organisation's own `OrganizationModuleEnablement` above it for
+    this project only (`app.modules.registry.is_module_enabled_for_project`).
+
+    Mirrors `OrganizationModuleEnablement`'s own explicit-override-only
+    shape one tier down, the same way `ProjectModuleSubComponentEnablement`
+    already does for sub-components: the absence of a row for a given
+    `(project_id, module_key)` pair means "use the organisation's own
+    `OrganizationModuleEnablement` row, or the registry's `default_enabled`
+    if the organisation has none either" — not "disabled." Effective
+    enablement still additionally requires entitlement (`app.modules.
+    registry.is_module_entitled`), an absolute ceiling this project-level
+    tier cannot cross regardless of what it sets — an org not entitled to
+    a module stays disabled for every one of its projects no matter what
+    any override says, the same "entitled AND (...)" formula `is_module_
+    enabled` already applies one tier up.
+
+    The override is **symmetric** (Decided by: User, 2026-09-28): a
+    project admin's own choice always wins over the org default in either
+    direction — enabling a module the org default has off, or disabling
+    one the org default has on — matching the rule Phase 4 already
+    established for `ProjectModuleSubComponentEnablement`, chosen for
+    consistency over a one-directional "project can only narrow"
+    alternative that was explicitly raised and rejected.
+
+    Attributes:
+        project_id: The project this override applies to.
+        module_key: The module's registry key (`ModuleDefinition.key`),
+            same convention as `OrganizationModuleEnablement.module_key`.
+        enabled: Whether the project admin has explicitly enabled (`True`)
+            or disabled (`False`) the module for this project — both
+            meaningful explicit states, distinct from "no row" (falls back
+            to the organisation's own enablement state).
+        updated_by: The project admin who last set this override, for
+            audit attribution independent of `AuditEvent.actor_id`.
+    """
+
+    __tablename__ = "project_module_enablements"
+    __table_args__ = (UniqueConstraint("project_id", "module_key"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    module_key: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class OrganizationModuleSubComponentDefault(UUIDPKMixin, TimestampMixin, Base):
+    """Org-tier default enable/disable state for one sub-component of a
+    module (Module 0 — Platform Foundations — Phase 4) — the organisation-
+    wide policy lever a project's own `ProjectModuleSubComponentEnablement`
+    (below) may override, and, for a sub-component of an org-scoped
+    artefact with no project tier above it at all, the effective value
+    outright (`app.modules.registry.is_org_module_subcomponent_enabled`).
+
+    Same **explicit-override-only** shape as `OrganizationModuleEnablement`
+    one tier up: the absence of a row for a given `(organization_id,
+    module_key, subcomponent_key)` triple means "use the registry's own
+    `ModuleSubComponentDefinition.default_enabled`," not "disabled." Only
+    meaningful for a `(module_key, subcomponent_key)` pair the module
+    actually declares in its own `ModuleDefinition.sub_components` — a row
+    for an undeclared/stale key is simply never consulted (`app.modules.
+    registry._find_subcomponent_definition` returns `None` for it, and
+    both resolution functions treat that the same as "disabled").
+
+    Attributes:
+        organization_id: The organisation this default applies to.
+        module_key: The declaring module's registry key, same convention
+            as `OrganizationModuleEnablement.module_key`.
+        subcomponent_key: The sub-component's key, as declared in that
+            module's own `ModuleDefinition.sub_components`.
+        enabled: Whether the organisation's admin has explicitly set this
+            sub-component's default to enabled (`True`) or disabled
+            (`False`) — both meaningful explicit states, distinct from "no
+            row" (falls back to the registry's `default_enabled`).
+        updated_by: The org admin who last set this default, for audit
+            attribution independent of `AuditEvent.actor_id`.
+    """
+
+    __tablename__ = "organization_module_subcomponent_defaults"
+    __table_args__ = (UniqueConstraint("organization_id", "module_key", "subcomponent_key"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    module_key: Mapped[str] = mapped_column(String(100))
+    subcomponent_key: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ProjectModuleSubComponentEnablement(UUIDPKMixin, TimestampMixin, Base):
+    """Project-tier override of one sub-component's enabled state (Module
+    0 — Platform Foundations — Phase 4) — a project admin's own choice for
+    their project only, taking precedence over the organisation's own
+    `OrganizationModuleSubComponentDefault` above it
+    (`app.modules.registry.is_module_subcomponent_enabled`'s resolution
+    order). This is a genuinely new capability at the project level: unlike
+    this pair's org tier (which mirrors the existing whole-module
+    `OrganizationModuleEntitlement`/`OrganizationModuleEnablement` split),
+    whole-module enablement itself has no project-level override at all —
+    only this finer-grained sub-component layer gets one.
+
+    Same **explicit-override-only** shape as its siblings: the absence of
+    a row for a given `(project_id, module_key, subcomponent_key)` triple
+    means "use the organisation's own default (or the registry default if
+    the organisation has none either)," not "disabled." Effective
+    enablement additionally requires the *whole module* to be enabled for
+    the project's owning organisation — a project admin cannot re-enable a
+    sub-component of a module their organisation has disabled entirely
+    (`is_module_subcomponent_enabled`'s "whole-module disabled always wins
+    first" rule).
+
+    Attributes:
+        project_id: The project this override applies to.
+        module_key: The declaring module's registry key, same convention
+            as `OrganizationModuleSubComponentDefault.module_key`.
+        subcomponent_key: The sub-component's key, same convention as
+            `OrganizationModuleSubComponentDefault.subcomponent_key`.
+        enabled: Whether the project admin has explicitly enabled (`True`)
+            or disabled (`False`) this sub-component for this project —
+            both meaningful explicit states, distinct from "no row" (falls
+            back to the organisation's default).
+        updated_by: The project admin who last set this override, for
+            audit attribution independent of `AuditEvent.actor_id`.
+    """
+
+    __tablename__ = "project_module_subcomponent_enablements"
+    __table_args__ = (UniqueConstraint("project_id", "module_key", "subcomponent_key"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    module_key: Mapped[str] = mapped_column(String(100))
+    subcomponent_key: Mapped[str] = mapped_column(String(100))
     enabled: Mapped[bool] = mapped_column(Boolean)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

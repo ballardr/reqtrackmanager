@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models.enums import OrgRole
-from app.models.module import OrganizationModuleEnablement
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleSubComponentDefault
 from app.models.organization import Organization
 from app.models.user import User
 from app.modules.registry import get_frontend_manifest, get_module_registry, is_module_enabled, is_module_entitled
@@ -30,6 +30,8 @@ from app.schemas.email import TestEmailRequest
 from app.schemas.org import (
     ModuleFrameTokenOut,
     ModuleFrontendManifestOut,
+    ModuleSubComponentDefaultUpdate,
+    ModuleSubComponentOut,
     OrgAdvancedSettingsOut,
     OrgAdvancedSettingsUpdate,
     OrgModuleEnablementUpdate,
@@ -232,6 +234,123 @@ def update_org_module_enablement(
         version=definition.version, implemented=definition.implemented,
         entitled=True, enabled=row.enabled, default_enabled=definition.default_enabled,
         frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
+    )
+
+
+@router.get("/{organization_id}/modules/{module_key}/subcomponents", response_model=list[ModuleSubComponentOut])
+def list_org_module_subcomponents(
+    organization_id: UUID,
+    module_key: str,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Lists every sub-component `module_key` declares (Module 0 —
+    Platform Foundations — Phase 4), with this organisation's own
+    effective default state for each — the org-tier bookkeeping view an
+    org admin uses to set per-sub-component defaults, one level below
+    `list_org_modules`'s whole-module view.
+
+    404s on an unregistered `module_key`, matching `update_org_module_
+    enablement`'s own handling of a bogus key. A module with no declared
+    `sub_components` at all (every module before Context & Strategy's own
+    `"strategy"` entry) simply returns an empty list — not an error, since
+    "this module has no sub-components" is a legitimate, common state.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+
+    rows_by_key = {
+        row.subcomponent_key: row
+        for row in db.scalars(
+            select(OrganizationModuleSubComponentDefault).where(
+                OrganizationModuleSubComponentDefault.organization_id == organization_id,
+                OrganizationModuleSubComponentDefault.module_key == module_key,
+            )
+        )
+    }
+    return [
+        ModuleSubComponentOut(
+            module_key=module_key,
+            subcomponent_key=sub.key,
+            name=sub.name,
+            default_enabled=sub.default_enabled,
+            org_default_enabled=rows_by_key[sub.key].enabled if sub.key in rows_by_key else sub.default_enabled,
+            has_org_override=sub.key in rows_by_key,
+        )
+        for sub in definition.sub_components
+    ]
+
+
+@router.put(
+    "/{organization_id}/modules/{module_key}/subcomponents/{subcomponent_key}", response_model=ModuleSubComponentOut,
+)
+def update_org_module_subcomponent_default(
+    organization_id: UUID,
+    module_key: str,
+    subcomponent_key: str,
+    payload: ModuleSubComponentDefaultUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Sets this organisation's own explicit default enable/disable choice
+    for one sub-component of `module_key` (Module 0 — Platform
+    Foundations — Phase 4) — the org-wide policy lever a project's own
+    override (`routers.projects.module_roles.
+    update_project_module_subcomponent_enablement`) may still take
+    precedence over, and, for a sub-component of an org-scoped artefact
+    with no project tier above it at all, the effective value outright
+    (`app.modules.registry.is_org_module_subcomponent_enabled`).
+
+    404s on an unregistered `module_key` or a `subcomponent_key` that
+    module doesn't declare, matching `update_org_module_enablement`'s own
+    handling of a bogus module key.
+    """
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    definition = get_module_registry().get(module_key)
+    if definition is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
+    subcomponent = next((s for s in definition.sub_components if s.key == subcomponent_key), None)
+    if subcomponent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-component not found.")
+
+    row = db.scalar(
+        select(OrganizationModuleSubComponentDefault).where(
+            OrganizationModuleSubComponentDefault.organization_id == organization_id,
+            OrganizationModuleSubComponentDefault.module_key == module_key,
+            OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
+        )
+    )
+    if row is None:
+        row = OrganizationModuleSubComponentDefault(
+            organization_id=organization_id, module_key=module_key, subcomponent_key=subcomponent_key,
+        )
+        db.add(row)
+    row.enabled = payload.enabled
+    row.updated_by = current_user.id
+    log_event(
+        db, entity_type="organization_module_subcomponent",
+        # `f"{module_key}:{subcomponent_key}"`, not prefixed with
+        # `organization_id` (already its own dedicated `AuditEvent`
+        # column, passed below) — `AuditEvent.entity_id` is `String(64)`,
+        # and a UUID (36 chars) plus two colon-joined keys risks
+        # overflowing it for a real module/sub-component key pair (found
+        # via this endpoint's own test using a deliberately long fixture
+        # module key, which reproduced the overflow directly).
+        entity_id=f"{module_key}:{subcomponent_key}",
+        action="module.subcomponent_default_updated", actor_id=current_user.id, organization_id=organization_id,
+        detail={"module_key": module_key, "subcomponent_key": subcomponent_key, "enabled": payload.enabled},
+    )
+    db.commit()
+    db.refresh(row)
+    return ModuleSubComponentOut(
+        module_key=module_key, subcomponent_key=subcomponent_key, name=subcomponent.name,
+        default_enabled=subcomponent.default_enabled, org_default_enabled=row.enabled, has_org_override=True,
     )
 
 

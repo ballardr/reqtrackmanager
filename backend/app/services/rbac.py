@@ -169,7 +169,14 @@ from app.models.project import (
 )
 from app.models.server_role import UserServerRole
 from app.models.user import User
-from app.modules.registry import get_all_registered_artefact_types, get_module, is_module_enabled
+from app.modules.registry import (
+    get_all_registered_artefact_types,
+    get_module,
+    is_module_enabled,
+    is_module_enabled_for_project,
+    is_module_subcomponent_enabled,
+    is_org_module_subcomponent_enabled,
+)
 from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, encode_permission
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
@@ -2100,6 +2107,43 @@ def require_org_module_enabled(module_key: str):
     return _dependency
 
 
+def require_org_subcomponent_enabled(module_key: str, subcomponent_key: str):
+    """FastAPI dependency factory requiring one org-scoped sub-component of
+    `module_key` to be effectively enabled (`app.modules.registry.
+    is_org_module_subcomponent_enabled`) for the org named by the
+    `organization_id` path parameter, for a caller who is otherwise a
+    member of that organisation (Module 0 — Platform Foundations — Phase
+    4). Org-scoped sibling of `require_project_subcomponent_enabled` below
+    — see that factory's docstring for why an org-scoped artefact (no
+    project in the picture at all, e.g. an org-scoped Context & Strategy
+    Strategy record) resolves through the organisation's own default
+    directly rather than a project override.
+
+    Expects an `organization_id` path parameter, same as `require_org_
+    module_enabled`. Same 404-not-403 rationale, and the same Tier B
+    `<ModuleFrame>` token acceptance, as that factory.
+    """
+
+    def _dependency(
+        organization_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user_or_module_frame(module_key)),
+        db: Session = Depends(get_db),
+    ) -> User:
+        """See the enclosing `require_org_subcomponent_enabled` factory's docstring."""
+        _enforce_module_frame_scope(request, organization_id=organization_id)
+        check_pat_scope(request, organization_id)
+        _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
+        if not get_effective_org_roles(db, current_user.id, organization_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        if not is_org_module_subcomponent_enabled(db, organization_id, module_key, subcomponent_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        return current_user
+
+    return _dependency
+
+
 def require_org_module_enabled_dynamic(
     organization_id: UUID,
     module_key: str,
@@ -2191,11 +2235,19 @@ def require_org_access_and_module_enabled(
 
 def require_project_module_enabled(module_key: str):
     """FastAPI dependency factory requiring `module_key` to be effectively
-    enabled for the organisation owning the project named by the
-    `project_id` path parameter, for a caller who is otherwise a member of
-    that project (module system Phase 1). Project-scoped sibling of
-    `require_org_module_enabled` — see that factory's docstring for the
-    404-not-403 rationale, which applies identically here.
+    enabled for the project named by the `project_id` path parameter, for
+    a caller who is otherwise a member of that project (module system
+    Phase 1; project-level override added Module 0 — Platform
+    Foundations — Phase 5). Project-scoped sibling of `require_org_module_
+    enabled` — see that factory's docstring for the 404-not-403 rationale,
+    which applies identically here.
+
+    Resolves effective enablement via `app.modules.registry.is_module_
+    enabled_for_project` (entitlement -> project override -> org default
+    -> registry default), not the org-only `is_module_enabled` directly —
+    a project admin's own `ProjectModuleEnablement` override, when one
+    exists, wins symmetrically over the organisation's own default in
+    either direction (Phase 5).
 
     Expects a `project_id` path parameter, same as `require_project_view`.
 
@@ -2220,7 +2272,49 @@ def require_project_module_enabled(module_key: str):
         _require_org_2fa(db, organization_id, current_user)
         if not get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-        if not is_module_enabled(db, organization_id, module_key):
+        if not is_module_enabled_for_project(db, project_id, module_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        return current_user
+
+    return _dependency
+
+
+def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str):
+    """FastAPI dependency factory requiring one project-scoped
+    sub-component of `module_key` to be effectively enabled (`app.modules.
+    registry.is_module_subcomponent_enabled`) for the organisation owning
+    the project named by the `project_id` path parameter, for a caller who
+    is otherwise a member of that project (Module 0 — Platform
+    Foundations — Phase 4). Project-scoped sibling of `require_project_
+    module_enabled` — see that factory's docstring for the 404-not-403
+    rationale, which applies identically here: a disabled sub-component
+    (or a disabled whole module, checked first, with no sub-component
+    lookup at all if so) is indistinguishable from an endpoint that
+    doesn't exist.
+
+    Expects a `project_id` path parameter, same as `require_project_
+    module_enabled`. Also accepts a Tier B `<ModuleFrame>` token scoped to
+    this exact `module_key` and this exact `project_id`, exactly as
+    documented on `require_project_module_enabled`.
+    """
+
+    def _dependency(
+        project_id: UUID,
+        request: Request,
+        current_user: User = Depends(get_current_user_or_module_frame(module_key)),
+        db: Session = Depends(get_db),
+    ) -> User:
+        """See the enclosing `require_project_subcomponent_enabled` factory's docstring."""
+        _enforce_module_frame_scope(request, project_id=project_id)
+        check_pat_scope_for_project(request, db, project_id)
+        organization_id = _project_organization_id(db, project_id)
+        if organization_id is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        _require_org_active(db, organization_id)
+        _require_org_2fa(db, organization_id, current_user)
+        if not get_effective_project_roles(db, current_user.id, project_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+        if not is_module_subcomponent_enabled(db, project_id, module_key, subcomponent_key):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         return current_user
 
@@ -2239,6 +2333,10 @@ def require_project_module_enabled_dynamic(
     token` (compliance-module-plan.md Phase 3). See that function's
     docstring for why `module_key` is a path parameter here and why this
     depends on plain `get_current_user`, not a module-frame-accepting one.
+
+    Resolves effective enablement via `is_module_enabled_for_project`
+    (Module 0 — Platform Foundations — Phase 5), the same project-level-
+    override-aware resolution `require_project_module_enabled` uses.
     """
     check_pat_scope_for_project(request, db, project_id)
     organization_id = _project_organization_id(db, project_id)
@@ -2248,7 +2346,7 @@ def require_project_module_enabled_dynamic(
     _require_org_2fa(db, organization_id, current_user)
     if not get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-    if not is_module_enabled(db, organization_id, module_key):
+    if not is_module_enabled_for_project(db, project_id, module_key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
     return current_user
 
@@ -2542,7 +2640,15 @@ def require_module_role(module_key: str, role_key: str):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
             _require_org_active(db, organization_id)
             _require_org_2fa(db, organization_id, current_user)
-            if not is_module_enabled(db, organization_id, module_key):
+            # `is_module_enabled_for_project`, not the org-only `is_module_
+            # enabled` — Module 0 Phase 5's project-level override must
+            # apply here too: a project that has disabled this module via
+            # its own override must 404 a project-scoped module role check
+            # (e.g. Compliance's `compliance_officer`, Decision
+            # Management's `decision_owner`) the same way `require_project_
+            # module_enabled`/`require_project_subcomponent_enabled` do,
+            # not keep resolving against stale org-level state.
+            if not is_module_enabled_for_project(db, project_id, module_key):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
             if user_satisfies_module_role(
                 db, current_user, module_key, role_key, organization_id=organization_id, project_id=project_id
@@ -2826,7 +2932,17 @@ def _module_role_permission_grants(
         # `require_module_role`'s own 404 posture for the same condition —
         # a stale `UserModuleRole` row for a module an org later disabled
         # must not keep contributing permissions this vocabulary can act on.
-        if not is_module_enabled(db, organization_id, module_key):
+        # When resolving at project scope, this must also respect Module 0
+        # Phase 5's own project-level override (`is_module_enabled_for_
+        # project`), not just the org-only state — a project that has
+        # disabled this module via its own override must not have a stale
+        # module-role grant keep contributing its permissions either, the
+        # same reasoning `require_module_role`'s own project-scoped branch
+        # now applies.
+        if project_id is not None:
+            if not is_module_enabled_for_project(db, project_id, module_key):
+                continue
+        elif not is_module_enabled(db, organization_id, module_key):
             continue
         role = next((r for r in definition.roles if r.role_key == role_key), None)
         if role is None:

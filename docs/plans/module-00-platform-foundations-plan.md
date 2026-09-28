@@ -14,9 +14,11 @@ Management) and every other module too, not something specific to Context
 module gets built first no longer determines when this gets built — it
 just has to come before all of them.
 
-**Status:** Complete (2026-09-21), all 4 phases. This was built first in
-the roadmap, ahead of every numbered module, as intended — see "Status /
-Resume Here" below for the full per-phase record.
+**Status:** 6/6 phases complete. Phases 0–3 complete (2026-09-21); Phase 4
+(module sub-component enablement) and Phase 5 (project-level override of
+whole-module enablement) both added and completed 2026-09-28. This was
+built first in the roadmap, ahead of every numbered module, as intended —
+see "Status / Resume Here" below for the full per-phase record.
 
 **Decided by: Agent** — the decision to split this out as its own
 plan/module is a structural response to the user's question ("does there
@@ -27,7 +29,7 @@ point at it.
 
 ## Status / Resume Here
 
-4 / 4 phases complete (Phase 0 + Phase 1 + Phase 2 + Phase 3). Plan complete.
+6 / 6 phases complete (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5). Plan closed.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -35,6 +37,8 @@ point at it.
 | 1 | Build the generic cross-artefact relationship model | [x] Complete (2026-09-21) |
 | 2 | Per-project sequence-number / unique-code generation | [x] Complete (2026-09-21) |
 | 3 | Migrate the compliance module's own evidence-link tables onto the new relationship model | [x] Complete (2026-09-21) |
+| 4 | Module sub-component enablement (org default + project override) | [x] Complete (2026-09-28) |
+| 5 | Project-level override of whole-module enablement | [x] Complete (2026-09-28) |
 | — | MCP tools / Docs website coverage | N/A — see "MCP tools and docs-website coverage" note below |
 
 **Phase 3 outcome (2026-09-21), Decided by: User (both corrections below) /
@@ -465,6 +469,473 @@ core requirement/action links when queried generically (i.e. Module 0's
 "what links to X" helper works across a content-module boundary, not just
 within core). `backend/scripts/seed_demo_data.py`/`seed_e2e_dataset.py`
 checked for any direct references to the old table/model names.
+
+## Phase 4 — Module sub-component enablement (org default + project override)
+
+**Added 2026-09-28, at the user's explicit request**, made while Module 1
+(Context & Strategy)'s own Phase 1 was mid-implementation: the user asked
+whether a project admin could enable/disable individual sub-components of
+a module (e.g. keep Pain Points but turn off Strategy and Future State)
+rather than only the whole module at once. No such mechanism exists today
+— `is_module_enabled` (this plan's own Phase 1/module-system-Phase-1
+infrastructure) is whole-module, org-scoped only; there is no project-level
+override table for module enablement at all yet, whole-module or
+otherwise. Landed here, in Module 0, rather than as a Context & Strategy
+phase, because — per `CLAUDE.md`'s Modular Feature System Boundary rule —
+a generic capability every module may want (Governance's policy types,
+Decision Management's own artefact surface, etc.) must be built as a
+reusable core extension point, never hand-built once inside the one module
+that happened to ask for it first.
+
+**Scope decisions, all Decided by: User (asked directly, 2026-09-28):**
+
+1. **Granularity:** independently toggleable per sub-component (for
+   Context & Strategy: Strategy, Future State, Pain Point, Guiding
+   Principle, Open Question each on/off individually), not coarser
+   groupings.
+2. **Control scope — two-tier:** the organisation can set a **default**
+   enabled/disabled state per sub-component (an org-wide policy lever,
+   parallel to how `OrganizationModuleEntitlement` sits above
+   `OrganizationModuleEnablement` for whole modules), and a **project
+   admin** can further override that default for their own project only.
+   This is a new capability at the project level — today, whole-module
+   enablement itself has no project-level override at all, only this
+   finer-grained sub-component layer gets one. A project admin's own
+   choice always wins over the org default when both exist.
+3. **Disable semantics:** fully hidden, identical to how a disabled whole
+   module already behaves — 404, not 403, "indistinguishable from not
+   existing" (same rationale as `require_project_module_enabled`'s own
+   docstring). No new "read-only" state; existing rows under a disabled
+   sub-component simply become unreachable through the API/UI while
+   disabled, same as an existing row under a wholly disabled module today.
+4. **Build as generic core infrastructure now,** not narrowed to Context &
+   Strategy — required by this plan's own boundary rule, and this module
+   (Context & Strategy) is simply the first real consumer, the same way
+   Decision Management was Module 0 Phase 1's first real consumer of the
+   relationship model.
+
+**Design (Decided by: Agent, following directly from the above):**
+
+- **Registry** (`backend/app/modules/registry.py`): a new
+  `ModuleSubComponentDefinition` frozen dataclass (`key`, `name`,
+  `default_enabled: bool = True`), the same shape/spirit as the existing
+  `ModuleRoleDefinition`/`EntityScopeDefinition` sibling dataclasses. Add a
+  `sub_components: tuple[ModuleSubComponentDefinition, ...] = ()` field to
+  `ModuleDefinition`, defaulting to empty so every already-shipped module
+  (Compliance, Decision Management, Fine-Grained Access Control) needs no
+  change unless it later wants this too.
+- **New models** (`backend/app/models/module.py`, alongside the existing
+  `OrganizationModuleEntitlement`/`OrganizationModuleEnablement`):
+  - `OrganizationModuleSubComponentDefault` — `organization_id` FK,
+    `module_key`, `subcomponent_key`, `enabled`, `updated_by`; unique on
+    `(organization_id, module_key, subcomponent_key)`. Same
+    explicit-override-only shape as `OrganizationModuleEnablement`:
+    absence of a row means "use the registry's own `default_enabled`."
+    Org-admin-managed (`OrgRole.ORG_ADMIN`, same role that already manages
+    whole-module enablement).
+  - `ProjectModuleSubComponentEnablement` — `project_id` FK, `module_key`,
+    `subcomponent_key`, `enabled`, `updated_by`; unique on `(project_id,
+    module_key, subcomponent_key)`. Same explicit-override-only shape:
+    absence of a row means "use the org default (above), or the registry
+    default if the org has none either." Project-admin-managed.
+- **Resolution function**, `is_module_subcomponent_enabled(db, project_id,
+  module_key, subcomponent_key)`: first calls the existing
+  `is_module_enabled` for the project's owning organisation — a disabled
+  whole module always wins, no sub-component lookup needed if so. Then
+  checks `ProjectModuleSubComponentEnablement` (project override, highest
+  precedence), then `OrganizationModuleSubComponentDefault` (org default),
+  then falls back to the registry's own `default_enabled`.
+- **RBAC dependency** (`backend/app/services/rbac.py`):
+  `require_project_subcomponent_enabled(module_key, subcomponent_key)`,
+  mirroring `require_project_module_enabled`'s factory shape and 404-not-
+  403 rationale exactly, calling `is_module_subcomponent_enabled` instead
+  of `is_module_enabled`.
+- **Endpoints:**
+  - Org-level default setter: `GET`/`PUT
+    /orgs/{organization_id}/modules/{module_key}/subcomponents[/{subcomponent_key}]`
+    in `backend/app/routers/orgs/settings.py`, mirroring
+    `list_org_modules`/`update_org_module_enablement`'s existing shape and
+    audit-logging call (`log_event`) exactly, gated by `require_org_role(OrgRole.ORG_ADMIN)`.
+  - Project-level override setter: new endpoints in
+    `backend/app/routers/projects/module_roles.py` (already the home for
+    "which module roles/nav entries are currently available on this
+    project" — the natural existing location for a second
+    project-scoped, module-related settings surface), gated by whatever
+    this codebase's existing project-admin-equivalent role dependency is
+    (check `require_project_manage`/an equivalent — do not invent a new
+    role for this). Response should include the *effective* state, the org
+    default, and whether a project-level override exists, so the frontend
+    can render the UX style guide's "platform-default override visibility"
+    pattern (a project admin should see "using org default: disabled" vs.
+    "overridden to: enabled" distinctly, not just a flat toggle) —
+    Principle already named directly in `docs/ux-style-guide.md`, this is
+    a textbook case for it.
+- **Frontend: deferred, not built in this phase (Decided by: Agent,
+  2026-09-28, when this phase's implementation was scoped).** Context &
+  Strategy — the only real consumer this phase has — has no artefact UI of
+  its own yet (that's its own Phase 7); a project admin toggling "Pain
+  Points on/off" with no Pain Points page to show for it is exactly the
+  half-finished-implementation shape `CLAUDE.md` warns against, and
+  building a new project-admin settings surface speculatively ahead of any
+  feature that needs it is premature. Build this phase as **backend-only**
+  (registry, models, migration, resolution function, RBAC dependency,
+  endpoints, tests) plus wiring Strategy's own `sub_components` entry and
+  switching its endpoints onto the new dependency. The org admin page's
+  existing whole-module toggle UI and any new project-admin settings
+  surface both get their frontend once Context & Strategy's own Phase 7
+  lands and there's a real artefact list to gate — extend the existing
+  shared toggle component then rather than building one now with nothing
+  to demonstrate it against.
+
+**Not in scope for this phase:** wiring any specific module's own
+sub-components into `sub_components=` — that's each consuming module's own
+job, done as part of building the relevant artefact type. Context &
+Strategy's own Phase 1 (Strategy) should be updated to declare its
+`sub_components` entry and gate its endpoints with
+`require_project_subcomponent_enabled` once this phase's infrastructure
+exists — coordinate so the two changes don't collide (Module 1 Phase 1's
+own implementation may already be underway using only the whole-module
+gate; fold this in as a follow-up on that same artefact rather than a
+second, redundant enablement mechanism).
+
+**Verification bar:** a test organisation/project pair exercises all four
+resolution paths (registry default; org default overriding registry
+default; project override overriding org default; whole-module-disabled
+overriding everything) against a fake `ModuleDefinition` with
+`sub_components` set, not a real content module, so this phase's own test
+suite doesn't depend on Context & Strategy existing yet. `ruff check .`
+clean; full backend pytest suite green (single invocation, per this
+repo's no-concurrent-pytest rule).
+
+**Phase 4 outcome (2026-09-28), Decided by: Agent (all judgment calls
+below; every scope/design decision was already user-approved before this
+implementation pass, per the "Scope decisions" list above)** — built
+exactly as designed:
+
+- `ModuleSubComponentDefinition` (`backend/app/modules/registry.py`) and
+  `ModuleDefinition.sub_components` (empty-default tuple).
+- `OrganizationModuleSubComponentDefault`/`ProjectModuleSubComponentEnablement`
+  (`backend/app/models/module.py`), migration `0049_module_subcomponent_
+  enablement.py` (`backend/alembic/versions/`, chained off `0048` — Context
+  & Strategy's own Phase 1 migration, landed the same day by a different
+  agent) — a core migration, not module-colocated, matching how this
+  plan's own Phase 1/2 migrations are placed.
+- `is_module_subcomponent_enabled`/`is_org_module_subcomponent_enabled`
+  (`backend/app/modules/registry.py`) and `require_project_subcomponent_
+  enabled`/`require_org_subcomponent_enabled` (`backend/app/services/
+  rbac.py`).
+- Org-tier `GET`/`PUT /orgs/{id}/modules/{module_key}/subcomponents[/{key}]`
+  (`backend/app/routers/orgs/settings.py`) and project-tier `GET`/`PUT
+  /projects/{id}/modules/{module_key}/subcomponents[/{key}]`
+  (`backend/app/routers/projects/module_roles.py`, gated by `require_
+  project_manage` — the same project-settings-management dependency every
+  other project-settings endpoint already uses, no new role). Both `GET`s
+  return the effective state alongside the org default/registry default
+  and whether an override exists, per the plan's own "platform-default
+  override visibility" requirement.
+
+**The org-scoped-Strategy gating design question the task brief flagged
+was resolved (Decided by: Agent, flagged prominently as instructed):**
+Context & Strategy's org-scoped Strategy records have no `project_id` at
+all — there is no project for `ProjectModuleSubComponentEnablement` to
+hold an override against. Rather than inventing a second, parallel
+override mechanism for the org-scoped half, `is_org_module_subcomponent_
+enabled`/`require_org_subcomponent_enabled` simply omit the project-
+override tier: the organisation's own `OrganizationModuleSubComponentDefault`
+row (or, absent one, the registry default) *is* the effective value for
+an org-scoped artefact, not merely a fallback beneath a higher tier that
+doesn't exist for it. This reuses the exact same org-default table/
+endpoint the project-scoped resolution's own tier 3 already uses — one
+org-admin lever means "the default a project may override" for
+project-scoped artefacts and "the actual on/off state" for org-scoped
+ones, since those are the same thing from an org admin's point of view
+when there is no project to override it. Recorded here and in `docs/
+decisions.md`'s "Module 0 (Platform Foundations) Phase 4" entry, and in
+`docs/soc2/policies/access-control-policy.md`'s Authorization section
+(item 4's block), per the SOC 2 change-management requirement to record
+this class of decision where the policy documents the surrounding
+authorization scopes.
+
+Context & Strategy's Strategy artefact is wired onto this mechanism as
+its first real consumer: `sub_components=(ModuleSubComponentDefinition
+(key="strategy", ...),)` on its `ModuleDefinition`
+(`backend/app/modules/context_strategy/module.py`); `project_router.py`'s
+`_require_view` switched from `require_project_module_enabled` to
+`require_project_subcomponent_enabled("context_strategy", "strategy")`;
+`router.py`'s `_require_view` switched from `require_org_module_enabled`
+to `require_org_subcomponent_enabled("context_strategy", "strategy")`.
+Both dependencies still check whole-module enablement internally first,
+so this is a strict narrowing of each router's original gate, not a
+parallel or weaker one.
+
+**A real bug found and fixed during this phase's own verification, not
+just a test artefact:** both new sub-component endpoints' `log_event`
+calls originally built `entity_id=f"{organization_id_or_project_id}:
+{module_key}:{subcomponent_key}"` — a UUID (36 chars) plus two colon-
+joined keys, which overflows `audit_events.entity_id`'s `VARCHAR(64)`
+column for any real module/sub-component key pair only moderately longer
+than Context & Strategy's own `"context_strategy:strategy"` (already a
+tight 63-of-64 fit). Caught directly by this phase's own test suite (a
+deliberately-named fixture module key reproduced the overflow, not a
+contrived edge case). Fixed by dropping the UUID prefix in both — the
+organisation/project id is already its own dedicated `AuditEvent` column,
+so `entity_id=f"{module_key}:{subcomponent_key}"` loses no real
+information and stays comfortably under the limit.
+
+**Testing:** `backend/tests/test_module_subcomponent_enablement.py` (new)
+covers all four resolution paths against a fake two-sub-component module
+(mirroring `test_module_registry.py`'s own `fake_module` fixture
+convention) plus the org-/project-tier admin endpoints and both RBAC
+dependencies' 404-not-403 behaviour. `backend/app/modules/context_strategy/
+tests/test_context_strategy_api.py` gained three real end-to-end tests
+against the actual Strategy endpoints: project-scoped 404 when the org
+default disables `"strategy"`, a project override re-enabling it over that
+org default, and the org-scoped 404 counterpart. Full backend pytest suite
+run as a single invocation against the `tests/container` Docker Compose
+stack (backend rebuilt/recreated first); `ruff check .` clean. See this
+plan's own "Files changed" note in `docs/decisions.md` for the exact
+pass count.
+
+**Frontend:** deliberately not built this phase, per the "Frontend:
+deferred" design note above — no change to `frontend/` at all.
+
+## Phase 5 — Project-level override of whole-module enablement
+
+**Added 2026-09-28, at the user's explicit request**, immediately after
+Phase 4 shipped: today, whole-module enablement (`OrganizationModuleEnablement`)
+has no project-level override at all — the org's own row is the one and
+only effective value for every project in that org, full stop. The user's
+framing: the org's enablement row is already, conceptually, "the org-wide
+default every project gets" — this phase just gives a project the same
+override lever over *that* default that Phase 4 just gave it over each
+*sub-component's* default. Same shape, one level up the same stack
+(registry default → org default → project override), not a new concept.
+
+**Scope decision, Decided by: User (asked directly, 2026-09-28):** the
+project override is **symmetric** — a project admin's own choice always
+wins over the org default, in either direction (can enable a module the
+org's own default has off, or disable one the org's default has on).
+Matches the rule Phase 4 already established for sub-components, chosen
+for the same consistency reason over a one-directional ("can only narrow")
+alternative that was also raised and explicitly rejected.
+
+**Design (Decided by: Agent, following directly from the above, mirroring
+Phase 4's own shape exactly):**
+
+- New model (`backend/app/models/module.py`, alongside `OrganizationModuleEnablement`):
+  `ProjectModuleEnablement` — `project_id` FK, `module_key`, `enabled`,
+  `updated_by`; unique on `(project_id, module_key)`. Same
+  explicit-override-only shape: absence of a row means "use the org's own
+  `OrganizationModuleEnablement` row, or the registry default if the org
+  has none either." Project-admin-managed (`require_project_manage`, same
+  dependency Phase 4's project-tier sub-component endpoints already use).
+- Resolution: a new `is_module_enabled_for_project(db, project_id,
+  module_key)` in `backend/app/modules/registry.py`, replacing the
+  project-resolution path that today just calls the org-level
+  `is_module_enabled` directly. Order: entitlement check first (unchanged,
+  still an absolute ceiling no override tier can cross — an org not
+  entitled to a module stays disabled for every one of its projects no
+  matter what any override says); then `ProjectModuleEnablement` (project
+  override, highest precedence); then `OrganizationModuleEnablement` (org
+  default); then the registry's own `default_enabled`.
+- **Phase 4's own sub-component resolution must be repointed onto this**:
+  `is_module_subcomponent_enabled`'s current first step ("calls the
+  existing `is_module_enabled` for the project's owning organisation")
+  needs to call the new `is_module_enabled_for_project` instead, so a
+  project that has used *this* phase's override to disable a whole module
+  correctly disables all of that module's sub-components too, not just
+  the org-level disable case Phase 4 alone could see. This is the one
+  piece of this phase that isn't purely additive — get it right, and add a
+  regression test proving a project-level whole-module override correctly
+  cascades to sub-component resolution (Phase 4's own tests only proved
+  the *org-level* disable case cascades; that's not the same code path
+  once this phase's project-override tier exists ahead of it).
+- RBAC: `require_project_module_enabled`/`require_project_module_enabled_dynamic`
+  (`backend/app/services/rbac.py`) switch from resolving the project's
+  `organization_id` and calling `is_module_enabled` directly, to calling
+  the new `is_module_enabled_for_project` — same 404-not-403 behaviour,
+  same call sites, no router changes needed anywhere else in the app
+  purely from this switch (every existing module-gated endpoint keeps
+  working unchanged; only the resolution *depth* changes, and every
+  existing project keeps its current effective state on migration day —
+  correct by construction, since day one has zero `ProjectModuleEnablement`
+  rows and the fallback is exactly today's org-only behaviour).
+- Endpoints: `GET`/`PUT /projects/{project_id}/modules/{module_key}` in
+  `backend/app/routers/projects/module_roles.py`, alongside Phase 4's own
+  sub-component endpoints in the same file — same effective-state/org-
+  default/override-exists response shape, same "platform-default override
+  visibility" UX principle.
+- **Org-scoped artefacts** (e.g. Context & Strategy's own org-scoped
+  Strategy rows) have no project to hold this override against, the exact
+  same situation Phase 4 already resolved for org-scoped sub-component
+  gating: `require_org_module_enabled` is untouched by this phase and
+  remains the sole gate for org-scoped endpoints — this phase only adds a
+  *project*-level tier, it doesn't change what already governs an
+  org-scoped artefact.
+- **Frontend:** deferred, same reasoning as Phase 4 — no consuming feature
+  exists yet to gate. Pick up together with Phase 4's own deferred
+  frontend once Context & Strategy's Phase 7 (or any other module's
+  frontend) actually ships.
+
+**Verification bar:** same four-path test shape as Phase 4
+(registry/org/project/entitlement precedence) plus the cascade regression
+test named above; full backend pytest suite green (single invocation);
+`ruff check .` clean.
+
+**Phase 5 outcome (2026-09-28), Decided by: Agent (all judgment calls
+below; the symmetric-override scope decision itself was already user-
+approved before this implementation pass)** — built exactly as designed,
+plus one class of gap found during implementation and fixed in the same
+pass rather than deferred:
+
+- `ProjectModuleEnablement` (`backend/app/models/module.py`), migration
+  `0050_project_module_enablement.py` (`backend/alembic/versions/`,
+  chained off `0049` — Phase 4's own migration), `is_module_enabled_for_
+  project` (`backend/app/modules/registry.py`), `GET`/`PUT /projects/{id}/
+  modules/{module_key}` (`backend/app/routers/projects/module_roles.py`,
+  gated by `require_project_manage`), all exactly as specced.
+- `is_module_subcomponent_enabled`'s whole-module check repointed onto
+  `is_module_enabled_for_project` (was: the org-only `is_module_enabled`)
+  — the one specifically-flagged non-additive change, with its own
+  regression test (`test_project_level_whole_module_override_cascades_to_
+  subcomponent_resolution`, `backend/tests/test_project_module_
+  enablement.py`).
+- `require_project_module_enabled`/`require_project_module_enabled_dynamic`
+  switched onto `is_module_enabled_for_project`, per spec.
+
+**Found during implementation, fixed in the same pass (not deferred,
+per this repo's fix-don't-defer rule) — three more project-scoped call
+sites that resolved `organization_id` from `project_id` and then checked
+the org-only `is_module_enabled` directly, the identical class of gap this
+phase's own brief already flagged for `is_module_subcomponent_enabled`,
+just not enumerated exhaustively there:**
+
+1. `list_project_enabled_modules` (`backend/app/routers/projects/
+   module_roles.py`) — the project nav-rail listing endpoint. Left
+   unfixed, a project that used this phase's own override to disable a
+   module would still show its nav entry (a dead link, 404 on click), and
+   a project that enabled a module its organisation's default has off
+   would never see the nav entry appear at all. Repointed onto
+   `is_module_enabled_for_project`.
+2. `require_module_role`'s project-scoped branch (`backend/app/services/
+   rbac.py`) — gates every project-scoped module-contributed role
+   (Compliance's `compliance_officer`, Decision Management's
+   `decision_owner`, Context & Strategy's `strategy_owner`/`strategy_
+   approver`). Left unfixed, a project-level whole-module override would
+   correctly 404 `require_project_module_enabled`-gated endpoints but
+   silently *not* 404 `require_module_role`-gated ones for the same
+   module — an authorization-surface inconsistency, not just a display
+   one. Repointed onto `is_module_enabled_for_project`; regression test
+   `test_require_module_role_project_scope_respects_phase5_project_
+   override` added to `backend/tests/test_module_contributed_roles.py`
+   (both override directions: project disables over an enabled org
+   default, and project enables over a disabled org default).
+3. `_module_role_permission_grants` (inside `get_effective_permissions`,
+   `backend/app/services/rbac.py`) — whether a module-contributed role's
+   optional `permissions` field (Fine-Grained Access Control) contributes
+   to a caller's effective permission set. Same class of gap, same fix
+   (branches on `is_module_enabled_for_project` when `project_id` is
+   given, keeps the org-only `is_module_enabled` when it isn't); regression
+   test `test_module_role_permissions_field_absent_when_project_level_
+   override_disables` added to `backend/tests/test_effective_permissions.py`.
+
+Searched exhaustively for every other `is_module_enabled(` call site in
+`backend/app` resolving its `organization_id` from a `project_id` first
+(`require_project_role`/`require_project_view`, `require_project_
+subcomponent_enabled`, `require_permission`'s own scope-resolution branch)
+— none of the rest needed a change: the first two check core project
+roles, not module enablement, at all; `require_project_subcomponent_
+enabled` already resolves via `is_module_subcomponent_enabled`, itself
+fixed by this phase; `require_permission` has no direct `is_module_
+enabled` call of its own, relying entirely on `get_effective_permissions`
+(fixed above).
+
+**A fourth bug, the same class Phase 4's own two sub-component endpoints
+already hit and fixed:** this phase's new project-level whole-module
+`log_event` call originally built `entity_id=f"{project_id}:{module_key}"`
+— same `AuditEvent.entity_id` `VARCHAR(64)` overflow risk one tier up.
+Fixed the same way, dropping the UUID prefix (`entity_id=module_key`
+alone; `project_id` is already its own dedicated column).
+
+**A fifth, more severe bug found during this phase's own verification —
+a real routing collision, not a resolution-logic gap:** the new `GET`/
+`PUT /projects/{project_id}/modules/{module_key}` endpoints, as originally
+built, were mounted on the core `routers.projects` router — included into
+the app in `main.py` **before** the mount loop that adds each registered
+module's own `get_project_router()`. Since `{module_key}` is an ordinary
+path parameter, it matches *any* literal segment at that position,
+including a real module's own key. Decision Management's project router
+(`app.modules.decisions.project_router.core`) declares a bare `GET ""`/
+`POST ""` at its own literal base path,
+`/api/v1/projects/{project_id}/modules/decisions` — so
+`GET /api/v1/projects/{project_id}/modules/decisions` matched *this
+phase's* new generic endpoint first (registered earlier), silently
+returning a `ProjectModuleEnablementOut` body instead of the expected
+list of decisions. Caught by the full pytest suite itself: `app/modules/
+decisions/tests/test_decisions_api.py::
+test_create_get_list_update_and_lock_after_approval` started failing with
+`TypeError: string indices must be integers, not 'str'` (iterating a dict
+response body as if it were a list) the moment this phase's endpoints
+were added — a real, would-have-shipped regression against an existing,
+already-working module, not a hypothetical.
+
+Fixed by adding a distinguishing path segment, `/enablement`, mirroring
+Phase 4's own `/subcomponents` convention one field over
+(`GET`/`PUT /projects/{project_id}/modules/{module_key}/enablement`) —
+structurally impossible for a module's own bare-base route to collide
+with, current or future, since no module route in this codebase uses an
+`/enablement` (or `/subcomponents`) literal segment of its own (checked
+directly, not assumed). Verified two ways: (1) a heuristic route-table
+scan of every registered `app.routes` entry, grouping by method and
+segment count and flagging any pair differing only in wildcard-vs-literal
+position, confirmed no other pair actually risks a real-world collision
+(the remaining flagged pairs are either pre-existing, already-correctly-
+ordered literal-before-wildcard pairs, like `orgs/creation-choices` before
+`orgs/{organization_id}`, or theoretically flagged pairs that can only
+collide if a UUID-typed path parameter like `decision_id` happened to
+literally equal a reserved suffix word, which cannot occur since real ids
+are database-generated UUIDs); (2) a new regression test,
+`test_project_module_enablement_endpoint_does_not_shadow_a_modules_own_
+bare_project_router_route` (`backend/tests/test_project_module_
+enablement.py`), exercises the **real, `main.py`-registered** `decisions`
+module (not a fake fixture module, since the bug is specifically about
+whole-app route registration order, which a fixture module appended to
+`INSTALLED_MODULES` at test time doesn't reproduce the same way) and
+asserts `GET /api/v1/projects/{project_id}/modules/decisions` still
+returns a real (empty) list of decisions, not this phase's own response
+shape.
+
+**Testing:** `backend/tests/test_project_module_enablement.py` (new)
+covers `is_module_enabled_for_project`'s four resolution paths against a
+fake module, the cascade regression, `require_project_module_enabled`/
+`require_project_module_enabled_dynamic`'s 404/pass behaviour under a
+project override in both directions, and the project-tier whole-module
+endpoints. Full backend pytest suite run as a single invocation against
+the `tests/container` Docker Compose stack (backend rebuilt/recreated
+first); `ruff check .` clean. See this plan's own "Files changed" note in
+`docs/decisions.md` for the exact pass count.
+
+**Frontend:** deliberately not built this phase, same reasoning as Phase
+4 — no change to `frontend/` at all.
+
+**Addendum (Decided by: Agent — the coordinating/reviewing session, not
+the implementing one):** while independently re-verifying this phase, the
+coordinating session found and fixed one more issue, narrower than the
+four above and not a design/implementation gap in the shipped code
+itself: `backend/tests/test_project_module_enablement.py`'s own
+`FAKE_MODULE_KEY` fixture (`"fake_project_enablement_test_module"`, 36
+characters) combined with a 36-character UUID in the *pre-existing*
+`update_org_module_enablement`'s audit-log call
+(`entity_id=f"{organization_id}:{module_key}"`, `backend/app/routers/orgs/
+settings.py`, unrelated to and predating both Module 0 phases) to exceed
+`audit_events.entity_id`'s `VARCHAR(64)` column, raising `psycopg2.errors.
+StringDataRightTruncation` inside that one test. Fixed by shortening the
+fixture to `"fake_pme_test_module"` (21 characters) rather than touching
+the pre-existing endpoint — no real, currently-registered module key
+(`compliance`, `decisions`, `context_strategy`, `fine_grained_access_
+control`) comes anywhere near the ~27-character budget that column
+actually allows once a UUID and a colon are accounted for, so this was a
+test-fixture-only fix, not a product defect.
 
 ## Related, non-blocking: patterns worth a shared convention but not shared infrastructure
 

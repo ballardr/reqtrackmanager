@@ -1008,6 +1008,50 @@ def create_decision_supersession(headers: dict, project_id: str, new_decision_id
     return r.json()
 
 
+# --- Context & Strategy module helpers (docs/plans/module-01-context-and-
+# strategy-plan.md Phase 1) -------------------------------------------------
+
+
+def create_org_strategy(headers: dict, org_id: str, **fields) -> dict:
+    r = httpx.post(f"{BASE}/orgs/{org_id}/modules/context_strategy/strategies", json=fields, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_project_strategy(headers: dict, project_id: str, **fields) -> dict:
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/modules/context_strategy/strategies", json=fields, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_org_strategy(headers: dict, org_id: str, strategy_id: str, *, approval_comment: str = "") -> dict:
+    """Walks an org-scoped Strategy through `Draft -> Proposed -> Under
+    Review -> Approved -> Active` in one call, for a demo Strategy meant to
+    already read as settled and in force."""
+    base = f"{BASE}/orgs/{org_id}/modules/context_strategy/strategies/{strategy_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def propose_and_approve_project_strategy(
+    headers: dict, project_id: str, strategy_id: str, *, approval_comment: str = ""
+) -> dict:
+    """Project-scoped sibling of `propose_and_approve_org_strategy`."""
+    base = f"{BASE}/projects/{project_id}/modules/context_strategy/strategies/{strategy_id}"
+    httpx.post(f"{base}/propose", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/submit-for-review", headers=headers, timeout=30).raise_for_status()
+    httpx.post(f"{base}/approve", json={"comment": approval_comment}, headers=headers, timeout=30).raise_for_status()
+    r = httpx.post(f"{base}/activate", json={}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1653,6 +1697,45 @@ def main() -> None:
         " internal test fleet but not for a customer-operated one.",
     )
 
+    print("Seeding Context & Strategy (Module 1) — enabling the module, then an org Strategy and a project Strategy...")
+    # default_enabled=False (docs/plans/module-01-context-and-strategy-plan.md
+    # Phase 1) — an org must opt in explicitly, same as Decision Management above.
+    enable_module(h_pm, org["id"], "context_strategy")
+    org_strategy = create_org_strategy(
+        h_pm, org["id"], title="Lead the market in autonomous aerial inspection",
+        objective="Become the preferred aerial-inspection platform for critical infrastructure operators.",
+        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        desired_future_state="The default choice for utility/infrastructure operators evaluating autonomous"
+        " inspection within three years.",
+        rationale="Infrastructure operators are moving from manual to autonomous inspection faster than"
+        " expected; being the default choice compounds through data/training-set advantages over time.",
+        expected_outcomes="Majority market share among utility-scale inspection contracts within three years.",
+        constraints="Regulatory approval timelines for BVLOS operations vary significantly by jurisdiction.",
+        measures_of_success="Contracted inspection routes under management; win rate on competitive RFPs.",
+        priority="high", time_horizon="long_term",
+    )
+    propose_and_approve_org_strategy(
+        h_pm, org["id"], org_strategy["id"],
+        approval_comment="Approved at the organisation's strategy review; supersedes no prior strategy.",
+    )
+    drone_strategy = create_project_strategy(
+        h_pm, drone["id"], title="Falcon-3: win the populated-corridor inspection contract",
+        objective="Deliver a dual-redundant inspection platform certified for flight over populated"
+        " infrastructure corridors.",
+        current_state="Single-controller platform flying test routes over unpopulated terrain only.",
+        desired_future_state="Dual-redundant platform certified and contracted for populated-corridor routes.",
+        rationale="Directly implements the organisation's Strategy above — populated-corridor contracts are"
+        " the largest near-term source of the market share that Strategy targets.",
+        expected_outcomes="Signed populated-corridor inspection contract within the next fiscal year.",
+        constraints="Airframe payload budget limits redundancy to dual, not triple, modular redundancy.",
+        measures_of_success="Certification sign-off date; contract value signed.",
+        priority="high", time_horizon="medium_term",
+    )
+    propose_and_approve_project_strategy(
+        h_pm, drone["id"], drone_strategy["id"],
+        approval_comment="Approved — directly traces to the dual-redundant flight controller Decision above.",
+    )
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -1677,6 +1760,8 @@ def main() -> None:
     print("  Decision Management (enabled org-wide): 3 Decisions on Falcon-3 — the single-flight-controller"
           " decision (Approved, then Superseded), the dual-redundant decision that supersedes it (Approved),"
           " and an OTA-signing decision left in Draft")
+    print("  Context & Strategy (enabled org-wide): 1 organisation Strategy (Active) and 1 project Strategy on"
+          " Falcon-3 (Active), tracing the org's market-share objective down to the dual-redundant contract win")
 
 
 if __name__ == "__main__":

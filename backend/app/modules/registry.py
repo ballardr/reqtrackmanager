@@ -235,6 +235,48 @@ class EntityScopeDefinition:
 
 
 @dataclass(frozen=True)
+class ModuleSubComponentDefinition:
+    """Declares one independently toggleable sub-component of a module
+    (Module 0 — Platform Foundations — Phase 4, added 2026-09-28 at the
+    user's explicit request: "can a project admin turn off just Strategy
+    while keeping Pain Points on" rather than only the whole module at
+    once). Same shape/spirit as the sibling `ModuleRoleDefinition`/
+    `EntityScopeDefinition` dataclasses above — a module declares a tuple
+    of these on `ModuleDefinition.sub_components` rather than a core file
+    hand-maintaining a per-module list, the same Modular Feature System
+    Boundary reasoning `artefact_types`/`org_creation_choices` already
+    follow one concern earlier.
+
+    Every `ModuleDefinition.sub_components` entry is one of these.
+    `is_module_subcomponent_enabled`/`is_org_module_subcomponent_enabled`
+    (below) resolve a given `(module_key, subcomponent_key)` pair's
+    effective enabled state — project override, then org default, then
+    this dataclass's own `default_enabled` — see those functions'
+    docstrings for the full two-tier resolution formula and
+    `docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section
+    for the full design record.
+
+    Attributes:
+        key: Stable identifier for this sub-component, unique within its
+            declaring module (e.g. `"strategy"`, `"future_state"`,
+            `"pain_point"`) — used as the `subcomponent_key` column value
+            in `OrganizationModuleSubComponentDefault`/
+            `ProjectModuleSubComponentEnablement`, so it must never change
+            once a deployment has rows keyed on it.
+        name: Human-readable display name shown in admin UIs (e.g.
+            "Strategy").
+        default_enabled: Whether a project/organisation with no explicit
+            override row for this sub-component gets it enabled by
+            default — this dataclass's own analogue of `ModuleDefinition.
+            default_enabled` one tier down.
+    """
+
+    key: str
+    name: str
+    default_enabled: bool = True
+
+
+@dataclass(frozen=True)
 class ModuleFrontendManifest:
     """Declares a module's frontend integration (compliance-module-plan.md
     Phase 3's two-tier frontend module system, extended with a third tier —
@@ -1157,6 +1199,17 @@ class ModuleDefinition:
             can reach it too, not just `require_module_role`. Additive and
             defaulted empty — a module with no entity-scoped role of its own
             (every module before Compliance) simply leaves this empty.
+        sub_components: Module 0 (Platform Foundations) Phase 4 —
+            independently toggleable sub-components of this module (e.g.
+            Context & Strategy's `"strategy"`/`"future_state"`/
+            `"pain_point"`/`"guiding_principle"`/`"open_question"`), each a
+            `ModuleSubComponentDefinition`. Resolved by `is_module_
+            subcomponent_enabled`/`is_org_module_subcomponent_enabled`
+            (below), gated behind `app.services.rbac.require_project_
+            subcomponent_enabled`/`require_org_subcomponent_enabled`.
+            Empty tuple (the default) for a module with no sub-component-
+            level toggling of its own — every module before Context &
+            Strategy's own `"strategy"` entry needs no change.
     """
 
     key: str
@@ -1187,6 +1240,7 @@ class ModuleDefinition:
     artefact_types: tuple[str, ...] = field(default=())
     subtype_providers: dict[str, Callable[[Session, uuid.UUID], list[str]]] = field(default_factory=dict)
     entity_scopes: dict[str, EntityScopeDefinition] = field(default_factory=dict)
+    sub_components: tuple[ModuleSubComponentDefinition, ...] = field(default=())
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -1481,6 +1535,253 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     if override is not None:
         return override.enabled
     return definition.default_enabled
+
+
+def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str) -> bool:
+    """Resolves the *effective* enabled state of `module_key` for one
+    specific project (Module 0 — Platform Foundations — Phase 5, added
+    immediately after Phase 4's own sub-component layer) — a project-level
+    override one tier below `is_module_enabled`'s own org-level result.
+
+    Resolution order (first that applies wins):
+
+    1. Not entitled (`is_module_entitled` false, for the project's owning
+       organisation) -> `False` immediately, no further lookup —
+       entitlement remains an absolute ceiling no override tier below it
+       can cross, the same "entitled AND (...)" formula `is_module_enabled`
+       already applies one tier up.
+    2. An explicit `ProjectModuleEnablement` row for this project -> that
+       row's `enabled` (**symmetric**: a project admin's own choice always
+       wins over the org default, in either direction — Decided by: User,
+       2026-09-28, matching the rule Phase 4 already established for
+       `ProjectModuleSubComponentEnablement`).
+    3. No project override -> falls back to `is_module_enabled` for the
+       project's owning organisation (org override if present, else the
+       registry's own `default_enabled`) — i.e. every project's effective
+       state is unchanged from before this phase existed until a project
+       admin actually sets an override of their own; day one has zero
+       `ProjectModuleEnablement` rows, so every project's behaviour is
+       correct by construction.
+
+    Also returns `False` if `module_key` isn't registered or `project_id`
+    doesn't resolve to a real project — mirrors `is_module_enabled`'s own
+    "unregistered/absent behaves as disabled, not an error" posture.
+
+    `require_project_module_enabled`/`require_project_module_enabled_dynamic`
+    (`app.services.rbac`) call this instead of resolving `organization_id`
+    and calling `is_module_enabled` directly — every existing module-gated
+    project endpoint keeps working unchanged from this switch alone, since
+    it's a pure resolution-depth change with an identical result until a
+    project override row actually exists.
+
+    `is_module_subcomponent_enabled`'s own first (whole-module) check also
+    calls this, not the org-only `is_module_enabled`, so a project-level
+    whole-module override correctly cascades to disable/enable that
+    module's sub-components too — see that function's own docstring.
+
+    Args:
+        db: An active database session.
+        project_id: The project to resolve `module_key`'s state for.
+        module_key: The module's registry key.
+
+    Returns:
+        The effective enabled state, per the resolution order above.
+    """
+    # Deferred import, same circular-import reason `is_module_subcomponent_
+    # enabled` below documents on its own identical import.
+    from app.services.rbac import _project_organization_id
+
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is None:
+        return False
+    if get_module(module_key) is None:
+        return False
+    if not is_module_entitled(db, organization_id, module_key):
+        return False
+
+    from app.models.module import ProjectModuleEnablement
+
+    project_override = db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+    if project_override is not None:
+        return project_override.enabled
+
+    return is_module_enabled(db, organization_id, module_key)
+
+
+def _find_subcomponent_definition(module_key: str, subcomponent_key: str) -> ModuleSubComponentDefinition | None:
+    """Looks up one `ModuleSubComponentDefinition` by key off the registered
+    module's own `ModuleDefinition.sub_components` — `None` if the module
+    itself isn't registered, or is registered but never declared a
+    sub-component with this key. Shared by `is_module_subcomponent_enabled`/
+    `is_org_module_subcomponent_enabled` below."""
+    definition = get_module(module_key)
+    if definition is None:
+        return None
+    return next((s for s in definition.sub_components if s.key == subcomponent_key), None)
+
+
+def _resolve_org_subcomponent_default(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+    subcomponent: ModuleSubComponentDefinition,
+) -> bool:
+    """Resolves the organisation-tier default for one sub-component: an
+    explicit `OrganizationModuleSubComponentDefault` row if one exists,
+    else the registry's own `ModuleSubComponentDefinition.default_enabled`
+    — the org-tier half of both `is_module_subcomponent_enabled` (where it
+    is only the *fallback* below a project override) and
+    `is_org_module_subcomponent_enabled` (where, for an org-scoped
+    artefact with no project tier above it, it is the *effective* value
+    outright). Shared so the two callers can't drift."""
+    from app.models.module import OrganizationModuleSubComponentDefault
+
+    org_default = db.scalar(
+        select(OrganizationModuleSubComponentDefault).where(
+            OrganizationModuleSubComponentDefault.organization_id == organization_id,
+            OrganizationModuleSubComponentDefault.module_key == module_key,
+            OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
+        )
+    )
+    if org_default is not None:
+        return org_default.enabled
+    return subcomponent.default_enabled
+
+
+def is_module_subcomponent_enabled(
+    db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """Resolves the *effective* enabled state of one project-scoped
+    sub-component of `module_key` (Module 0 — Platform Foundations —
+    Phase 4) — the generic mechanism behind "keep Pain Points on, turn off
+    Strategy" for a project admin, without a per-module hand-edit.
+
+    Resolution order (first that applies wins):
+
+    1. Whole-module disabled (`is_module_enabled_for_project` false, for
+       this project — Module 0 Phase 5's own project-level whole-module
+       override, falling back to the org-level `is_module_enabled` result
+       absent one) -> `False` immediately, no further lookup — a disabled
+       whole module always wins over any sub-component state, same
+       "indistinguishable from not existing" posture `require_project_
+       module_enabled` already gives the whole module. Checking the
+       project-level resolution here (not just the org-level one) is what
+       makes a project's own whole-module override correctly cascade to
+       disable/enable that module's every sub-component too, not only the
+       org-level disable case.
+    2. An explicit `ProjectModuleSubComponentEnablement` row for this
+       project -> that row's `enabled` (a project admin's own choice
+       always wins over the org default).
+    3. An explicit `OrganizationModuleSubComponentDefault` row for the
+       project's owning organisation -> that row's `enabled` (the org-wide
+       policy lever).
+    4. Neither row exists -> the registry's own `ModuleSubComponentDefinition.
+       default_enabled`.
+
+    Also returns `False` if `module_key` isn't registered, or is
+    registered but never declared a sub-component with this `subcomponent_
+    key` — mirrors `is_module_enabled`'s own "unregistered key behaves as
+    disabled, not an error" posture, so a stale/typo'd key is indistinguishable
+    from a disabled one through the RBAC dependency that calls this
+    (`app.services.rbac.require_project_subcomponent_enabled`), rather than
+    a 500.
+
+    Args:
+        db: An active database session.
+        project_id: The project to resolve this sub-component's state for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's key, as declared in that
+            module's own `ModuleDefinition.sub_components`.
+
+    Returns:
+        The effective enabled state, per the resolution order above.
+    """
+    # Deferred import: `app.services.rbac` imports this module at load time
+    # (for `is_module_enabled`/`get_module`), so importing it back here at
+    # module top-level would be circular — reusing its existing project ->
+    # organisation resolution helper instead of duplicating that lookup.
+    from app.services.rbac import _project_organization_id
+
+    organization_id = _project_organization_id(db, project_id)
+    if organization_id is None:
+        return False
+    if not is_module_enabled_for_project(db, project_id, module_key):
+        return False
+
+    subcomponent = _find_subcomponent_definition(module_key, subcomponent_key)
+    if subcomponent is None:
+        return False
+
+    from app.models.module import ProjectModuleSubComponentEnablement
+
+    project_override = db.scalar(
+        select(ProjectModuleSubComponentEnablement).where(
+            ProjectModuleSubComponentEnablement.project_id == project_id,
+            ProjectModuleSubComponentEnablement.module_key == module_key,
+            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
+        )
+    )
+    if project_override is not None:
+        return project_override.enabled
+
+    return _resolve_org_subcomponent_default(db, organization_id, module_key, subcomponent_key, subcomponent)
+
+
+def is_org_module_subcomponent_enabled(
+    db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
+) -> bool:
+    """Org-scoped sibling of `is_module_subcomponent_enabled`, for a
+    sub-component of an **org-scoped** artefact (Module 0 Phase 4's own
+    "Decided by: Agent" resolution to the org-scoped-gating design
+    question — see `docs/decisions.md`'s "Module 0 (Platform Foundations)
+    Phase 4" entry, and `docs/plans/module-00-platform-foundations-plan.md`'s
+    Phase 4 section, for the full reasoning).
+
+    An org-scoped artefact (e.g. Context & Strategy's org-scoped Strategy
+    records) has no `project_id` for `ProjectModuleSubComponentEnablement`
+    to key an override against — there is no "project" in the picture at
+    all. Rather than inventing a second, parallel override mechanism for
+    this case, this function simply omits the project-override tier
+    entirely: the organisation's own `OrganizationModuleSubComponentDefault`
+    (or, absent one, the registry's own `default_enabled`) *is* the
+    effective value for an org-scoped artefact, not merely a fallback
+    default below some higher tier. This reuses the exact same org-default
+    table/endpoint the project-scoped resolution's own tier 3 already
+    uses — an org admin sets one value per `(module_key, subcomponent_key)`
+    that means "the default a project may override" for project-scoped
+    artefacts and, simultaneously, "the actual on/off state" for org-scoped
+    ones, since those are the same lever from the org admin's point of view
+    (there is nothing else to set for an org-scoped artefact).
+
+    Same whole-module-disabled-wins-first and unregistered-key-behaves-as-
+    disabled posture as `is_module_subcomponent_enabled` — see that
+    function's docstring.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation to resolve this sub-component's
+            state for.
+        module_key: The declaring module's registry key.
+        subcomponent_key: The sub-component's key, as declared in that
+            module's own `ModuleDefinition.sub_components`.
+
+    Returns:
+        The effective enabled state: `False` if the whole module is
+        disabled/unregistered or this key is unregistered, else the org
+        default row's `enabled` if one exists, else the registry's own
+        `default_enabled`.
+    """
+    if not is_module_enabled(db, organization_id, module_key):
+        return False
+
+    subcomponent = _find_subcomponent_definition(module_key, subcomponent_key)
+    if subcomponent is None:
+        return False
+
+    return _resolve_org_subcomponent_default(db, organization_id, module_key, subcomponent_key, subcomponent)
 
 
 def import_all_module_models() -> None:
